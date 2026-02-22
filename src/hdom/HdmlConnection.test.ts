@@ -757,7 +757,7 @@ suite("HdmlConnection element", () => {
     });
 
     const element = await fixture(
-      html`<hdml-connection role="role"></hdml-connection>`,
+      html`<hdml-connection role="switch"></hdml-connection>`,
     );
 
     await assert.shadowDom.equal(element, "<slot></slot>");
@@ -781,6 +781,6 @@ suite("HdmlConnection element", () => {
     assert.isNull(detail["account"]);
     assert.isNull(detail["warehouse"]);
     assert.isNull(detail["database"]);
-    assert.equal(detail["role"], "role");
+    assert.equal(detail["role"], "switch");
   });
 });
