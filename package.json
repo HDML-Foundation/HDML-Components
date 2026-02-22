@@ -7,14 +7,15 @@
     "access": "public"
   },
   "dependencies": {
-    "@hdml/common": "^0.0.2-alpha.5",
-    "@hdml/hash": "0.0.2-alpha.5",
-    "@hdml/parser": "^0.0.2-alpha.5",
-    "@hdml/types": "^0.0.2-alpha.5",
+    "@hdml/common": "^0.0.2-alpha.11",
+    "@hdml/hash": "^0.0.2-alpha.11",
+    "@hdml/parser": "^0.0.2-alpha.11",
+    "@hdml/types": "^0.0.2-alpha.11",
     "lit": "^3.2.1"
   },
   "devDependencies": {
     "@custom-elements-manifest/analyzer": "^0.10.3",
+    "@hdml/buffer": "^0.0.2-alpha.11",
     "@open-wc/testing": "^4.0.0",
     "@types/mocha": "^10.0.9",
     "@types/throttle-debounce": "^5.0.2",
