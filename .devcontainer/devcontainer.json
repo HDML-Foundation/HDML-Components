@@ -7,11 +7,22 @@
   "mounts": [
     "source=${localEnv:HOME}/.ssh,target=/home/.ssh,type=bind,consistency=cached,readonly"
   ],
+  "postCreateCommand": "cd /workspaces/HDML-Components && npm install && npx playwright install && npx playwright install-deps",
   "postAttachCommand": "sh /workspaces/HDML-Components/scripts/init.sh",
   "customizations": {
     "vscode": {
       "settings": {},
-      "extensions": ["ms-azuretools.vscode-docker", "gaborv.flatbuffers", "golang.go", "dbaeumer.vscode-eslint", "firsttris.vscode-jest-runner", "rvest.vs-code-prettier-eslint", "runem.lit-plugin", "github.vscode-github-actions", "matsuuu.custom-elements-language-server-project"]
+      "extensions": [
+        "ms-azuretools.vscode-docker",
+        "gaborv.flatbuffers",
+        "golang.go",
+        "dbaeumer.vscode-eslint",
+        "firsttris.vscode-jest-runner",
+        "rvest.vs-code-prettier-eslint",
+        "runem.lit-plugin",
+        "github.vscode-github-actions",
+        "matsuuu.custom-elements-language-server-project"
+      ]
     }
   }
 }

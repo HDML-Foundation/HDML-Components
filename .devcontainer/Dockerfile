@@ -32,5 +32,3 @@ RUN wget https://go.dev/dl/go1.22.2.linux-amd64.tar.gz -O go.tar.gz
 RUN rm -rf /usr/local/go && tar -C /usr/local -xzf go.tar.gz
 RUN echo export PATH=$PATH:/usr/local/go/bin >> ~/.profile
 RUN rm go.tar.gz
-RUN npx playwright install
-RUN npx playwright install-deps
