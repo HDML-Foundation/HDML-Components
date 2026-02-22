@@ -38,8 +38,16 @@ export class HdmlIo extends LitElement {
   @property({ type: String })
   token: null | string = null;
 
+  /**
+   * @private
+   */
   #messagable: null | Window | Worker = null;
 
+  /**
+   * Enables the messagable. Called by the `connectedCallback` method.
+   *
+   * @private
+   */
   #enableMessagable = () => {
     if (_script === "_script") {
       this.#messagable = globalThis.self;
@@ -53,6 +61,12 @@ export class HdmlIo extends LitElement {
     this.#sendHtml();
   };
 
+  /**
+   * Disables the messagable. Called by the `disconnectedCallback`
+   * method.
+   *
+   * @private
+   */
   #disableMessagable = () => {
     if (_script === "_script") {
       this.#messagable = null;
@@ -61,6 +75,12 @@ export class HdmlIo extends LitElement {
     }
   };
 
+  /**
+   * Sends the properties to the worker. Called by the
+   * `attributeChangedCallback` method.
+   *
+   * @private
+   */
   #sendProps = throdeb.debounce(5, () => {
     this.#messagable?.postMessage({
       type: "props",
@@ -72,14 +92,32 @@ export class HdmlIo extends LitElement {
     });
   });
 
+  /**
+   * Listens for `hdom-changed` events. Called by the
+   * `connectedCallback` method.
+   *
+   * @private
+   */
   #listenHdomChanges = () => {
     document.addEventListener("hdom-changed", this.#sendHtml);
   };
 
+  /**
+   * Unlistens for `hdom-changed` events. Called by the
+   * `disconnectedCallback` method.
+   *
+   * @private
+   */
   #unlistenHdomChanges = () => {
     document.removeEventListener("hdom-changed", this.#sendHtml);
   };
 
+  /**
+   * Sends the HTML to the worker. Called by the `#listenHdomChanges`
+   * and `#unlistenHdomChanges` methods.
+   *
+   * @private
+   */
   #sendHtml = throdeb.debounce(5, () => {
     let connections: string = "";
     let models: string = "";
