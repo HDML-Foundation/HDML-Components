@@ -3,5 +3,6 @@
   "build": {
     "dockerfile": "Dockerfile",
     "context": ".."
-  }
+  },
+  "postCreateCommand": "cd /workspaces/HDML-Components && npm install && npx playwright install && npx playwright install-deps"
 }
