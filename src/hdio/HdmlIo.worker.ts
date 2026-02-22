@@ -40,10 +40,10 @@ globalThis.self.onmessage = (message: MessageEvent) => {
         break;
       case "html":
         parser.parse(msg.data.html);
-        console.log(msg.data.html);
-        console.log(parser.names);
-        console.log(parser.models);
-        console.log(parser.frames);
+        // console.log(msg.data.html);
+        // console.log(parser.names);
+        // console.log(parser.models);
+        // console.log(parser.frames);
         break;
     }
   }
