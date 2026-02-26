@@ -28,11 +28,14 @@ type HdmlMessage =
 let host: string;
 let tenant: string;
 let token: string;
-let files: {
-  index: Map<string, string>;
-  connections: Uint8Array;
-  models: Uint8Array;
-  frames: Uint8Array;
+let state: {
+  data: Uint8Array;
+  files: Map<string, string>;
+  mapping: Map<string, string>;
+} = {
+  data: new Uint8Array(),
+  files: new Map(),
+  mapping: new Map(),
 };
 
 /**
@@ -48,11 +51,17 @@ export function onmessage(message: MessageEvent): void {
         host = msg.data.host;
         tenant = msg.data.tenant;
         token = msg.data.token;
+        if (client) {
+          client.close();
+        }
         client = new HdioClient(host, tenant, token);
         break;
       case "html":
-        files = parse(msg.data.html);
-        console.log(files);
+        state = parse(state, msg.data.html);
+        console.log(state);
+        client?.postFiles(state).catch((error: Error) => {
+          console.error(error.message);
+        });
         break;
     }
   }

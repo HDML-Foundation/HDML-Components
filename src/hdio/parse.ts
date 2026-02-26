@@ -31,32 +31,28 @@ function sourceToPath(source: string): string {
  * Parses the HTML and returns the names, connections, models, and
  * frames in binary format.
  *
+ * @param state - The state to parse.
  * @param html - The HTML to parse.
  * @returns The names, connections, models, and frames in binary
  * format. The names are a map of local index to server path. The
  * connections, models, and frames are in binary format.
  */
-export function parse(html: string): {
-  index: Map<string, string>;
-  connections: Uint8Array;
-  models: Uint8Array;
-  frames: Uint8Array;
+export function parse(
+  state: {
+    data: Uint8Array;
+    files: Map<string, string>;
+    mapping: Map<string, string>;
+  },
+  html: string,
+): {
+  data: Uint8Array;
+  files: Map<string, string>;
+  mapping: Map<string, string>;
 } {
-  const index: Map<string, string> = new Map();
+  state.mapping.clear();
+
   const hdom = parseHDML(html);
-  const connectionsHdom: HDOM = {
-    includes: [],
-    connections: [],
-    models: [],
-    frames: [],
-  };
-  const modelsHdom: HDOM = {
-    includes: [],
-    connections: [],
-    models: [],
-    frames: [],
-  };
-  const framesHdom: HDOM = {
+  const hdomToSave: HDOM = {
     includes: [],
     connections: [],
     models: [],
@@ -64,9 +60,21 @@ export function parse(html: string): {
   };
 
   hdom.connections.forEach((connection) => {
-    connectionsHdom.connections.push(connection);
+    const name = connection.name;
+    const content = serialize(
+      connection,
+      StructType.ConnectionStruct,
+    );
+    const base64 = bytesToBase64(content);
+    const hash = hashify(base64);
+    const localIndex = `?hdml-connection=${name}`;
+    const serverPath = `hdml-connection=${name}@${hash}.html`;
+    state.mapping.set(localIndex, serverPath);
+    if (!state.files.has(serverPath)) {
+      hdomToSave.connections.push(connection);
+      state.files.set(serverPath, "parsed");
+    }
   });
-
   hdom.models.forEach((model) => {
     const name = model.name;
     const content = serialize(model, StructType.ModelStruct);
@@ -74,19 +82,21 @@ export function parse(html: string): {
     const hash = hashify(base64);
     const localIndex = `?hdml-model=${name}`;
     const serverPath = `hdml-model=${name}@${hash}.html`;
-    index.set(localIndex, serverPath);
-    modelsHdom.models.push(model);
+    state.mapping.set(localIndex, serverPath);
+    if (!state.files.has(serverPath)) {
+      hdomToSave.models.push(model);
+      state.files.set(serverPath, "parsed");
+    }
   });
-
   hdom.frames.forEach((frame) => {
     const name = frame.name;
     if (frame.source.indexOf("/") === 0) {
       frame.source = sourceToPath(frame.source);
     } else if (frame.source.indexOf("?") === 0) {
-      if (!index.has(frame.source)) {
+      if (!state.mapping.has(frame.source)) {
         console.error(`Invalid source: ${frame.source}`);
       } else {
-        frame.source = index.get(frame.source)!;
+        frame.source = state.mapping.get(frame.source)!;
       }
     }
     const content = serialize(frame, StructType.FrameStruct);
@@ -94,14 +104,13 @@ export function parse(html: string): {
     const hash = hashify(base64);
     const localIndex = `?hdml-frame=${name}`;
     const serverPath = `hdml-frame=${name}@${hash}.html`;
-    index.set(localIndex, serverPath);
-    framesHdom.frames.push(frame);
+    state.mapping.set(localIndex, serverPath);
+    if (!state.files.has(serverPath)) {
+      hdomToSave.frames.push(frame);
+      state.files.set(serverPath, "parsed");
+    }
   });
 
-  return {
-    index,
-    connections: fileifize(connectionsHdom),
-    models: fileifize(modelsHdom),
-    frames: fileifize(framesHdom),
-  };
+  state.data = fileifize(hdomToSave);
+  return state;
 }
