@@ -1,6 +1,7 @@
 .vscode
 coverage
-docs
+docs/*
+!docs/*.md
 bin
 cjs
 dts
