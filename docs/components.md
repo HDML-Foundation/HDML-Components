@@ -152,6 +152,17 @@ A derived dataset on top of an `hdml-model` or another `hdml-frame`.
 `source` is rewritten by [src/hdio/parse.ts](../src/hdio/parse.ts) before serialization —
 absolute paths via `sourceToPath`, same-document references via the in-memory mapping.
 
+**Parent field naming.** What the frame sees from its `source` depends on the source kind:
+
+- `source="?hdml-model=m"` (or an external `/path?hdml-model=m`) — the model exposes every
+  field as **`"{table-name}_{field-name}"`**. In a multi-table model whose `hdml-table`s are
+  `amazon` and `apple`, the parent's `close` columns reach the frame as `amazon_close` and
+  `apple_close` — **never** the bare `close`. Reference them by that compound name in
+  `origin`, and inside any `clause` SQL. This is true even when the model has only one table.
+  The rewrite is done by `@hdml/stringifier` (`getModelSQL`).
+- `source="?hdml-frame=f"` (or an external `/path?hdml-frame=f`) — the parent frame exposes
+  fields by their declared `name`, with no rewriting.
+
 ### `hdml-filter-by` — [src/hdom/HdmlFilterBy.ts](../src/hdom/HdmlFilterBy.ts)
 
 Marker container for row filters inside `hdml-frame`. No attributes.
