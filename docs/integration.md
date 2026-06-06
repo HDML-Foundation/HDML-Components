@@ -92,14 +92,15 @@ contract.
 
 | Dep | This repo pins | Workspace target |
 |---|---|---|
-| `@hdml/common` | `^0.0.2-alpha.12` | `0.0.2-alpha.13` |
-| `@hdml/hash` | `^0.0.2-alpha.12` | `0.0.2-alpha.13` |
-| `@hdml/parser` | `^0.0.2-alpha.12` | `0.0.2-alpha.13` |
-| `@hdml/buffer` | `^0.0.2-alpha.12` | `0.0.2-alpha.13` |
-| `@hdml/types` | `^0.0.2-alpha.12` | `0.0.2-alpha.13` |
+| `@hdml/common` | `^0.0.2-alpha.15` | `0.0.2-alpha.15` |
+| `@hdml/hash` | `^0.0.2-alpha.15` | `0.0.2-alpha.15` |
+| `@hdml/parser` | `^0.0.2-alpha.15` | `0.0.2-alpha.15` |
+| `@hdml/buffer` | `^0.0.2-alpha.15` | `0.0.2-alpha.15` |
+| `@hdml/types` | `^0.0.2-alpha.15` | `0.0.2-alpha.15` |
 
-The workspace root [CLAUDE.md](../../../CLAUDE.md) flags this as a known skew. Bump all five
-together when realigning; no need to bump them individually.
+The five `@hdml/*` deps are aligned with the workspace lockstep at `0.0.2-alpha.15`
+(the `hdml-include` removal release). Bump all five together when realigning; no
+need to bump them individually.
 
 `lit` (`^3.2.1`) and `whatwg-fetch` are not bound to the workspace lockstep.
 

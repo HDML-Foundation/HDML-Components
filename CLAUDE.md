@@ -58,18 +58,17 @@ This repo *promises* the following to its consumers; any change here is a cross-
 
 | Needed from | What | Pinned at |
 |---|---|---|
-| `@hdml/common` | `throdeb` (debounce) | `^0.0.2-alpha.12` |
-| `@hdml/hash` | `bytesToBase64`, `hashify`, `uid` | `^0.0.2-alpha.12` |
-| `@hdml/parser` | `parseHDML` | `^0.0.2-alpha.12` |
-| `@hdml/buffer` | `serialize`, `fileifize`, `StructType` | `^0.0.2-alpha.12` |
-| `@hdml/types` | `HDOM`, `HDML_TAG_NAMES`, `*_ATTRS_LIST` enums | `^0.0.2-alpha.12` |
+| `@hdml/common` | `throdeb` (debounce) | `^0.0.2-alpha.15` |
+| `@hdml/hash` | `bytesToBase64`, `hashify`, `uid` | `^0.0.2-alpha.15` |
+| `@hdml/parser` | `parseHDML` | `^0.0.2-alpha.15` |
+| `@hdml/buffer` | `serialize`, `fileifize`, `StructType` | `^0.0.2-alpha.15` |
+| `@hdml/types` | `HDOM`, `HDML_TAG_NAMES`, `*_ATTRS_LIST` enums | `^0.0.2-alpha.15` |
 | `lit` | reactive web-component base | `^3.2.1` |
 | `whatwg-fetch` | `fetch` polyfill for older browsers (legacy plugin) | `^3.6.20` |
 
-**Lockstep alert.** The root workspace CLAUDE.md flags that **all `@hdml/*` ship at one
-version per release** — currently `0.0.2-alpha.13` elsewhere, while this repo is still at
-`^0.0.2-alpha.12`. Bumping the five `@hdml/*` deps together to `alpha.13` (and republishing
-this package) restores alignment. See [docs/integration.md](docs/integration.md#version-alignment).
+**Lockstep.** All `@hdml/*` ship at **one version per release**; this repo is aligned at
+`0.0.2-alpha.15` (the `hdml-include` removal release). Bump the five `@hdml/*` deps together
+when realigning. See [docs/integration.md](docs/integration.md#version-alignment).
 
 ## Conventions
 

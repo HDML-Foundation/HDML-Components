@@ -53,7 +53,6 @@ export function parse(
 
   const hdom = parseHDML(html);
   const hdomToSave: HDOM = {
-    includes: [],
     connections: [],
     models: [],
     frames: [],
