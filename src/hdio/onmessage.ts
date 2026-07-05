@@ -5,6 +5,7 @@
  */
 
 import { parse } from "./parse";
+import type { HdioState } from "./parse";
 import { HdioClient } from "./HdioClient";
 
 let client: null | HdioClient = null;
@@ -28,14 +29,15 @@ type HdmlMessage =
 let host: string;
 let tenant: string;
 let token: string;
-let state: {
-  data: Uint8Array;
-  files: Map<string, string>;
-  mapping: Map<string, string>;
-} = {
+
+/**
+ * Cross-call worker state: the last packed document bytes plus the
+ * ref→key→stored registry retained for the post→confirm→query
+ * handshake (RFC 004 Slice E §8.6, E-L).
+ */
+let state: HdioState = {
   data: new Uint8Array(),
-  files: new Map(),
-  mapping: new Map(),
+  registry: new Map(),
 };
 
 /**
@@ -58,7 +60,6 @@ export function onmessage(message: MessageEvent): void {
         break;
       case "html":
         state = parse(state, msg.data.html);
-        console.log(state);
         client?.postFiles(state).catch((error: Error) => {
           console.error(error.message);
         });

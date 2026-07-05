@@ -14,7 +14,7 @@ Worker / main-thread execution.
 
 | Attribute | Type | Purpose |
 |---|---|---|
-| `host` | string | Base URL of the HDIO server (no trailing slash; `<host>/public/api/v1/...`) |
+| `host` | string | Base URL of the HDIO server (no trailing slash) |
 | `tenant` | string | Tenant identifier — appears in both the URL path and the `sessions` query string |
 | `token` | string | Bearer-token-equivalent issued by upstream auth; exchanged for a session token |
 
@@ -48,10 +48,11 @@ sequenceDiagram
   C->>S: GET /public/api/v1/{tenant}/sessions?tenant&token
   S-->>C: 200 sessionToken (text/plain body)
   Io->>W: postMessage {type:"html", data:{html: concat(outerHTML)}}
-  W->>W: parse(state, html)  // @hdml/parser + buffer
+  W->>W: parse(state, html)  // bottom-up Merkle namer
   W->>C: postFiles(state)
-  C->>S: POST /public/api/v1/{tenant}/hdio/files  (octet-stream FilesList)
-  S-->>C: 200 (no body needed)
+  C->>S: POST /{tenant}/api/v1/documents/dynamic  (octet-stream DocumentFilesStruct)
+  S-->>C: 201 {stored:[{key,type,stored}], ddl:[…]}
+  C->>C: fold stored[] into registry (ref→{key,stored})
   Page->>Io: attributeChangedCallback (host/tenant/token)
   Io->>W: debounced postMessage {type:"props",...}  // 5ms throdeb.debounce
   Page->>Io: hdom-changed (any hdml-*)
@@ -82,7 +83,7 @@ type HdmlMessage =
 - **`props`** — replaces the in-Worker `HdioClient`, closing any prior one. Empty values are
   not filtered here; `HdioClient`'s constructor checks `host && tenant && token` before
   starting a session.
-- **`html`** — calls `parse(state, html)` (see [docs/architecture.md#parse--serialize](architecture.md#parse--serialize)) and then `client.postFiles(state)`. `state` is module-scoped — the cumulative set of parsed/uploaded files persists for the lifetime of the Worker.
+- **`html`** — calls `parse(state, html)` (the bottom-up Merkle namer — see [docs/architecture.md#parse--serialize](architecture.md#parse--serialize)) then `client.postFiles(state)`. `parse` re-names and re-packs the **whole** document every call (no dedup — every element is re-posted; the server idempotent-skips already-present keys). `state` is module-scoped and holds the `ref → {key, stored}` registry (keyed by local ref `hdml-{type}={name}`) that survives for the Worker's lifetime — the substrate for the post→confirm→query handshake (RFC 004 Slice E §8.6, E-L).
 
 There is **no `onerror` / response message back to the main thread**. Errors `console.error`
 inside the Worker and the main thread never knows.
@@ -97,18 +98,25 @@ against empty inputs other than the constructor short-circuit).`
 
 ### Endpoint surface
 
-All requests go to `{host}/public/api/v1/{tenant}/{api}{path}{?params}`. Common headers:
-`Authorization: Bearer {session}` and `content-type: application/octet-stream`. Mode:
-`cors`, redirect: `follow`, cache: `no-cache`.
+Two base paths are used. The dynamic-doc save goes to the live tenant router
+`{host}/{tenant}/api/v1/documents/dynamic` (verified at
+[HDIO-Server handlers.go](../../HDIO-Server/internal/api/handlers.go) `/{tenant}/api/v1` →
+`Post("/documents/dynamic", …)`, E-B). The session bootstrap stays on the legacy
+`{host}/public/api/v1/{tenant}/sessions` prefix (auth bootstrap is a separate concern —
+project 006). Common headers: `Authorization: Bearer {session}` and
+`content-type: application/octet-stream`. Mode: `cors`, redirect: `follow`, cache: `no-cache`.
 
 | When | Method | api | path | params | body |
 |---|---|---|---|---|---|
 | Bootstrap | `GET` | `sessions` | *(none)* | `tenant`, `token` | none |
-| Upload | `POST` | `hdio` | `/files` | *(none)* | `state.data.slice().buffer` (the FlatBuffers `FilesList`) |
+| Upload | `POST` | `documents` | `/dynamic` | *(none)* | `state.data.slice().buffer` (the FlatBuffers `DocumentFilesStruct`) |
 
 The response of `GET sessions` is read as **text** (`await response.text()`) and used as the
-session bearer token on subsequent requests. The response of `POST /files` is not consumed on
-success.
+session bearer token on subsequent requests. The `POST /documents/dynamic` response is a
+**201** `{ stored: [{ key, type, stored }], ddl: [{ name, status, detail? }] }` (RFC 004
+Slice E §7.2); `postFiles` folds the confirmed `stored[]` keys into the registry — both
+`stored:true` (freshly written) and `stored:false` (idempotent-skip, already present) mark the
+entry present/queryable (E-L).
 
 ### Error handling
 
@@ -116,10 +124,10 @@ success.
 `new Error(message.message || response.statusText)`. Callers (`postFiles` in the worker,
 `initialize` from the constructor) `.catch(console.error)`.
 
-`TODO(confirm: whether the HDIO-Server rewrite exposes these exact paths
-("/public/api/v1/{tenant}/sessions" and "/hdio/files") — the root workspace CLAUDE.md
-mentions /public, /private, /system, /webhook namespaces but does not enumerate session/files
-endpoints for this client.)`
+The `POST /{tenant}/api/v1/documents/dynamic` route is confirmed against the live router.
+`TODO(confirm: the session bootstrap leg still targets the legacy
+`/public/api/v1/{tenant}/sessions` prefix, but the current HDIO-Server router exposes no
+`sessions` route — reconciling the auth bootstrap is project 006, Token Authentication.)`
 
 ## Same-thread fallback (`_script` sentinel)
 

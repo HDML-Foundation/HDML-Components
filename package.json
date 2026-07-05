@@ -7,11 +7,11 @@
     "access": "public"
   },
   "dependencies": {
-    "@hdml/common": "^0.0.2-alpha.15",
-    "@hdml/hash": "^0.0.2-alpha.15",
-    "@hdml/parser": "^0.0.2-alpha.15",
-    "@hdml/buffer": "^0.0.2-alpha.15",
-    "@hdml/types": "^0.0.2-alpha.15",
+    "@hdml/common": "^0.0.2-alpha.20",
+    "@hdml/hash": "^0.0.2-alpha.20",
+    "@hdml/parser": "^0.0.2-alpha.20",
+    "@hdml/buffer": "^0.0.2-alpha.20",
+    "@hdml/types": "^0.0.2-alpha.20",
     "lit": "^3.2.1",
     "whatwg-fetch": "^3.6.20"
   },
@@ -41,9 +41,9 @@
     "tslib": "^2.8.1"
   },
   "scripts": {
-    "clear": "rm -rf bin && rm -rf tst && rm -rf cjs && rm -rf dts && rm -rf esm && rm -rf tsconfig/*.tsbuildinfo && rm -rf coverage && rm -rf docs",
+    "clear": "rm -rf bin && rm -rf tst && rm -rf cjs && rm -rf dts && rm -rf esm && rm -rf tsconfig/*.tsbuildinfo && rm -rf coverage && rm -rf docs/api",
     "manifest": "node_modules/.bin/cem analyze --litelement --globs \"src/**/*.ts\" --exclude \"src/index.ts\"",
-    "docs": "node_modules/.bin/typedoc ./src/index.ts --tsconfig ./tsconfig/esm.json --out ./docs",
+    "docs": "node_modules/.bin/typedoc ./src/index.ts --tsconfig ./tsconfig/esm.json --out ./docs/api",
     "lint": "node ./node_modules/.bin/eslint -c .eslintrc.js --fix --parser-options=tsconfigRootDir:'./tsconfig' 'src/**/*.ts'",
     "tst_dev": "wtr --config .testrc.js",
     "tst_prd": "MODE=prod wtr --config .testrc.js",

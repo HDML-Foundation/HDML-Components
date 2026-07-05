@@ -5,7 +5,57 @@
  */
 
 import "whatwg-fetch";
-import { uid } from "@hdml/hash";
+import type { HdioState, RegistryEntry } from "./parse";
+
+/**
+ * Extracts the confirmed canonical keys from a POST 201 body
+ * (`{ stored: [{ key, type, stored }], ddl: [...] }`, RFC 004 Slice E
+ * §7.2). Both `stored:true` (freshly written) and `stored:false`
+ * (idempotent-skip, already present) mean present/queryable, so only
+ * the `key` is read here. Narrows `unknown` defensively.
+ *
+ * @param body - The parsed 201 JSON body.
+ * @returns The list of confirmed canonical keys.
+ */
+function readStoredKeys(body: unknown): string[] {
+  const keys: string[] = [];
+  if (typeof body !== "object" || body === null) {
+    return keys;
+  }
+  const stored = (body as { stored?: unknown }).stored;
+  if (!Array.isArray(stored)) {
+    return keys;
+  }
+  for (const item of stored) {
+    if (typeof item === "object" && item !== null) {
+      const key = (item as { key?: unknown }).key;
+      if (typeof key === "string") {
+        keys.push(key);
+      }
+    }
+  }
+  return keys;
+}
+
+/**
+ * Folds a POST 201 body into the ref→key→stored registry: every
+ * registry entry whose `key` the server confirmed is marked
+ * `stored: true` (present/queryable — RFC 004 Slice E E-L).
+ *
+ * @param registry - The ref→key→stored registry to update.
+ * @param body - The parsed 201 JSON body.
+ */
+export function recordStored(
+  registry: Map<string, RegistryEntry>,
+  body: unknown,
+): void {
+  const confirmed = new Set(readStoredKeys(body));
+  registry.forEach((entry) => {
+    if (confirmed.has(entry.key)) {
+      entry.stored = true;
+    }
+  });
+}
 
 /**
  * The `HdioClient` class.
@@ -65,31 +115,27 @@ export class HdioClient {
   }
 
   /**
-   * Posts the files to the server.
+   * Posts the full document to the dynamic-doc save route and folds
+   * the 201 `stored[]` response into the registry.
+   *
+   * The whole `DocumentFilesStruct` is sent every call (no dedup —
+   * §8.6); the server idempotent-skips already-present keys. The
+   * request-id relabelling is gone: the correlation is now "which
+   * keys the server confirmed stored" (E-L).
    */
-  public async postFiles(state: {
-    data: Uint8Array;
-    files: Map<string, string>;
-    mapping: Map<string, string>;
-  }): Promise<void> {
+  public async postFiles(state: HdioState): Promise<void> {
     if (!this.#initialized) {
       await this.#initialization!;
     }
-    const id = `requested-${uid()}`;
-    Array.from(state.files.keys()).forEach((key) => {
-      if (state.files.get(key) === "parsed") {
-        state.files.set(key, id);
-      }
-    });
     const abort = new AbortController();
-    console.log(state);
-    await this.fetch({
+    const response = await this.fetch({
       method: "POST",
-      api: "hdio",
-      path: "/files",
+      api: "documents",
+      path: "/dynamic",
       signal: abort.signal,
       body: state.data.slice().buffer,
     });
+    recordStored(state.registry, await response.json());
   }
 
   /**
@@ -97,7 +143,7 @@ export class HdioClient {
    */
   private async fetch(config: {
     method: "GET" | "POST" | "PUT" | "DELETE";
-    api: "sessions" | "hdio";
+    api: "sessions" | "documents";
     path?: string;
     params?: Record<string, string>;
     signal?: AbortSignal;
@@ -107,9 +153,17 @@ export class HdioClient {
     const query = params
       ? `?${new URLSearchParams(params).toString()}`
       : "";
-    const url =
-      `${this.#host}/public/api/v1/${this.#tenant}` +
-      `/${api}${path ? path : ""}${query}`;
+    // E-B: the dynamic-doc save route is `/{tenant}/api/v1/...`
+    // on the live router (handlers.go:115/122). The session
+    // bootstrap leg is auth's concern (project 006), left on its
+    // legacy prefix here.
+    // TODO(confirm: reconcile the `sessions` leg's base path — the
+    // current router exposes no `sessions` route.)
+    const base =
+      api === "documents"
+        ? `${this.#host}/${this.#tenant}/api/v1`
+        : `${this.#host}/public/api/v1/${this.#tenant}`;
+    const url = `${base}/${api}${path ? path : ""}${query}`;
     const response = await fetch(url, {
       method,
       mode: "cors",
