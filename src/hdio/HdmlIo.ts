@@ -7,7 +7,8 @@
 import { throdeb } from "@hdml/common";
 import { LitElement, TemplateResult, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import _script from "./HdmlIo.worker";
+import type { Endpoint } from "./endpoint";
+import { createEndpoint, closeEndpoint } from "./endpoint";
 
 /**
  * The `hdml-io` component.
@@ -39,39 +40,52 @@ export class HdmlIo extends LitElement {
   token: null | string = null;
 
   /**
+   * The message endpoint — a real `Worker` in the IIFE build, a
+   * same-thread `MessagePort` in the esm/cjs fallback (RFC §2.2, A2).
+   * The element never branches on the build: `createEndpoint` /
+   * `closeEndpoint` (from `./endpoint`) hide it.
+   *
    * @private
    */
-  #messagable: null | Window | Worker = null;
+  #endpoint: null | Endpoint = null;
 
   /**
-   * Enables the messagable. Called by the `connectedCallback` method.
+   * Handles messages coming back from the endpoint (worker→main).
+   * Slice A scaffold — assigning it also **starts** the fallback
+   * `port1` so later `result` / `auth` messages can arrive; B/D flesh
+   * out the routing.
+   *
+   * @private
+   */
+  #onMessage = (): void => {
+    // Slice A: no inbound routing yet (props/html never reply).
+    // Wired by later steps (result/auth/error, RFC §2.5).
+  };
+
+  /**
+   * Enables the endpoint. Called by the `connectedCallback` method.
+   * Assigning `#endpoint.onmessage` starts the port (fallback) so
+   * inbound messages are delivered.
    *
    * @private
    */
   #enableMessagable = () => {
-    if (_script === "_script") {
-      this.#messagable = globalThis.self;
-    } else {
-      const blob = new Blob([_script], { type: "text/javascript" });
-      const url = URL.createObjectURL(blob);
-      this.#messagable = new Worker(url);
-      URL.revokeObjectURL(url);
-    }
+    this.#endpoint = createEndpoint();
+    this.#endpoint.onmessage = this.#onMessage;
     this.#sendProps();
     this.#sendHtml();
   };
 
   /**
-   * Disables the messagable. Called by the `disconnectedCallback`
+   * Disables the endpoint. Called by the `disconnectedCallback`
    * method.
    *
    * @private
    */
   #disableMessagable = () => {
-    if (_script === "_script") {
-      this.#messagable = null;
-    } else {
-      (<Worker>this.#messagable).terminate();
+    if (this.#endpoint) {
+      closeEndpoint(this.#endpoint);
+      this.#endpoint = null;
     }
   };
 
@@ -82,7 +96,7 @@ export class HdmlIo extends LitElement {
    * @private
    */
   #sendProps = throdeb.debounce(5, () => {
-    this.#messagable?.postMessage({
+    this.#endpoint?.postMessage({
       type: "props",
       data: {
         host: this.host,
@@ -131,7 +145,7 @@ export class HdmlIo extends LitElement {
     document.querySelectorAll("hdml-frame").forEach((elm) => {
       frames = frames + `${elm.outerHTML}\n`;
     });
-    this.#messagable?.postMessage({
+    this.#endpoint?.postMessage({
       type: "html",
       data: {
         html: `${connections}${models}${frames}`,

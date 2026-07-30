@@ -26,16 +26,34 @@ function buildWorkerPlugin() {
   return {
     name: "esbuild-worker",
     setup(build) {
+      // A2: match the `endpoint.js` seam (not `*.worker.js`) and
+      // replace the whole module with a `Worker`-spawning form, so the
+      // onmessage/@hdml/parser graph stays off the main bundle and
+      // lives only inside the bundled worker string.
       build.onLoad(
         {
-          filter: /\.worker\.js$/,
+          filter: /endpoint\.js$/,
         },
-        async ({ path: workerPath }) => {
+        async ({ path: endpointPath }) => {
+          const workerPath = path.resolve(
+            path.dirname(endpointPath),
+            "HdmlIo.worker.js",
+          );
           let workerCode = await buildWorker(workerPath);
           return {
             contents:
-              `const _script = ${JSON.stringify(workerCode)};` +
-              `export default _script\n`,
+              `const _script = ${JSON.stringify(workerCode)};\n` +
+              `export function createEndpoint() {\n` +
+              `  const blob = new Blob([_script], ` +
+              `{ type: "text/javascript" });\n` +
+              `  const url = URL.createObjectURL(blob);\n` +
+              `  const w = new Worker(url);\n` +
+              `  URL.revokeObjectURL(url);\n` +
+              `  return w;\n` +
+              `}\n` +
+              `export function closeEndpoint(ep) {\n` +
+              `  ep.terminate();\n` +
+              `}\n`,
             loader: "js",
           };
         }

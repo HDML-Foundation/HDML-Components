@@ -30,11 +30,11 @@ flowchart LR
         srb[hdml-sort-by]
       end
       base["HdomElement (Lit base)<br/>connected / disconnected / attrChanged<br/>→ document.dispatchEvent('hdom-changed')"]
-      io["hdml-io (LitElement)<br/>props: host · tenant · token<br/>spawns Worker, owns lifecycle"]
+      io["hdml-io (LitElement)<br/>props: host · tenant · token<br/>createEndpoint / closeEndpoint, owns lifecycle"]
     end
 
-    subgraph "Web Worker (or main thread in ESM mode)"
-      router["onmessage router<br/>handles {type:'props'} | {type:'html'}"]
+    subgraph "Web Worker (or MessagePort fallback in ESM/CJS)"
+      router["createHandler(post) listener<br/>handles {type:'props'} | {type:'html'}"]
       parse["parse(state, html)<br/>parseHDML → serialize → fileifize"]
       client["HdioClient<br/>fetch sessions, POST /hdio/files"]
     end
@@ -53,11 +53,28 @@ flowchart LR
     grb -.-> base
     srb -.-> base
     base -- "hdom-changed" --> io
-    io -- "postMessage props/html" --> router
+    io -- "endpoint.postMessage props/html" --> router
     router --> parse
     router --> client
     client -- "Bearer token + octet-stream" --> server
 ```
+
+> **The boundary (RFC 014/001 Slice A).** The main thread ↔ worker seam
+> is `src/hdio/endpoint.ts`: `createEndpoint()` / `closeEndpoint()`. In
+> the `esm`/`cjs` builds this checked-in **fallback** returns the `port1`
+> of a private `MessageChannel` whose `port2` runs the handler — a
+> same-thread, isolated channel that touches **no** global slot
+> (superseding the old `globalThis.self`/`window.onmessage` path, A1). In
+> the IIFE (`bin`) build the esbuild plugin swaps the whole `endpoint.js`
+> module for a `Worker`-spawning form (A2), so `HdmlIo.ts` never branches
+> on the build — it holds `#endpoint: null | Endpoint` (`Worker |
+> MessagePort`) and calls only `createEndpoint` / `closeEndpoint`. The
+> worker handler is `createHandler(post)` (`src/hdio/onmessage.ts`): its
+> `client` / `state` are closure state (one endpoint, one client, A3),
+> and `post(msg, transfer?)` is the outbound sink, wired to
+> `self.postMessage` in the real worker and to `port2.postMessage` in the
+> fallback — both in the transfer-list form `postMessage(msg, transfer ??
+> [])` (A4).
 
 ## The `hdom-changed` event bus
 
@@ -88,23 +105,32 @@ document for `hdml-connection`, `hdml-model`, `hdml-frame` elements and re-posts
 `<hdml-io>` is **not** an `HdomElement` — it extends `LitElement` directly, because it does
 not represent HDML state, it observes it. It owns three concerns:
 
-1. **Lifecycle.** On `connectedCallback`, it either spawns a `Worker` (IIFE build) or sets
-   `#messagable = globalThis.self` (ESM/CJS build — same-thread fallback driven by the
-   `_script === "_script"` sentinel). On `disconnectedCallback` it tears that down. See
-   [src/hdio/HdmlIo.ts:51-76](../src/hdio/HdmlIo.ts#L51-L76).
+1. **Lifecycle.** On `connectedCallback`, it calls `createEndpoint()` and assigns
+   `#endpoint.onmessage` (which also *starts* the fallback `port1`, so worker→main
+   messages can arrive later). It never branches on the build — the `endpoint.ts` seam
+   returns a `Worker` (IIFE build) or a `MessagePort` (esm/cjs fallback). On
+   `disconnectedCallback` it calls `closeEndpoint(#endpoint)` (terminate vs close, handled
+   inside the seam). See
+   [src/hdio/HdmlIo.ts:65-90](../src/hdio/HdmlIo.ts#L65-L90).
 2. **Property sync.** `host` / `tenant` / `token` changes are debounced 5ms via
    `throdeb.debounce` (`@hdml/common`) and posted as `{type:"props", data:{host,tenant,token}}`.
 3. **HTML sync.** On every `hdom-changed`, debounced 5ms, it concatenates the `outerHTML` of
    every `hdml-connection`, `hdml-model`, and `hdml-frame` in the document and posts
    `{type:"html", data:{html}}`.
 
-The Worker entry [src/hdio/HdmlIo.worker.ts](../src/hdio/HdmlIo.worker.ts) wires
-`globalThis.self.onmessage = onmessage` where `onmessage` lives in
-[src/hdio/onmessage.ts](../src/hdio/onmessage.ts). It is a tiny router holding three pieces of
-state — `host`, `tenant`, `token`, and the cumulative `state = { data, files, mapping }`:
+The Worker entry [src/hdio/HdmlIo.worker.ts](../src/hdio/HdmlIo.worker.ts) — the only file
+that touches `self` — wires `self.onmessage = createHandler((msg, t) => self.postMessage(msg,
+t ?? []))`. `createHandler(post)` lives in [src/hdio/onmessage.ts](../src/hdio/onmessage.ts);
+the fallback wires the same handler onto `port2` instead. Its `client` and `state = { data,
+registry }` are **closure** state (one endpoint, one client), not module globals:
 
-- **`type:"props"`** replaces the `HdioClient` instance (closing any prior one).
+- **`type:"props"`** (re)constructs the `HdioClient`, closing any prior one.
 - **`type:"html"`** runs `parse(state, html)` (see below) and calls `client.postFiles(state)`.
+
+The message envelope is a discriminated union on `type` (RFC §2.5) — inbound `props` /
+`html` / `oidc-callback` / `subscribe` / `unsubscribe`, outbound `auth` / `result` /
+`error`. Only `props` / `html` are routed after Slice A; the rest are declared for the
+downstream slices. See [docs/hdio-client.md](hdio-client.md#worker-message-protocol).
 
 ### Parse + serialize
 
@@ -155,11 +181,13 @@ flowchart TD
   src -->|"cem analyze"| cem["custom-elements.json"]
 ```
 
-The IIFE build is special: `.esbuildrc.mjs` registers an `onLoad({filter: /\.worker\.js$/})`
-handler that *recursively* re-bundles the matched worker file as a minified IIFE, then emits
-`const _script = "<bundled-source-as-string>"; export default _script;` in its place. This is
-what flips `HdmlIo.ts`'s `_script === "_script"` check from "use main thread" to "spawn
-Worker from a Blob URL". The ESM build, having no such plugin, leaves the sentinel intact.
-See [docs/decisions.md#why-_script](decisions.md#why-_script).
+The IIFE build is special: `.esbuildrc.mjs` registers an `onLoad({filter: /endpoint\.js$/})`
+handler that resolves `HdmlIo.worker.js` next to `endpoint.js`, *recursively* re-bundles it as
+a minified IIFE, and returns a module whose `contents` define `createEndpoint` (Blob-URL-spawn
+a `Worker` from that bundled string) and `closeEndpoint` (`ep.terminate()`) in place of the
+checked-in fallback. Because the plugin replaces the **whole** `endpoint.js` module, the
+`onmessage` / `@hdml/parser` graph never lands in the main bundle — it lives only inside the
+worker string (A2). The esm/cjs builds have no such plugin, so they keep the checked-in
+`MessageChannel` fallback. See [docs/decisions.md#the-endpointts-seam](decisions.md#the-endpointts-seam).
 
 `npm run build` chains: `clear` → `lint` → `test` → `compile_cjs && compile_esm && compile_dts && compile_bin` → `docs` (TypeDoc). `compile_bin` depends on `compile_esm` having run first (it bundles `./esm/index.js`). See [docs/development.md](development.md).

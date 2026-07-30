@@ -31,20 +31,38 @@ It extends `LitElement` directly. `<hdml-io>` observes the document, it does not
 (infinite loop) or require a special case. The separation also splits the dependency graph:
 the hdom elements never import the hdio layer.
 
-## <a name="why-_script"></a>The `_script === "_script"` sentinel
+## <a name="the-endpointts-seam"></a>The `endpoint.ts` seam (was the `_script` sentinel)
 
-[`HdmlIo.worker.ts`](../src/hdio/HdmlIo.worker.ts) ends with `const _script = "_script";
-export default _script;`. In ESM/CJS builds this literal survives, and `HdmlIo` runs the
-worker's `onmessage` handler on the main thread (`#messagable = globalThis.self`). In the
-IIFE build, [`.esbuildrc.mjs`](../.esbuildrc.mjs#L8-L45) registers a custom plugin that
-matches `\.worker\.js$`, bundles that file as a minified IIFE, then *rewrites* the module to
-`const _script = "<bundled-source>"; export default _script;` — so the same `import` now
-yields a JS source string, which `HdmlIo` turns into a Blob URL and a real `Worker`.
+**Superseded by RFC 014/001 Slice A.** The old boundary branched *inside* `HdmlIo.ts` on a
+build-time sentinel: [`HdmlIo.worker.ts`](../src/hdio/HdmlIo.worker.ts) exported `const
+_script = "_script"`, the element compared `_script === "_script"` and, when true, ran the
+handler on the main thread via `#messagable = globalThis.self`. On the main thread
+`globalThis.self` **is** `window`, so the element installed `window.onmessage` and was
+reachable by any cross-origin frame's `postMessage` — an isolation bug.
 
-Why a sentinel rather than two builds? It keeps a single source tree producing both
-single-file (drop-in `<script>`) and bundled-app (ESM tree-shaking) variants without
-duplicate code paths. The cost is the dance documented here, and a `_script === "_script"`
-string comparison that looks unusual.
+The branch now lives in a seam module, [`endpoint.ts`](../src/hdio/endpoint.ts), exporting
+`createEndpoint()` / `closeEndpoint()`. `HdmlIo.ts` holds `#endpoint: null | Endpoint`
+(`Worker | MessagePort`) and never inspects the build. Two forms:
+
+- **Fallback (checked-in, esm/cjs).** `createEndpoint` builds a private `MessageChannel`,
+  wires `createHandler(post)` onto `port2.onmessage`, and hands `port1` to the element. No
+  global slot is touched (A1). It is same-thread async message passing — a
+  correctness/isolation fix, not parallelism; the fallback still parses on the main thread.
+  The gotcha baked into the seam: a port delivers nothing until started, and assigning
+  `.onmessage` starts it implicitly (`addEventListener("message", …)` would need
+  `port.start()`).
+- **IIFE (`bin`).** The esbuild plugin in [`.esbuildrc.mjs`](../.esbuildrc.mjs) matches
+  **`endpoint.js`** (re-pointed from `*.worker.js`), bundles `HdmlIo.worker.js` as a minified
+  IIFE, and replaces the whole module with a `createEndpoint` that Blob-URL-spawns it as a
+  real `Worker`.
+
+**Why invert onto `endpoint.js` and not import the handler directly (A2).** If the element
+imported `createHandler` for the fallback, esbuild would pull `onmessage.ts` (and
+`@hdml/parser`, `@hdml/buffer`, `@hdml/hash`, flatbuffers) into the **main** bundle *as well
+as* the inlined worker string — shipping that payload twice. Swapping the whole `endpoint.js`
+module keeps the worker graph off the main graph — the property the old `*.worker.js` swap
+already had and must not lose. (Verified: in `bin/index.min.js` the `@hdml/parser` graph
+appears only inside the bundled worker string, ahead of the `new Worker(` call.)
 
 ## Debounce of 5 ms
 
