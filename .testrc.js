@@ -86,6 +86,10 @@ function tokenResponse(access, refresh) {
 //   err-html      → doc 502 with a text/html body (no JSON parse)
 //   oidc-ok       → GET /auth/callback 200 (OIDC exchange succeeds)
 //   stale-state   → GET /auth/callback 401 (spent state → re-nav)
+//   q-ok          → /queries 202 completed; result = 2 IPC batches
+//   q-fail        → GET /queries/{id} 200 {status:failed, error}
+//   q-pending     → GET /queries/{id} 202 {status:pending}
+//   q-cancel      → DELETE /queries/{id} 409 (ErrJobTerminal, swallowed)
 function mockHdio() {
   return async (ctx, next) => {
     const parts = ctx.path.split("/").filter(Boolean);
@@ -188,6 +192,78 @@ function mockHdio() {
         ddl: [],
         seen_auth: auth,
       };
+      return;
+    }
+
+    // Query submit — 202 with the job id + its (maybe-terminal)
+    // status. The D2 `{doc_path, columns}` body shape is asserted at
+    // the worker level (a captured `submitQuery` arg); here the route
+    // only needs to accept the POST and return a job.
+    if (post && route === "/queries") {
+      ctx.status = 202;
+      ctx.body = { job_id: "job-1", status: "completed" };
+      return;
+    }
+
+    // Query status — 200 terminal / 202 pending (both `ok`); a failed
+    // job carries its `error` string (D6, poll status not result).
+    if (
+      ctx.method === "GET" &&
+      parts[3] === "queries" &&
+      parts.length === 5
+    ) {
+      const jobId = parts[4];
+      if (tenant === "q-fail") {
+        ctx.status = 200;
+        ctx.body = { job_id: jobId, status: "failed", error: "boom" };
+        return;
+      }
+      if (tenant === "q-pending") {
+        ctx.status = 202;
+        ctx.body = { job_id: jobId, status: "pending" };
+        return;
+      }
+      ctx.status = 200;
+      ctx.body = { job_id: jobId, status: "completed" };
+      return;
+    }
+
+    // Query result — the 4-byte big-endian length-prefixed Arrow IPC
+    // stream (two batches here) the client de-frames into one
+    // ArrayBuffer per batch.
+    if (
+      ctx.method === "GET" &&
+      parts[3] === "queries" &&
+      parts.length === 6 &&
+      parts[5] === "result"
+    ) {
+      const frame = (bytes) => {
+        const len = Buffer.alloc(4);
+        len.writeUInt32BE(bytes.length, 0);
+        return Buffer.concat([len, Buffer.from(bytes)]);
+      };
+      ctx.status = 200;
+      ctx.type = "application/octet-stream";
+      ctx.body = Buffer.concat([
+        frame([1, 2, 3]),
+        frame([4, 5, 6, 7]),
+      ]);
+      return;
+    }
+
+    // Query cancel — 204, or a 409 (ErrJobTerminal) the client
+    // swallows (cancel is best-effort, never load-bearing).
+    if (
+      ctx.method === "DELETE" &&
+      parts[3] === "queries" &&
+      parts.length === 5
+    ) {
+      if (tenant === "q-cancel") {
+        ctx.status = 409;
+        ctx.body = { error: "job terminal" };
+        return;
+      }
+      ctx.status = 204;
       return;
     }
 

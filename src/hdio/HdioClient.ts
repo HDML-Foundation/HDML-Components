@@ -105,6 +105,37 @@ export function isStaleAuthError(error: unknown): boolean {
 }
 
 /**
+ * De-frames the length-prefixed query-result stream into one Arrow
+ * IPC batch per frame (RFC §2.7; server
+ * [public_data_handlers.go:334-343]). The `/queries/{id}/result`
+ * body is a sequence of `[4-byte big-endian length][that many IPC
+ * bytes]` records; each batch is copied out into its own
+ * exactly-sized `ArrayBuffer` (via `Uint8Array.slice`, which owns a
+ * fresh buffer) so a single batch transfers cleanly (A4). A
+ * truncated tail (a short final length or body) stops the walk
+ * rather than throwing — the batches decoded so far are returned.
+ *
+ * @param buffer - The whole result-stream body.
+ * @returns One Arrow IPC `ArrayBuffer` per length-prefixed batch.
+ */
+function deframe(buffer: ArrayBuffer): ArrayBuffer[] {
+  const view = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
+  const batches: ArrayBuffer[] = [];
+  let offset = 0;
+  while (offset + 4 <= buffer.byteLength) {
+    const len = view.getUint32(offset, false);
+    offset += 4;
+    if (offset + len > buffer.byteLength) {
+      break;
+    }
+    batches.push(bytes.slice(offset, offset + len).buffer);
+    offset += len;
+  }
+  return batches;
+}
+
+/**
  * The `HdioClient` — the sole HTTP surface to the HDIO server
  * (RFC 014/001 §2.7). It holds the access + refresh tokens **in
  * memory only** (B4, §3.4 — no persistence; re-auth on reload), owns
@@ -228,33 +259,126 @@ export class HdioClient {
    * @returns The parsed 201 JSON body.
    */
   public async postDocument(data: Uint8Array): Promise<unknown> {
-    if (this.#pending) {
-      await this.#pending;
-    }
-    if (this.#access === null) {
-      throw new Error("not authenticated");
-    }
     const path = `/${this.#tenant}/api/v1/documents/dynamic`;
-    const bytes = data.slice().buffer;
-    let response = await this.#send({
+    const response = await this.#sendAuthed({
       method: "POST",
       path,
-      bytes,
-      auth: true,
+      bytes: data.slice().buffer,
     });
-    if (response.status === 401) {
-      await this.refresh();
-      response = await this.#send({
-        method: "POST",
-        path,
-        bytes,
-        auth: true,
-      });
-    }
     if (!response.ok) {
       throw await this.#error(response);
     }
     return (await response.json()) as unknown;
+  }
+
+  /**
+   * Submits one query for async execution (D2 body shape, §2.7):
+   * `POST …/queries` with `{ doc_path, columns }` — **not** the
+   * retired `?columns=` form; the projection travels in the body so
+   * it joins the server's dedup hash (D2, so a widened union is a
+   * distinct job and coalescing works). On a 401 it refreshes once
+   * and retries. The 202 `{ job_id, status }` maps to
+   * `{ jobId, status }`; a `status` already terminal (a cache hit)
+   * lets the caller skip polling (D6).
+   *
+   * @param p - The query target and its coalesced column union.
+   * @returns The job id and its (possibly already-terminal) status.
+   */
+  public async submitQuery(p: {
+    docPath: string;
+    columns: string[];
+  }): Promise<{ jobId: string; status: string }> {
+    const path = `/${this.#tenant}/api/v1/queries`;
+    const response = await this.#sendAuthed({
+      method: "POST",
+      path,
+      json: { doc_path: p.docPath, columns: p.columns },
+    });
+    if (!response.ok) {
+      throw await this.#error(response);
+    }
+    const body = (await response.json()) as {
+      job_id?: string;
+      status?: string;
+    };
+    return { jobId: body.job_id ?? "", status: body.status ?? "" };
+  }
+
+  /**
+   * Polls one job's status (§2.7, D6): `GET …/queries/{id}`. The
+   * server answers 202 while pending/running and 200 once terminal
+   * — both are `ok`, so only a real 4xx/5xx rejects. On `failed`
+   * the `error` string is the reason (why we poll status, not
+   * result — a not-ready result is opaque).
+   *
+   * @param jobId - The job id from {@link submitQuery}.
+   * @returns The job's status and, on failure, the error reason.
+   */
+  public async queryStatus(
+    jobId: string,
+  ): Promise<{ status: string; error?: string }> {
+    const path =
+      `/${this.#tenant}/api/v1/queries/` + encodeURIComponent(jobId);
+    const response = await this.#sendAuthed({
+      method: "GET",
+      path,
+    });
+    if (!response.ok) {
+      throw await this.#error(response);
+    }
+    const body = (await response.json()) as {
+      status?: string;
+      error?: string;
+    };
+    return { status: body.status ?? "", error: body.error };
+  }
+
+  /**
+   * Fetches a completed job's result (§2.7): `GET
+   * …/queries/{id}/result`. The body is a length-prefixed Arrow IPC
+   * stream ({@link deframe}) → one `ArrayBuffer` per batch, ready
+   * for `decode` (which accepts `Uint8Array[]`). A bodiless GET, so
+   * no request content-type (Step 02 rule).
+   *
+   * @param jobId - The job id from {@link submitQuery}.
+   * @returns One Arrow IPC `ArrayBuffer` per result batch.
+   */
+  public async queryResult(jobId: string): Promise<ArrayBuffer[]> {
+    const path =
+      `/${this.#tenant}/api/v1/queries/` +
+      encodeURIComponent(jobId) +
+      "/result";
+    const response = await this.#sendAuthed({
+      method: "GET",
+      path,
+    });
+    if (!response.ok) {
+      throw await this.#error(response);
+    }
+    return deframe(await response.arrayBuffer());
+  }
+
+  /**
+   * Best-effort cancel of a still-`pending` job (§2.7, D5):
+   * `DELETE …/queries/{id}`. A **409** (`ErrJobTerminal` — the job
+   * already finished) is **ignored**, not thrown: cancel is only an
+   * optimization to spare queue capacity, never load-bearing.
+   *
+   * @param jobId - The job id to cancel.
+   */
+  public async cancelQuery(jobId: string): Promise<void> {
+    const path =
+      `/${this.#tenant}/api/v1/queries/` + encodeURIComponent(jobId);
+    const response = await this.#sendAuthed({
+      method: "DELETE",
+      path,
+    });
+    if (response.status === 409) {
+      return;
+    }
+    if (!response.ok) {
+      throw await this.#error(response);
+    }
   }
 
   /**
@@ -321,6 +445,35 @@ export class HdioClient {
   }
 
   /**
+   * The shared authed-request path for the document POST and every
+   * query call: awaits any in-flight redeem/refresh (so an early
+   * call still carries a real `Bearer`), rejects if unauthenticated,
+   * sends with `auth: true`, and on a **401** refreshes **once** and
+   * retries. Returns the raw `Response` — `.ok` / status handling is
+   * the caller's (a query GET's 202 is `ok`; `cancelQuery` swallows
+   * a 409).
+   */
+  async #sendAuthed(config: {
+    method: "GET" | "POST" | "DELETE";
+    path: string;
+    json?: Record<string, unknown>;
+    bytes?: ArrayBuffer;
+  }): Promise<Response> {
+    if (this.#pending) {
+      await this.#pending;
+    }
+    if (this.#access === null) {
+      throw new Error("not authenticated");
+    }
+    let response = await this.#send({ ...config, auth: true });
+    if (response.status === 401) {
+      await this.refresh();
+      response = await this.#send({ ...config, auth: true });
+    }
+    return response;
+  }
+
+  /**
    * Issues one request to `` `${host}${path}` `` (one base). Sets a
    * body content-type only when a body is present:
    * `application/json` for the auth POSTs,
@@ -332,7 +485,7 @@ export class HdioClient {
   #send(config: {
     method: "GET" | "POST" | "DELETE";
     path: string;
-    json?: Record<string, string>;
+    json?: Record<string, unknown>;
     bytes?: ArrayBuffer;
     auth?: boolean;
   }): Promise<Response> {

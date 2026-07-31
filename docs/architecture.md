@@ -124,13 +124,19 @@ t ?? []))`. `createHandler(post)` lives in [src/hdio/onmessage.ts](../src/hdio/o
 the fallback wires the same handler onto `port2` instead. Its `client` and `state = { data,
 registry }` are **closure** state (one endpoint, one client), not module globals:
 
-- **`type:"props"`** (re)constructs the `HdioClient`, closing any prior one.
-- **`type:"html"`** runs `parse(state, html)` (see below) and calls `client.postFiles(state)`.
+- **`type:"props"`** (re)constructs the `HdioClient`, closing any prior one; reads
+  `config.queryReadyTimeout` (the D4 gate backstop).
+- **`type:"html"`** runs `parse(state, html)` (see below) and calls
+  `client.postDocument(state.data)`, folding the 201 via `recordStored` — which also
+  **releases** any query frames gated on a now-`stored` ref (a POST rejection instead
+  **fails** them).
+- **`type:"subscribe"` / `type:"unsubscribe"`** open / close a `(ref, column)`
+  subscription, driving the reactive query engine (see [The query leg](#the-query-leg) below).
 
 The message envelope is a discriminated union on `type` (RFC §2.5) — inbound `props` /
 `html` / `oidc-callback` / `subscribe` / `unsubscribe`, outbound `auth` / `result` /
-`error`. Only `props` / `html` are routed after Slice A; the rest are declared for the
-downstream slices. See [docs/hdio-client.md](hdio-client.md#worker-message-protocol).
+`error`. All are routed after Step 07. See
+[docs/hdio-client.md](hdio-client.md#worker-message-protocol).
 
 ### Parse + serialize
 
@@ -155,6 +161,37 @@ Notes worth knowing before editing:
 - Frame `source` attribute is rewritten in place: an absolute path (`/foo.hdml?hdml-model=m`)
   is reshaped via `sourceToPath`; a same-document reference (`?hdml-model=m`) is resolved via
   `state.mapping`. Diagnostics print to `console.error` if unresolved.
+
+### The query leg
+
+The reactive data-binding engine (RFC §5, Slice D) lives in the same
+[onmessage.ts](../src/hdio/onmessage.ts) closure. A subscriber binds a `(ref, column)`; the
+worker coalesces per frame, gates the first query until the target is server-side, submits
+**one** query, polls it to completion, decodes the result once, and delivers a
+ready-to-render column back to the main thread:
+
+```mermaid
+flowchart LR
+  sub["subscribe {id, ref, column, raw?}"] --> coal["coalesce per frame<br/>union columns (debounced, D1)"]
+  coal --> gate{"target ready?<br/>(resolveQueryTarget, D4)"}
+  gate -->|"local, not stored"| hold["hold: arm backstop<br/>(release on 201, fail on POST reject)"]
+  hold -.->|"stored"| gate
+  gate -->|"static / stored"| submit["submitQuery {doc_path, columns} → 202"]
+  submit --> poll["poll queryStatus<br/>200ms → 2s, cap (D6)"]
+  poll -->|completed| res["queryResult → de-frame IPC"]
+  poll -->|failed| err["post error {ref, message}"]
+  res --> dec["decode once → domainFor (D9/D3)"]
+  dec --> out["post result {ref, column, values?, domain, type}<br/>(+ [ArrayBuffer] when raw, A4)"]
+```
+
+The **worker query-target map** is the `ref → {key, stored}` registry already in `state`
+(the C6 map `resolveQueryTarget` reads): a local `?hdml-{kind}={name}` ref resolves to
+`dynamic:{key}` gated on `stored`, a static `/…​.html?…` ref to a `/…​.hdml` artifact path
+with no gate. **Supersession (D5):** each frame carries a monotonic generation; a widened
+union bumps it, and a superseded run **discards** its late completion rather than delivering
+it (a still-`pending` superseded job is best-effort cancelled, running jobs never — server
+`Cancel` cannot abort a live Trino query). See
+[docs/hdio-client.md](hdio-client.md#the-query-leg-slice-d).
 
 ### HTTP
 

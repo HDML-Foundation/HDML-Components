@@ -127,16 +127,25 @@ endpoint, one client). Both directions are a discriminated union on `type`
 | `props` | `{host, tenant, mode?, token?, config?}` | ✅ Slice A/B |
 | `html` | `{html}` | ✅ Slice A |
 | `oidc-callback` | `{code, state}` | ✅ Slice B (Step 03) |
-| `subscribe` | `{id, ref, column, raw?}` | ⏳ Step 07 |
-| `unsubscribe` | `{id}` | ⏳ Step 07 |
+| `subscribe` | `{id, ref, column, raw?}` | ✅ Step 07 |
+| `unsubscribe` | `{id}` | ✅ Step 07 |
 
 **Worker → main** (via `post(msg, transfer?)`):
 
 | `type` | Payload | Transfer | Wired? |
 |---|---|---|---|
 | `auth` | `{ok, reason?: "stale" \| "error", detail?}` | — | ✅ Slice B (Step 03) |
-| `result` | `{ref, column, values?, domain, type}` | `[ArrayBuffer]` when `values` present | ⏳ Slice D |
-| `error` | `{ref?, message}` | — | ⏳ D |
+| `result` | `{ref, column, values?, domain, type}` | `[ArrayBuffer]` when `values` is a typed-array buffer | ✅ Step 07 |
+| `error` | `{ref?, message}` | — | ✅ Step 07 |
+
+The `result` payload is now tightened to the Step 06 types (§5.6/§5.7): `domain`
+is a [`Domain`](../src/hdio/reducers.ts) (`{kind:"extent", value:[min,max]}` or
+`{kind:"ordinal", value:[…]}`), `type` is the D9 [`ColumnType`](../src/hdio/decode.ts)
+tag, and `values` is present **only when some subscriber of that column set
+`raw !== false`** — a transferable `{buffer, byteOffset, byteLength}` for a
+numeric/temporal column (the `buffer` rides the transfer list, A4; the source
+detaches) or the `string[]` itself for an ordinal column (no buffer to transfer).
+`raw:false` subscribers (a pure axis/legend) get `domain` + `type` only.
 
 - **`props`** — (re)constructs the in-Worker `HdioClient` (2-arg: `host`, `tenant`),
   closing any prior one. In **token mode**, if `data.token` (a handoff code) is present it
@@ -151,11 +160,17 @@ endpoint, one client). Both directions are a discriminated union on `type`
   pair never touches the main thread (B4), reusing the one `${host}` base / `TokenResponse`
   parse.
 
-The remaining **outbound** variants (`result` / `error` for the query leg) are **declared but
-not yet routed** — Slice D wires them. `result` messages will carry a **transferable
-`ArrayBuffer`** via the transfer-list form `post(msg, [buf])` (the source buffer detaches —
-RFC §2.6, A4). The `auth` reply is consumed by `HdmlIo.ts`'s `#onMessage` — the main-thread
-state machine's `strip` (ok) / `re-navigate` (stale) branches (§3.3).
+- **`subscribe` / `unsubscribe`** — drive the reactive query engine (Step 07, D). A
+  `subscribe {id, ref, column, raw?}` joins the `(ref, column)` to its frame (keyed by the
+  source ref); `unsubscribe {id}` removes it and tears the frame down when its last
+  subscriber leaves. See [The query leg](#the-query-leg-slice-d) below.
+
+The `auth` reply is consumed by `HdmlIo.ts`'s `#onMessage` — the main-thread
+state machine's `strip` (ok) / `re-navigate` (stale) branches (§3.3). `result` and `error`
+are the query-leg outbound: a `result` carries a **transferable `ArrayBuffer`** via the
+transfer-list form `post(msg, [buf])` for a raw numeric/temporal column (the source buffer
+detaches — RFC §2.6, A4); an `error` carries a failure reason for a frame the consumer
+renders empty rather than as a silent spinner.
 
 ### Column decode + scale domain (Slice D, D9/D3)
 
@@ -187,6 +202,39 @@ calls once per coalesced column (Step 07 wires them into `subscribe` → `result
   is computed **only** for strings, so a continuous column never pays a distinct pass — an
   ordinal date bucket an author emits as `VARCHAR` arrives as a string and is handled
   ordinally.
+
+### The query leg (Slice D)
+
+The reactive engine lives in the [onmessage.ts](../src/hdio/onmessage.ts) closure alongside
+`client` / `state`: a `subId → subscription` map and a per-frame coalescing map keyed by the
+source ref. One frame = one query; the full path is
+**subscribe → coalesce → gate → submit → poll → decode → domain → result**.
+
+- **Coalesce (D1, §5.2).** Every subscriber contributes its `column`; the frame's wire
+  columns are the sorted **union**. A mount burst is **debounced** (10 ms) before the first
+  submit, so N attributes on one frame issue **one** `/queries` with the unioned `columns`.
+- **Stored-gate (D4, §5.4).** A **local** target's first query holds until its ref is
+  `resolveQueryTarget`-resolvable **and** `stored:true`. The gate is **event-driven**: a
+  `postDocument` 201 that flips the ref `stored` releases it (re-evaluated right after
+  `recordStored`); a `postDocument` **rejection** fails every gated frame at once with the
+  real reason. The timer is only the **backstop** for a POST that neither resolves nor
+  rejects — `queryReadyTimeout` (from `props.config.queryReadyTimeout`, **default 10 000 ms**;
+  Step 08 populates it from `window.HDML_CONFIG`). The same gate absorbs an **unknown** ref
+  (subscribe-before-parse — the resolver throw is read as *not-ready-yet*). On expiry → one
+  `error`. **Static** (`/`-prefixed) targets have no gate.
+- **Poll (D6, §5.6).** If the `submitQuery` 202 `status` is already terminal (a cache hit),
+  skip straight to `queryResult`; else poll `queryStatus` short-first (~200 ms) doubling to a
+  ceiling (~2 s) with a wall-clock cap. `completed` → one `queryResult`; `failed` →
+  `status.error` is the reason.
+- **Supersede (D5, §5.5).** Each frame tracks a monotonic **generation**; a widened union (or
+  a changed frame key) bumps it, and any earlier run whose generation is now stale **discards**
+  its completion (never delivers). Superseded jobs are **not** cancelled by default (server
+  `Cancel` cannot abort a running Trino query); a still-`pending` superseded job is
+  best-effort `cancelQuery`-ed (409 swallowed), running jobs never.
+- **Deliver (D7, §5.6).** The result is `decode`d **once**; the worker emits **one `result`
+  per distinct column** with its `domain` + `type`, and `values` only when some subscriber of
+  that column wants raw — the main-thread registry (Step 08) fans the one message out to every
+  subscriber of that `(ref, column)`, so a shared raw buffer transfers once.
 
 ## Query-target resolution (Slice C)
 
@@ -285,7 +333,7 @@ Constructor: `(host, tenant)` — two args, no token, no side effect. The client
 (`authed === false`) until an explicit `redeemHandoff` (token mode) or `exchangeOidcCode`
 (OIDC mode) succeeds.
 
-Surface implemented after Slice B (parts 1 + 2):
+Full surface (auth + document from Slice B, query leg from Step 07):
 
 ```ts
 constructor(host: string, tenant: string);
@@ -293,13 +341,30 @@ redeemHandoff(code: string): Promise<void>;          // issuance step 2 (§3.2)
 exchangeOidcCode(code: string, state: string): Promise<void>; // OIDC (§3.3)
 refresh(): Promise<void>;                              // silent, on 401 / expiry
 postDocument(data: Uint8Array): Promise<unknown>;      // → 201 body
+submitQuery(p: { docPath: string; columns: string[] }):
+  Promise<{ jobId: string; status: string }>;          // POST …/queries → 202
+queryStatus(jobId: string):
+  Promise<{ status: string; error?: string }>;         // GET …/queries/{id}
+queryResult(jobId: string): Promise<ArrayBuffer[]>;    // GET …/queries/{id}/result
+cancelQuery(jobId: string): Promise<void>;             // DELETE …/queries/{id}
 close(): void;                                          // abort in-flight + clear tokens
 get authed(): boolean;                                 // #access != null
 ```
 
-`submitQuery` / `queryStatus` / `queryResult` / `cancelQuery` are Step 07. The module also
-exports `isStaleAuthError(error)` — the type guard the worker uses to map a callback 401 to
-`auth {reason:"stale"}`.
+The module also exports `isStaleAuthError(error)` — the type guard the worker uses to map a
+callback 401 to `auth {reason:"stale"}`.
+
+`postDocument` and all four query calls share one private authed-send path: it awaits any
+in-flight redeem/refresh, rejects if unauthenticated, sends with a real `Bearer`, and on a
+**401** refreshes **once** and retries. `submitQuery` POSTs the **D2 body**
+`{ doc_path, columns }` (JSON — **not** the retired `?columns=` query string), so the column
+projection joins the server's dedup hash (a widened union is a distinct job → coalescing
+works). `queryStatus` treats the server's **202** (pending/running) as success and only a real
+4xx/5xx as an error — a `failed` job's reason rides in `error` (poll *status*, not result — a
+not-ready result is opaque). `queryResult` reads the 4-byte big-endian length-prefixed Arrow
+IPC stream and **de-frames** it into one `ArrayBuffer` per batch (each an exactly-sized copy,
+ready for `decode`). `cancelQuery` **ignores a 409** (`ErrJobTerminal` — the job already
+finished): cancel is best-effort, never load-bearing.
 
 ### Endpoint surface
 
@@ -313,6 +378,10 @@ dead `/public/api/v1/{tenant}` base is gone). Routes are all verified against
 | `exchangeOidcCode(code, state)` | `GET /{tenant}/api/v1/auth/callback?code&state` | — (bodiless GET) | same token pair; **401** → stale-marked reject (`isStaleAuthError`) |
 | `refresh()` | `POST /{tenant}/api/v1/auth/token/refresh` | `{ refresh_token }` (JSON) | same shape |
 | `postDocument(data)` | `POST /{tenant}/api/v1/documents/dynamic` | `data.slice().buffer` (octet-stream `DocumentFilesStruct`) | `201 { stored[], ddl[] }` |
+| `submitQuery(p)` | `POST /{tenant}/api/v1/queries` | `{ doc_path, columns }` (JSON, D2) | `202 { job_id, status }` → `{ jobId, status }` |
+| `queryStatus(jobId)` | `GET /{tenant}/api/v1/queries/{jobId}` | — (bodiless GET) | `{ status, error? }` (202 pending / 200 terminal, both `ok`) |
+| `queryResult(jobId)` | `GET /{tenant}/api/v1/queries/{jobId}/result` | — (bodiless GET) | length-prefixed Arrow IPC → `ArrayBuffer[]` (one per batch) |
+| `cancelQuery(jobId)` | `DELETE /{tenant}/api/v1/queries/{jobId}` | — | `204` (or **409 ignored**) |
 
 `redeemHandoff` / `exchangeOidcCode` / `refresh` parse the token pair and hold both in memory;
 `authed` becomes `true`. All three share the in-flight `#pending` guard, so a document POST

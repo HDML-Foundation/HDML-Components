@@ -4,8 +4,14 @@
  * @license Apache-2.0
  */
 
+import { throdeb } from "@hdml/common";
 import { parse } from "./parse";
 import type { HdioState } from "./parse";
+import { resolveQueryTarget } from "./artifact";
+import { decode } from "./decode";
+import type { ColumnType, DecodedColumn } from "./decode";
+import { domainFor } from "./reducers";
+import type { Domain } from "./reducers";
 import {
   HdioClient,
   isStaleAuthError,
@@ -26,10 +32,10 @@ export type Post = (
 
 /**
  * Main → worker messages (RFC §2.5). The `{ type, data }` envelope is
- * the one `HdmlIo.ts` posts. Only `props` / `html` are routed after
- * Slice A; `oidc-callback` is wired by Step 03 and
- * `subscribe`/`unsubscribe` by Step 07 — declared here so the union
- * is stable for downstream slices.
+ * the one `HdmlIo.ts` posts. `subscribe`/`unsubscribe` drive the D
+ * query engine (Step 07); `props.config` carries the D8
+ * `HDML_CONFIG` read main-side (a worker has no `window`) — today
+ * only `queryReadyTimeout` (the D4 gate backstop).
  */
 export type InboundMessage =
   | {
@@ -65,9 +71,13 @@ export type InboundMessage =
     };
 
 /**
- * Worker → main messages (RFC §2.5). Loosely typed scaffold here:
- * Step 06 introduces `ColumnType`/`Domain`, Step 07 tightens the
- * `result` payload.
+ * Worker → main messages (RFC §2.5). A `result` delivers one decoded
+ * column ready-to-render (D7): the type-appropriate `domain` and the
+ * D9 `type` tag always, plus the raw `values` only when some
+ * subscriber wants them. Numeric/temporal `values` cross as a
+ * transferable `{buffer, byteOffset, byteLength}` (A4, in the
+ * transfer list); a `string[]` column has no buffer, so it rides the
+ * structured clone as-is.
  */
 export type OutboundMessage =
   | {
@@ -83,9 +93,15 @@ export type OutboundMessage =
       data: {
         ref: string;
         column: string;
-        values?: unknown;
-        domain: unknown;
-        type: unknown;
+        values?:
+          | {
+              buffer: ArrayBuffer;
+              byteOffset: number;
+              byteLength: number;
+            }
+          | string[];
+        domain: Domain;
+        type: ColumnType;
       };
     }
   | {
@@ -93,12 +109,164 @@ export type OutboundMessage =
       data: { ref?: string; message: string };
     };
 
+// Poll cadence (D6, §5.6): short-first, doubling to a ceiling, with
+// a wall-clock cap past which the job is declared timed out.
+const POLL_MIN_MS = 200;
+const POLL_MAX_MS = 2000;
+const POLL_CAP_MS = 30000;
+
+// The union is debounced before the first submit so a mount burst
+// (many `subscribe`s in one tick) coalesces into one query (D1/D5).
+const SUBMIT_DEBOUNCE_MS = 10;
+
+// D4 stored-gate backstop when a covering POST neither resolves nor
+// rejects; overridden by `props.config.queryReadyTimeout`.
+const DEFAULT_READY_TIMEOUT_MS = 10000;
+
+// The terminal job states (server `domain.JobStatus`): polling stops
+// on any of these.
+const TERMINAL_STATUS = new Set(["completed", "failed", "cancelled"]);
+
 /**
- * Builds the worker message handler. `client` and `state` live in the
- * closure — one endpoint, one client (A3, RFC §2.4) — replacing the
- * module-global state of the pre-Slice-A router. `post` is the
- * outbound sink; the `props`/`html` scaffold never calls it (neither
- * replies today), but B/D bind to it.
+ * One live subscription (D7): a `(ref, column)` binding and its
+ * `raw` flag (`raw:false` = domain-only, no values pulled).
+ */
+interface Sub {
+  id: string;
+  ref: string;
+  column: string;
+  raw: boolean;
+}
+
+/**
+ * Per-frame coalescing state, keyed by the source ref (D1/D5). One
+ * query serves every subscriber of a frame; `columns` is the union
+ * last submitted, `generation` the supersession marker (a late
+ * completion whose generation is stale is discarded), and `gateTimer`
+ * the armed D4 backstop while the target is not-yet-ready.
+ */
+interface Frame {
+  ref: string;
+  subs: Set<string>;
+  columns: string[];
+  generation: number;
+  gateTimer: null | ReturnType<typeof setTimeout>;
+  evaluate: throdeb.debounce<() => void>;
+}
+
+/**
+ * Sleeps `ms` milliseconds (the poll back-off wait).
+ *
+ * @param ms - Delay in milliseconds.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+/**
+ * Whether two already-sorted column unions are equal — the "nothing
+ * changed, do not resubmit" guard.
+ *
+ * @param a - One sorted column union.
+ * @param b - The other sorted column union.
+ * @returns `true` when identical.
+ */
+function sameColumns(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((c, i) => c === b[i]);
+}
+
+/**
+ * Reads the D4 `queryReadyTimeout` from the `props.config` payload
+ * (main-side `window.HDML_CONFIG`, §5.4), falling back to the
+ * {@link DEFAULT_READY_TIMEOUT_MS} default when absent/invalid
+ * (Step 08 populates it; this step lands first).
+ *
+ * @param config - The `props.config` payload (opaque here).
+ * @returns The gate backstop in milliseconds.
+ */
+function readReadyTimeout(config: unknown): number {
+  if (config && typeof config === "object") {
+    const raw = (config as { queryReadyTimeout?: unknown })
+      .queryReadyTimeout;
+    if (typeof raw === "number" && raw > 0) {
+      return raw;
+    }
+  }
+  return DEFAULT_READY_TIMEOUT_MS;
+}
+
+/**
+ * Best-effort cancel of a still-`pending` superseded job (D5): a
+ * running job is never cancelled (server `Cancel` does not abort a
+ * live Trino query), and the client swallows the 409 if the job
+ * finished first. Fire-and-forget — a cancel failure is never fatal.
+ *
+ * @param client - The authed client.
+ * @param jobId - The superseded job id.
+ * @param status - Its last-seen status (only `pending` is cancelled).
+ */
+function maybeCancel(
+  client: HdioClient,
+  jobId: string,
+  status: string,
+): void {
+  if (status === "pending") {
+    void client.cancelQuery(jobId).catch(() => undefined);
+  }
+}
+
+/**
+ * Polls one job to a terminal state (D6, §5.6): a `submitQuery`
+ * status already terminal (a cache hit) returns at once; otherwise
+ * `queryStatus` is polled short-first, doubling to a ceiling, until
+ * terminal or the wall-clock cap (→ synthesized `failed`). The poll
+ * bails early — returning `done:false` — the moment the frame is
+ * superseded, cancelling the job first if it is still `pending`.
+ *
+ * @param client - The authed client.
+ * @param jobId - The job to poll.
+ * @param initialStatus - The `submitQuery` 202 status.
+ * @param superseded - Predicate: has a newer job taken this frame?
+ * @returns `done:false` if superseded; else the terminal status.
+ */
+async function pollToCompletion(
+  client: HdioClient,
+  jobId: string,
+  initialStatus: string,
+  superseded: () => boolean,
+): Promise<{ done: boolean; status: string; error?: string }> {
+  let status = initialStatus;
+  let error: undefined | string;
+  let delay = POLL_MIN_MS;
+  const deadline = Date.now() + POLL_CAP_MS;
+  while (!TERMINAL_STATUS.has(status)) {
+    if (superseded()) {
+      maybeCancel(client, jobId, status);
+      return { done: false, status };
+    }
+    if (Date.now() >= deadline) {
+      return {
+        done: true,
+        status: "failed",
+        error: "query timed out",
+      };
+    }
+    await sleep(delay);
+    delay = Math.min(delay * 2, POLL_MAX_MS);
+    const polled = await client.queryStatus(jobId);
+    status = polled.status;
+    error = polled.error;
+  }
+  return { done: true, status, error };
+}
+
+/**
+ * Builds the worker message handler. `client`, `state`, and the D
+ * query engine's `subscriptions` / `frames` live in the closure —
+ * one endpoint, one client (A3, RFC §2.4). `post` is the outbound
+ * sink (worker→main).
  *
  * @param post - The outbound sink (worker→main).
  * @returns The `MessageEvent` listener to wire onto the endpoint.
@@ -116,11 +284,285 @@ export function createHandler(
 
   // Cross-call worker state: the last packed document bytes plus the
   // ref→key→stored registry retained for the post→confirm→query
-  // handshake (RFC 004 Slice E §8.6, E-L).
+  // handshake (RFC 004 Slice E §8.6, E-L). Doubles as the C6
+  // query-target map `resolveQueryTarget` reads.
   let state: HdioState = {
     data: new Uint8Array(),
     registry: new Map(),
   };
+
+  // D query engine (§5.2–§5.6): subId→subscription and the per-frame
+  // coalescing state keyed by source ref. `readyTimeout` is the D4
+  // gate backstop, refreshed from each `props.config`.
+  const subscriptions = new Map<string, Sub>();
+  const frames = new Map<string, Frame>();
+  let readyTimeout = DEFAULT_READY_TIMEOUT_MS;
+
+  // The union of every subscriber's column for one frame, sorted so
+  // the union is order-independent (D1) and comparable (D5).
+  function unionColumns(frame: Frame): string[] {
+    const cols = new Set<string>();
+    frame.subs.forEach((id) => {
+      const sub = subscriptions.get(id);
+      if (sub) {
+        cols.add(sub.column);
+      }
+    });
+    return [...cols].sort();
+  }
+
+  // Get-or-create a frame; its debounced `evaluate` collapses a
+  // burst of sub/unsub/gate-release calls into one submit decision.
+  function getFrame(ref: string): Frame {
+    const existing = frames.get(ref);
+    if (existing) {
+      return existing;
+    }
+    const frame: Frame = {
+      ref,
+      subs: new Set(),
+      columns: [],
+      generation: 0,
+      gateTimer: null,
+      evaluate: throdeb.debounce(SUBMIT_DEBOUNCE_MS, () => {
+        evaluateFrame(frame);
+      }),
+    };
+    frames.set(ref, frame);
+    return frame;
+  }
+
+  // Arm the D4 backstop once per gate episode (idempotent — a
+  // re-eval while gated must not reset the window, or it never
+  // fires). On expiry the consumer gets an `error`, not a spinner.
+  function armGate(frame: Frame): void {
+    if (frame.gateTimer !== null) {
+      return;
+    }
+    frame.gateTimer = setTimeout(() => {
+      frame.gateTimer = null;
+      post({
+        type: "error",
+        data: {
+          ref: frame.ref,
+          message: "query target not ready before timeout",
+        },
+      });
+    }, readyTimeout);
+  }
+
+  function disarmGate(frame: Frame): void {
+    if (frame.gateTimer !== null) {
+      clearTimeout(frame.gateTimer);
+      frame.gateTimer = null;
+    }
+  }
+
+  // The submit decision for one frame (D1/D4/D5): resolve the
+  // target, hold behind the gate until ready, and submit one query
+  // per changed union — bumping the generation so a superseded run
+  // discards its late completion.
+  function evaluateFrame(frame: Frame): void {
+    if (client === null || frame.subs.size === 0) {
+      return;
+    }
+    const union = unionColumns(frame);
+    if (union.length === 0) {
+      return;
+    }
+    let target: { docPath: string; stored: boolean };
+    try {
+      target = resolveQueryTarget(frame.ref, state.registry);
+    } catch {
+      // Unknown ref (subscribe-before-parse) → not-ready-yet inside
+      // the D4 window, not a failure (§5.4).
+      armGate(frame);
+      return;
+    }
+    if (!target.stored) {
+      // A local target holds until a 201 confirms it stored (D4).
+      armGate(frame);
+      return;
+    }
+    disarmGate(frame);
+    if (frame.generation > 0 && sameColumns(union, frame.columns)) {
+      return;
+    }
+    frame.columns = union;
+    frame.generation += 1;
+    void runQuery(
+      frame,
+      target.docPath,
+      union,
+      frame.generation,
+      client,
+    );
+  }
+
+  // Submit → poll → fetch → decode → deliver for one generation of
+  // one frame. Every stage re-checks supersession and drops silently
+  // when stale (D5); a real failure surfaces as one `error`.
+  async function runQuery(
+    frame: Frame,
+    docPath: string,
+    columns: string[],
+    generation: number,
+    c: HdioClient,
+  ): Promise<void> {
+    const superseded = (): boolean => frame.generation !== generation;
+    try {
+      const submitted = await c.submitQuery({ docPath, columns });
+      if (superseded()) {
+        maybeCancel(c, submitted.jobId, submitted.status);
+        return;
+      }
+      const final = await pollToCompletion(
+        c,
+        submitted.jobId,
+        submitted.status,
+        superseded,
+      );
+      if (!final.done || superseded()) {
+        return;
+      }
+      if (final.status === "failed") {
+        post({
+          type: "error",
+          data: {
+            ref: frame.ref,
+            message: final.error || "query failed",
+          },
+        });
+        return;
+      }
+      if (final.status !== "completed") {
+        return;
+      }
+      const buffers = await c.queryResult(submitted.jobId);
+      if (superseded()) {
+        return;
+      }
+      deliver(frame, buffers);
+    } catch (error) {
+      if (superseded()) {
+        return;
+      }
+      post({
+        type: "error",
+        data: {
+          ref: frame.ref,
+          message: (error as Error).message,
+        },
+      });
+    }
+  }
+
+  // Decode the result once, then emit one `result` per distinct
+  // subscribed column (D7). A column wanted raw by any subscriber
+  // carries `values`; the main thread fans the one message out.
+  function deliver(frame: Frame, buffers: ArrayBuffer[]): void {
+    const decoded = decode(buffers.map((b) => new Uint8Array(b)));
+    const byName = new Map(decoded.map((c) => [c.name, c]));
+    const wantRaw = new Map<string, boolean>();
+    frame.subs.forEach((id) => {
+      const sub = subscriptions.get(id);
+      if (sub) {
+        const prior = wantRaw.get(sub.column) ?? false;
+        wantRaw.set(sub.column, prior || sub.raw);
+      }
+    });
+    wantRaw.forEach((raw, column) => {
+      const col = byName.get(column);
+      if (col) {
+        emitResult(frame.ref, col, raw);
+      }
+    });
+  }
+
+  // One `result` for one column: `domain` + `type` always; `values`
+  // only when raw is wanted, transferred zero-copy for a typed array
+  // (A4) or cloned for a `string[]` (no buffer to transfer).
+  function emitResult(
+    ref: string,
+    col: DecodedColumn,
+    raw: boolean,
+  ): void {
+    const domain = domainFor(col);
+    const type = col.type;
+    const column = col.name;
+    if (!raw) {
+      post({ type: "result", data: { ref, column, domain, type } });
+      return;
+    }
+    if (col.type.kind === "string") {
+      // Ordinal string column: no buffer to transfer — the values
+      // ride the structured clone as-is (D7).
+      post({
+        type: "result",
+        data: {
+          ref,
+          column,
+          values: col.values as string[],
+          domain,
+          type,
+        },
+      });
+      return;
+    }
+    // Numeric/temporal: a transferable typed array (A4). A plain
+    // `number[]` (the union admits it; decode never emits one) is
+    // packed to Float64 so it, too, transfers zero-copy.
+    const src = col.values;
+    const view = ArrayBuffer.isView(src)
+      ? src
+      : Float64Array.from(src as number[]);
+    const buffer = view.buffer as ArrayBuffer;
+    post(
+      {
+        type: "result",
+        data: {
+          ref,
+          column,
+          values: {
+            buffer,
+            byteOffset: view.byteOffset,
+            byteLength: view.byteLength,
+          },
+          domain,
+          type,
+        },
+      },
+      [buffer],
+    );
+  }
+
+  // Re-evaluate every gated frame (event-driven release, D4): a fold
+  // may have flipped a ref `stored`, or a parse may have registered
+  // a previously-unknown ref.
+  function releaseGatedFrames(): void {
+    frames.forEach((frame) => {
+      if (frame.gateTimer !== null) {
+        frame.evaluate();
+      }
+    });
+  }
+
+  // Fail every gated frame at once (D4): a whole-document POST
+  // rejection means nothing pending will ever become stored.
+  function failGatedFrames(message: string): void {
+    frames.forEach((frame) => {
+      if (frame.gateTimer !== null) {
+        disarmGate(frame);
+        post({ type: "error", data: { ref: frame.ref, message } });
+      }
+    });
+  }
+
+  function teardownFrame(frame: Frame): void {
+    frame.evaluate.cancel();
+    disarmGate(frame);
+    frames.delete(frame.ref);
+  }
 
   return function handle(ev: MessageEvent): void {
     const msg = <InboundMessage>ev.data;
@@ -129,6 +571,7 @@ export function createHandler(
     }
     switch (msg.type) {
       case "props": {
+        readyTimeout = readReadyTimeout(msg.data.config);
         if (client) {
           client.close();
         }
@@ -151,9 +594,13 @@ export function createHandler(
           ?.postDocument(state.data)
           .then((body) => {
             recordStored(state.registry, body);
+            // A 201 may flip a gated ref `stored` → release it (D4).
+            releaseGatedFrames();
           })
           .catch((error: Error) => {
             console.error(error.message);
+            // One rejection fails every gated ref at once (D4).
+            failGatedFrames(error.message);
           });
         break;
       case "oidc-callback":
@@ -185,6 +632,37 @@ export function createHandler(
             }
           });
         break;
+      case "subscribe": {
+        const { id, ref, column, raw } = msg.data;
+        subscriptions.set(id, {
+          id,
+          ref,
+          column,
+          raw: raw !== false,
+        });
+        const frame = getFrame(ref);
+        frame.subs.add(id);
+        frame.evaluate();
+        break;
+      }
+      case "unsubscribe": {
+        const sub = subscriptions.get(msg.data.id);
+        if (!sub) {
+          break;
+        }
+        subscriptions.delete(sub.id);
+        const frame = frames.get(sub.ref);
+        if (!frame) {
+          break;
+        }
+        frame.subs.delete(sub.id);
+        if (frame.subs.size === 0) {
+          teardownFrame(frame);
+        } else {
+          frame.evaluate();
+        }
+        break;
+      }
       default:
         break;
     }

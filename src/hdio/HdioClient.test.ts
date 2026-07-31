@@ -127,3 +127,76 @@ suite("HdioClient (token mode, wtr mock HDIO)", () => {
     client.close();
   });
 });
+
+suite("HdioClient query leg (D2 shape, wtr mock HDIO)", () => {
+  const authed = async (tenant: string): Promise<HdioClient> => {
+    const client = new HdioClient("", tenant);
+    await client.redeemHandoff("h1");
+    return client;
+  };
+
+  test("submitQuery → {jobId, status}", async () => {
+    const client = await authed("q-ok");
+    const res = await client.submitQuery({
+      docPath: "dynamic:k",
+      columns: ["a", "b"],
+    });
+    assert.equal(res.jobId, "job-1");
+    assert.equal(res.status, "completed");
+    client.close();
+  });
+
+  test("queryStatus: a 202 pending is not an error", async () => {
+    const client = await authed("q-pending");
+    const res = await client.queryStatus("job-1");
+    assert.equal(res.status, "pending");
+    client.close();
+  });
+
+  test("queryStatus surfaces a failed job's error", async () => {
+    const client = await authed("q-fail");
+    const res = await client.queryStatus("job-1");
+    assert.equal(res.status, "failed");
+    assert.equal(res.error, "boom");
+    client.close();
+  });
+
+  test("queryResult de-frames the stream", async () => {
+    const client = await authed("q-ok");
+    const batches = await client.queryResult("job-1");
+    assert.lengthOf(batches, 2);
+    assert.deepEqual(
+      Array.from(new Uint8Array(batches[0])),
+      [1, 2, 3],
+    );
+    assert.deepEqual(
+      Array.from(new Uint8Array(batches[1])),
+      [4, 5, 6, 7],
+    );
+    client.close();
+  });
+
+  test("cancelQuery swallows a 409 (ErrJobTerminal)", async () => {
+    const client = await authed("q-cancel");
+    let threw = false;
+    try {
+      await client.cancelQuery("job-1");
+    } catch {
+      threw = true;
+    }
+    assert.isFalse(threw);
+    client.close();
+  });
+
+  test("cancelQuery resolves on a 204", async () => {
+    const client = await authed("q-ok");
+    let threw = false;
+    try {
+      await client.cancelQuery("job-1");
+    } catch {
+      threw = true;
+    }
+    assert.isFalse(threw);
+    client.close();
+  });
+});

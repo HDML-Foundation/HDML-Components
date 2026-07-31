@@ -5,22 +5,30 @@
  */
 
 import { assert } from "@open-wc/testing";
+import { arrow } from "@hdml/common";
 import { createHandler } from "./onmessage";
 import type { OutboundMessage, Post } from "./onmessage";
 import { HdioClient } from "./HdioClient";
+import { parse } from "./parse";
+import type { HdioState } from "./parse";
 
 const origClose = HdioClient.prototype.close;
 const origPostDocument = HdioClient.prototype.postDocument;
 const origRedeem = HdioClient.prototype.redeemHandoff;
 const origExchange = HdioClient.prototype.exchangeOidcCode;
+const origSubmit = HdioClient.prototype.submitQuery;
+const origStatus = HdioClient.prototype.queryStatus;
+const origResult = HdioClient.prototype.queryResult;
+const origCancel = HdioClient.prototype.cancelQuery;
 
 function propsEvent(
   host = "",
   tenant = "",
   token = "",
+  config?: unknown,
 ): MessageEvent {
   return new MessageEvent("message", {
-    data: { type: "props", data: { host, tenant, token } },
+    data: { type: "props", data: { host, tenant, token, config } },
   });
 }
 
@@ -35,6 +43,64 @@ function oidcEvent(code: string, state: string): MessageEvent {
     data: { type: "oidc-callback", data: { code, state } },
   });
 }
+
+function subEvent(
+  id: string,
+  ref: string,
+  column: string,
+  raw?: boolean,
+): MessageEvent {
+  return new MessageEvent("message", {
+    data: {
+      type: "subscribe",
+      data: { id, ref, column, raw },
+    },
+  });
+}
+
+function unsubEvent(id: string): MessageEvent {
+  return new MessageEvent("message", {
+    data: { type: "unsubscribe", data: { id } },
+  });
+}
+
+const wait = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+/** A one-batch Arrow IPC `ArrayBuffer` from typed vectors. */
+function ipcBuffer(cols: Record<string, arrow.Vector>): ArrayBuffer {
+  const ipc = arrow.tableToIPC(new arrow.Table(cols));
+  return ipc.slice().buffer;
+}
+
+// A model + a frame `f1` (local ref) so a gate test can register the
+// `hdml-frame=f1` ref via a real parse (mirrors parse.test.ts).
+const gateDoc = `
+  <hdml-model name="m1">
+    <hdml-table name="t" type="table" identifier="\`c\`.\`s\`.\`t\`">
+      <hdml-field name="a"></hdml-field>
+    </hdml-table>
+  </hdml-model>
+  <hdml-frame name="f1" source="?hdml-model=m1">
+    <hdml-field name="a"></hdml-field>
+  </hdml-frame>`;
+
+// The canonical key `parse` assigns `hdml-frame=f1` — recomputed here
+// so a stubbed `postDocument` 201 can confirm exactly that key.
+function f1Key(): string {
+  const state: HdioState = {
+    data: new Uint8Array(),
+    registry: new Map(),
+  };
+  parse(state, gateDoc);
+  return state.registry.get("hdml-frame=f1")!.key;
+}
+
+// A static (`/`-prefixed) ref never hits the D4 gate — it resolves
+// `stored:true` on the pure transform, so a query submits at once.
+const STATIC_REF = "/x.html?hdml-frame=f";
 
 function staleError(): Error {
   const error = new Error("stale") as Error & {
@@ -155,5 +221,336 @@ suite("hdio createHandler", () => {
     assert.deepEqual(posted, [
       { type: "auth", data: { ok: false, reason: "stale" } },
     ]);
+  });
+});
+
+type ResultMsg = Extract<OutboundMessage, { type: "result" }>;
+type ErrorMsg = Extract<OutboundMessage, { type: "error" }>;
+
+function isResult(m: OutboundMessage): m is ResultMsg {
+  return m.type === "result";
+}
+
+function isError(m: OutboundMessage): m is ErrorMsg {
+  return m.type === "error";
+}
+
+suite("hdio query engine (D1/D4/D5/D6/D7)", () => {
+  teardown(() => {
+    HdioClient.prototype.close = origClose;
+    HdioClient.prototype.postDocument = origPostDocument;
+    HdioClient.prototype.redeemHandoff = origRedeem;
+    HdioClient.prototype.submitQuery = origSubmit;
+    HdioClient.prototype.queryStatus = origStatus;
+    HdioClient.prototype.queryResult = origResult;
+    HdioClient.prototype.cancelQuery = origCancel;
+  });
+
+  test("D1: two subs on one frame → one unioned query", async () => {
+    const submits: { docPath: string; columns: string[] }[] = [];
+    HdioClient.prototype.submitQuery = function (p) {
+      submits.push(p);
+      return Promise.resolve({ jobId: "j", status: "completed" });
+    };
+    HdioClient.prototype.queryResult = function () {
+      return Promise.resolve([
+        ipcBuffer({
+          a: arrow.vectorFromArray([1], new arrow.Int32()),
+          b: arrow.vectorFromArray([2], new arrow.Int32()),
+        }),
+      ]);
+    };
+    const handle = createHandler(() => undefined);
+    handle(propsEvent("h", "acme", ""));
+    handle(subEvent("s1", STATIC_REF, "a"));
+    handle(subEvent("s2", STATIC_REF, "b"));
+    await wait(60);
+    assert.lengthOf(submits, 1);
+    assert.deepEqual(submits[0].columns, ["a", "b"]);
+    assert.equal(submits[0].docPath, "/hdml-frame=f@x.hdml");
+  });
+
+  test("D4: a local unstored ref does not submit", async () => {
+    const submits: unknown[] = [];
+    HdioClient.prototype.submitQuery = function (p) {
+      submits.push(p);
+      return Promise.resolve({ jobId: "j", status: "completed" });
+    };
+    const posted: OutboundMessage[] = [];
+    const handle = createHandler((m) => posted.push(m));
+    handle(propsEvent("h", "acme", ""));
+    handle(subEvent("s1", "?hdml-frame=f1", "a"));
+    await wait(60);
+    assert.lengthOf(submits, 0);
+    assert.isEmpty(posted);
+    // Tear down the armed gate so it never fires post-test.
+    handle(unsubEvent("s1"));
+  });
+
+  test("D4: a 201 fold releases the gated query", async () => {
+    const key = f1Key();
+    const submits: { docPath: string; columns: string[] }[] = [];
+    HdioClient.prototype.submitQuery = function (p) {
+      submits.push(p);
+      return Promise.resolve({ jobId: "j", status: "completed" });
+    };
+    HdioClient.prototype.queryResult = function () {
+      return Promise.resolve([
+        ipcBuffer({
+          a: arrow.vectorFromArray([1], new arrow.Int32()),
+        }),
+      ]);
+    };
+    HdioClient.prototype.postDocument = function () {
+      return Promise.resolve({
+        stored: [{ key, type: "frame", stored: true }],
+        ddl: [],
+      });
+    };
+    const handle = createHandler(() => undefined);
+    handle(propsEvent("h", "acme", ""));
+    handle(subEvent("s1", "?hdml-frame=f1", "a"));
+    await wait(40);
+    assert.lengthOf(submits, 0);
+    handle(htmlEvent(gateDoc));
+    await wait(80);
+    assert.lengthOf(submits, 1);
+    assert.equal(submits[0].docPath, `dynamic:${key}`);
+  });
+
+  test("D4: a covering POST rejection fails the gate", async () => {
+    const submits: unknown[] = [];
+    HdioClient.prototype.submitQuery = function (p) {
+      submits.push(p);
+      return Promise.resolve({ jobId: "j", status: "completed" });
+    };
+    HdioClient.prototype.postDocument = function () {
+      return Promise.reject(new Error("post failed"));
+    };
+    const posted: OutboundMessage[] = [];
+    const handle = createHandler((m) => posted.push(m));
+    handle(propsEvent("h", "acme", ""));
+    handle(subEvent("s1", "?hdml-frame=f1", "a"));
+    await wait(40);
+    handle(htmlEvent(gateDoc));
+    await wait(60);
+    assert.lengthOf(submits, 0);
+    const errs = posted.filter(isError);
+    assert.lengthOf(errs, 1);
+    assert.equal(errs[0].data.message, "post failed");
+    assert.equal(errs[0].data.ref, "?hdml-frame=f1");
+  });
+
+  test("D4: a hung POST fails after queryReadyTimeout", async () => {
+    const submits: unknown[] = [];
+    HdioClient.prototype.submitQuery = function (p) {
+      submits.push(p);
+      return Promise.resolve({ jobId: "j", status: "completed" });
+    };
+    HdioClient.prototype.postDocument = function () {
+      return new Promise<unknown>(() => undefined);
+    };
+    const posted: OutboundMessage[] = [];
+    const handle = createHandler((m) => posted.push(m));
+    handle(propsEvent("h", "acme", "", { queryReadyTimeout: 60 }));
+    handle(subEvent("s1", "?hdml-frame=f1", "a"));
+    handle(htmlEvent(gateDoc));
+    await wait(200);
+    assert.lengthOf(submits, 0);
+    const errs = posted.filter(isError);
+    assert.lengthOf(errs, 1);
+    assert.include(errs[0].data.message, "not ready");
+  });
+
+  test("D6: pending backs off then completes", async () => {
+    HdioClient.prototype.submitQuery = function () {
+      return Promise.resolve({ jobId: "j1", status: "pending" });
+    };
+    const stamps: number[] = [];
+    let polls = 0;
+    HdioClient.prototype.queryStatus = function () {
+      stamps.push(Date.now());
+      polls += 1;
+      return Promise.resolve({
+        status: polls >= 3 ? "completed" : "pending",
+      });
+    };
+    const results: string[] = [];
+    HdioClient.prototype.queryResult = function (jobId) {
+      results.push(jobId);
+      return Promise.resolve([
+        ipcBuffer({
+          x: arrow.vectorFromArray([1], new arrow.Int32()),
+        }),
+      ]);
+    };
+    const handle = createHandler(() => undefined);
+    handle(propsEvent("h", "acme", ""));
+    handle(subEvent("s1", STATIC_REF, "x"));
+    await wait(2200);
+    assert.isAtLeast(polls, 3);
+    assert.deepEqual(results, ["j1"]);
+    // Backoff: the gap after poll #2 exceeds the gap after poll #1.
+    assert.isAbove(stamps[2] - stamps[1], stamps[1] - stamps[0]);
+  });
+
+  test("D6: failed job posts error, no result", async () => {
+    HdioClient.prototype.submitQuery = function () {
+      return Promise.resolve({ jobId: "j1", status: "pending" });
+    };
+    HdioClient.prototype.queryStatus = function () {
+      return Promise.resolve({
+        status: "failed",
+        error: "kaboom",
+      });
+    };
+    let resultCalls = 0;
+    HdioClient.prototype.queryResult = function () {
+      resultCalls += 1;
+      return Promise.resolve([]);
+    };
+    const posted: OutboundMessage[] = [];
+    const handle = createHandler((m) => posted.push(m));
+    handle(propsEvent("h", "acme", ""));
+    handle(subEvent("s1", STATIC_REF, "x"));
+    await wait(400);
+    const errs = posted.filter(isError);
+    assert.lengthOf(errs, 1);
+    assert.equal(errs[0].data.message, "kaboom");
+    assert.equal(resultCalls, 0);
+  });
+
+  test("D5: widen discards stale, cancels pending", async () => {
+    const submits: { docPath: string; columns: string[] }[] = [];
+    const jobs = ["j1", "j2"];
+    let si = 0;
+    HdioClient.prototype.submitQuery = function (p) {
+      submits.push(p);
+      const jobId = jobs[si] ?? "jX";
+      si += 1;
+      return Promise.resolve({ jobId, status: "pending" });
+    };
+    HdioClient.prototype.queryStatus = function (jobId) {
+      return Promise.resolve({
+        status: jobId === "j2" ? "completed" : "pending",
+      });
+    };
+    const results: string[] = [];
+    HdioClient.prototype.queryResult = function (jobId) {
+      results.push(jobId);
+      return Promise.resolve([
+        ipcBuffer({
+          a: arrow.vectorFromArray([1], new arrow.Int32()),
+          b: arrow.vectorFromArray([2], new arrow.Int32()),
+        }),
+      ]);
+    };
+    const cancels: string[] = [];
+    HdioClient.prototype.cancelQuery = function (jobId) {
+      cancels.push(jobId);
+      // Reject to prove the engine swallows a cancel failure.
+      return Promise.reject(new Error("409"));
+    };
+    const handle = createHandler(() => undefined);
+    handle(propsEvent("h", "acme", ""));
+    handle(subEvent("s1", STATIC_REF, "a"));
+    await wait(60);
+    handle(subEvent("s2", STATIC_REF, "b"));
+    await wait(700);
+    assert.deepEqual(
+      submits.map((s) => s.columns),
+      [["a"], ["a", "b"]],
+    );
+    // j1 superseded before its result fetch; only j2 delivers.
+    assert.deepEqual(results, ["j2"]);
+    // The still-pending superseded job is best-effort cancelled.
+    assert.deepEqual(cancels, ["j1"]);
+  });
+
+  test("D7: raw transfers/detaches; raw:false domain", async () => {
+    HdioClient.prototype.submitQuery = function () {
+      return Promise.resolve({ jobId: "j", status: "completed" });
+    };
+    HdioClient.prototype.queryResult = function () {
+      return Promise.resolve([
+        ipcBuffer({
+          v: arrow.vectorFromArray([1, 2, 3], new arrow.Int32()),
+          d: arrow.vectorFromArray([10, 20, 30], new arrow.Int32()),
+          ts: arrow.vectorFromArray(
+            [new Date(0), new Date(1000), new Date(2000)],
+            new arrow.TimestampMillisecond(),
+          ),
+        }),
+      ]);
+    };
+    const captured: {
+      msg: OutboundMessage;
+      transfer: Transferable[];
+    }[] = [];
+    const received: OutboundMessage[] = [];
+    let resolveDone: () => void = () => undefined;
+    const done = new Promise<void>((r) => {
+      resolveDone = r;
+    });
+    const { port1, port2 } = new MessageChannel();
+    port1.onmessage = (e): void => {
+      received.push(e.data as OutboundMessage);
+      if (received.length >= 3) {
+        resolveDone();
+      }
+    };
+    const handle = createHandler((m, t) => {
+      captured.push({ msg: m, transfer: t ?? [] });
+      port2.postMessage(m, t ?? []);
+    });
+    handle(propsEvent("h", "acme", ""));
+    handle(subEvent("s1", STATIC_REF, "v", true));
+    handle(subEvent("s2", STATIC_REF, "d", false));
+    handle(subEvent("s3", STATIC_REF, "ts"));
+    await done;
+    port1.close();
+    port2.close();
+
+    const rv = received
+      .filter(isResult)
+      .find((m) => m.data.column === "v")!;
+    const rd = received
+      .filter(isResult)
+      .find((m) => m.data.column === "d")!;
+    const rts = received
+      .filter(isResult)
+      .find((m) => m.data.column === "ts")!;
+
+    // raw:true numeric → transferable values (moved buffer valid).
+    assert.isDefined(rv.data.values);
+    const vv = rv.data.values as { buffer: ArrayBuffer };
+    assert.deepEqual(
+      Array.from(new Float64Array(vv.buffer)),
+      [1, 2, 3],
+    );
+
+    // raw:false → domain only, no values pulled.
+    assert.isUndefined(rd.data.values);
+    assert.deepEqual(rd.data.domain, {
+      kind: "extent",
+      value: [10, 30],
+    });
+
+    // The D9 timestamp tag survives.
+    assert.deepEqual(rts.data.type, {
+      kind: "timestamp",
+      unit: "ms",
+    });
+
+    // A4: the source buffer detached when the worker transferred it.
+    const capV = captured.find(
+      (c) => isResult(c.msg) && c.msg.data.column === "v",
+    )!;
+    const cvValues = (capV.msg as ResultMsg).data.values as {
+      buffer: ArrayBuffer;
+    };
+    assert.lengthOf(capV.transfer, 1);
+    assert.equal(capV.transfer[0], cvValues.buffer);
+    assert.equal(cvValues.buffer.byteLength, 0);
   });
 });
