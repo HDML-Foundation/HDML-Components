@@ -217,3 +217,15 @@ Sort the frame by one or more fields. No attributes; per-field direction comes f
 
 When the `<hdml-io>` is wired up, this entire subtree is parsed in a Worker and POSTed as
 FlatBuffers. See [docs/hdio-client.md](hdio-client.md).
+
+`<hdml-io>` is not an `HdomElement`; its full attribute/protocol reference lives in
+[docs/hdio-client.md](hdio-client.md). It takes `host` / `tenant` and one of two auth modes,
+selected by the **`mode`** attribute:
+
+| `mode` | Auth flow |
+|---|---|
+| `token` (default) | The `token` attribute is a single-use **handoff code** redeemed for the access/refresh pair (§3.2). |
+| `oidc` | Full-page redirect to the IdP; on return, `?code&state` is exchanged for tokens (§3.3). No `token` needed. |
+
+`mode` is an `<hdml-io>`-local attribute (no `@hdml/types` `*_ATTRS_LIST` enum), so it is
+declared directly on the class.

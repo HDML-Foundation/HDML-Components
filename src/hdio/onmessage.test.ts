@@ -6,12 +6,13 @@
 
 import { assert } from "@open-wc/testing";
 import { createHandler } from "./onmessage";
-import type { Post } from "./onmessage";
+import type { OutboundMessage, Post } from "./onmessage";
 import { HdioClient } from "./HdioClient";
 
 const origClose = HdioClient.prototype.close;
 const origPostDocument = HdioClient.prototype.postDocument;
 const origRedeem = HdioClient.prototype.redeemHandoff;
+const origExchange = HdioClient.prototype.exchangeOidcCode;
 
 function propsEvent(
   host = "",
@@ -29,6 +30,20 @@ function htmlEvent(html: string): MessageEvent {
   });
 }
 
+function oidcEvent(code: string, state: string): MessageEvent {
+  return new MessageEvent("message", {
+    data: { type: "oidc-callback", data: { code, state } },
+  });
+}
+
+function staleError(): Error {
+  const error = new Error("stale") as Error & {
+    stale?: boolean;
+  };
+  error.stale = true;
+  return error;
+}
+
 const tick = (): Promise<void> =>
   new Promise((resolve) => {
     setTimeout(resolve, 0);
@@ -39,6 +54,7 @@ suite("hdio createHandler", () => {
     HdioClient.prototype.close = origClose;
     HdioClient.prototype.postDocument = origPostDocument;
     HdioClient.prototype.redeemHandoff = origRedeem;
+    HdioClient.prototype.exchangeOidcCode = origExchange;
   });
 
   test("props constructs a client; a second props closes it", () => {
@@ -109,5 +125,35 @@ suite("hdio createHandler", () => {
     handle(propsEvent("h", "acme", "code-2"));
     await tick();
     assert.equal(redeemCount, 2);
+  });
+
+  test("oidc-callback exchanges → posts auth ok", async () => {
+    HdioClient.prototype.exchangeOidcCode = function () {
+      return Promise.resolve();
+    };
+    const posted: OutboundMessage[] = [];
+    const handle = createHandler((m) => {
+      posted.push(m);
+    });
+    handle(propsEvent("h", "acme", ""));
+    handle(oidcEvent("c", "s"));
+    await tick();
+    assert.deepEqual(posted, [{ type: "auth", data: { ok: true } }]);
+  });
+
+  test("a stale exchange → posts auth stale", async () => {
+    HdioClient.prototype.exchangeOidcCode = function () {
+      return Promise.reject(staleError());
+    };
+    const posted: OutboundMessage[] = [];
+    const handle = createHandler((m) => {
+      posted.push(m);
+    });
+    handle(propsEvent("h", "acme", ""));
+    handle(oidcEvent("c", "s"));
+    await tick();
+    assert.deepEqual(posted, [
+      { type: "auth", data: { ok: false, reason: "stale" } },
+    ]);
   });
 });

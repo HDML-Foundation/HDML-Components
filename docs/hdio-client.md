@@ -16,19 +16,54 @@ Worker / MessagePort-fallback execution.
 |---|---|---|
 | `host` | string | Base URL of the HDIO server (no trailing slash) — the one base every request is sent to |
 | `tenant` | string | Tenant identifier — the leading path segment of every request (`/{tenant}/api/v1/…`) |
+| `mode` | string | Auth flow selector (B1, §3.1): `token` (default) or `oidc`. Forwarded to the worker in `props`. |
 | `token` | string | Token mode: a **single-use handoff code** the host app's backend minted in issuance step 1, redeemed here for the access/refresh pair (§3.2, B2). Not a bearer token. |
 
 Place one `<hdml-io>` in the page **as a sibling** of the `<hdml-*>` declarations — not as a
 parent. It listens to `document` for `hdom-changed` events, so any position works as long as
 it is connected.
 
-Auth is **opt-in**: a page that leaves `token` unset (and uses its own client/server
-mechanism) leaves `<hdml-io>` inert — no request is sent without an access token. The `mode`
-attribute (`token` default / `oidc`) is added in Step 03; this step implements token mode.
+Auth is **opt-in**: a page that leaves `mode`/`token` unset (and uses its own client/server
+mechanism) leaves `<hdml-io>` inert — no request is sent without an access token. Tokens are
+held **in memory only** in both modes (B4), so re-auth happens automatically on every reload.
+
+- **token mode** (`mode` unset or `mode="token"`) — the `token` attribute carries the handoff
+  code; the worker redeems it (§3.2).
+- **oidc mode** (`mode="oidc"`) — no `token`; the element runs a full-page redirect / callback
+  dance (§3.3, below).
 
 ```html
 <hdml-io host="https://hdio.example" tenant="acme" token="…"></hdml-io>
+<hdml-io host="https://hdio.example" tenant="acme" mode="oidc"></hdml-io>
 ```
+
+### OIDC mode — the main-thread state machine (§3.3, B3/B5)
+
+`mode="oidc"` auto-triggers login — there is no manual `login()`. Because the navigation /
+`history` / `location` concerns are main-thread (a worker has none), the redirect dance lives
+in `HdmlIo.ts` while the code→token **exchange** runs in the worker. The connect /
+attribute-change handler is an **ordered, reentrancy-guarded** state machine (a pure
+`nextAuthAction` decision in [src/hdio/oidc.ts](../src/hdio/oidc.ts) + a thin effect):
+
+1. **`?code&state` on the URL** → post `oidc-callback` to the worker (it `exchangeOidcCode`s);
+   on the `auth {ok:true}` reply the element `history.replaceState`s to strip the params and
+   proceeds authed.
+2. else **`token` set** → the `props` path forwards it (token mode; the worker redeems).
+3. else **`mode === "oidc"`** → `location.assign` to
+   `` `${host}/{tenant}/api/v1/auth/login?redirect_uri=<origin+pathname>` `` — the login target
+   is `host`-based like every call; only the `redirect_uri` **value** is the app's own page
+   (URL-encoded, no query). A **reentrancy guard** (`#navigating`) ensures the flurry of
+   `attributeChangedCallback` fires (`mode`/`token` in either order) triggers **exactly one**
+   navigation.
+4. else **inert**.
+
+A stale reload (a spent single-use `state` → the callback 401s) comes back as `auth
+{ok:false, reason:"stale"}`, which the state machine treats as "start over" and re-navigates —
+**not** a hard error. An `auth {ok:false, reason:"error"}` is surfaced once (dev-log), no loop.
+
+> **Deployment requirement.** The exact `redirect_uri` (`location.origin + location.pathname`)
+> must be **pre-registered** in the tenant's SSO config, or the server answers `403
+> ErrRedirectURINotAllowed` (`slices.Contains(oidc.RedirectURIs, …)`).
 
 ## Lifecycle
 
@@ -48,7 +83,7 @@ sequenceDiagram
   else ESM/CJS build (checked-in endpoint.ts)
     Io->>W: new MessageChannel() → port1 (port2 runs createHandler)
   end
-  Io->>W: endpoint.postMessage {type:"props", data:{host,tenant,token}}
+  Io->>W: endpoint.postMessage {type:"props", data:{host,tenant,mode,token}}
   W->>C: new HdioClient(host,tenant)  // 2-arg, no session bootstrap
   W->>C: redeemHandoff(token)  // once per distinct handoff code
   C->>S: POST /{tenant}/api/v1/auth/token  {token: handoff}
@@ -89,9 +124,9 @@ endpoint, one client). Both directions are a discriminated union on `type`
 
 | `type` | Payload | Wired? |
 |---|---|---|
-| `props` | `{host, tenant, mode?, token?, config?}` | ✅ Slice A |
+| `props` | `{host, tenant, mode?, token?, config?}` | ✅ Slice A/B |
 | `html` | `{html}` | ✅ Slice A |
-| `oidc-callback` | `{code, state}` | ⏳ Step 03 |
+| `oidc-callback` | `{code, state}` | ✅ Slice B (Step 03) |
 | `subscribe` | `{id, ref, column, raw?}` | ⏳ Step 07 |
 | `unsubscribe` | `{id}` | ⏳ Step 07 |
 
@@ -99,9 +134,9 @@ endpoint, one client). Both directions are a discriminated union on `type`
 
 | `type` | Payload | Transfer | Wired? |
 |---|---|---|---|
-| `auth` | `{ok, reason?, detail?}` | — | ⏳ Slice B |
+| `auth` | `{ok, reason?: "stale" \| "error", detail?}` | — | ✅ Slice B (Step 03) |
 | `result` | `{ref, column, values?, domain, type}` | `[ArrayBuffer]` when `values` present | ⏳ Slice D |
-| `error` | `{ref?, message}` | — | ⏳ B/D |
+| `error` | `{ref?, message}` | — | ⏳ D |
 
 - **`props`** — (re)constructs the in-Worker `HdioClient` (2-arg: `host`, `tenant`),
   closing any prior one. In **token mode**, if `data.token` (a handoff code) is present it
@@ -109,13 +144,18 @@ endpoint, one client). Both directions are a discriminated union on `type`
   code is retained in closure state so a debounced re-`props` carrying the same single-use
   code does not redeem it twice (§3.2, B2). A failed redeem is logged, not re-thrown.
 - **`html`** — calls `parse(state, html)` (the bottom-up Merkle namer — see [docs/architecture.md#parse--serialize](architecture.md#parse--serialize)) then `client.postDocument(state.data)`, folding the returned 201 body via `recordStored(state.registry, body)`. `postDocument` internally awaits any in-flight redeem (§3.2), so an `html` that races the auth round-trip still posts with a real `Bearer`. `parse` re-names and re-packs the **whole** document every call (no dedup — every element is re-posted; the server idempotent-skips already-present keys). `state` is closure-scoped and holds the `ref → {key, stored}` registry (keyed by local ref `hdml-{type}={name}`) that survives for the endpoint's lifetime — the substrate for the post→confirm→query handshake (RFC 004 Slice E §8.6, E-L).
+- **`oidc-callback`** — calls `client.exchangeOidcCode(code, state)` (OIDC mode, §3.3). On
+  success it posts `auth {ok:true}`; on a **stale-marked 401** (the single-use `state` already
+  spent — `isStaleAuthError`) it posts `auth {ok:false, reason:"stale"}`; any other error posts
+  `auth {ok:false, reason:"error", detail}`. The exchange runs **worker-side** so the token
+  pair never touches the main thread (B4), reusing the one `${host}` base / `TokenResponse`
+  parse.
 
-The **outbound** variants (`auth` / `result` / `error`) are **declared but not yet routed**
-after Slice A: the `props` / `html` handlers never reply, so `post` is never called here. The
-sink exists as the seam that Slice B (auth) and Slice D (query results) call; `result`
-messages will carry a **transferable `ArrayBuffer`** via the transfer-list form
-`post(msg, [buf])` (the source buffer detaches — RFC §2.6, A4). This closes the current
-"no message back to the main thread" gap once B/D land.
+The remaining **outbound** variants (`result` / `error` for the query leg) are **declared but
+not yet routed** — Slice D wires them. `result` messages will carry a **transferable
+`ArrayBuffer`** via the transfer-list form `post(msg, [buf])` (the source buffer detaches —
+RFC §2.6, A4). The `auth` reply is consumed by `HdmlIo.ts`'s `#onMessage` — the main-thread
+state machine's `strip` (ok) / `re-navigate` (stale) branches (§3.3).
 
 ## HdioClient
 
@@ -126,21 +166,24 @@ was rewritten for the post-006 auth surface: there is **no** `session` bootstrap
 tokens live **in memory only** (B4, §3.4): no `sessionStorage`, re-auth on every reload.
 
 Constructor: `(host, tenant)` — two args, no token, no side effect. The client is inert
-(`authed === false`) until an explicit `redeemHandoff` (token mode) succeeds.
+(`authed === false`) until an explicit `redeemHandoff` (token mode) or `exchangeOidcCode`
+(OIDC mode) succeeds.
 
-Surface implemented this step (Slice B, part 1):
+Surface implemented after Slice B (parts 1 + 2):
 
 ```ts
 constructor(host: string, tenant: string);
-redeemHandoff(code: string): Promise<void>;      // issuance step 2 (§3.2)
-refresh(): Promise<void>;                          // silent, on 401 / expiry
-postDocument(data: Uint8Array): Promise<unknown>;  // → 201 body
-close(): void;                                      // abort in-flight + clear tokens
-get authed(): boolean;                              // #access != null
+redeemHandoff(code: string): Promise<void>;          // issuance step 2 (§3.2)
+exchangeOidcCode(code: string, state: string): Promise<void>; // OIDC (§3.3)
+refresh(): Promise<void>;                              // silent, on 401 / expiry
+postDocument(data: Uint8Array): Promise<unknown>;      // → 201 body
+close(): void;                                          // abort in-flight + clear tokens
+get authed(): boolean;                                 // #access != null
 ```
 
-`exchangeOidcCode` (OIDC mode) is Step 03; `submitQuery` / `queryStatus` / `queryResult` /
-`cancelQuery` are Step 07.
+`submitQuery` / `queryStatus` / `queryResult` / `cancelQuery` are Step 07. The module also
+exports `isStaleAuthError(error)` — the type guard the worker uses to map a callback 401 to
+`auth {reason:"stale"}`.
 
 ### Endpoint surface
 
@@ -151,15 +194,18 @@ dead `/public/api/v1/{tenant}` base is gone). Routes are all verified against
 | Call | Method + path | Body | Returns |
 |---|---|---|---|
 | `redeemHandoff(code)` | `POST /{tenant}/api/v1/auth/token` | `{ token: code }` (JSON) | `{ access_token, refresh_token, expires_in, token_type }` |
+| `exchangeOidcCode(code, state)` | `GET /{tenant}/api/v1/auth/callback?code&state` | — (bodiless GET) | same token pair; **401** → stale-marked reject (`isStaleAuthError`) |
 | `refresh()` | `POST /{tenant}/api/v1/auth/token/refresh` | `{ refresh_token }` (JSON) | same shape |
 | `postDocument(data)` | `POST /{tenant}/api/v1/documents/dynamic` | `data.slice().buffer` (octet-stream `DocumentFilesStruct`) | `201 { stored[], ddl[] }` |
 
-`redeemHandoff` / `refresh` parse the token pair and hold both in memory; `authed` becomes
-`true`. Common request options: `mode: cors`, `redirect: follow`, `cache: no-cache`. The body
-content-type is set **only when a body is present** — `application/json` for the two auth
-POSTs, `application/octet-stream` for the document POST, and **nothing on a bodiless GET**
-(the old client sent octet-stream on every request). The `Authorization: Bearer <access>`
-header is attached only when a token is held — never `Bearer null`.
+`redeemHandoff` / `exchangeOidcCode` / `refresh` parse the token pair and hold both in memory;
+`authed` becomes `true`. All three share the in-flight `#pending` guard, so a document POST
+that races any of them awaits it first. Common request options: `mode: cors`, `redirect:
+follow`, `cache: no-cache`. The body content-type is set **only when a body is present** —
+`application/json` for the auth POSTs, `application/octet-stream` for the document POST, and
+**nothing on a bodiless GET** (the OIDC callback, and — historically — the removed `sessions`
+leg). The `Authorization: Bearer <access>` header is attached only when a token is held —
+never `Bearer null`.
 
 `postDocument` awaits any in-flight redeem/refresh first (so an early `html` still carries a
 real `Bearer`), then posts. On a **401** it calls `refresh()` and retries **once**; a second

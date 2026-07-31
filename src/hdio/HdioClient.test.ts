@@ -5,7 +5,11 @@
  */
 
 import { assert } from "@open-wc/testing";
-import { HdioClient, recordStored } from "./HdioClient";
+import {
+  HdioClient,
+  isStaleAuthError,
+  recordStored,
+} from "./HdioClient";
 
 // The `parse.RegistryEntry` shape, inlined so this suite pulls no
 // `@hdml/parser`: it never parses — it drives the real `fetch` path
@@ -99,6 +103,27 @@ suite("HdioClient (token mode, wtr mock HDIO)", () => {
     assert.isNotEmpty(message);
     assert.notInclude(message, "JSON");
     assert.notInclude(message.toLowerCase(), "unexpected");
+    client.close();
+  });
+
+  test("oidc exchange stores the token pair", async () => {
+    const client = new HdioClient("", "oidc-ok");
+    assert.isFalse(client.authed);
+    await client.exchangeOidcCode("c", "s");
+    assert.isTrue(client.authed);
+    client.close();
+  });
+
+  test("a stale state rejects, stale-marked, inert", async () => {
+    const client = new HdioClient("", "stale-state");
+    let error: unknown = null;
+    try {
+      await client.exchangeOidcCode("c", "s");
+    } catch (e) {
+      error = e;
+    }
+    assert.isTrue(isStaleAuthError(error));
+    assert.isFalse(client.authed);
     client.close();
   });
 });

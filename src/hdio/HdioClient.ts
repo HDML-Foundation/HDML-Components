@@ -71,6 +71,40 @@ export function recordStored(
 }
 
 /**
+ * Builds the stale-`state` marker thrown by
+ * {@link HdioClient.exchangeOidcCode} on a callback 401 — the
+ * single-use `state` was already spent (a stale-`?code` reload). The
+ * worker maps it to `auth {ok:false, reason:"stale"}` so the
+ * main-thread state machine re-navigates instead of surfacing a hard
+ * error (RFC §3.3, B5).
+ *
+ * @param response - The 401 callback response.
+ * @returns An `Error` flagged `stale`.
+ */
+function staleError(response: Response): Error {
+  const error = new Error(
+    response.statusText || `HTTP ${response.status}`,
+  );
+  (error as { stale?: boolean }).stale = true;
+  return error;
+}
+
+/**
+ * Whether an error is the stale-`state` marker from
+ * {@link HdioClient.exchangeOidcCode} (RFC §3.3).
+ *
+ * @param error - Any caught error.
+ * @returns `true` for the stale marker.
+ */
+export function isStaleAuthError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { stale?: unknown }).stale === true
+  );
+}
+
+/**
  * The `HdioClient` — the sole HTTP surface to the HDIO server
  * (RFC 014/001 §2.7). It holds the access + refresh tokens **in
  * memory only** (B4, §3.4 — no persistence; re-auth on reload), owns
@@ -145,6 +179,44 @@ export class HdioClient {
   }
 
   /**
+   * Exchanges the OIDC `?code&state` for the {access, refresh} pair
+   * (RFC §3.3): `GET /{tenant}/api/v1/auth/callback?code&state` →
+   * `TokenResponse` JSON. The exchange runs **worker-side** so the
+   * tokens never touch the main thread (B4). A **401** means the
+   * single-use `state` was already spent (a stale-`?code` reload) and
+   * rejects with a stale-marked error ({@link isStaleAuthError}) the
+   * worker maps to `auth {ok:false, reason:"stale"}`; any other
+   * non-2xx rejects normally.
+   *
+   * @param code - The `code` query param the IdP returned.
+   * @param state - The single-use `state` query param.
+   */
+  public exchangeOidcCode(
+    code: string,
+    state: string,
+  ): Promise<void> {
+    const query =
+      `?code=${encodeURIComponent(code)}` +
+      `&state=${encodeURIComponent(state)}`;
+    const path = `/${this.#tenant}/api/v1/auth/callback`;
+    return this.#track(
+      (async (): Promise<void> => {
+        const response = await this.#send({
+          method: "GET",
+          path: path + query,
+        });
+        if (response.status === 401) {
+          throw staleError(response);
+        }
+        if (!response.ok) {
+          throw await this.#error(response);
+        }
+        this.#storeTokens((await response.json()) as TokenResponse);
+      })(),
+    );
+  }
+
+  /**
    * Posts the whole `DocumentFilesStruct` to the dynamic-doc save
    * route with a real `Bearer` and returns the parsed 201 body
    * (`{ stored[], ddl[] }`). On a 401 it refreshes once and retries;
@@ -199,27 +271,35 @@ export class HdioClient {
 
   /**
    * Runs a token-minting POST (redeem or refresh), stores the
-   * returned pair, and tracks it as `#pending` so a racing document
-   * POST can await it. `#pending` is cleared once settled (via the
-   * guarded `clear`, which never clobbers a newer pending auth).
+   * returned pair, and tracks it as `#pending` (via {@link #track})
+   * so a racing document POST can await it.
    */
   #authenticate(
     path: string,
     body: Record<string, string>,
   ): Promise<void> {
-    const task = (async (): Promise<void> => {
-      const response = await this.#send({
-        method: "POST",
-        path,
-        json: body,
-      });
-      if (!response.ok) {
-        throw await this.#error(response);
-      }
-      const tokens = (await response.json()) as TokenResponse;
-      this.#access = tokens.access_token ?? null;
-      this.#refresh = tokens.refresh_token ?? null;
-    })();
+    return this.#track(
+      (async (): Promise<void> => {
+        const response = await this.#send({
+          method: "POST",
+          path,
+          json: body,
+        });
+        if (!response.ok) {
+          throw await this.#error(response);
+        }
+        this.#storeTokens((await response.json()) as TokenResponse);
+      })(),
+    );
+  }
+
+  /**
+   * Tracks an in-flight auth task as `#pending` so a racing document
+   * POST awaits it, clearing it once settled (the guarded `clear`
+   * never clobbers a newer pending auth). Shared by `#authenticate`
+   * (redeem / refresh) and {@link exchangeOidcCode}.
+   */
+  #track(task: Promise<void>): Promise<void> {
     this.#pending = task;
     const clear = (): void => {
       if (this.#pending === task) {
@@ -228,6 +308,16 @@ export class HdioClient {
     };
     void task.then(clear, clear);
     return task;
+  }
+
+  /**
+   * Stores the `{access, refresh}` pair from a parsed
+   * `TokenResponse` (redeem / refresh / OIDC exchange). Either may be
+   * absent — a null token clears that slot.
+   */
+  #storeTokens(tokens: TokenResponse): void {
+    this.#access = tokens.access_token ?? null;
+    this.#refresh = tokens.refresh_token ?? null;
   }
 
   /**

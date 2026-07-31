@@ -6,7 +6,11 @@
 
 import { parse } from "./parse";
 import type { HdioState } from "./parse";
-import { HdioClient, recordStored } from "./HdioClient";
+import {
+  HdioClient,
+  isStaleAuthError,
+  recordStored,
+} from "./HdioClient";
 
 /**
  * The outbound sink (A3, RFC §2.4): posts one worker→main message,
@@ -102,7 +106,6 @@ export type OutboundMessage =
 export function createHandler(
   post: Post,
 ): (ev: MessageEvent) => void {
-  void post;
   let client: null | HdioClient = null;
 
   // The last handoff code redeemed, retained across `props` so a
@@ -132,7 +135,7 @@ export function createHandler(
         client = new HdioClient(msg.data.host, msg.data.tenant);
         // Token mode (B2): the `token` attribute carries the handoff
         // code; redeem it once per distinct code, silently. OIDC mode
-        // is Step 03.
+        // carries no token — it drives `oidc-callback` below.
         const token = msg.data.token;
         if (token && token !== redeemed) {
           redeemed = token;
@@ -151,6 +154,35 @@ export function createHandler(
           })
           .catch((error: Error) => {
             console.error(error.message);
+          });
+        break;
+      case "oidc-callback":
+        // OIDC exchange is worker-side (RFC §3.3, §10.1): the main
+        // thread read `?code&state` off the URL; the worker fetches
+        // `/auth/callback`, holds the pair, and reports back so the
+        // main-thread state machine can strip the params (`ok`) or
+        // re-navigate on a spent `state` (`stale`).
+        client
+          ?.exchangeOidcCode(msg.data.code, msg.data.state)
+          .then(() => {
+            post({ type: "auth", data: { ok: true } });
+          })
+          .catch((error: unknown) => {
+            if (isStaleAuthError(error)) {
+              post({
+                type: "auth",
+                data: { ok: false, reason: "stale" },
+              });
+            } else {
+              post({
+                type: "auth",
+                data: {
+                  ok: false,
+                  reason: "error",
+                  detail: (error as Error).message,
+                },
+              });
+            }
           });
         break;
       default:
