@@ -21,9 +21,13 @@ interface ResultMsg {
   data: ResultData;
 }
 
+// A macrotask yield long enough for MessagePort delivery. WebKit can
+// schedule a port's `message` event a macrotask later than a
+// `setTimeout(0)`, so a zero delay races the port and flakes; 20 ms
+// lets the queued message land first.
 const tick = (): Promise<void> =>
   new Promise((resolve) => {
-    setTimeout(resolve, 0);
+    setTimeout(resolve, 20);
   });
 
 suite("hdio endpoint (fallback MessageChannel)", () => {

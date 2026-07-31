@@ -72,10 +72,20 @@ Configured in [.testrc.js](../.testrc.js):
   shape (uses `@open-wc/testing`'s `fixture` + `assert.shadowDom`).
 - **Timeout:** 60 000 ms (six seconds × ten — Playwright spin-up is slow on first run).
 - **Legacy polyfills:** webcomponentsjs + a custom Lit polyfill via `@web/dev-server-legacy`.
+- **Mock HDIO server.** A `middleware` in [.testrc.js](../.testrc.js) answers the tenant
+  routes (`…/auth/token`, `…/auth/token/refresh`, `…/documents/dynamic`) so the HTTP-touching
+  hdio suites hit a real localhost server (reached identically from the Worker build and the
+  main-thread fallback) rather than a `fetch` stub. Scenarios are selected by the `tenant`
+  path segment, stateless per route (`ok`, `stale-handoff`, `expired-access`, `always-401`,
+  `slow`, `err-html`). See [docs/hdio-client.md](hdio-client.md).
+- **`node-html-parser` ESM shim.** `@hdml/parser` does `import { parse } from
+  "node-html-parser"`, but that package is CommonJS and a browser cannot bind a named import
+  from a CJS file. A small `@web/dev-server` plugin in [.testrc.js](../.testrc.js)
+  esbuild-bundles it into an ESM shim on the fly (esbuild is already the `bin` bundler — no new
+  dependency). Without it, every hdio suite that touches the parser fails to import.
 
-Tests live next to source as `*.test.ts` in [src/hdom/](../src/hdom/) only — `src/hdio/`
-currently has no tests. `TODO(confirm: whether tests for the hdio layer are out-of-scope or
-just missing.)`
+Tests live next to source as `*.test.ts` in both [src/hdom/](../src/hdom/) and
+[src/hdio/](../src/hdio/) (`endpoint` / `onmessage` / `parse` / `HdioClient`).
 
 ## Lint
 

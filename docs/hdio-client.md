@@ -14,13 +14,17 @@ Worker / MessagePort-fallback execution.
 
 | Attribute | Type | Purpose |
 |---|---|---|
-| `host` | string | Base URL of the HDIO server (no trailing slash) |
-| `tenant` | string | Tenant identifier — appears in both the URL path and the `sessions` query string |
-| `token` | string | Bearer-token-equivalent issued by upstream auth; exchanged for a session token |
+| `host` | string | Base URL of the HDIO server (no trailing slash) — the one base every request is sent to |
+| `tenant` | string | Tenant identifier — the leading path segment of every request (`/{tenant}/api/v1/…`) |
+| `token` | string | Token mode: a **single-use handoff code** the host app's backend minted in issuance step 1, redeemed here for the access/refresh pair (§3.2, B2). Not a bearer token. |
 
 Place one `<hdml-io>` in the page **as a sibling** of the `<hdml-*>` declarations — not as a
 parent. It listens to `document` for `hdom-changed` events, so any position works as long as
 it is connected.
+
+Auth is **opt-in**: a page that leaves `token` unset (and uses its own client/server
+mechanism) leaves `<hdml-io>` inert — no request is sent without an access token. The `mode`
+attribute (`token` default / `oidc`) is added in Step 03; this step implements token mode.
 
 ```html
 <hdml-io host="https://hdio.example" tenant="acme" token="…"></hdml-io>
@@ -45,15 +49,17 @@ sequenceDiagram
     Io->>W: new MessageChannel() → port1 (port2 runs createHandler)
   end
   Io->>W: endpoint.postMessage {type:"props", data:{host,tenant,token}}
-  W->>C: new HdioClient(host,tenant,token)
-  C->>S: GET /public/api/v1/{tenant}/sessions?tenant&token
-  S-->>C: 200 sessionToken (text/plain body)
+  W->>C: new HdioClient(host,tenant)  // 2-arg, no session bootstrap
+  W->>C: redeemHandoff(token)  // once per distinct handoff code
+  C->>S: POST /{tenant}/api/v1/auth/token  {token: handoff}
+  S-->>C: 200 {access_token, refresh_token, expires_in, token_type}
+  C->>C: hold both tokens in memory only (B4)
   Io->>W: postMessage {type:"html", data:{html: concat(outerHTML)}}
   W->>W: parse(state, html)  // bottom-up Merkle namer
-  W->>C: postFiles(state)
-  C->>S: POST /{tenant}/api/v1/documents/dynamic  (octet-stream DocumentFilesStruct)
+  W->>C: postDocument(state.data)  // awaits any in-flight redeem
+  C->>S: POST /{tenant}/api/v1/documents/dynamic  (octet-stream, Bearer access)
   S-->>C: 201 {stored:[{key,type,stored}], ddl:[…]}
-  C->>C: fold stored[] into registry (ref→{key,stored})
+  W->>W: recordStored(registry, body)  // fold stored[] (ref→{key,stored})
   Page->>Io: attributeChangedCallback (host/tenant/token)
   Io->>W: debounced postMessage {type:"props",...}  // 5ms throdeb.debounce
   Page->>Io: hdom-changed (any hdml-*)
@@ -97,10 +103,12 @@ endpoint, one client). Both directions are a discriminated union on `type`
 | `result` | `{ref, column, values?, domain, type}` | `[ArrayBuffer]` when `values` present | ⏳ Slice D |
 | `error` | `{ref?, message}` | — | ⏳ B/D |
 
-- **`props`** — (re)constructs the in-Worker `HdioClient`, closing any prior one. Empty
-  values are not filtered here; `HdioClient`'s constructor checks `host && tenant && token`
-  before starting a session.
-- **`html`** — calls `parse(state, html)` (the bottom-up Merkle namer — see [docs/architecture.md#parse--serialize](architecture.md#parse--serialize)) then `client.postFiles(state)`. `parse` re-names and re-packs the **whole** document every call (no dedup — every element is re-posted; the server idempotent-skips already-present keys). `state` is closure-scoped and holds the `ref → {key, stored}` registry (keyed by local ref `hdml-{type}={name}`) that survives for the endpoint's lifetime — the substrate for the post→confirm→query handshake (RFC 004 Slice E §8.6, E-L).
+- **`props`** — (re)constructs the in-Worker `HdioClient` (2-arg: `host`, `tenant`),
+  closing any prior one. In **token mode**, if `data.token` (a handoff code) is present it
+  calls `client.redeemHandoff(token)` — but **once per distinct code**: the last redeemed
+  code is retained in closure state so a debounced re-`props` carrying the same single-use
+  code does not redeem it twice (§3.2, B2). A failed redeem is logged, not re-thrown.
+- **`html`** — calls `parse(state, html)` (the bottom-up Merkle namer — see [docs/architecture.md#parse--serialize](architecture.md#parse--serialize)) then `client.postDocument(state.data)`, folding the returned 201 body via `recordStored(state.registry, body)`. `postDocument` internally awaits any in-flight redeem (§3.2), so an `html` that races the auth round-trip still posts with a real `Bearer`. `parse` re-names and re-packs the **whole** document every call (no dedup — every element is re-posted; the server idempotent-skips already-present keys). `state` is closure-scoped and holds the `ref → {key, stored}` registry (keyed by local ref `hdml-{type}={name}`) that survives for the endpoint's lifetime — the substrate for the post→confirm→query handshake (RFC 004 Slice E §8.6, E-L).
 
 The **outbound** variants (`auth` / `result` / `error`) are **declared but not yet routed**
 after Slice A: the `props` / `html` handlers never reply, so `post` is never called here. The
@@ -112,43 +120,65 @@ messages will carry a **transferable `ArrayBuffer`** via the transfer-list form
 ## HdioClient
 
 [src/hdio/HdioClient.ts](../src/hdio/HdioClient.ts) wraps `fetch` (polyfilled via
-`whatwg-fetch`). Constructor: `(host, tenant, token)`. If any is empty / zero-length, the
-client is inert (no session, `postFiles` will await `#initialization!` and reject with
-`Cannot read .then of null` — `TODO(confirm: this is intentional; current code does not guard
-against empty inputs other than the constructor short-circuit).`
+`whatwg-fetch`) and is the **sole** HTTP surface to the HDIO server (RFC 014/001 §2.7). It
+was rewritten for the post-006 auth surface: there is **no** `session` bootstrap (the dead
+`GET …/sessions` leg — and the `Bearer null` it produced — is gone). The access + refresh
+tokens live **in memory only** (B4, §3.4): no `sessionStorage`, re-auth on every reload.
+
+Constructor: `(host, tenant)` — two args, no token, no side effect. The client is inert
+(`authed === false`) until an explicit `redeemHandoff` (token mode) succeeds.
+
+Surface implemented this step (Slice B, part 1):
+
+```ts
+constructor(host: string, tenant: string);
+redeemHandoff(code: string): Promise<void>;      // issuance step 2 (§3.2)
+refresh(): Promise<void>;                          // silent, on 401 / expiry
+postDocument(data: Uint8Array): Promise<unknown>;  // → 201 body
+close(): void;                                      // abort in-flight + clear tokens
+get authed(): boolean;                              // #access != null
+```
+
+`exchangeOidcCode` (OIDC mode) is Step 03; `submitQuery` / `queryStatus` / `queryResult` /
+`cancelQuery` are Step 07.
 
 ### Endpoint surface
 
-Two base paths are used. The dynamic-doc save goes to the live tenant router
-`{host}/{tenant}/api/v1/documents/dynamic` (verified at
-[HDIO-Server handlers.go](../../HDIO-Server/internal/api/handlers.go) `/{tenant}/api/v1` →
-`Post("/documents/dynamic", …)`, E-B). The session bootstrap stays on the legacy
-`{host}/public/api/v1/{tenant}/sessions` prefix (auth bootstrap is a separate concern —
-project 006). Common headers: `Authorization: Bearer {session}` and
-`content-type: application/octet-stream`. Mode: `cors`, redirect: `follow`, cache: `no-cache`.
+**One** base — the `host` attribute. Every request is sent to `` `${host}${path}` `` (the
+dead `/public/api/v1/{tenant}` base is gone). Routes are all verified against
+[HDIO-Server handlers.go](../../HDIO-Server/internal/api/handlers.go):
 
-| When | Method | api | path | params | body |
-|---|---|---|---|---|---|
-| Bootstrap | `GET` | `sessions` | *(none)* | `tenant`, `token` | none |
-| Upload | `POST` | `documents` | `/dynamic` | *(none)* | `state.data.slice().buffer` (the FlatBuffers `DocumentFilesStruct`) |
+| Call | Method + path | Body | Returns |
+|---|---|---|---|
+| `redeemHandoff(code)` | `POST /{tenant}/api/v1/auth/token` | `{ token: code }` (JSON) | `{ access_token, refresh_token, expires_in, token_type }` |
+| `refresh()` | `POST /{tenant}/api/v1/auth/token/refresh` | `{ refresh_token }` (JSON) | same shape |
+| `postDocument(data)` | `POST /{tenant}/api/v1/documents/dynamic` | `data.slice().buffer` (octet-stream `DocumentFilesStruct`) | `201 { stored[], ddl[] }` |
 
-The response of `GET sessions` is read as **text** (`await response.text()`) and used as the
-session bearer token on subsequent requests. The `POST /documents/dynamic` response is a
-**201** `{ stored: [{ key, type, stored }], ddl: [{ name, status, detail? }] }` (RFC 004
-Slice E §7.2); `postFiles` folds the confirmed `stored[]` keys into the registry — both
+`redeemHandoff` / `refresh` parse the token pair and hold both in memory; `authed` becomes
+`true`. Common request options: `mode: cors`, `redirect: follow`, `cache: no-cache`. The body
+content-type is set **only when a body is present** — `application/json` for the two auth
+POSTs, `application/octet-stream` for the document POST, and **nothing on a bodiless GET**
+(the old client sent octet-stream on every request). The `Authorization: Bearer <access>`
+header is attached only when a token is held — never `Bearer null`.
+
+`postDocument` awaits any in-flight redeem/refresh first (so an early `html` still carries a
+real `Bearer`), then posts. On a **401** it calls `refresh()` and retries **once**; a second
+401 surfaces. The **201** `{ stored: [{ key, type, stored }], ddl: [{ name, status,
+detail? }] }` (RFC 004 Slice E §7.2) is returned to the caller (the worker's `html` handler),
+which folds the confirmed `stored[]` keys into the registry via `recordStored` — both
 `stored:true` (freshly written) and `stored:false` (idempotent-skip, already present) mark the
-entry present/queryable (E-L).
+entry present/queryable (E-L). `close()` aborts the instance-held `AbortController` (threaded
+onto every request) and nulls both tokens.
 
 ### Error handling
 
-`!response.ok` → parse the body as JSON `{statusCode?, message?}` and throw
-`new Error(message.message || response.statusText)`. Callers (`postFiles` in the worker,
-`initialize` from the constructor) `.catch(console.error)`.
-
-The `POST /{tenant}/api/v1/documents/dynamic` route is confirmed against the live router.
-`TODO(confirm: the session bootstrap leg still targets the legacy
-`/public/api/v1/{tenant}/sessions` prefix, but the current HDIO-Server router exposes no
-`sessions` route — reconciling the auth bootstrap is project 006, Token Authentication.)`
+`!response.ok` builds an `Error` **without** assuming a JSON body: only a JSON content-type is
+parsed (server errors are `{ error }` — see
+[HDIO-Server errors.go](../../HDIO-Server/internal/api/errors.go) `WriteError`), and anything
+else — a 502 HTML page, an empty 413 — falls back to `response.statusText` or the status code.
+This replaces the old unconditional `await response.json()` that threw a parse error on a
+non-JSON body and masked the real status. The worker's `props` / `html` handlers
+`.catch(console.error)` the surfaced error.
 
 ## Same-thread fallback (the `endpoint.ts` seam)
 

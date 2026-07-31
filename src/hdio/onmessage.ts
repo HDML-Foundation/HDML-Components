@@ -6,7 +6,7 @@
 
 import { parse } from "./parse";
 import type { HdioState } from "./parse";
-import { HdioClient } from "./HdioClient";
+import { HdioClient, recordStored } from "./HdioClient";
 
 /**
  * The outbound sink (A3, RFC §2.4): posts one worker→main message,
@@ -105,6 +105,12 @@ export function createHandler(
   void post;
   let client: null | HdioClient = null;
 
+  // The last handoff code redeemed, retained across `props` so a
+  // debounced re-`props` carrying the same single-use code does not
+  // redeem it twice (B2, §3.2). Distinct from the client, which is
+  // reconstructed every `props`.
+  let redeemed: null | string = null;
+
   // Cross-call worker state: the last packed document bytes plus the
   // ref→key→stored registry retained for the post→confirm→query
   // handshake (RFC 004 Slice E §8.6, E-L).
@@ -119,21 +125,33 @@ export function createHandler(
       return;
     }
     switch (msg.type) {
-      case "props":
+      case "props": {
         if (client) {
           client.close();
         }
-        client = new HdioClient(
-          msg.data.host,
-          msg.data.tenant,
-          msg.data.token,
-        );
+        client = new HdioClient(msg.data.host, msg.data.tenant);
+        // Token mode (B2): the `token` attribute carries the handoff
+        // code; redeem it once per distinct code, silently. OIDC mode
+        // is Step 03.
+        const token = msg.data.token;
+        if (token && token !== redeemed) {
+          redeemed = token;
+          client.redeemHandoff(token).catch((error: Error) => {
+            console.error(error.message);
+          });
+        }
         break;
+      }
       case "html":
         state = parse(state, msg.data.html);
-        client?.postFiles(state).catch((error: Error) => {
-          console.error(error.message);
-        });
+        client
+          ?.postDocument(state.data)
+          .then((body) => {
+            recordStored(state.registry, body);
+          })
+          .catch((error: Error) => {
+            console.error(error.message);
+          });
         break;
       default:
         break;
