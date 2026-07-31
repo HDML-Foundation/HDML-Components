@@ -124,11 +124,11 @@ endpoint, one client). Both directions are a discriminated union on `type`
 
 | `type` | Payload | Wired? |
 |---|---|---|
-| `props` | `{host, tenant, mode?, token?, config?}` | ✅ Slice A/B |
+| `props` | `{host, tenant, mode?, token?, config?}` | ✅ Slice A/B · `config` from `window.HDML_CONFIG` (Step 08) |
 | `html` | `{html}` | ✅ Slice A |
 | `oidc-callback` | `{code, state}` | ✅ Slice B (Step 03) |
-| `subscribe` | `{id, ref, column, raw?}` | ✅ Step 07 |
-| `unsubscribe` | `{id}` | ✅ Step 07 |
+| `subscribe` | `{id, ref, column, raw?}` | ✅ Step 07 (worker) · posted by the main-thread bus (Step 08) |
+| `unsubscribe` | `{id}` | ✅ Step 07 (worker) · posted by the main-thread bus (Step 08) |
 
 **Worker → main** (via `post(msg, transfer?)`):
 
@@ -163,7 +163,9 @@ detaches) or the `string[]` itself for an ordinal column (no buffer to transfer)
 - **`subscribe` / `unsubscribe`** — drive the reactive query engine (Step 07, D). A
   `subscribe {id, ref, column, raw?}` joins the `(ref, column)` to its frame (keyed by the
   source ref); `unsubscribe {id}` removes it and tears the frame down when its last
-  subscriber leaves. See [The query leg](#the-query-leg-slice-d) below.
+  subscriber leaves. Both are **posted by `<hdml-io>`'s main-thread subscription registry**
+  off the D8 request bus (Step 08) — see [The discovery bus + subscription registry](#the-discovery-bus--subscription-registry-step-08-d7d8)
+  and [The query leg](#the-query-leg-slice-d) below.
 
 The `auth` reply is consumed by `HdmlIo.ts`'s `#onMessage` — the main-thread
 state machine's `strip` (ok) / `re-navigate` (stale) branches (§3.3). `result` and `error`
@@ -235,6 +237,65 @@ source ref. One frame = one query; the full path is
   per distinct column** with its `domain` + `type`, and `values` only when some subscriber of
   that column wants raw — the main-thread registry (Step 08) fans the one message out to every
   subscriber of that `(ref, column)`, so a shared raw buffer transfers once.
+
+### The discovery bus + subscription registry (Step 08, D7/D8)
+
+The consumer-facing half lives on the **main thread** in
+[src/hdio/HdmlIo.ts](../src/hdio/HdmlIo.ts) (RFC §2.8/§5.8, D7/D8). Data-binding consumers
+(charts / axes / legends — a **separate repo**, §8) never touch the worker: they announce
+themselves on a `document` event bus, `<hdml-io>` registers them and drives
+`subscribe`/`unsubscribe`, and each worker `result` fans out to every matching subscriber.
+
+- **Rendezvous — a `bubbles`/`composed` request event.** `<hdml-io>` listens on `document`
+  for the request event (the W3C/Lit context-request pattern); `composed:true` keeps it
+  crossing any shadow boundary a consumer sits behind. On receipt it registers a subscriber
+  and posts `subscribe {id, ref, column, raw}` to the worker. There is **no**
+  `MutationObserver` and **no** hard-coded consumer tag-name list — consumers self-announce.
+  This is distinct from hdml-io's own three authored roots, which are **queried** with
+  `document.querySelectorAll` (declarations are in the document by definition; consumers
+  announce, and may live in shadow).
+- **Symmetric `hdml-io-ready` handshake (race-free).** On `connectedCallback` — after the
+  endpoint **and** the request listener are wired — `<hdml-io>` dispatches `hdml-io-ready` on
+  `document` **and** answers any request it already heard. A consumer, on its own connect,
+  both listens for `hdml-io-ready` and dispatches its request; on hearing ready it
+  re-dispatches. Subscriptions **de-dupe by `id`**, so hdml-io-first and consumer-first both
+  converge. `hdml-io-ready` means "ready to **receive**" (listener + endpoint wired) — **not**
+  parsed/stored; the D4 10 s gate then handles satisfiability.
+- **Fan-out (D7).** The worker emits **one** `result {ref, column, values?, domain, type}` per
+  distinct column; `#fanOut` delivers that **one** payload object — by reference — to every
+  subscriber of the matching `(ref, column)`. The transfer already detached the buffer from
+  the worker, so the main thread holds one copy: a shared raw column (`x=month` across five
+  lines) is **never** re-cloned per subscriber.
+- **Teardown via `AbortSignal`.** A subscriber's request carries an optional `AbortSignal`; on
+  `abort` (component disconnect) `<hdml-io>` drops it from the registry and posts
+  `unsubscribe {id}`. Removal alone stops delivery (the fan-out reads the registry). On
+  `<hdml-io>` disconnect the request listener is removed, the endpoint is closed (the worker +
+  its tokens die, B4), and the registry is cleared.
+
+**The provisional D8 seam (§8).** The event-name **defaults** are settled (`hdml-io-ready` /
+`hdml-io-request` / the D4 `queryReadyTimeout`, all read from `window.HDML_CONFIG`). What
+`<hdml-io>` reads off a request event's `detail` (`{id, ref, column, raw?, signal?}` + a
+`deliver` callback) is a **marked-provisional** reading — the exact detail schema, the
+delivery mechanism (callback and/or an `hdml-data`-style event), and the consumer-side
+`ref`+`&column=` attribute are **co-designed with the separate consumer repo** and are not
+invented here (see [`RequestDetail`](../src/hdio/HdmlIo.ts) — reconciling it against the real
+consumer contract later is expected, not a regression).
+
+### Shared config — `window.HDML_CONFIG` (§8, the sync point)
+
+[src/hdio/config.ts](../src/hdio/config.ts) reads the one main-thread config **both** repos
+read, so the discovery-bus names and the D4 backstop stay in step by construction:
+
+| Field | Default | Purpose |
+|---|---|---|
+| `queryReadyTimeout` | `10000` | D4 stored-gate backstop (ms), forwarded to the worker as `props.config.queryReadyTimeout` |
+| `readyEvent` | `"hdml-io-ready"` | the readiness event `<hdml-io>` announces |
+| `requestEvent` | `"hdml-io-request"` | the subscription-request event `<hdml-io>` listens for |
+
+`readConfig()` reads `window.HDML_CONFIG` **lazily** (each use — so a host that sets the global
+after import is still honoured) and fills these defaults; an invalid `queryReadyTimeout`
+(non-number or ≤ 0) or an empty event-name string falls back. Only `queryReadyTimeout` crosses
+into the worker (a worker has no `window`); the event names are main-thread-only.
 
 ## Query-target resolution (Slice C)
 

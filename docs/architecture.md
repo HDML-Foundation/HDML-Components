@@ -103,20 +103,26 @@ document for `hdml-connection`, `hdml-model`, `hdml-frame` elements and re-posts
 ## The hdml-io → Worker → HDIO chain
 
 `<hdml-io>` is **not** an `HdomElement` — it extends `LitElement` directly, because it does
-not represent HDML state, it observes it. It owns three concerns:
+not represent HDML state, it observes it. It owns four concerns:
 
-1. **Lifecycle.** On `connectedCallback`, it calls `createEndpoint()` and assigns
-   `#endpoint.onmessage` (which also *starts* the fallback `port1`, so worker→main
-   messages can arrive later). It never branches on the build — the `endpoint.ts` seam
-   returns a `Worker` (IIFE build) or a `MessagePort` (esm/cjs fallback). On
+1. **Lifecycle.** On `connectedCallback`, it calls `createEndpoint()` (through the module-level
+   `endpoints` seam) and assigns `#endpoint.onmessage` (which also *starts* the fallback
+   `port1`, so worker→main messages can arrive later). It never branches on the build — the
+   `endpoint.ts` seam returns a `Worker` (IIFE build) or a `MessagePort` (esm/cjs fallback). On
    `disconnectedCallback` it calls `closeEndpoint(#endpoint)` (terminate vs close, handled
    inside the seam). See
-   [src/hdio/HdmlIo.ts:65-90](../src/hdio/HdmlIo.ts#L65-L90).
-2. **Property sync.** `host` / `tenant` / `token` changes are debounced 5ms via
-   `throdeb.debounce` (`@hdml/common`) and posted as `{type:"props", data:{host,tenant,token}}`.
+   [src/hdio/HdmlIo.ts](../src/hdio/HdmlIo.ts).
+2. **Property sync.** `host` / `tenant` / `mode` / `token` changes are debounced 5ms via
+   `throdeb.debounce` (`@hdml/common`) and posted as `{type:"props", data:{host, tenant, mode,
+   token, config}}` — `config.queryReadyTimeout` is read from `window.HDML_CONFIG` (the D4 gate
+   backstop; a worker has no `window`).
 3. **HTML sync.** On every `hdom-changed`, debounced 5ms, it concatenates the `outerHTML` of
    every `hdml-connection`, `hdml-model`, and `hdml-frame` in the document and posts
    `{type:"html", data:{html}}`.
+4. **The discovery bus + subscription registry.** It listens on `document` for the D8 request
+   event, holds the `subId → subscriber` registry, drives `subscribe`/`unsubscribe`, and fans
+   each worker `result` out to every subscriber of that `(ref, column)` (see
+   [The discovery bus](#the-discovery-bus) below).
 
 The Worker entry [src/hdio/HdmlIo.worker.ts](../src/hdio/HdmlIo.worker.ts) — the only file
 that touches `self` — wires `self.onmessage = createHandler((msg, t) => self.postMessage(msg,
@@ -192,6 +198,51 @@ union bumps it, and a superseded run **discards** its late completion rather tha
 it (a still-`pending` superseded job is best-effort cancelled, running jobs never — server
 `Cancel` cannot abort a live Trino query). See
 [docs/hdio-client.md](hdio-client.md#the-query-leg-slice-d).
+
+### The discovery bus
+
+The consumer-facing half of the query leg lives on the **main thread** in
+[src/hdio/HdmlIo.ts](../src/hdio/HdmlIo.ts) (RFC §5.8, D8). Data-binding consumers (charts /
+axes / legends — a **separate repo**) never touch the worker: they rendezvous with `<hdml-io>`
+over a `document` event bus, symmetric and race-free.
+
+```mermaid
+sequenceDiagram
+  participant C as consumer (separate repo)
+  participant Doc as document
+  participant Io as hdml-io (main)
+  participant W as worker
+  C->>Doc: dispatch request {id, ref, column, raw?} (bubbles/composed)
+  Io->>Doc: dispatch hdml-io-ready (on connect)
+  C->>Doc: re-dispatch request (on hdml-io-ready)
+  Note over Io: register subscriber (de-dupe by id)
+  Io->>W: post subscribe {id, ref, column, raw}
+  W-->>Io: post result {ref, column, values?, domain, type}
+  Note over Io: fan-out to every subscriber of (ref, column)
+  Io-->>C: deliver the one payload (by reference)
+  C->>Doc: abort signal (disconnect)
+  Io->>W: post unsubscribe {id}
+```
+
+- **Rendezvous.** `<hdml-io>` listens on `document` for a `bubbles:true, composed:true` request
+  event (the W3C/Lit context-request pattern) — no `MutationObserver`, no hard-coded consumer
+  tag-name list. This is **distinct** from the three authored roots it *queries* with
+  `document.querySelectorAll`: declarations are in the document by definition; consumers
+  **announce** (and may live in shadow, hence `composed`).
+- **Symmetric `hdml-io-ready` handshake.** On connect (endpoint + request listener wired)
+  `<hdml-io>` announces `hdml-io-ready` and answers any request it heard; a consumer both
+  listens for ready and dispatches its request, re-dispatching on ready. Subscriptions
+  **de-dupe by `id`**, so either ordering converges — closing the subscribe-before-hdml-io
+  race. "Ready" = ready to **receive**, not parsed/stored; the D4 gate then handles
+  satisfiability.
+- **Fan-out (D7).** One worker `result` per distinct column is delivered — **by reference** —
+  to every subscriber of that `(ref, column)`; the transfer already detached the buffer from
+  the worker, so a shared raw column is never re-cloned per subscriber. Teardown rides the
+  request's `AbortSignal` → `unsubscribe`.
+- **`window.HDML_CONFIG`** ([src/hdio/config.ts](../src/hdio/config.ts)) is the one main-thread
+  config **both** repos read (§8): `queryReadyTimeout` (default `10000`, forwarded to the
+  worker), `readyEvent` (`"hdml-io-ready"`), `requestEvent` (`"hdml-io-request"`). See
+  [docs/hdio-client.md](hdio-client.md#the-discovery-bus--subscription-registry-step-08-d7d8).
 
 ### HTTP
 

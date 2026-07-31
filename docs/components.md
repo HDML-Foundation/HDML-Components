@@ -229,3 +229,30 @@ selected by the **`mode`** attribute:
 
 `mode` is an `<hdml-io>`-local attribute (no `@hdml/types` `*_ATTRS_LIST` enum), so it is
 declared directly on the class.
+
+### The subscription bus (data-binding consumers)
+
+Beyond uploading the document, `<hdml-io>` exposes a **subscription bus** so data-binding
+consumers (charts, axes, legends) can bind a `(source-ref, column)` and receive live query
+results (RFC 014/001 §5.8, D8). The consumer elements themselves live in a **separate repo**
+(§8) — this repo ships only hdml-io's side:
+
+- `<hdml-io>` announces `hdml-io-ready` on `document` when it connects, and listens there for a
+  `bubbles`/`composed` **request event**. A consumer, on its own connect, both listens for
+  `hdml-io-ready` and dispatches its request (re-dispatching on ready); subscriptions de-dupe
+  by `id`, so the handshake is race-free whichever connects first.
+- Each worker result is fanned out to every subscriber of that `(ref, column)`; teardown rides
+  an `AbortSignal` (component disconnect → `unsubscribe`).
+
+The **event names and the D4 timeout are read from a shared `window.HDML_CONFIG`** both repos
+read (the sync point) — the settled defaults:
+
+| `HDML_CONFIG` field | Default |
+|---|---|
+| `queryReadyTimeout` | `10000` (ms; the stored-gate backstop forwarded to the worker) |
+| `readyEvent` | `"hdml-io-ready"` |
+| `requestEvent` | `"hdml-io-request"` |
+
+The exact request `detail` schema, the delivery mechanism, and the consumer-side attribute
+that holds the ref + `&column=` are **co-designed with the consumer repo** and are not fixed
+here (§8). Full protocol in [docs/hdio-client.md](hdio-client.md#the-discovery-bus--subscription-registry-step-08-d7d8).
