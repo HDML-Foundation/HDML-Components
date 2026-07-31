@@ -157,6 +157,37 @@ not yet routed** — Slice D wires them. `result` messages will carry a **transf
 RFC §2.6, A4). The `auth` reply is consumed by `HdmlIo.ts`'s `#onMessage` — the main-thread
 state machine's `strip` (ok) / `re-navigate` (stale) branches (§3.3).
 
+### Column decode + scale domain (Slice D, D9/D3)
+
+The `result` payload's `type` / `values` / `domain` come from two **pure** modules the worker
+calls once per coalesced column (Step 07 wires them into `subscribe` → `result`):
+
+- [src/hdio/decode.ts](../src/hdio/decode.ts) — `decode(ipc)` turns an Arrow IPC payload into
+  one `DecodedColumn { name, type, values }` per field, reading each column's kind **off the
+  self-describing Arrow result schema** (`field.type`), never the authored frame `type`
+  (§5.7, D9):
+
+  | Arrow type | `type` tag | `values` |
+  |---|---|---|
+  | `Utf8` | `{kind:"string"}` | `string[]` |
+  | integer ≤32-bit / float | `{kind:"number"}` | `Float64Array` |
+  | 64-bit integer | `{kind:"bigint"}` | `BigInt64Array` |
+  | `Date32` / `Date64` | `{kind:"date", unit:"ms"}` | epoch-ms at **UTC midnight** (a calendar day) |
+  | `Time32` / `Time64` | `{kind:"time", unit:"ms"}` | **ms since midnight** — a within-day offset, **not** an instant |
+  | `Timestamp` | `{kind:"timestamp", unit:"ms", zone?}` | epoch-ms instant, **UTC at the edge** |
+
+  The three temporal families stay **distinct** (never collapsed to one instant), and every
+  family is normalized to **ms** here (Arrow's native s/ms/µs/ns converted at decode). A
+  zone-less `Timestamp` is read as **UTC** (the one silent decision — deterministic across
+  clients, no local-offset shift); a zoned one passes its timezone through as `zone` **without
+  shifting the instant**.
+- [src/hdio/reducers.ts](../src/hdio/reducers.ts) — `domainFor(col)` returns the
+  type-appropriate scale `Domain`: an `extent` `[min, max]` for a numeric/temporal column, or
+  the insertion-order-stable `ordinal` distinct list for a `string` one (§5.3, D3). `distinct`
+  is computed **only** for strings, so a continuous column never pays a distinct pass — an
+  ordinal date bucket an author emits as `VARCHAR` arrives as a string and is handled
+  ordinally.
+
 ## Query-target resolution (Slice C)
 
 [src/hdio/artifact.ts](../src/hdio/artifact.ts) is the bridge from the parse/save path to a
