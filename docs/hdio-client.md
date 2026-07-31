@@ -157,6 +157,91 @@ not yet routed** — Slice D wires them. `result` messages will carry a **transf
 RFC §2.6, A4). The `auth` reply is consumed by `HdmlIo.ts`'s `#onMessage` — the main-thread
 state machine's `strip` (ok) / `re-navigate` (stale) branches (§3.3).
 
+## Query-target resolution (Slice C)
+
+[src/hdio/artifact.ts](../src/hdio/artifact.ts) is the bridge from the parse/save path to a
+query: it turns a **source ref** (a query handle, identical grammar to an `hdml-frame`
+`source`) into the `doc_path` the server's `walkChain` reads (RFC 014/001 §4, C1–C6). It is
+pure — no network, no `@hdml/*` (the transform is IO's own contract with the server, so there
+is **no** lockstep bump).
+
+### Source-ref grammar
+
+Two forms, classified on the first character (§2.9):
+
+```
+local:   ?hdml-{kind}={name}[&column={col}]
+static:  /{dir}/{file}.html?hdml-{kind}={name}[&column={col}]
+```
+
+`{kind}` is `frame` | `model` **only** — a connection is not queryable (it has no
+`hdml-{kind}={name}@{source}` artifact and the server's `parseArtifactKind` rejects it), so a
+`connection` kind throws. The two kinds resolve **uniformly**; a bare-model query's meaning is
+the server's `walkChain` concern, so a model is **never** rejected. The `&column=` tail is the
+per-subscriber column selector consumed by Step 07 — it is **not** part of the `doc_path` and
+is stripped by the resolver. The static ref names the authored **`.html`** markup file
+(`.html` = authored source, `.hdml` = compiled artifact).
+
+### `resolveQueryTarget(ref, registry)` — one resolver, two branches
+
+Returns `{ docPath, stored }`:
+
+| Branch | Input | `docPath` | `stored` | Server round-trip |
+|---|---|---|---|---|
+| **local** (`?`) | `?hdml-{kind}={name}[&column=…]` | `dynamic:` + `registry` entry's canonical key | the entry's `stored` flag | none — reads the worker registry |
+| **static** (`/`) | `/{dir}/{file}.html?hdml-{kind}={name}` | `staticRefToDocPath(ref)` | always `true` | none — pure transform |
+
+The **local** branch strips the `&column=` tail, looks the `hdml-{kind}={name}` key up in the
+registry, and returns `dynamic:{entry.key}` carrying the entry's `stored` flag (the
+post→confirm→query gate — a local target's first query holds until `stored: true`, D4). An
+**unknown** local ref **throws** — but as a *pure function*: the query leg (Step 07) reads the
+throw as *not-ready-yet* inside the D4 gate window, not an immediate failure. The **static**
+branch never touches the registry (it is already server-side, no gate, `stored: true`); a wrong
+basename is a query-time **404**, unforeseeable by the FE.
+
+The resolved `docPath` is exactly what the server's `leafRef` expects: a `dynamic:`-prefixed
+key selects the Redis-backed dynamic store, a `/`-prefixed path is a static artifact parsed by
+`parseArtifactFile(filepath.Base(rel))`
+([artifact_resolver.go:75-106](../../HDIO-Server/internal/compile/artifact_resolver.go#L75)).
+
+### `staticRefToDocPath(ref)` — the precomputable pure transform
+
+The static `@…` segment is the source-doc **basename**, not a content hash (only the dynamic
+form is `@{hashify(...)}`), so a static target resolves with **zero content and zero server
+round-trip**. It mirrors the Go `parseHTMLSourceRef` + `deriveSource` + `docArtifactPath`
+([artifact_naming.go:21-108](../../HDIO-Server/internal/compile/artifact_naming.go#L21)):
+
+```
+HTML-form:     /{dir}/{file}.html?hdml-{kind}={name}
+artifact-form: /{dir}/hdml-{kind}={name}@{file}.hdml
+```
+
+The output is **always** `/`-prefixed (the `/` marks a static target), and the directory
+segment is omitted for a top-level source (`dir === "."`). Because relocating the transform to
+TS does not dissolve the cross-language contract, `artifact.test.ts` pins a Go-derived fixture
+— each vector traced to the Go source:
+
+| Input ref | `doc_path` | Pins |
+|---|---|---|
+| `/x/a.b.html?hdml-frame=f` | `/x/hdml-frame=f@a.b.hdml` | `filepath.Ext` strips only the last extension → `source = a.b` |
+| `/maang?hdml-frame=x` | `/hdml-frame=x@maang.hdml` | no extension → `source = maang`, `dir = "."` |
+| `/full.html?hdml-model=m` | `/hdml-model=m@full.hdml` | top-level `dir === "."` → no dir prefix (FE keeps the leading `/`) |
+| `/a/b/c.html?hdml-frame=f` | `/a/b/hdml-frame=f@c.hdml` | `filepath.Join(docPath, file)` |
+
+`validateElementName` is mirrored too (rejects `""`, `/`, `\`, `..`), so a bad element name
+fails **locally**, not at the server.
+
+### The registry is the unified query-target map (C6)
+
+The `ref → { key, stored }` registry in worker `state`
+([parse.ts](../src/hdio/parse.ts) `RegistryEntry` / `HdioState`) — folded on each 201 via
+`recordStored` — **is** the query-target map `resolveQueryTarget` reads for the local branch;
+`resolveQueryTarget` is the single entry point both branches go through. Serialization is
+untouched: `parse()` still leaves a `/`-prefixed static `source` **verbatim** (the server's
+`parseHTMLSourceRef` errors on a ref without `?`, so pre-converting a `source` edge to
+artifact-form would break `walkChain`, C5). Only the **query handle** is converted to
+artifact-form, never the document's serialized `source` edges.
+
 ## HdioClient
 
 [src/hdio/HdioClient.ts](../src/hdio/HdioClient.ts) wraps `fetch` (polyfilled via

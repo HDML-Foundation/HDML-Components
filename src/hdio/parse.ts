@@ -12,7 +12,11 @@ import type { DocumentFileBlobs } from "@hdml/buffer";
 /**
  * A cross-call registry entry: the canonical key an authored local
  * ref currently resolves to, and whether the server has confirmed the
- * element present (queryable) via a POST 201.
+ * element present (queryable) via a POST 201. This is the value type
+ * of the unified **query-target map** (RFC 014/001 §2.8, C6) that
+ * `resolveQueryTarget` (see `./artifact`) reads to bridge a local
+ * `?hdml-{kind}={name}` ref to its `dynamic:{key}` query `doc_path`,
+ * gated on `stored`.
  */
 export interface RegistryEntry {
   key: string;
@@ -24,7 +28,9 @@ export interface RegistryEntry {
  * `DocumentFilesStruct` bytes plus the ref→key→stored registry (keyed
  * by the local ref `hdml-{type}={name}`). The registry is the
  * substrate for the post→confirm→query handshake; only the old dedup
- * gate was dropped (RFC 004 Slice E §8.6, E-L).
+ * gate was dropped (RFC 004 Slice E §8.6, E-L). It doubles as the
+ * unified query-target map `resolveQueryTarget` reads (RFC 014/001
+ * §2.8, C6 — see `./artifact`).
  */
 export interface HdioState {
   data: Uint8Array;
