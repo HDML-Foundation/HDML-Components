@@ -71,40 +71,6 @@ export function recordStored(
 }
 
 /**
- * Builds the stale-`state` marker thrown by
- * {@link HdioClient.exchangeOidcCode} on a callback 401 — the
- * single-use `state` was already spent (a stale-`?code` reload). The
- * worker maps it to `auth {ok:false, reason:"stale"}` so the
- * main-thread state machine re-navigates instead of surfacing a hard
- * error (RFC §3.3, B5).
- *
- * @param response - The 401 callback response.
- * @returns An `Error` flagged `stale`.
- */
-function staleError(response: Response): Error {
-  const error = new Error(
-    response.statusText || `HTTP ${response.status}`,
-  );
-  (error as { stale?: boolean }).stale = true;
-  return error;
-}
-
-/**
- * Whether an error is the stale-`state` marker from
- * {@link HdioClient.exchangeOidcCode} (RFC §3.3).
- *
- * @param error - Any caught error.
- * @returns `true` for the stale marker.
- */
-export function isStaleAuthError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    (error as { stale?: unknown }).stale === true
-  );
-}
-
-/**
  * De-frames the length-prefixed query-result stream into one Arrow
  * IPC batch per frame (RFC §2.7; server
  * [public_data_handlers.go:334-343]). The `/queries/{id}/result`
@@ -210,41 +176,22 @@ export class HdioClient {
   }
 
   /**
-   * Exchanges the OIDC `?code&state` for the {access, refresh} pair
-   * (RFC §3.3): `GET /{tenant}/api/v1/auth/callback?code&state` →
-   * `TokenResponse` JSON. The exchange runs **worker-side** so the
-   * tokens never touch the main thread (B4). A **401** means the
-   * single-use `state` was already spent (a stale-`?code` reload) and
-   * rejects with a stale-marked error ({@link isStaleAuthError}) the
-   * worker maps to `auth {ok:false, reason:"stale"}`; any other
-   * non-2xx rejects normally.
+   * Adopts a token pair minted elsewhere — the main-thread OIDC
+   * exchange (§3.3) hands its `{access, refresh}` here so the worker
+   * holds the pair in memory for the authed document/query requests.
+   * The exchange is main-side because a `blob:`-Worker `fetch` sends
+   * `Origin: null`, which a cross-origin HDIO server's CORS rejects.
+   * Either token may be null (clears that slot).
    *
-   * @param code - The `code` query param the IdP returned.
-   * @param state - The single-use `state` query param.
+   * @param access - The access token, or null to clear it.
+   * @param refresh - The refresh token, or null to clear it.
    */
-  public exchangeOidcCode(
-    code: string,
-    state: string,
-  ): Promise<void> {
-    const query =
-      `?code=${encodeURIComponent(code)}` +
-      `&state=${encodeURIComponent(state)}`;
-    const path = `/${this.#tenant}/api/v1/auth/callback`;
-    return this.#track(
-      (async (): Promise<void> => {
-        const response = await this.#send({
-          method: "GET",
-          path: path + query,
-        });
-        if (response.status === 401) {
-          throw staleError(response);
-        }
-        if (!response.ok) {
-          throw await this.#error(response);
-        }
-        this.#storeTokens((await response.json()) as TokenResponse);
-      })(),
-    );
+  public setTokens(
+    access: null | string,
+    refresh: null | string,
+  ): void {
+    this.#access = access;
+    this.#refresh = refresh;
   }
 
   /**
@@ -420,8 +367,8 @@ export class HdioClient {
   /**
    * Tracks an in-flight auth task as `#pending` so a racing document
    * POST awaits it, clearing it once settled (the guarded `clear`
-   * never clobbers a newer pending auth). Shared by `#authenticate`
-   * (redeem / refresh) and {@link exchangeOidcCode}.
+   * never clobbers a newer pending auth). Used by `#authenticate`
+   * (redeem / refresh).
    */
   #track(task: Promise<void>): Promise<void> {
     this.#pending = task;

@@ -8,10 +8,11 @@
  * The next auth step the main-thread state machine should take,
  * computed purely from the URL + attributes (RFC 014/001 §3.3, B5).
  * A thin effect layer in `HdmlIo` turns each into a side effect:
- * `exchange` posts `oidc-callback` to the worker, `redeem` lets the
- * `props` path forward the handoff (token mode, Step 02), `navigate`
- * is a full-page redirect to `/auth/login`, `auth-error` strips the
- * IdP error off the URL and logs it (no retry), `inert` does nothing.
+ * `exchange` runs the code→token exchange on the main thread (§3.3),
+ * `redeem` lets the `props` path forward the handoff (token mode,
+ * Step 02), `navigate` is a full-page redirect to `/auth/login`,
+ * `auth-error` strips the IdP error off the URL and logs it (no
+ * retry), `inert` does nothing.
  */
 export type AuthAction =
   | { kind: "exchange"; code: string; state: string }

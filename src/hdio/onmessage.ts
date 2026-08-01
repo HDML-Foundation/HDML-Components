@@ -12,11 +12,7 @@ import { decode } from "./decode";
 import type { ColumnType, DecodedColumn } from "./decode";
 import { domainFor } from "./reducers";
 import type { Domain } from "./reducers";
-import {
-  HdioClient,
-  isStaleAuthError,
-  recordStored,
-} from "./HdioClient";
+import { HdioClient, recordStored } from "./HdioClient";
 
 /**
  * The outbound sink (A3, RFC §2.4): posts one worker→main message,
@@ -35,7 +31,10 @@ export type Post = (
  * the one `HdmlIo.ts` posts. `subscribe`/`unsubscribe` drive the D
  * query engine (Step 07); `props.config` carries the D8
  * `HDML_CONFIG` read main-side (a worker has no `window`) — today
- * only `queryReadyTimeout` (the D4 gate backstop).
+ * only `queryReadyTimeout` (the D4 gate backstop). `oidc-tokens`
+ * hands over the pair the **main-thread** OIDC exchange minted (§3.3)
+ * — the worker cannot fetch the callback itself (its `blob:` origin
+ * is CORS-rejected), so it only adopts the tokens for authed calls.
  */
 export type InboundMessage =
   | {
@@ -53,8 +52,8 @@ export type InboundMessage =
       data: { html: string };
     }
   | {
-      type: "oidc-callback";
-      data: { code: string; state: string };
+      type: "oidc-tokens";
+      data: { access: null | string; refresh: null | string };
     }
   | {
       type: "subscribe";
@@ -81,16 +80,9 @@ export type InboundMessage =
  * nulls and `values` are pulled — is the row-null bitmask (1 bit/row,
  * bit set = null), transferred zero-copy alongside the values buffer;
  * it is the sole faithful null carrier for a typed-array column.
+ * (The OIDC exchange is main-side now, so there is no `auth` reply.)
  */
 export type OutboundMessage =
-  | {
-      type: "auth";
-      data: {
-        ok: boolean;
-        reason?: "stale" | "error";
-        detail?: unknown;
-      };
-    }
   | {
       type: "result";
       data: {
@@ -307,6 +299,16 @@ export function createHandler(
   // unauthenticated. Only a genuine host/tenant change rebuilds (and
   // re-redeems).
   let identity: null | string = null;
+
+  // The OIDC pair the main thread minted (§3.3) and handed over via
+  // `oidc-tokens`, stashed so a client (re)built by a racing `props`
+  // still adopts it (the exchange fetch and `props` are unordered).
+  // Cleared on a genuine identity change — a new connection's tokens
+  // are its own.
+  let injectedTokens: null | {
+    access: null | string;
+    refresh: null | string;
+  } = null;
 
   // Cross-call worker state: the last packed document bytes plus the
   // ref→key→stored registry retained for the post→confirm→query
@@ -627,13 +629,27 @@ export function createHandler(
           if (client) {
             client.close();
           }
+          if (identity !== null) {
+            // A genuine host/tenant change: the prior connection's
+            // OIDC tokens no longer apply to the new one.
+            injectedTokens = null;
+          }
           client = new HdioClient(msg.data.host, msg.data.tenant);
           identity = next;
           redeemed = null;
+          // Re-adopt an OIDC pair that arrived before this `props`
+          // built the client (the exchange fetch races `props`).
+          if (injectedTokens) {
+            client.setTokens(
+              injectedTokens.access,
+              injectedTokens.refresh,
+            );
+          }
         }
         // Token mode (B2): the `token` attribute carries the handoff
         // code; redeem it once per distinct code, silently. OIDC mode
-        // carries no token — it drives `oidc-callback` below.
+        // carries no token — the main thread runs the exchange and
+        // hands the pair over via `oidc-tokens` below.
         const token = msg.data.token;
         if (token && token !== redeemed) {
           redeemed = token;
@@ -658,34 +674,15 @@ export function createHandler(
             failGatedFrames(error.message);
           });
         break;
-      case "oidc-callback":
-        // OIDC exchange is worker-side (RFC §3.3, §10.1): the main
-        // thread read `?code&state` off the URL; the worker fetches
-        // `/auth/callback`, holds the pair, and reports back so the
-        // main-thread state machine can strip the params (`ok`) or
-        // re-navigate on a spent `state` (`stale`).
-        client
-          ?.exchangeOidcCode(msg.data.code, msg.data.state)
-          .then(() => {
-            post({ type: "auth", data: { ok: true } });
-          })
-          .catch((error: unknown) => {
-            if (isStaleAuthError(error)) {
-              post({
-                type: "auth",
-                data: { ok: false, reason: "stale" },
-              });
-            } else {
-              post({
-                type: "auth",
-                data: {
-                  ok: false,
-                  reason: "error",
-                  detail: (error as Error).message,
-                },
-              });
-            }
-          });
+      case "oidc-tokens":
+        // The OIDC exchange ran on the main thread (§3.3) — the
+        // worker's `blob:` origin is CORS-rejected by a cross-origin
+        // HDIO server, so it cannot fetch `/auth/callback` itself. It
+        // just adopts the minted pair for the authed document/query
+        // requests, stashing it so a client rebuilt by a racing
+        // `props` re-adopts it.
+        injectedTokens = msg.data;
+        client?.setTokens(msg.data.access, msg.data.refresh);
         break;
       case "subscribe": {
         const { id, ref, column, raw } = msg.data;

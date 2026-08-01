@@ -15,7 +15,7 @@ import type { HdioState } from "./parse";
 const origClose = HdioClient.prototype.close;
 const origPostDocument = HdioClient.prototype.postDocument;
 const origRedeem = HdioClient.prototype.redeemHandoff;
-const origExchange = HdioClient.prototype.exchangeOidcCode;
+const origSetTokens = HdioClient.prototype.setTokens;
 const origSubmit = HdioClient.prototype.submitQuery;
 const origStatus = HdioClient.prototype.queryStatus;
 const origResult = HdioClient.prototype.queryResult;
@@ -38,9 +38,12 @@ function htmlEvent(html: string): MessageEvent {
   });
 }
 
-function oidcEvent(code: string, state: string): MessageEvent {
+function tokensEvent(
+  access: null | string,
+  refresh: null | string,
+): MessageEvent {
   return new MessageEvent("message", {
-    data: { type: "oidc-callback", data: { code, state } },
+    data: { type: "oidc-tokens", data: { access, refresh } },
   });
 }
 
@@ -102,14 +105,6 @@ function f1Key(): string {
 // `stored:true` on the pure transform, so a query submits at once.
 const STATIC_REF = "/x.html?hdml-frame=f";
 
-function staleError(): Error {
-  const error = new Error("stale") as Error & {
-    stale?: boolean;
-  };
-  error.stale = true;
-  return error;
-}
-
 const tick = (): Promise<void> =>
   new Promise((resolve) => {
     setTimeout(resolve, 0);
@@ -120,7 +115,7 @@ suite("hdio createHandler", () => {
     HdioClient.prototype.close = origClose;
     HdioClient.prototype.postDocument = origPostDocument;
     HdioClient.prototype.redeemHandoff = origRedeem;
-    HdioClient.prototype.exchangeOidcCode = origExchange;
+    HdioClient.prototype.setTokens = origSetTokens;
   });
 
   test(
@@ -236,34 +231,29 @@ suite("hdio createHandler", () => {
     assert.equal(redeemCount, 2);
   });
 
-  test("oidc-callback exchanges → posts auth ok", async () => {
-    HdioClient.prototype.exchangeOidcCode = function () {
-      return Promise.resolve();
+  test("oidc-tokens: the client adopts the minted pair", () => {
+    const calls: Array<[null | string, null | string]> = [];
+    HdioClient.prototype.setTokens = function (a, r) {
+      calls.push([a, r]);
     };
-    const posted: OutboundMessage[] = [];
-    const handle = createHandler((m) => {
-      posted.push(m);
-    });
+    const handle = createHandler(() => undefined);
     handle(propsEvent("h", "acme", ""));
-    handle(oidcEvent("c", "s"));
-    await tick();
-    assert.deepEqual(posted, [{ type: "auth", data: { ok: true } }]);
+    // The main thread ran the exchange (§3.3), handing the pair over.
+    handle(tokensEvent("access-1", "refresh-1"));
+    assert.deepEqual(calls, [["access-1", "refresh-1"]]);
   });
 
-  test("a stale exchange → posts auth stale", async () => {
-    HdioClient.prototype.exchangeOidcCode = function () {
-      return Promise.reject(staleError());
+  test("oidc-tokens before props still injects (stash)", () => {
+    const calls: Array<[null | string, null | string]> = [];
+    HdioClient.prototype.setTokens = function (a, r) {
+      calls.push([a, r]);
     };
-    const posted: OutboundMessage[] = [];
-    const handle = createHandler((m) => {
-      posted.push(m);
-    });
+    const handle = createHandler(() => undefined);
+    // The exchange fetch can resolve before the debounced props built
+    // the client → stashed, then adopted on client creation.
+    handle(tokensEvent("access-2", "refresh-2"));
     handle(propsEvent("h", "acme", ""));
-    handle(oidcEvent("c", "s"));
-    await tick();
-    assert.deepEqual(posted, [
-      { type: "auth", data: { ok: false, reason: "stale" } },
-    ]);
+    assert.deepEqual(calls, [["access-2", "refresh-2"]]);
   });
 });
 

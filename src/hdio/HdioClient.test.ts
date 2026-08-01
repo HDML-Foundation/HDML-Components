@@ -5,11 +5,7 @@
  */
 
 import { assert } from "@open-wc/testing";
-import {
-  HdioClient,
-  isStaleAuthError,
-  recordStored,
-} from "./HdioClient";
+import { HdioClient, recordStored } from "./HdioClient";
 
 // The `parse.RegistryEntry` shape, inlined so this suite pulls no
 // `@hdml/parser`: it never parses — it drives the real `fetch` path
@@ -106,23 +102,14 @@ suite("HdioClient (token mode, wtr mock HDIO)", () => {
     client.close();
   });
 
-  test("oidc exchange stores the token pair", async () => {
+  test("setTokens adopts a pair minted elsewhere → authed", () => {
+    // The OIDC exchange is main-side now (§3.3); the worker's client
+    // adopts the pair via setTokens rather than fetching itself.
     const client = new HdioClient("", "oidc-ok");
     assert.isFalse(client.authed);
-    await client.exchangeOidcCode("c", "s");
+    client.setTokens("access-x", "refresh-x");
     assert.isTrue(client.authed);
-    client.close();
-  });
-
-  test("a stale state rejects, stale-marked, inert", async () => {
-    const client = new HdioClient("", "stale-state");
-    let error: unknown = null;
-    try {
-      await client.exchangeOidcCode("c", "s");
-    } catch (e) {
-      error = e;
-    }
-    assert.isTrue(isStaleAuthError(error));
+    client.setTokens(null, null);
     assert.isFalse(client.authed);
     client.close();
   });

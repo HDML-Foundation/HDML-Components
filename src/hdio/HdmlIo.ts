@@ -11,6 +11,7 @@ import type { Endpoint } from "./endpoint";
 import { createEndpoint, closeEndpoint } from "./endpoint";
 import type { OutboundMessage } from "./onmessage";
 import { loginUrl, nextAuthAction, originPathname } from "./oidc";
+import { exchangeCode } from "./exchange";
 import { readConfig } from "./config";
 
 /**
@@ -165,10 +166,10 @@ export class HdmlIo extends LitElement {
 
   /**
    * Handles messages coming back from the endpoint (worker→main).
-   * Routes the `auth` reply of the OIDC exchange (RFC §2.5, §3.3):
-   * `ok` → strip `?code&state` and stay put; `stale` → the spent
-   * `state` means start over at the IdP; `error` → surface once, no
-   * loop. (`result` / `error` for the query leg are Slice D.)
+   * Only the query leg replies: a `result` fans out to the D8
+   * subscribers (§2.5, D7). The OIDC exchange now runs on the main
+   * thread (§3.3, {@link #runExchange}), so there is no `auth` reply
+   * to route here.
    *
    * @private
    */
@@ -179,23 +180,7 @@ export class HdmlIo extends LitElement {
     }
     if (msg.type === "result") {
       this.#fanOut(msg.data);
-      return;
     }
-    if (msg.type !== "auth") {
-      return;
-    }
-    if (msg.data.ok) {
-      nav.strip(originPathname(nav.href()));
-      return;
-    }
-    if (msg.data.reason === "stale") {
-      this.#navigating = true;
-      nav.navigate(
-        loginUrl(this.host ?? "", this.tenant ?? "", nav.href()),
-      );
-      return;
-    }
-    console.error("hdml-io auth failed:", msg.data.detail);
   };
 
   /**
@@ -420,10 +405,7 @@ export class HdmlIo extends LitElement {
     });
     switch (action.kind) {
       case "exchange":
-        this.#endpoint?.postMessage({
-          type: "oidc-callback",
-          data: { code: action.code, state: action.state },
-        });
+        void this.#runExchange(action.code, action.state);
         break;
       case "redeem":
         // `props` already forwards the handoff `token`; the worker
@@ -445,6 +427,50 @@ export class HdmlIo extends LitElement {
       case "inert":
         break;
     }
+  };
+
+  /**
+   * Runs the OIDC code→token exchange on the **main thread** (§3.3).
+   * It must run main-side, not in the worker: the IIFE build's worker
+   * is inlined from a `blob:` URL, whose `fetch` carries `Origin:
+   * null` — which a cross-origin HDIO server's CORS rejects, so a
+   * worker-side callback never completes. On success the minted
+   * `{access, refresh}` pair is the only token data handed to the
+   * worker (`oidc-tokens`, held in memory there for the authed
+   * document/query requests) and `?code&state` is stripped; a spent
+   * `state` (401) restarts at the IdP; any other failure surfaces
+   * once. The reentrancy guard still permits exactly one navigation.
+   *
+   * @param code - The `code` query param the IdP returned.
+   * @param state - The single-use `state` query param.
+   * @private
+   */
+  #runExchange = async (
+    code: string,
+    state: string,
+  ): Promise<void> => {
+    const result = await exchangeCode(
+      this.host ?? "",
+      this.tenant ?? "",
+      code,
+      state,
+    );
+    if (result.status === "ok") {
+      this.#endpoint?.postMessage({
+        type: "oidc-tokens",
+        data: { access: result.access, refresh: result.refresh },
+      });
+      nav.strip(originPathname(nav.href()));
+      return;
+    }
+    if (result.status === "stale") {
+      this.#navigating = true;
+      nav.navigate(
+        loginUrl(this.host ?? "", this.tenant ?? "", nav.href()),
+      );
+      return;
+    }
+    console.error("hdml-io auth failed:", result.detail);
   };
 
   /**

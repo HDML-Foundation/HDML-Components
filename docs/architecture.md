@@ -140,9 +140,10 @@ registry }` are **closure** state (one endpoint, one client), not module globals
   subscription, driving the reactive query engine (see [The query leg](#the-query-leg) below).
 
 The message envelope is a discriminated union on `type` (RFC §2.5) — inbound `props` /
-`html` / `oidc-callback` / `subscribe` / `unsubscribe`, outbound `auth` / `result` /
-`error`. All are routed after Step 07. See
-[docs/hdio-client.md](hdio-client.md#worker-message-protocol).
+`html` / `oidc-tokens` / `subscribe` / `unsubscribe`, outbound `result` / `error`. (The OIDC
+exchange runs on the main thread — a `blob:`-Worker `fetch` is CORS-rejected — so it only
+hands the minted pair in via `oidc-tokens`; there is no `auth` reply.) All are routed after
+Step 07. See [docs/hdio-client.md](hdio-client.md#worker-message-protocol).
 
 ### Parse + serialize
 
