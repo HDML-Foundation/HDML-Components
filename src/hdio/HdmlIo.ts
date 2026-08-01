@@ -434,6 +434,14 @@ export class HdmlIo extends LitElement {
         this.#navigating = true;
         nav.navigate(action.url);
         break;
+      case "auth-error":
+        // A non-recoverable IdP error (e.g. `access_denied`, or a
+        // silent-auth failure that already fell back). Strip it off
+        // the URL so a reload does not re-surface it, and log once —
+        // no retry.
+        nav.strip(originPathname(nav.href()));
+        console.error("hdml-io oidc error:", action.error);
+        break;
       case "inert":
         break;
     }

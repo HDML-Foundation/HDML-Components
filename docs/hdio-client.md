@@ -48,18 +48,34 @@ attribute-change handler is an **ordered, reentrancy-guarded** state machine (a 
 1. **`?code&state` on the URL** → post `oidc-callback` to the worker (it `exchangeOidcCode`s);
    on the `auth {ok:true}` reply the element `history.replaceState`s to strip the params and
    proceeds authed.
-2. else **`token` set** → the `props` path forwards it (token mode; the worker redeems).
-3. else **`mode === "oidc"`** → `location.assign` to
+2. else **`?error` on the URL** (the IdP bounced back an error, not a code) → if it is one of
+   the four OIDC-standard "interaction required" codes (`login_required` /
+   `interaction_required` / `consent_required` / `account_selection_required`) the element
+   **retries once interactively** — `navigate` to `/auth/login?…&interactive=1`, which tells
+   the server to suppress the tenant's configured `prompt` so the flow cannot loop. Any other
+   error (e.g. `access_denied`) is an `auth-error`: strip the params and dev-log once, **no
+   retry**.
+3. else **`token` set** → the `props` path forwards it (token mode; the worker redeems).
+4. else **`mode === "oidc"`** → `location.assign` to
    `` `${host}/{tenant}/api/v1/auth/login?redirect_uri=<origin+pathname>` `` — the login target
    is `host`-based like every call; only the `redirect_uri` **value** is the app's own page
    (URL-encoded, no query). A **reentrancy guard** (`#navigating`) ensures the flurry of
    `attributeChangedCallback` fires (`mode`/`token` in either order) triggers **exactly one**
    navigation.
-4. else **inert**.
+5. else **inert**.
 
 A stale reload (a spent single-use `state` → the callback 401s) comes back as `auth
 {ok:false, reason:"stale"}`, which the state machine treats as "start over" and re-navigates —
 **not** a hard error. An `auth {ok:false, reason:"error"}` is surfaced once (dev-log), no loop.
+
+**Silent auto-login.** Because tokens are in-memory only, every reload re-runs step 4; with
+no server-side `prompt` the IdP shows its account chooser each time. Set `prompt: "none"` in
+the tenant's OIDC SSO config (server-side —
+[HDIO-Server `docs/auth.md`](../../HDIO-Server/docs/auth.md#silent-auto-login-promptnone)) and
+a reload with a live IdP session returns a code with no UI. When the session is absent/expired
+the IdP returns `login_required` (etc.), and step 2's interactive retry takes over — so first
+login still works. This is a **server-configured, client-cooperative** flow: the component
+needs no attribute, it just reacts to the `?error` the `prompt=none` redirect can produce.
 
 > **Deployment requirement.** The exact `redirect_uri` (`location.origin + location.pathname`)
 > must be **pre-registered** in the tenant's SSO config, or the server answers `403

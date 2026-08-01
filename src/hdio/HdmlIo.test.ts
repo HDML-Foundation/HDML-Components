@@ -99,6 +99,24 @@ suite("HdmlIo auth state machine", () => {
     await tick(60);
     assert.equal(navCalls.length, 1);
   });
+
+  test("a silent-auth failure retries interactively", async () => {
+    search = "?error=login_required&state=s";
+    mount({ host: "", tenant: "t", mode: "oidc" });
+    await until(() => navCalls.length > 0);
+    assert.equal(navCalls.length, 1);
+    assert.include(navCalls[0], "/t/api/v1/auth/login");
+    assert.include(navCalls[0], "interactive=1");
+    assert.deepEqual(stripCalls, []);
+  });
+
+  test("a non-silent IdP error strips, no navigate", async () => {
+    search = "?error=access_denied&state=s";
+    mount({ host: "", tenant: "t", mode: "oidc" });
+    await until(() => stripCalls.length > 0);
+    assert.deepEqual(stripCalls, [HREF]);
+    assert.deepEqual(navCalls, []);
+  });
 });
 
 // The settled D8 event names (window.HDML_CONFIG defaults, §8).
