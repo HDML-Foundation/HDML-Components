@@ -179,14 +179,18 @@ detaches) or the `string[]` itself for an ordinal column (no buffer to transfer)
   debounced re-`props` carrying the same single-use code does not redeem it twice (§3.2,
   B2); the guard resets only when the identity changes. A failed redeem is logged, not
   re-thrown.
-- **`html`** — calls `parse(state, html)` (the bottom-up Merkle namer — see [docs/architecture.md#parse--serialize](architecture.md#parse--serialize)) then `client.postDocument(state.data)`, folding the returned 201 body via `recordStored(state.registry, body)`. `postDocument` internally awaits any in-flight redeem (§3.2), so an `html` that races the auth round-trip still posts with a real `Bearer`. `parse` re-names and re-packs the **whole** document every call (no dedup — every element is re-posted; the server idempotent-skips already-present keys). `state` is closure-scoped and holds the `ref → {key, stored}` registry (keyed by local ref `hdml-{type}={name}`) that survives for the endpoint's lifetime — the substrate for the post→confirm→query handshake (RFC 004 Slice E §8.6, E-L).
+- **`html`** — calls `parse(state, html)` (the bottom-up Merkle namer — see [docs/architecture.md#parse--serialize](architecture.md#parse--serialize)) then `client.postDocument(state.data)`, folding the returned 201 body via `recordStored(state.registry, body)`. `postDocument` internally awaits any in-flight redeem (§3.2), so in **token** mode an `html` that races the auth round-trip still posts with a real `Bearer`. **OIDC** mode has no in-flight redeem to await, so a load-time `html` (fired by `hdom-changed` before the async exchange resolves) throws "not authenticated"; the `oidc-tokens` handler below re-POSTs once the pair lands. `parse` re-names and re-packs the **whole** document every call (no dedup — every element is re-posted; the server idempotent-skips already-present keys). `state` is closure-scoped and holds the `ref → {key, stored}` registry (keyed by local ref `hdml-{type}={name}`) that survives for the endpoint's lifetime — the substrate for the post→confirm→query handshake (RFC 004 Slice E §8.6, E-L).
 - **`oidc-tokens`** — the OIDC exchange runs on the **main thread** now (§3.3): a `blob:`-URL
   worker's `fetch` carries `Origin: null`, which a cross-origin HDIO server's CORS rejects, so
   the worker cannot fetch `/auth/callback` itself. The main thread does the exchange and hands
   the minted `{access, refresh}` here; the worker adopts it via `client.setTokens(access,
   refresh)` for the authed document/query requests. It is **stashed** in closure state so a
   client rebuilt by a racing `props` re-adopts it (the exchange fetch and `props` are
-  unordered), and cleared on a genuine identity change.
+  unordered), and cleared on a genuine identity change. Adopting the pair also **re-POSTs the
+  current document** (the shared post-and-fold path): the load-time `html`→`postDocument` raced
+  ahead of the async tokens and threw "not authenticated", and nothing else re-posts, so this
+  re-POST is what actually stores the doc and releases the gated queries — the OIDC analogue of
+  token mode's redeem → `#pending` → awaited POST. A no-op until a document has been parsed.
 
 - **`subscribe` / `unsubscribe`** — drive the reactive query engine (Step 07, D). A
   `subscribe {id, ref, column, raw?}` joins the `(ref, column)` to its frame (keyed by the

@@ -616,6 +616,33 @@ export function createHandler(
     frames.delete(frame.ref);
   }
 
+  // POST the whole document and fold the 201 into the registry
+  // (004 Slice E §8.6). Shared by the `html` path and `oidc-tokens`:
+  // in OIDC mode the minted pair arrives asynchronously, after the
+  // load-time hdom-changed→postDocument has already failed with
+  // `#access` null ("not authenticated"), so adopting the tokens must
+  // re-drive the POST — else the ref never becomes `stored` and every
+  // query stays gated until it times out. A no-op until a document is
+  // parsed and a client exists; a re-POST is harmless (the server
+  // idempotent-skips present keys, §8.6).
+  function postAndFold(): void {
+    if (client === null || state.data.length === 0) {
+      return;
+    }
+    client
+      .postDocument(state.data)
+      .then((body) => {
+        recordStored(state.registry, body);
+        // A 201 may flip a gated ref `stored` → release it (D4).
+        releaseGatedFrames();
+      })
+      .catch((error: Error) => {
+        console.error(error.message);
+        // One rejection fails every gated ref at once (D4).
+        failGatedFrames(error.message);
+      });
+  }
+
   return function handle(ev: MessageEvent): void {
     const msg = <InboundMessage>ev.data;
     if (!msg || !msg.type) {
@@ -661,18 +688,7 @@ export function createHandler(
       }
       case "html":
         state = parse(state, msg.data.html);
-        client
-          ?.postDocument(state.data)
-          .then((body) => {
-            recordStored(state.registry, body);
-            // A 201 may flip a gated ref `stored` → release it (D4).
-            releaseGatedFrames();
-          })
-          .catch((error: Error) => {
-            console.error(error.message);
-            // One rejection fails every gated ref at once (D4).
-            failGatedFrames(error.message);
-          });
+        postAndFold();
         break;
       case "oidc-tokens":
         // The OIDC exchange ran on the main thread (§3.3) — the
@@ -683,6 +699,13 @@ export function createHandler(
         // `props` re-adopts it.
         injectedTokens = msg.data;
         client?.setTokens(msg.data.access, msg.data.refresh);
+        // The load-time hdom-changed→postDocument raced ahead of
+        // these tokens and threw "not authenticated" (no `#access`
+        // yet), and nothing else re-POSTs. Re-drive it now that the
+        // client is authed so the ref stores and gated queries can
+        // run. (Token mode never hits this: its redeem sets
+        // `#pending`, which the POST awaits.)
+        postAndFold();
         break;
       case "subscribe": {
         const { id, ref, column, raw } = msg.data;

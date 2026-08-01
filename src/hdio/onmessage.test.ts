@@ -255,6 +255,51 @@ suite("hdio createHandler", () => {
     handle(propsEvent("h", "acme", ""));
     assert.deepEqual(calls, [["access-2", "refresh-2"]]);
   });
+
+  test("oidc-tokens re-POSTs the load-raced doc", async () => {
+    const posts: number[] = [];
+    HdioClient.prototype.setTokens = function () {
+      return undefined;
+    };
+    HdioClient.prototype.postDocument = function () {
+      posts.push(1);
+      // The load-time POST (pre-tokens, `#access` null) rejects
+      // "not authenticated"; the re-POST after adoption resolves.
+      return posts.length === 1
+        ? Promise.reject(new Error("not authenticated"))
+        : Promise.resolve({ stored: [], ddl: [] });
+    };
+    const handle = createHandler(() => undefined);
+    handle(propsEvent("h", "acme", ""));
+    // hdom-changed fires the POST before the OIDC pair arrives.
+    handle(htmlEvent(gateDoc));
+    await tick();
+    assert.equal(posts.length, 1);
+    // Adopting the pair re-drives the POST now that we are authed,
+    // so the ref stores and gated queries can run (the OIDC analogue
+    // of token mode's redeem→`#pending`→awaited POST).
+    handle(tokensEvent("access-1", "refresh-1"));
+    await tick();
+    assert.equal(posts.length, 2);
+  });
+
+  test("oidc-tokens with no parsed doc does not POST", async () => {
+    let posts = 0;
+    HdioClient.prototype.setTokens = function () {
+      return undefined;
+    };
+    HdioClient.prototype.postDocument = function () {
+      posts += 1;
+      return Promise.resolve({ stored: [], ddl: [] });
+    };
+    const handle = createHandler(() => undefined);
+    handle(propsEvent("h", "acme", ""));
+    // No `html` yet → nothing to re-POST; adoption must not send an
+    // empty document.
+    handle(tokensEvent("access-1", "refresh-1"));
+    await tick();
+    assert.equal(posts, 0);
+  });
 });
 
 type ResultMsg = Extract<OutboundMessage, { type: "result" }>;
