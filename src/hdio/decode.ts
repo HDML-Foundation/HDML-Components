@@ -26,12 +26,20 @@ export type ColumnType =
   | { kind: "timestamp"; unit: "ms"; zone?: string };
 
 /**
- * One decoded column: its name, its D9 {@link ColumnType} tag, and
- * its values in a render-ready shape. Numeric/temporal values are a
- * typed array (transferable via `.buffer` in Step 07); strings are a
- * `string[]`; 64-bit integers are a `BigInt64Array`. The shape is
- * driven off the self-describing Arrow result schema, never the
- * authored frame `type`.
+ * One decoded column: its name, its D9 {@link ColumnType} tag, its
+ * values in a render-ready shape, and — only when the column has any
+ * null — a row-null {@link nullMask} `nulls` bitmask.
+ * Numeric/temporal values are a typed array (transferable via
+ * `.buffer` in Step 07); strings are a `string[]`; 64-bit integers
+ * are a `BigInt64Array`. The shape is driven off the self-describing
+ * Arrow result schema, never the authored frame `type`.
+ *
+ * A typed array cannot carry `null` (every slot is a fixed-width
+ * number), so `nulls` is the sole faithful null carrier for
+ * numeric/temporal columns — without it a null reads back as its
+ * zero-fill (`0` / `0n`) or the temporal `NaN` fill,
+ * indistinguishable from a real value. It is authoritative across
+ * every kind (a `string[]` may additionally hold inline `null`).
  */
 export interface DecodedColumn {
   name: string;
@@ -42,6 +50,7 @@ export interface DecodedColumn {
     | BigInt64Array
     | string[]
     | number[];
+  nulls?: Uint8Array;
 }
 
 /**
@@ -67,13 +76,45 @@ export function decode(
       continue;
     }
     const type = columnType(vector.type as arrow.DataType);
+    const nulls = nullMask(vector, vector.length);
     columns.push({
       name: table.schema.fields[c].name,
       type,
       values: columnValues(vector, type),
+      ...(nulls ? { nulls } : {}),
     });
   }
   return columns;
+}
+
+/**
+ * The row-null bitmask for a column (D9 null fidelity): bit `i` set =
+ * row `i` is null, `ceil(n/8)` bytes, LSB-first within each byte
+ * (`nulls[i >> 3] & (1 << (i & 7))`). Built only when the column
+ * actually has nulls (`vector.nullCount > 0`), so a fully-valid
+ * column returns `undefined` and adds no buffer — the common case
+ * pays nothing. Reads through Arrow's `isValid` (chunk-safe) rather
+ * than a raw per-chunk validity buffer, so a multi-chunk vector is
+ * handled by position.
+ *
+ * @param vector - The Arrow column vector.
+ * @param n - Its row count (`vector.length`).
+ * @returns The 1-bit-per-row null mask, or undefined when none null.
+ */
+function nullMask(
+  vector: arrow.Vector,
+  n: number,
+): Uint8Array | undefined {
+  if (vector.nullCount === 0) {
+    return undefined;
+  }
+  const mask = new Uint8Array((n + 7) >> 3);
+  for (let i = 0; i < n; i++) {
+    if (!vector.isValid(i)) {
+      mask[i >> 3] |= 1 << (i & 7);
+    }
+  }
+  return mask;
 }
 
 /**

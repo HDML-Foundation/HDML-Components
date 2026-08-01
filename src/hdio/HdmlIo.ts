@@ -32,8 +32,10 @@ export const endpoints = {
 /**
  * One decoded column delivered back from the worker (RFC §5.6, D7) —
  * the `data` of a `result` message: the `(ref, column)` correlation,
- * the render-ready `domain` + `type`, and the raw `values` when some
- * subscriber wanted them.
+ * the render-ready `domain` + `type`, the raw `values` when some
+ * subscriber wanted them, and the row-null `nulls` bitmask when the
+ * column has nulls (the faithful null carrier for a typed-array
+ * column). `#fanOut` passes the payload through unchanged.
  */
 type ResultPayload = Extract<
   OutboundMessage,

@@ -141,4 +141,33 @@ suite("decode (Arrow IPC → typed columns)", () => {
     assert.instanceOf(col.values, BigInt64Array);
     assert.deepEqual(Array.from(col.values), [10n, 20n, 30n]);
   });
+
+  test("nulls → mask; valid rows decode; clean col omits it", () => {
+    const cols = decode(
+      ipcOf({
+        f: arrow.vectorFromArray(
+          [1.5, null, 3.5],
+          new arrow.Float64(),
+        ),
+        s: arrow.vectorFromArray(["a", null, "c"], new arrow.Utf8()),
+        clean: arrow.vectorFromArray([1, 2, 3], new arrow.Int32()),
+      }),
+    );
+
+    // Row 1 null → bit 1 set in byte 0 (0b010); rows 0/2 valid.
+    const f = pick(cols, "f");
+    assert.instanceOf(f.nulls, Uint8Array);
+    assert.equal(f.nulls[0], 0b010);
+    // The null slot reads back as its zero-fill; valid rows decode.
+    assert.equal((f.values as Float64Array)[0], 1.5);
+    assert.equal((f.values as Float64Array)[2], 3.5);
+
+    // A string column carries the mask too (kind-uniform).
+    const s = pick(cols, "s");
+    assert.instanceOf(s.nulls, Uint8Array);
+    assert.equal(s.nulls[0], 0b010);
+
+    // A fully-valid column omits the mask entirely.
+    assert.isUndefined(pick(cols, "clean").nulls);
+  });
 });

@@ -68,4 +68,43 @@ suite("domainFor (type-driven scale domain)", () => {
       value: ["b", "a"],
     });
   });
+
+  test("extent skips null rows (no zero-fill drag)", () => {
+    const col: DecodedColumn = {
+      name: "n",
+      type: { kind: "number" },
+      // row 0 is a null zero-fill; the real min is 5, not 0.
+      values: Float64Array.from([0, 5, 9]),
+      nulls: Uint8Array.from([0b001]),
+    };
+    assert.deepEqual(domainFor(col), {
+      kind: "extent",
+      value: [5, 9],
+    });
+  });
+
+  test("all-null numeric column → [NaN, NaN]", () => {
+    const col: DecodedColumn = {
+      name: "n",
+      type: { kind: "number" },
+      values: Float64Array.from([0, 0]),
+      nulls: Uint8Array.from([0b011]),
+    };
+    const value = domainFor(col).value as [number, number];
+    assert.isTrue(Number.isNaN(value[0]));
+    assert.isTrue(Number.isNaN(value[1]));
+  });
+
+  test("ordinal drops null categories", () => {
+    const col: DecodedColumn = {
+      name: "s",
+      type: { kind: "string" },
+      values: ["a", null, "b", "a"] as unknown as string[],
+      nulls: Uint8Array.from([0b0010]),
+    };
+    assert.deepEqual(domainFor(col), {
+      kind: "ordinal",
+      value: ["a", "b"],
+    });
+  });
 });

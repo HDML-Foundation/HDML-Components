@@ -1,0 +1,153 @@
+<!doctype html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>HDML Model Test Page (bin)</title>
+    <script defer src="../../bin/index.min.js"></script>
+  </head>
+  <body>
+    <h1>HDML Input-Output Test Page (bin)</h1>
+
+    <hdml-io
+      host="http://localhost:8888"
+      tenant="tenant-a"
+      mode="oidc">
+    </hdml-io>
+
+    <script>
+      (() => {
+        // ── config ───────────────────────────────────────────────────────
+        const cfg = window.HDML_CONFIG || {};
+        const REQUEST_EVENT = cfg.requestEvent || "hdml-io-request";
+        const READY_EVENT   = cfg.readyEvent   || "hdml-io-ready";
+
+        const REF = "/maang.html?hdml-frame=maang_stock_frame";   // static ref → server artifact
+        const COLUMNS = [
+          "amazon_open",
+          "amazon_high",
+          "amazon_low",
+          "amazon_close",
+          "amazon_adj_close",
+          "amazon_volume",
+        ];
+        const RETRY_MS = 1500, MAX_TRIES = 20;      // ~30s of retries before giving up
+
+        let tries = 0, ac = null, timer = null, done = false;
+        const results = {};
+
+        // A result's raw `values` arrive as a zero-copy transfer descriptor
+        // { buffer, byteOffset, byteLength } (numeric/temporal) or a plain
+        // string[] (ordinal). `nulls`, when present, is the same kind of
+        // descriptor over a 1-bit-per-row mask (bit set = null). This rebuilds
+        // the values and boxes them into a (value | null)[] with real `null`
+        // at the masked rows — the shape D3's `.defined()` wants, and the only
+        // way a null is told apart from a real 0 / "" / NaN.
+        function readColumn(r) {
+          const mask = r.nulls
+            ? new Uint8Array(r.nulls.buffer, r.nulls.byteOffset, r.nulls.byteLength)
+            : null;
+          const isNull = (i) => !!mask && (mask[i >> 3] & (1 << (i & 7))) !== 0;
+
+          let raw;
+          if (Array.isArray(r.values)) {
+            raw = r.values;                                   // string[]
+          } else {
+            const Ctor = r.type.kind === "bigint" ? BigInt64Array : Float64Array;
+            raw = new Ctor(
+              r.values.buffer,
+              r.values.byteOffset,
+              r.values.byteLength / Ctor.BYTES_PER_ELEMENT,
+            );
+          }
+
+          const out = new Array(raw.length);
+          for (let i = 0; i < raw.length; i++) {
+            out[i] = isNull(i) ? null : raw[i];
+          }
+          return out;
+        }
+
+        function stop() {
+          done = true;
+          if (timer) { clearInterval(timer); timer = null; }
+          if (ac) ac.abort();                        // unsubscribe every column
+        }
+
+        function report() {
+          const n = Math.min(...COLUMNS.map((c) => results[c].values.length));
+          const rows = [];
+          for (let i = 0; i < Math.min(n, 20); i++) {
+            const row = {};
+            for (const c of COLUMNS) row[c] = results[c].values[i];
+            rows.push(row);
+          }
+          console.log("[hdml] ✅ all amazon columns:", results);
+          console.table(rows);
+          console.log(`[hdml] ${n} rows total (showing up to 20)`);
+        }
+
+        // One attempt = a fresh subscription batch. Aborting the previous
+        // batch tears the frame down (subs → 0), so the new batch builds a
+        // fresh frame that actually re-queries — a same-columns re-eval on a
+        // live frame is deduped by `generation` and would NOT re-submit.
+        function attempt() {
+          if (done) return;
+          if (++tries > MAX_TRIES) {
+            console.warn(
+              `[hdml] gave up after ${MAX_TRIES} tries — still no data. You are ` +
+              `almost certainly NOT authenticated: check that GET /auth/callback ` +
+              `returned 200 and the URL lost ?code&state.`,
+            );
+            stop();
+            return;
+          }
+          if (ac) ac.abort();
+          ac = new AbortController();
+          for (const column of COLUMNS) {
+            document.dispatchEvent(new CustomEvent(REQUEST_EVENT, {
+              detail: {
+                id: `amazon-${column}-try${tries}`,   // fresh id each try → forces re-eval
+                ref: REF,
+                column,
+                raw: true,                             // include the actual values array
+                signal: ac.signal,
+                deliver: (r) => {
+                  if (done) return;
+                  console.log("result:", r);
+                  const values = readColumn(r);   // typed → boxed, nulls applied
+                  const nulls =
+                    values.filter((v) => v === null).length;
+                  results[r.column] = { type: r.type, values };
+                  console.log(
+                    `[hdml] ${r.column} (${r.type?.kind ?? r.type}) —`,
+                    `${values.length} values, ${nulls} null`,
+                    values,
+                  );
+                  if (Object.keys(results).length === COLUMNS.length) {
+                    report();
+                    stop();
+                  }
+                },
+              },
+            }));
+          }
+          console.log(`[hdml] query attempt ${tries}/${MAX_TRIES}…`);
+        }
+
+        // Symmetric handshake (RFC §5.8): fire on ready in case <hdml-io>
+        // connects after this script, and start an interval so the query
+        // keeps retrying until the OIDC token lands in the worker.
+        document.addEventListener(READY_EVENT, () => { if (!done) attempt(); });
+        attempt();
+        timer = setInterval(attempt, RETRY_MS);
+
+        window.__amazonQueryAbort = () => { stop(); console.log("[hdml] aborted"); };
+        console.log(
+          "[hdml] amazon query armed (auto-retries until authenticated) — " +
+          "call __amazonQueryAbort() to stop",
+        );
+      })();
+    </script>
+  </body>
+</html>

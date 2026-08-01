@@ -34,10 +34,55 @@ export function domainFor(col: DecodedColumn): Domain {
   if (col.type.kind === "string") {
     return {
       kind: "ordinal",
-      value: [...new Set(col.values as string[])],
+      value: distinct(col.values as (string | null)[], col.nulls),
     };
   }
-  return { kind: "extent", value: extent(col.values) };
+  return { kind: "extent", value: extent(col.values, col.nulls) };
+}
+
+/**
+ * Whether row `i` is null per the column's optional {@link
+ * DecodedColumn.nulls} bitmask (bit `i` set = null, LSB-first). No
+ * mask = no nulls.
+ *
+ * @param nulls - The optional row-null bitmask.
+ * @param i - The row index.
+ * @returns `true` when row `i` is null.
+ */
+function isNull(nulls: Uint8Array | undefined, i: number): boolean {
+  return (
+    nulls !== undefined && (nulls[i >> 3] & (1 << (i & 7))) !== 0
+  );
+}
+
+/**
+ * The insertion-order-stable distinct list for an ordinal column,
+ * skipping null rows (a null is not an axis category) — the mask is
+ * authoritative, and an inline `null`/`undefined` value is dropped
+ * too.
+ *
+ * @param values - The string values (may hold inline null).
+ * @param nulls - The optional row-null bitmask.
+ * @returns The distinct non-null values, first-seen order.
+ */
+function distinct(
+  values: (string | null)[],
+  nulls: Uint8Array | undefined,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (let i = 0; i < values.length; i++) {
+    if (isNull(nulls, i)) {
+      continue;
+    }
+    const v = values[i];
+    if (v === null || v === undefined || seen.has(v)) {
+      continue;
+    }
+    seen.add(v);
+    out.push(v);
+  }
+  return out;
 }
 
 /**
@@ -45,25 +90,39 @@ export function domainFor(col: DecodedColumn): Domain {
  * one linear pass — no spread, since the column can be large. A
  * `bigint` column widens to `number` to fit the RFC's `[number,
  * number]` shape; values beyond 2^53 lose integer precision at the
- * extremes, which is acceptable for a scale domain. An empty column
+ * extremes, which is acceptable for a scale domain.
+ *
+ * Null rows are skipped via the {@link DecodedColumn.nulls} mask, so
+ * a null's zero-fill (`0` / `0n`) or temporal `NaN` fill never drags
+ * the extent — the exact `[0, …]` corruption a full-outer join
+ * produced before the mask existed. An empty or all-null column
  * yields `[NaN, NaN]`.
  *
  * @param values - The decoded numeric/temporal values.
- * @returns The `[min, max]` extent.
+ * @param nulls - The optional row-null bitmask.
+ * @returns The `[min, max]` extent over the non-null values.
  */
-function extent(values: DecodedColumn["values"]): [number, number] {
-  if (values.length === 0) {
-    return [NaN, NaN];
-  }
-  let min = Number(values[0]);
-  let max = min;
-  for (let i = 1; i < values.length; i++) {
-    const v = Number(values[i]);
-    if (v < min) {
-      min = v;
+function extent(
+  values: DecodedColumn["values"],
+  nulls: Uint8Array | undefined,
+): [number, number] {
+  let min = NaN;
+  let max = NaN;
+  for (let i = 0; i < values.length; i++) {
+    if (isNull(nulls, i)) {
+      continue;
     }
-    if (v > max) {
+    const v = Number(values[i]);
+    if (Number.isNaN(min)) {
+      min = v;
       max = v;
+    } else {
+      if (v < min) {
+        min = v;
+      }
+      if (v > max) {
+        max = v;
+      }
     }
   }
   return [min, max];

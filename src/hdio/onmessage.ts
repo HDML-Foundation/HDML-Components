@@ -77,7 +77,10 @@ export type InboundMessage =
  * subscriber wants them. Numeric/temporal `values` cross as a
  * transferable `{buffer, byteOffset, byteLength}` (A4, in the
  * transfer list); a `string[]` column has no buffer, so it rides the
- * structured clone as-is.
+ * structured clone as-is. `nulls` — present only when the column has
+ * nulls and `values` are pulled — is the row-null bitmask (1 bit/row,
+ * bit set = null), transferred zero-copy alongside the values buffer;
+ * it is the sole faithful null carrier for a typed-array column.
  */
 export type OutboundMessage =
   | {
@@ -100,6 +103,11 @@ export type OutboundMessage =
               byteLength: number;
             }
           | string[];
+        nulls?: {
+          buffer: ArrayBuffer;
+          byteOffset: number;
+          byteLength: number;
+        };
         domain: Domain;
         type: ColumnType;
       };
@@ -108,6 +116,14 @@ export type OutboundMessage =
       type: "error";
       data: { ref?: string; message: string };
     };
+
+// The transferable row-null mask descriptor on a `result` (derived so
+// it stays in sync with the message type). Undefined = the column has
+// no nulls (the mask is omitted, not empty).
+type OutboundResultNulls = Extract<
+  OutboundMessage,
+  { type: "result" }
+>["data"]["nulls"];
 
 // Poll cadence (D6, §5.6): short-first, doubling to a ceiling, with
 // a wall-clock cap past which the job is declared timed out.
@@ -481,7 +497,10 @@ export function createHandler(
 
   // One `result` for one column: `domain` + `type` always; `values`
   // only when raw is wanted, transferred zero-copy for a typed array
-  // (A4) or cloned for a `string[]` (no buffer to transfer).
+  // (A4) or cloned for a `string[]` (no buffer to transfer). When the
+  // column has nulls, the row-null bitmask rides along, transferred
+  // zero-copy too (D9 null fidelity) — the only faithful null carrier
+  // for a typed-array column.
   function emitResult(
     ref: string,
     col: DecodedColumn,
@@ -494,19 +513,38 @@ export function createHandler(
       post({ type: "result", data: { ref, column, domain, type } });
       return;
     }
+    // The optional null mask transfers alongside the values (present
+    // only when the column has any null); its fresh buffer is added
+    // to the transfer list of whichever branch runs.
+    const transfer: Transferable[] = [];
+    let nulls: OutboundResultNulls;
+    if (col.nulls) {
+      const m = col.nulls;
+      nulls = {
+        buffer: m.buffer,
+        byteOffset: m.byteOffset,
+        byteLength: m.byteLength,
+      };
+      transfer.push(m.buffer);
+    }
     if (col.type.kind === "string") {
-      // Ordinal string column: no buffer to transfer — the values
-      // ride the structured clone as-is (D7).
-      post({
-        type: "result",
-        data: {
-          ref,
-          column,
-          values: col.values as string[],
-          domain,
-          type,
+      // Ordinal string column: no values buffer to transfer — the
+      // values ride the structured clone as-is (D7); only the mask
+      // (if any) transfers.
+      post(
+        {
+          type: "result",
+          data: {
+            ref,
+            column,
+            values: col.values as string[],
+            nulls,
+            domain,
+            type,
+          },
         },
-      });
+        transfer,
+      );
       return;
     }
     // Numeric/temporal: a transferable typed array (A4). A plain
@@ -517,6 +555,7 @@ export function createHandler(
       ? src
       : Float64Array.from(src as number[]);
     const buffer = view.buffer as ArrayBuffer;
+    transfer.push(buffer);
     post(
       {
         type: "result",
@@ -528,11 +567,12 @@ export function createHandler(
             byteOffset: view.byteOffset,
             byteLength: view.byteLength,
           },
+          nulls,
           domain,
           type,
         },
       },
-      [buffer],
+      transfer,
     );
   }
 

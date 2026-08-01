@@ -553,4 +553,63 @@ suite("hdio query engine (D1/D4/D5/D6/D7)", () => {
     assert.equal(capV.transfer[0], cvValues.buffer);
     assert.equal(cvValues.buffer.byteLength, 0);
   });
+
+  test("D9: nulls mask forwarded + transferred", async () => {
+    HdioClient.prototype.submitQuery = function () {
+      return Promise.resolve({ jobId: "j", status: "completed" });
+    };
+    HdioClient.prototype.queryResult = function () {
+      return Promise.resolve([
+        ipcBuffer({
+          v: arrow.vectorFromArray([1, null, 3], new arrow.Float64()),
+        }),
+      ]);
+    };
+    const captured: {
+      msg: OutboundMessage;
+      transfer: Transferable[];
+    }[] = [];
+    const received: OutboundMessage[] = [];
+    let resolveDone: () => void = () => undefined;
+    const done = new Promise<void>((r) => {
+      resolveDone = r;
+    });
+    const { port1, port2 } = new MessageChannel();
+    port1.onmessage = (e): void => {
+      received.push(e.data as OutboundMessage);
+      resolveDone();
+    };
+    const handle = createHandler((m, t) => {
+      captured.push({ msg: m, transfer: t ?? [] });
+      port2.postMessage(m, t ?? []);
+    });
+    handle(propsEvent("h", "acme", ""));
+    handle(subEvent("s1", STATIC_REF, "v", true));
+    await done;
+    port1.close();
+    port2.close();
+
+    // Received (deserialized) mask: row 1 null → 0b010, one byte.
+    const rv = received.filter(isResult)[0];
+    assert.isDefined(rv.data.nulls);
+    const nb = rv.data.nulls as { buffer: ArrayBuffer };
+    assert.deepEqual(Array.from(new Uint8Array(nb.buffer)), [0b010]);
+    // The null slot's value reads back as its zero-fill.
+    const vb = rv.data.values as { buffer: ArrayBuffer };
+    assert.deepEqual(
+      Array.from(new Float64Array(vb.buffer)),
+      [1, 0, 3],
+    );
+
+    // A4: both the values buffer and the mask buffer transferred.
+    const cap = captured.find(
+      (c) => isResult(c.msg) && c.msg.data.column === "v",
+    )!;
+    const capNulls = (cap.msg as ResultMsg).data.nulls as {
+      buffer: ArrayBuffer;
+    };
+    assert.lengthOf(cap.transfer, 2);
+    assert.include(cap.transfer, capNulls.buffer);
+    assert.equal(capNulls.buffer.byteLength, 0);
+  });
 });
