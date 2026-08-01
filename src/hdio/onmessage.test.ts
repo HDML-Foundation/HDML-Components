@@ -123,21 +123,65 @@ suite("hdio createHandler", () => {
     HdioClient.prototype.exchangeOidcCode = origExchange;
   });
 
-  test("props constructs a client; a second props closes it", () => {
-    let closeCount = 0;
-    HdioClient.prototype.close = function () {
-      closeCount++;
-    };
-    let postCalls = 0;
-    const post: Post = () => {
-      postCalls++;
-    };
-    const handle = createHandler(post);
-    handle(propsEvent());
-    handle(propsEvent());
-    assert.equal(closeCount, 1);
-    assert.equal(postCalls, 0);
-  });
+  test(
+    "identical props reuses the client; a changed " +
+      "host/tenant closes and rebuilds",
+    () => {
+      let closeCount = 0;
+      HdioClient.prototype.close = function () {
+        closeCount++;
+      };
+      let postCalls = 0;
+      const post: Post = () => {
+        postCalls++;
+      };
+      const handle = createHandler(post);
+      handle(propsEvent("h", "acme"));
+      // A repeat props with the same identity (the debounced
+      // attribute flurry / token-mode auth nudge) reuses the client —
+      // no close, so an in-flight redeem is never aborted.
+      handle(propsEvent("h", "acme"));
+      assert.equal(closeCount, 0);
+      // A genuine host/tenant change rebuilds, closing the old.
+      handle(propsEvent("h", "beta"));
+      assert.equal(closeCount, 1);
+      assert.equal(postCalls, 0);
+    },
+  );
+
+  test(
+    "a redundant props keeps the redeemed client usable " +
+      "(no abort, no re-auth)",
+    async () => {
+      let redeemCount = 0;
+      HdioClient.prototype.redeemHandoff = function () {
+        redeemCount++;
+        return Promise.resolve();
+      };
+      let closeCount = 0;
+      HdioClient.prototype.close = function () {
+        closeCount++;
+      };
+      let postDocCount = 0;
+      HdioClient.prototype.postDocument = function () {
+        postDocCount++;
+        return Promise.resolve({ stored: [], ddl: [] });
+      };
+      const handle = createHandler(() => undefined);
+      handle(propsEvent("h", "acme", "code-1"));
+      // The debounced re-props / auth nudge: same identity + same
+      // single-use code. The client must survive — not be closed
+      // (which would abort the in-flight redeem) nor re-redeemed
+      // (the handoff code is single-use) — so the following html
+      // still posts with a real Bearer.
+      handle(propsEvent("h", "acme", "code-1"));
+      handle(htmlEvent(""));
+      await tick();
+      assert.equal(redeemCount, 1);
+      assert.equal(closeCount, 0);
+      assert.equal(postDocCount, 1);
+    },
+  );
 
   test("html parses and posts the document; sink untouched", () => {
     let postDocCount = 0;
@@ -179,15 +223,14 @@ suite("hdio createHandler", () => {
       redeemCount++;
       return Promise.resolve();
     };
-    HdioClient.prototype.close = function () {
-      // no-op: keep the redeemed-code guard across reconstructions
-    };
+    // Same identity across all three props → the client is reused (no
+    // reconstruction), so the redeemed-code guard holds.
     const handle = createHandler(() => undefined);
     handle(propsEvent("h", "acme", "code-1"));
     handle(propsEvent("h", "acme", "code-1"));
     await tick();
     assert.equal(redeemCount, 1);
-    // A distinct handoff code redeems again.
+    // A distinct handoff code redeems again on the same client.
     handle(propsEvent("h", "acme", "code-2"));
     await tick();
     assert.equal(redeemCount, 2);

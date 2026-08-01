@@ -147,11 +147,17 @@ numeric/temporal column (the `buffer` rides the transfer list, A4; the source
 detaches) or the `string[]` itself for an ordinal column (no buffer to transfer).
 `raw:false` subscribers (a pure axis/legend) get `domain` + `type` only.
 
-- **`props`** — (re)constructs the in-Worker `HdioClient` (2-arg: `host`, `tenant`),
-  closing any prior one. In **token mode**, if `data.token` (a handoff code) is present it
-  calls `client.redeemHandoff(token)` — but **once per distinct code**: the last redeemed
-  code is retained in closure state so a debounced re-`props` carrying the same single-use
-  code does not redeem it twice (§3.2, B2). A failed redeem is logged, not re-thrown.
+- **`props`** — constructs the in-Worker `HdioClient` (2-arg: `host`, `tenant`) **only on
+  first `props` or a genuine `host`/`tenant` change**, closing the prior one; a repeat
+  `props` with the same identity (the debounced attribute flurry, the token-mode auth
+  nudge) **reuses** the live client. Rebuilding on every `props` would `close()` — i.e.
+  abort — an in-flight redeem and drop the held tokens, and the once-per-code guard would
+  then block re-auth on the replacement, leaving every POST unauthenticated. In **token
+  mode**, if `data.token` (a handoff code) is present it calls `client.redeemHandoff(token)`
+  — but **once per distinct code**: the last redeemed code is retained in closure state so a
+  debounced re-`props` carrying the same single-use code does not redeem it twice (§3.2,
+  B2); the guard resets only when the identity changes. A failed redeem is logged, not
+  re-thrown.
 - **`html`** — calls `parse(state, html)` (the bottom-up Merkle namer — see [docs/architecture.md#parse--serialize](architecture.md#parse--serialize)) then `client.postDocument(state.data)`, folding the returned 201 body via `recordStored(state.registry, body)`. `postDocument` internally awaits any in-flight redeem (§3.2), so an `html` that races the auth round-trip still posts with a real `Bearer`. `parse` re-names and re-packs the **whole** document every call (no dedup — every element is re-posted; the server idempotent-skips already-present keys). `state` is closure-scoped and holds the `ref → {key, stored}` registry (keyed by local ref `hdml-{type}={name}`) that survives for the endpoint's lifetime — the substrate for the post→confirm→query handshake (RFC 004 Slice E §8.6, E-L).
 - **`oidc-callback`** — calls `client.exchangeOidcCode(code, state)` (OIDC mode, §3.3). On
   success it posts `auth {ok:true}`; on a **stale-marked 401** (the single-use `state` already

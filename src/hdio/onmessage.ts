@@ -294,9 +294,19 @@ export function createHandler(
 
   // The last handoff code redeemed, retained across `props` so a
   // debounced re-`props` carrying the same single-use code does not
-  // redeem it twice (B2, §3.2). Distinct from the client, which is
-  // reconstructed every `props`.
+  // redeem it twice (B2, §3.2). Reset only when the connection
+  // identity changes (a fresh client redeems its own handoff).
   let redeemed: null | string = null;
+
+  // The `host\ntenant` identity of the live `client`. A repeat
+  // `props` — the debounced attribute flurry, the token-mode auth
+  // nudge (§3.3) — carries the same identity and must **reuse** the
+  // client: reconstructing it would `close()` (abort) the in-flight
+  // redeem and discard the held tokens, and the `redeemed` guard
+  // would then block re-auth on the replacement — leaving every POST
+  // unauthenticated. Only a genuine host/tenant change rebuilds (and
+  // re-redeems).
+  let identity: null | string = null;
 
   // Cross-call worker state: the last packed document bytes plus the
   // ref→key→stored registry retained for the post→confirm→query
@@ -612,10 +622,15 @@ export function createHandler(
     switch (msg.type) {
       case "props": {
         readyTimeout = readReadyTimeout(msg.data.config);
-        if (client) {
-          client.close();
+        const next = `${msg.data.host}\n${msg.data.tenant}`;
+        if (client === null || identity !== next) {
+          if (client) {
+            client.close();
+          }
+          client = new HdioClient(msg.data.host, msg.data.tenant);
+          identity = next;
+          redeemed = null;
         }
-        client = new HdioClient(msg.data.host, msg.data.tenant);
         // Token mode (B2): the `token` attribute carries the handoff
         // code; redeem it once per distinct code, silently. OIDC mode
         // carries no token — it drives `oidc-callback` below.
