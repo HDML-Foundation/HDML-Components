@@ -38,7 +38,7 @@ Full detail in [docs/development.md](docs/development.md).
 | [src/index.ts](src/index.ts) | Module entry. Side-effect imports register every custom element on load. |
 | [src/hdom/](src/hdom/) | The 11 declarative HDML elements (`HdmlConnection`, `HdmlModel`, `HdmlTable`, `HdmlField`, `HdmlJoin`, `HdmlConnective`, `HdmlFilter`, `HdmlFrame`, `HdmlFilterBy`, `HdmlGroupBy`, `HdmlSortBy`) + the shared [`HdomElement`](src/hdom/HdomElement.ts) base + `.test.ts` peers. |
 | [src/hdio/](src/hdio/) | `<hdml-io>` host element, its Web Worker entry, `onmessage` router, `parse()` (HTML → FlatBuffers via `@hdml/*`), `HdioClient` (HTTP). |
-| [html/](html/) | Static test pages served by the dev server — one per element under `html/hdom/`, two for `hdml-io` under `html/hdio/`, index at `html/index.html`. |
+| [html/](html/) | Static test pages served by the dev server — one per element under `html/hdom/`, four for `hdml-io` under `html/hdio/` (`.esm`/`.bin` build variants plus the `-token`/`-oidc` live-server auth pages), index at `html/index.html`. |
 | [tsconfig/](tsconfig/) | `base.json` + four targets: `cjs.json`, `esm.json`, `dts.json`, `tst.json`. |
 | [.esbuildrc.mjs](.esbuildrc.mjs) | Builds the `bin/index.min.js` IIFE. Includes a custom `buildWorkerPlugin` that bundles `*.worker.js` and inlines it as `const _script = "...";`. |
 | [.devrc.js](.devrc.js) · [.testrc.js](.testrc.js) | `@web/dev-server` and `@web/test-runner` configs (legacy plugin, Playwright launchers, dev/prod export conditions via `MODE` env). |

@@ -122,6 +122,20 @@ npm run dev_bin             # tsc esm --watch  &  esbuild --watch  &  wds
 `compile_esm`), while [html/hdio/hdml-io.bin.html](../html/hdio/hdml-io.bin.html) loads the
 IIFE bundle for testing the Worker-spawning code path.
 
+The two auth-mode manual pages —
+[html/hdio/hdml-io-token.bin.html](../html/hdio/hdml-io-token.bin.html) and
+[html/hdio/hdml-io-oidc.bin.html](../html/hdio/hdml-io-oidc.bin.html) — drive a live HDIO
+server rather than the test middleware. Each declares an inline `<hdml-frame>` and queries it
+by same-document ref (`?hdml-frame=<name>`), so they exercise the dynamic-document save path
+end to end, not just a static server artifact. Two things to know:
+
+- **Use `127.0.0.1`, not `localhost`, in `host`.** Behind the VS Code port forwarder
+  `localhost` resolves to `::1` first and each request stalls for ~20 s before falling back
+  to IPv4. It looks like a server, CORS, or Worker-thread hang; it is neither.
+- **The `token` attribute is a single-use handoff code** minted per run (see
+  [docs/hdio-client.md](hdio-client.md)) — the value committed in the page is a spent
+  dev-tenant code kept only as a shape example. Replace it with a fresh one before use.
+
 ## Release
 
 [scripts/release.sh](../scripts/release.sh) is **entirely commented out** — it appears to be
