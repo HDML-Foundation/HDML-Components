@@ -10,7 +10,7 @@ import type { HdioState } from "./parse";
 import { resolveQueryTarget } from "./artifact";
 import { decode } from "./decode";
 import type { ColumnType, DecodedColumn } from "./decode";
-import type { BufferRef } from "./delivery";
+import type { BufferRef, DeliveryCode } from "./delivery";
 import { domainFor } from "./reducers";
 import type { Domain } from "./reducers";
 import { HdioClient, recordStored } from "./HdioClient";
@@ -127,13 +127,21 @@ export type OutboundMessage =
         ref?: string;
         /**
          * Present when the failure belongs to a submitted generation;
-         * absent for the pre-submit D4 gate timeout. Nothing produces
-         * it yet — `#onMessage` still drops errors (RFC §7.5 delta 4,
-         * the next step) — but it lands with the type so the wire is
-         * edited once.
+         * absent for the two pre-submit failures (the D4 gate timeout
+         * and a rejected covering POST). R38: the **stamp**, not the
+         * kind, decides staleness — so a fabricated stamp on a gate
+         * timeout would make it comparable, and therefore
+         * discardable, against a later data generation.
          */
         generation?: number;
         message: string;
+        /**
+         * RFC §7.5 delta 8. The **worker** classifies, because only
+         * the worker knows which of its four failure paths fired;
+         * main-side inference from `message` is exactly the free-text
+         * string-matching delta 8 exists to abolish.
+         */
+        code: DeliveryCode;
       };
     };
 
@@ -394,6 +402,10 @@ export function createHandler(
         data: {
           ref: frame.ref,
           message: "query target not ready before timeout",
+          // Pre-submit: no generation exists to stamp, and one
+          // invented here would be comparable against a later data
+          // generation (R38).
+          code: "gate-timeout",
         },
       });
     }, readyTimeout);
@@ -478,7 +490,9 @@ export function createHandler(
           type: "error",
           data: {
             ref: frame.ref,
+            generation,
             message: final.error || "query failed",
+            code: "query-failed",
           },
         });
         return;
@@ -499,7 +513,9 @@ export function createHandler(
         type: "error",
         data: {
           ref: frame.ref,
+          generation,
           message: (error as Error).message,
+          code: "transport",
         },
       });
     }
@@ -621,12 +637,18 @@ export function createHandler(
   }
 
   // Fail every gated frame at once (D4): a whole-document POST
-  // rejection means nothing pending will ever become stored.
+  // rejection means nothing pending will ever become stored. The code
+  // is "transport", not "query-failed": no query was ever submitted —
+  // the *document* POST failed — so there is also no generation to
+  // stamp (R38).
   function failGatedFrames(message: string): void {
     frames.forEach((frame) => {
       if (frame.gateTimer !== null) {
         disarmGate(frame);
-        post({ type: "error", data: { ref: frame.ref, message } });
+        post({
+          type: "error",
+          data: { ref: frame.ref, message, code: "transport" },
+        });
       }
     });
   }

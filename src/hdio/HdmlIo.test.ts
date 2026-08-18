@@ -180,9 +180,23 @@ function feedResult(ep: FakeEndpoint, data: unknown): void {
   );
 }
 
+// Feeds one worker `error` in through the fake endpoint's onmessage.
+// A `ref` fans out to every subscriber of it; a ref-less one is
+// logged and reaches nobody (D8 §4).
+function feedError(ep: FakeEndpoint, data: unknown): void {
+  ep.onmessage?.(
+    new MessageEvent("message", {
+      data: { type: "error", data },
+    }),
+  );
+}
+
 // A no-op sink for the requests that only assert registration —
 // `deliver` is REQUIRED now, so a detail without it is rejected.
 const sink = (): void => undefined;
+
+// A second ref, for the fan-out scoping assertions.
+const REF2 = "?hdml-frame=other";
 
 suite("HdmlIo D8 discovery bus + registry", () => {
   let mounted: HdmlIo[] = [];
@@ -443,5 +457,338 @@ suite("HdmlIo D8 discovery bus + registry", () => {
       columns: {},
     });
     assert.lengthOf(got, 0);
+  });
+
+  test("an error reaches every subscriber of its ref", async () => {
+    mount({ host: "", tenant: "t" });
+    await tick(20);
+    const got1: Delivery[] = [];
+    const got2: Delivery[] = [];
+    const other: Delivery[] = [];
+    // Two subscribers of one ref on DIFFERENT columns: the failure is
+    // the frame's, not one column's, so both must hear it.
+    request({
+      id: "s1",
+      ref: REF,
+      column: "m",
+      deliver: (d: Delivery): void => {
+        got1.push(d);
+      },
+    });
+    request({
+      id: "s2",
+      ref: REF,
+      column: "d",
+      deliver: (d: Delivery): void => {
+        got2.push(d);
+      },
+    });
+    request({
+      id: "s3",
+      ref: REF2,
+      column: "m",
+      deliver: (d: Delivery): void => {
+        other.push(d);
+      },
+    });
+    feedError(ep, {
+      ref: REF,
+      generation: 4,
+      message: "kaboom",
+      code: "query-failed",
+    });
+    // Dropped on the floor before delta 4 — no consumer could ever
+    // leave :state(loading) on a failure.
+    assert.deepEqual(got1, [
+      {
+        kind: "error",
+        ref: REF,
+        column: "m",
+        message: "kaboom",
+        code: "query-failed",
+        generation: 4,
+      },
+    ]);
+    assert.lengthOf(got2, 1);
+    assert.equal(got2[0].column, "d");
+    // A subscriber of a different ref hears nothing.
+    assert.lengthOf(other, 0);
+  });
+
+  test("a ref-less error fans out to nobody", async () => {
+    mount({ host: "", tenant: "t" });
+    await tick(20);
+    const got: Delivery[] = [];
+    request({
+      id: "s1",
+      ref: REF,
+      column: "m",
+      deliver: (d: Delivery): void => {
+        got.push(d);
+      },
+    });
+    // There is no subscriber it belongs to, so it is logged, not
+    // fanned out (D8 §4).
+    feedError(ep, { message: "no ref", code: "transport" });
+    assert.lengthOf(got, 0);
+  });
+
+  test("an unstamped error arrives with no generation", async () => {
+    mount({ host: "", tenant: "t" });
+    await tick(20);
+    const got: Delivery[] = [];
+    request({
+      id: "s1",
+      ref: REF,
+      column: "m",
+      deliver: (d: Delivery): void => {
+        got.push(d);
+      },
+    });
+    // The pre-submit D4 gate timeout carries no stamp. It must NOT be
+    // defaulted to 0 or to any cached generation: R38 makes the stamp
+    // — not the kind — decide staleness, so a fabricated one would
+    // make this comparable, and therefore discardable, against a
+    // later data generation.
+    feedError(ep, {
+      ref: REF,
+      message: "query target not ready before timeout",
+      code: "gate-timeout",
+    });
+    assert.lengthOf(got, 1);
+    assert.equal(got[0].kind, "error");
+    assert.notProperty(got[0], "generation");
+    assert.isUndefined(got[0].generation);
+  });
+
+  test("a late subscriber is replayed, asynchronously", async () => {
+    mount({ host: "", tenant: "t" });
+    await tick(20);
+    const early: Delivery[] = [];
+    request({
+      id: "s1",
+      ref: REF,
+      column: "m",
+      deliver: (d: Delivery): void => {
+        early.push(d);
+      },
+    });
+    const buffer = new Float64Array([1, 2]).buffer;
+    const values = { buffer, byteOffset: 0, byteLength: 16 };
+    feedResult(ep, {
+      ref: REF,
+      generation: 5,
+      rows: 2,
+      columns: {
+        m: {
+          values,
+          domain: { kind: "extent", value: [1, 2] },
+          type: { kind: "number" },
+        },
+      },
+    });
+    assert.lengthOf(early, 1);
+
+    // A widget that mounts AFTER the delivery. The worker will never
+    // resend — evaluateFrame early-returns on an unchanged union — so
+    // without the cache this one starves forever.
+    const late: Delivery[] = [];
+    request({
+      id: "s2",
+      ref: REF,
+      column: "m",
+      deliver: (d: Delivery): void => {
+        late.push(d);
+      },
+    });
+    // Never synchronous: request → delivery is ALWAYS async (D8 §4),
+    // so a consumer never handles a `deliver` re-entering its own
+    // dispatchEvent.
+    assert.lengthOf(late, 0);
+    await Promise.resolve();
+    assert.lengthOf(late, 1);
+    assert.equal(late[0].kind, "data");
+    assert.equal(late[0].generation, 5);
+    const d = late[0] as Extract<Delivery, { kind: "data" }>;
+    assert.equal(d.rows, 2);
+    // Shared BY REFERENCE with the live delivery — the replay never
+    // re-clones a buffer.
+    const live = early[0] as Extract<Delivery, { kind: "data" }>;
+    assert.strictEqual(d.values, live.values);
+    assert.strictEqual(
+      (d.values as { buffer: ArrayBuffer }).buffer,
+      buffer,
+    );
+  });
+
+  test("a late subscriber on an uncached column", async () => {
+    mount({ host: "", tenant: "t" });
+    await tick(20);
+    feedResult(ep, {
+      ref: REF,
+      generation: 2,
+      rows: 3,
+      columns: {
+        m: {
+          domain: { kind: "extent", value: [1, 2] },
+          type: { kind: "number" },
+        },
+      },
+    });
+    const late: Delivery[] = [];
+    request({
+      id: "s1",
+      ref: REF,
+      column: "typo",
+      deliver: (d: Delivery): void => {
+        late.push(d);
+      },
+    });
+    await Promise.resolve();
+    // Replayed as an explicit `absent`, not silence — the replay path
+    // builds its slice through the SAME helper the live fan-out uses.
+    assert.deepEqual(late, [
+      {
+        kind: "absent",
+        ref: REF,
+        column: "typo",
+        generation: 2,
+        rows: 3,
+        code: "absent-column",
+      },
+    ]);
+  });
+
+  test("a same-task abort cancels the replay", async () => {
+    mount({ host: "", tenant: "t" });
+    await tick(20);
+    feedResult(ep, {
+      ref: REF,
+      generation: 1,
+      rows: 1,
+      columns: {
+        m: {
+          domain: { kind: "extent", value: [1, 1] },
+          type: { kind: "number" },
+        },
+      },
+    });
+    const got: Delivery[] = [];
+    const ctrl = new AbortController();
+    request({
+      id: "s1",
+      ref: REF,
+      column: "m",
+      signal: ctrl.signal,
+      deliver: (d: Delivery): void => {
+        got.push(d);
+      },
+    });
+    // The signal can fire in the same task as the request, before the
+    // queued microtask runs.
+    ctrl.abort();
+    await Promise.resolve();
+    assert.lengthOf(got, 0);
+  });
+
+  test("a second result overwrites the cache", async () => {
+    mount({ host: "", tenant: "t" });
+    await tick(20);
+    const column = {
+      domain: { kind: "extent", value: [1, 2] },
+      type: { kind: "number" },
+    };
+    feedResult(ep, {
+      ref: REF,
+      generation: 1,
+      rows: 1,
+      columns: { m: column },
+    });
+    feedResult(ep, {
+      ref: REF,
+      generation: 2,
+      rows: 9,
+      columns: { m: column },
+    });
+    const late: Delivery[] = [];
+    request({
+      id: "s1",
+      ref: REF,
+      column: "m",
+      deliver: (d: Delivery): void => {
+        late.push(d);
+      },
+    });
+    await Promise.resolve();
+    // One payload per ref: the newer generation replaced the older,
+    // so a late joiner never sees a superseded one.
+    assert.lengthOf(late, 1);
+    assert.equal(late[0].generation, 2);
+    assert.equal(
+      (late[0] as Extract<Delivery, { kind: "data" }>).rows,
+      9,
+    );
+  });
+
+  test("disconnect announces gone exactly once", async () => {
+    // A custom name proves the dispatch reads HDML_CONFIG, and keeps
+    // this assertion immune to a neighbouring test's teardown firing
+    // the default-named event on `document`.
+    window.HDML_CONFIG = { goneEvent: "x-gone" };
+    const seen: Event[] = [];
+    const onGone = (e: Event): void => {
+      seen.push(e);
+    };
+    const onDefault = (): void => {
+      seen.push(new Event("unexpected"));
+    };
+    document.addEventListener("x-gone", onGone);
+    document.addEventListener("hdml-io-gone", onDefault);
+    const el = mount({ host: "", tenant: "t" });
+    await tick(20);
+    el.remove();
+    document.removeEventListener("x-gone", onGone);
+    document.removeEventListener("hdml-io-gone", onDefault);
+    // The dispatch is the WHOLE assertion. The reaction — reset the
+    // adopted generation, return to :state(loading), await the next
+    // hdml-io-ready — is the consumer half, and no listener for it
+    // exists in this repo yet.
+    assert.lengthOf(seen, 1);
+    assert.equal(seen[0].type, "x-gone");
+    assert.isTrue(seen[0].bubbles);
+    assert.isTrue(seen[0].composed);
+  });
+
+  test("a reconnect replays nothing", async () => {
+    const el = mount({ host: "", tenant: "t" });
+    await tick(20);
+    feedResult(ep, {
+      ref: REF,
+      generation: 1,
+      rows: 1,
+      columns: {
+        m: {
+          domain: { kind: "extent", value: [1, 1] },
+          type: { kind: "number" },
+        },
+      },
+    });
+    el.remove();
+    // The cache is endpoint-session-scoped: a reconnect builds a new
+    // endpoint whose generation space restarts at 1, so a surviving
+    // payload would replay a generation from the old space.
+    document.body.appendChild(el);
+    await tick(20);
+    const late: Delivery[] = [];
+    request({
+      id: "s1",
+      ref: REF,
+      column: "m",
+      deliver: (d: Delivery): void => {
+        late.push(d);
+      },
+    });
+    await Promise.resolve();
+    assert.lengthOf(late, 0);
   });
 });

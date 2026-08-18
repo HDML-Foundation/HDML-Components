@@ -157,7 +157,7 @@ endpoint, one client). Both directions are a discriminated union on `type`
 | `type` | Payload | Transfer | Wired? |
 |---|---|---|---|
 | `result` | `{ref, generation, rows, columns}` | **one** list per message, carrying every typed-array `values`/`nulls` buffer across all columns | ✅ |
-| `error` | `{ref?, generation?, message}` | — | ✅ posted · ⛔ **dropped on the main thread** (delta 4) |
+| `error` | `{ref?, generation?, message, code}` | — | ✅ posted · ✅ fanned out to every subscriber of its ref (delta 4) |
 
 **The `result` is atomic per `(ref, generation)`** (D8 §1). One message carries
 **every subscribed column** of that generation, keyed by name in
@@ -206,8 +206,33 @@ transfer). `raw:false` subscribers (a pure axis/legend) get `domain` + `type` on
   `ArrayBuffer` named twice throws `DataCloneError` and loses the **whole
   generation**.
 - **`error.generation`** is present when the failure belongs to a submitted
-  generation and absent for the pre-submit D4 gate timeout. Nothing consumes it
-  yet — `#onMessage` still drops `error` messages entirely (RFC §7.5 delta 4).
+  generation and absent for the two **pre-submit** failures. That asymmetry is
+  R38 — **staleness is the stamp's business, not the kind's**: a stamped error
+  obeys the ordering rule exactly like data, while an unstamped one is current
+  by ordering and is always adopted. A fabricated stamp on a gate timeout would
+  make it comparable, and therefore discardable, against a later data
+  generation.
+- **`error.code`** is a [`DeliveryCode`](../src/hdio/delivery.ts) classified **in
+  the worker**, and it reaches the consumer verbatim. The worker classifies
+  because only the worker knows which of its four failure paths fired — all four
+  arrive main-side as `{ref, message}`, so any main-side mapping would be
+  inference from free text, exactly the string-matching delta 8 exists to
+  abolish.
+
+  | Producer | `code` | `generation` |
+  |---|---|---|
+  | `armGate`'s timer — the D4 backstop expiring | `"gate-timeout"` | **omitted** (pre-submit) |
+  | `failGatedFrames` — a covering `postDocument` **rejected** | `"transport"` | **omitted** (pre-submit) |
+  | `runQuery` — terminal job status `failed` | `"query-failed"` | the submitted generation |
+  | `runQuery` — a thrown submit / poll / fetch | `"transport"` | the submitted generation |
+
+  `failGatedFrames` is `"transport"` and not `"query-failed"`: no query was ever
+  submitted — the **document** POST failed, so nothing pending can ever become
+  stored. `"absent-column"` is produced main-side by the `absent` synthesis, and
+  **`"provider-gone"` is reserved and unproduced in v1** — the disconnect signal
+  is the `hdml-io-gone` document event, whose §7.4 reaction is a return to
+  `:state(loading)`, and also delivering an `error` would put one widget into
+  `:state(error)` and `:state(loading)` for a single cause.
 
 - **`props`** — constructs the in-Worker `HdioClient` (2-arg: `host`, `tenant`) **only on
   first `props` or a genuine `host`/`tenant` change**, closing the prior one; a repeat
@@ -240,13 +265,17 @@ transfer). `raw:false` subscribers (a pure axis/legend) get `domain` + `type` on
   off the D8 request bus (Step 08) — see [The discovery bus + subscription registry](#the-discovery-bus--subscription-registry-step-08-d7d8)
   and [The query leg](#the-query-leg-slice-d) below.
 
-`HdmlIo.ts`'s `#onMessage` still handles **only** `result` — the OIDC `strip` (ok) /
+`HdmlIo.ts`'s `#onMessage` handles `result` **and** `error` — the OIDC `strip` (ok) /
 `re-navigate` (stale) branches moved to `#runExchange` when the exchange moved main-side
 (§3.3). A `result` carries its **transferable `ArrayBuffer`s** via the transfer-list form
 `post(msg, [...buffers])` for every raw numeric/temporal column (the source buffers detach —
 RFC §2.6, A4). An `error` carries a failure reason for a frame the consumer should render
-empty rather than as a silent spinner — but it is **still dropped on the main thread**, so no
-consumer can leave `:state(loading)` on failure yet. That is RFC §7.5 delta 4.
+empty rather than as a silent spinner; it is routed to `#fanOutError`, which hands a
+`kind:"error"` delivery to **every** subscriber of that ref — whatever column each is bound
+to, since the failure is the frame's and not one column's — and **logs** a ref-less error
+rather than fanning it out, there being no subscriber it belongs to (D8 §4). Before RFC §7.5
+delta 4 these messages were dropped on the floor, so no consumer could ever leave
+`:state(loading)` on a failure.
 
 ### Column decode + scale domain (Slice D, D9/D3)
 
@@ -347,11 +376,45 @@ themselves on a `document` event bus, `<hdml-io>` registers them and drives
   (`x=month` across five lines) is **never** re-cloned per subscriber. Iteration is
   synchronous within the one receiving task — that, plus one message per generation, is what
   makes tear-freedom structural.
+- **Error fan-out (delta 4).** A worker `error {ref}` becomes a `kind:"error"` delivery for
+  **every** subscriber of that ref, carrying the wire's `code` and — only when the wire
+  carried one — its `generation`. The stamp is never defaulted to `0` or to the cached
+  generation (R38). A **ref-less** error is `console.error`-ed and fanned out to nobody.
+- **Late-join replay (delta 5).** `<hdml-io>` retains the **latest** atomic `result` per ref
+  and, when a subscriber registers for a ref that has one cached, delivers that subscriber's
+  slice from the cache. It exists because the worker **cannot** replay: `evaluateFrame`
+  early-returns on an unchanged column union, so a widget that mounts after a delivery would
+  starve forever, and the buffers detached on transfer so the worker no longer holds them.
+  Four properties are load-bearing:
+  - **Asynchronous, via `queueMicrotask`** — request → delivery is *always* async (D8 §4), so
+    a consumer never has to handle a `deliver` re-entering its own `dispatchEvent`. It is
+    scheduled after the `subscribe` post, and re-checks that the subscription is still the
+    same object before delivering: an `AbortSignal` can fire in the same task as the request.
+  - **No de-dup, deliberately** — duty 1 adopts on `generation >= latest` (`>=`, D8 §6.1),
+    which is exactly what makes replaying an already-adopted generation harmless.
+  - **The same slice the live fan-out builds** — one shared per-subscriber helper serves both,
+    so a column absent from the cached result replays as an explicit `kind:"absent"`, never
+    silence. A late column *not* in the cached union takes the ordinary path instead: the
+    widened union bumps the generation and the atomic message re-delivers everything.
+  - **One payload per ref per endpoint session, no eviction in v1** — RFC §7.5 states that
+    bound as a non-decision: it is unbounded only in ref count, and evicting would silently
+    break late-join replay for that ref until its next generation.
 - **Teardown via `AbortSignal`.** A subscriber's request carries an optional `AbortSignal`; on
   `abort` (component disconnect) `<hdml-io>` drops it from the registry and posts
   `unsubscribe {id}`. Removal alone stops delivery (the fan-out reads the registry). On
   `<hdml-io>` disconnect the request listener is removed, the endpoint is closed (the worker +
-  its tokens die, B4), and the registry is cleared.
+  its tokens die, B4), the registry **and the replay cache** are cleared — the cache is scoped
+  to the *endpoint session*, and a reconnect builds a new endpoint whose generation space
+  restarts at 1 — and `hdml-io-gone` is announced.
+- **`hdml-io-gone` (delta 7).** The symmetric counterpart of `hdml-io-ready`: dispatched on
+  `document` at disconnect, `bubbles`/`composed`, under the configurable `goneEvent` name. It
+  means *the provider is gone and its generation space has ended*. Without it the registry was
+  cleared **silently**, leaving every view painting the last generation forever. It is
+  announced **after** the listener teardown and both `clear()`s, so a consumer reacting
+  synchronously cannot re-register against a dying element. **This repo only dispatches it.**
+  The reaction — reset the adopted generation to 0, return to `:state(loading)` (§7.4: *not*
+  `:state(error)`), await the next `hdml-io-ready` — belongs to the consumer element in the
+  separate repo, and no listener for it exists here.
 
 ### The settled D8 seam — `Delivery` and `RequestDetail`
 
@@ -383,7 +446,9 @@ outward event, not the delivery mechanism.
 
 `DeliveryCode` is `"gate-timeout" | "query-failed" | "absent-column" | "transport" |
 "provider-gone"` — stable ids so a host app branches on the code and never on the prose,
-disjoint from the validator's `DiagnosticCode` space.
+disjoint from the validator's `DiagnosticCode` space. Four of the five are produced;
+`"provider-gone"` is **reserved and unproduced in v1** (the disconnect signal is the
+`hdml-io-gone` event, not a delivery).
 
 Consumers adopt by the **stamp, not the kind**: adopt iff `generation >= latest` (`>=`, so a
 future replay is idempotent), else discard **wholesale**. That is why the `error` arm's
@@ -392,10 +457,8 @@ data, while an unstamped pre-submit gate timeout is current by ordering and is a
 Every delivered payload is **immutable and non-transferable**: buffers are shared by reference
 with sibling subscribers, so copy if mutation is needed.
 
-> **The `error` arm has no producer yet.** `#onMessage` still drops worker `error` messages,
-> so nothing constructs a `kind:"error"` delivery — that is RFC §7.5 delta 4. The arm landed
-> with the rest of the union because it is one type, and because the staleness rule above is
-> only statable once `error` carries an optional `generation` beside `data`'s required one.
+The `error` arm's producer is `#onMessage` → `#fanOutError` (delta 4), and its `code` comes
+off the wire — see [the producer mapping](#worker-message-protocol) above.
 
 ### Shared config — `window.HDML_CONFIG` (§8, the sync point)
 
@@ -407,11 +470,16 @@ read, so the discovery-bus names and the D4 backstop stay in step by constructio
 | `queryReadyTimeout` | `10000` | D4 stored-gate backstop (ms), forwarded to the worker as `props.config.queryReadyTimeout` |
 | `readyEvent` | `"hdml-io-ready"` | the readiness event `<hdml-io>` announces |
 | `requestEvent` | `"hdml-io-request"` | the subscription-request event `<hdml-io>` listens for |
+| `goneEvent` | `"hdml-io-gone"` | the provider-loss event `<hdml-io>` announces at disconnect (§7.5 delta 7) |
+| `paranoidObserver` | `false` | forces the `MutationObserver` fallback on for every view, regardless of the W5 auto-detection (§5.6). **Read by `hdml-view`, not by `hdml-io`** — it lives here because `HdmlConfig` is the one type both repos read, and a key added only when its reader arrives makes the contract untestable meanwhile |
 
 `readConfig()` reads `window.HDML_CONFIG` **lazily** (each use — so a host that sets the global
 after import is still honoured) and fills these defaults; an invalid `queryReadyTimeout`
-(non-number or ≤ 0) or an empty event-name string falls back. Only `queryReadyTimeout` crosses
-into the worker (a worker has no `window`); the event names are main-thread-only.
+(non-number or ≤ 0) or an empty event-name string falls back. `paranoidObserver` is read
+**`=== true`**, not through the `||` fallback the string keys use — `cfg.paranoidObserver ||
+false` would silently take a host's truthy `"false"` string for `true`. Only
+`queryReadyTimeout` crosses into the worker (a worker has no `window`); the event names and
+`paranoidObserver` are main-thread-only.
 
 ## Query-target resolution (Slice C)
 

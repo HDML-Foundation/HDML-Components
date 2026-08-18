@@ -30,6 +30,25 @@ export interface HdmlConfig {
    * (§5.8). Default `"hdml-io-request"`.
    */
   requestEvent?: string;
+
+  /**
+   * The provider-loss event hdml-io announces on `document` at
+   * disconnect (§7.5 delta 7): the endpoint is gone, its generation
+   * space has ended, and a consumer returns to `:state(loading)`
+   * awaiting the next {@link HdmlConfig.readyEvent}. Default
+   * `"hdml-io-gone"`.
+   */
+  goneEvent?: string;
+
+  /**
+   * Forces the `MutationObserver` fallback on for every view,
+   * regardless of the W5 transition-sentinel auto-detection (§5.6).
+   * Default `false`. Its **reader is `hdml-view`**, not `hdml-io`; it
+   * lands here because `HdmlConfig` is the one type both repos read,
+   * and a key added only when its reader arrives makes the contract
+   * untestable meanwhile.
+   */
+  paranoidObserver?: boolean;
 }
 
 declare global {
@@ -46,6 +65,8 @@ const DEFAULTS: Required<HdmlConfig> = {
   queryReadyTimeout: 10000,
   readyEvent: "hdml-io-ready",
   requestEvent: "hdml-io-request",
+  goneEvent: "hdml-io-gone",
+  paranoidObserver: false,
 };
 
 /**
@@ -53,6 +74,10 @@ const DEFAULTS: Required<HdmlConfig> = {
  * Read at each use so a host that sets the global **after** import is
  * still honoured. An invalid `queryReadyTimeout` (non-number or ≤ 0)
  * falls back to the default; an empty event-name string does too.
+ *
+ * `paranoidObserver` is read `=== true`, **not** through the `||`
+ * fallback the string keys use: `cfg.paranoidObserver || false` would
+ * silently accept a host's `"false"` string as `true`.
  *
  * @returns The effective config with every field present.
  */
@@ -71,5 +96,7 @@ export function readConfig(): Required<HdmlConfig> {
     queryReadyTimeout: timeout,
     readyEvent: cfg.readyEvent || DEFAULTS.readyEvent,
     requestEvent: cfg.requestEvent || DEFAULTS.requestEvent,
+    goneEvent: cfg.goneEvent || DEFAULTS.goneEvent,
+    paranoidObserver: cfg.paranoidObserver === true,
   };
 }

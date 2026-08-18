@@ -159,9 +159,12 @@ export class HdmlIo extends LitElement {
   /**
    * Handles messages coming back from the endpoint (worker→main).
    * Only the query leg replies: a `result` fans out to the D8
-   * subscribers (§2.5, D7). The OIDC exchange now runs on the main
-   * thread (§3.3, {@link #runExchange}), so there is no `auth` reply
-   * to route here.
+   * subscribers (§2.5, D7), and an `error` fans out to every
+   * subscriber of its ref (§7.5 delta 4) — where it used to be
+   * dropped on the floor, so no consumer could ever leave
+   * `:state(loading)` on a failure. The OIDC exchange now runs on the
+   * main thread (§3.3, {@link #runExchange}), so there is no `auth`
+   * reply to route here.
    *
    * @private
    */
@@ -172,6 +175,10 @@ export class HdmlIo extends LitElement {
     }
     if (msg.type === "result") {
       this.#fanOut(msg.data);
+      return;
+    }
+    if (msg.type === "error") {
+      this.#fanOutError(msg.data);
     }
   };
 
@@ -186,6 +193,22 @@ export class HdmlIo extends LitElement {
   #subscriptions = new Map<string, Subscriber>();
 
   /**
+   * The per-ref replay cache (RFC §7.5 delta 5): `ref → the latest
+   * atomic result`. **One payload per ref per endpoint session, with
+   * no eviction in v1** — the RFC states that bound as a
+   * non-decision: it is unbounded only in ref count, and evicting
+   * would silently break late-join replay for that ref until its next
+   * generation.
+   *
+   * It exists because the worker cannot replay: `evaluateFrame`
+   * early-returns on an unchanged column union, so a widget that
+   * mounts *after* a delivery would starve forever.
+   *
+   * @private
+   */
+  #latest = new Map<string, ResultData>();
+
+  /**
    * The request-event name captured at connect (from `HDML_CONFIG`),
    * so `removeEventListener` uses the exact string `addEventListener`
    * did even if the host mutates the config mid-life.
@@ -196,10 +219,9 @@ export class HdmlIo extends LitElement {
 
   /**
    * Slices one atomic `result` out to **every** subscriber of that
-   * ref (D8 §1): a subscribed column present in `columns` becomes a
-   * `kind:"data"` delivery, one absent from it becomes an explicit
-   * `kind:"absent"` — where the worker's old `if (col)` skip left a
-   * typo'd static-ref column spinning forever.
+   * ref (D8 §1) via {@link #sliceFor}, and retains it in
+   * {@link #latest} so a subscriber that mounts later is replayed
+   * rather than starved (§7.5 delta 5).
    *
    * The per-subscriber object is fresh, but `values` / `nulls` are
    * passed **by reference**: the transfer already detached them from
@@ -214,36 +236,105 @@ export class HdmlIo extends LitElement {
    * @private
    */
   #fanOut = (data: ResultData): void => {
-    const has = Object.prototype.hasOwnProperty;
+    // Recorded whether or not any subscriber matched: a result may
+    // arrive for a ref whose only subscriber is still mounting, and
+    // that is the exact case replay exists for.
+    this.#latest.set(data.ref, data);
     this.#subscriptions.forEach((sub) => {
       if (sub.ref !== data.ref) {
         return;
       }
-      const col = has.call(data.columns, sub.column)
-        ? data.columns[sub.column]
-        : undefined;
-      if (!col) {
-        sub.deliver({
-          kind: "absent",
-          ref: data.ref,
-          column: sub.column,
-          generation: data.generation,
-          rows: data.rows,
-          code: "absent-column",
-        });
-        return;
-      }
-      sub.deliver({
-        kind: "data",
+      sub.deliver(this.#sliceFor(data, sub.column));
+    });
+  };
+
+  /**
+   * One subscriber's slice of an atomic `result` — the single
+   * implementation the live fan-out **and** the late-join replay both
+   * call, so the two can never disagree about what a delivery for
+   * `column` looks like.
+   *
+   * The lookup goes through `hasOwnProperty`: `columns` is keyed by
+   * **author-controlled** names, so a bare `data.columns[column]`
+   * returns `Object.prototype.constructor` — truthy, and not a
+   * `ColumnResult` — for a column named `constructor` / `toString` /
+   * `valueOf`, delivering `kind:"data"` with `undefined` `domain` and
+   * `type` where `kind:"absent"` is correct.
+   *
+   * @param data - The `result` message's `data`.
+   * @param column - The subscriber's bound column.
+   * @returns The `data` or `absent` delivery for that column.
+   * @private
+   */
+  #sliceFor = (data: ResultData, column: string): Delivery => {
+    const has = Object.prototype.hasOwnProperty;
+    const col = has.call(data.columns, column)
+      ? data.columns[column]
+      : undefined;
+    if (!col) {
+      return {
+        kind: "absent",
         ref: data.ref,
-        column: sub.column,
+        column,
         generation: data.generation,
         rows: data.rows,
-        values: col.values,
-        nulls: col.nulls,
-        domain: col.domain,
-        type: col.type,
-      });
+        code: "absent-column",
+      };
+    }
+    return {
+      kind: "data",
+      ref: data.ref,
+      column,
+      generation: data.generation,
+      rows: data.rows,
+      values: col.values,
+      nulls: col.nulls,
+      domain: col.domain,
+      type: col.type,
+    };
+  };
+
+  /**
+   * Fans a worker `error` out to **every** subscriber of its ref
+   * (RFC §7.5 delta 4, D8 §4) — whatever column each is bound to,
+   * since the failure is the frame's, not one column's. Iteration is
+   * synchronous, exactly like {@link #fanOut}.
+   *
+   * A **ref-less** error is logged and fanned out to nobody: there is
+   * no subscriber it belongs to (D8 §4).
+   *
+   * `generation` is forwarded **only when the wire carried one**, and
+   * is never defaulted to `0` or to the cached generation: an
+   * unstamped (pre-submit) error is current by ordering, and a
+   * fabricated stamp would make a gate timeout comparable — and so
+   * discardable — against a later data generation (R38).
+   *
+   * @param data - The `error` message's `data`.
+   * @private
+   */
+  #fanOutError = (
+    data: Extract<OutboundMessage, { type: "error" }>["data"],
+  ): void => {
+    const ref = data.ref;
+    if (typeof ref !== "string") {
+      console.error("hdml-io error:", data.message);
+      return;
+    }
+    this.#subscriptions.forEach((sub) => {
+      if (sub.ref !== ref) {
+        return;
+      }
+      const delivery: Extract<Delivery, { kind: "error" }> = {
+        kind: "error",
+        ref,
+        column: sub.column,
+        message: data.message,
+        code: data.code,
+      };
+      if (typeof data.generation === "number") {
+        delivery.generation = data.generation;
+      }
+      sub.deliver(delivery);
     });
   };
 
@@ -329,6 +420,26 @@ export class HdmlIo extends LitElement {
       type: "subscribe",
       data: { id: sub.id, ref: sub.ref, column: sub.column, raw },
     });
+    // Late-join replay (§7.5 delta 5), scheduled AFTER the subscribe
+    // so the worker leg is unaffected by it. `queueMicrotask`, never
+    // a synchronous call: request → delivery is **always** async
+    // (D8 §4), so a consumer never has to handle a `deliver`
+    // re-entering its own `dispatchEvent`. No de-dup is needed on
+    // this side — duty 1 adopts on `G >= latest` (D8 §6.1), which is
+    // exactly what makes replaying an already-adopted generation
+    // harmless.
+    const cached = this.#latest.get(sub.ref);
+    if (cached) {
+      queueMicrotask(() => {
+        // The signal can fire in the same task as the request, so
+        // re-check identity: the id may have been dropped, or even
+        // re-registered by a different subscriber, in between.
+        if (this.#subscriptions.get(sub.id) !== sub) {
+          return;
+        }
+        sub.deliver(this.#sliceFor(cached, sub.column));
+      });
+    }
   };
 
   /**
@@ -389,6 +500,31 @@ export class HdmlIo extends LitElement {
   #announceReady = () => {
     document.dispatchEvent(
       new CustomEvent(readConfig().readyEvent, {
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  };
+
+  /**
+   * Announces `hdml-io-gone` on `document` at disconnect (RFC §7.5
+   * delta 7), the symmetric counterpart of {@link #announceReady} and
+   * dispatched the same way — the configured name,
+   * `bubbles`/`composed` so it crosses a shadow boundary. Without it
+   * the registry is cleared **silently** and every view keeps
+   * painting the last generation forever.
+   *
+   * **This element only dispatches it.** The reaction — reset the
+   * adopted generation to 0, return to `:state(loading)` (RFC §7.4:
+   * *not* `:state(error)`), await the next `hdml-io-ready` — belongs
+   * to the consumer element in the separate repo, and no listener for
+   * it exists here.
+   *
+   * @private
+   */
+  #announceGone = () => {
+    document.dispatchEvent(
+      new CustomEvent(readConfig().goneEvent, {
         bubbles: true,
         composed: true,
       }),
@@ -603,8 +739,17 @@ export class HdmlIo extends LitElement {
     this.#unlistenRequests();
     this.#disableMessagable();
     // The endpoint (and the worker + tokens, B4) is gone; drop the
-    // now-orphaned subscriptions so a reconnect starts clean.
+    // now-orphaned subscriptions so a reconnect starts clean. The
+    // replay cache goes with them: it is scoped to the **endpoint
+    // session**, and a reconnect builds a new endpoint whose
+    // generation space restarts at 1, so a surviving cache would
+    // replay a generation from the old space.
     this.#subscriptions.clear();
+    this.#latest.clear();
+    // Announced last: after the listeners are gone and both maps are
+    // cleared, so a consumer that reacts synchronously cannot
+    // re-register against a dying element.
+    this.#announceGone();
     super.disconnectedCallback();
   }
 

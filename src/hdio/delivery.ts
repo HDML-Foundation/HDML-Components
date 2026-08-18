@@ -38,6 +38,21 @@ export interface BufferRef {
  * so a host app branches on the code and never on the prose. Disjoint
  * from the validator's `DiagnosticCode` space (RFC §8.1), and both
  * ride the consumer's outward `hdml-error`.
+ *
+ * Four of the five are produced, and produced **in the worker** —
+ * `"gate-timeout"` by the D4 gate's expiry, `"query-failed"` by a
+ * terminal `failed` job, `"transport"` by a rejected covering
+ * document POST or a thrown submit/poll/fetch, and
+ * `"absent-column"` by the main thread's `absent` synthesis.
+ *
+ * **`"provider-gone"` is reserved and unproduced in v1**, on purpose.
+ * The disconnect signal is the `hdml-io-gone` *document* event
+ * (delta 7), whose RFC §7.4 reaction is a return to `:state(loading)`
+ * awaiting the next `hdml-io-ready`. Also delivering a `kind:"error"`
+ * would put the same widget into `:state(error)` *and*
+ * `:state(loading)` for one cause. It stays in the union because the
+ * consumer half may yet want to name that case; it is not a gap to be
+ * filled in by whoever notices it.
  */
 export type DeliveryCode =
   | "gate-timeout"
@@ -62,12 +77,14 @@ export type DeliveryCode =
  * subscriber of the same column: treat a delivery as immutable and
  * non-transferable, and copy if mutation is needed (D8 §6.4).
  *
- * **The `error` arm has no producer yet.** `HdmlIo`'s `#onMessage`
- * still drops worker `error` messages — that is RFC §7.5 delta 4, the
- * next step. The arm lands with the rest of the union because it is
- * one type, and because the staleness rule above is only statable
- * once `error` carries an optional `generation` beside `data`'s
- * required one.
+ * The `error` arm's producer is `HdmlIo`'s `#onMessage` → the
+ * `#fanOutError` branch (RFC §7.5 delta 4): a worker `error` carrying
+ * a `ref` reaches **every** subscriber of that ref, whatever column
+ * each is bound to, and a **ref-less** error is logged rather than
+ * fanned out — there is no subscriber it belongs to (D8 §4). The
+ * {@link DeliveryCode} rides in off the wire; the worker classifies,
+ * because only the worker knows which of its four failure paths
+ * fired.
  */
 export type Delivery =
   | {

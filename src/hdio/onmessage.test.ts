@@ -417,6 +417,11 @@ suite("hdio query engine (D1/D4/D5/D6/D7)", () => {
     assert.lengthOf(errs, 1);
     assert.equal(errs[0].data.message, "post failed");
     assert.equal(errs[0].data.ref, "?hdml-frame=f1");
+    // "transport", not "query-failed": no query was ever submitted —
+    // the *document* POST failed — so nothing pending can become
+    // stored, and there is no generation to stamp (R38).
+    assert.equal(errs[0].data.code, "transport");
+    assert.notProperty(errs[0].data, "generation");
   });
 
   test("D4: a hung POST fails after queryReadyTimeout", async () => {
@@ -438,6 +443,11 @@ suite("hdio query engine (D1/D4/D5/D6/D7)", () => {
     const errs = posted.filter(isError);
     assert.lengthOf(errs, 1);
     assert.include(errs[0].data.message, "not ready");
+    assert.equal(errs[0].data.code, "gate-timeout");
+    // Pre-submit: genuinely unstamped. A fabricated stamp would make
+    // it comparable — and so discardable — against a later data
+    // generation (R38).
+    assert.notProperty(errs[0].data, "generation");
   });
 
   test("D6: pending backs off then completes", async () => {
@@ -495,7 +505,30 @@ suite("hdio query engine (D1/D4/D5/D6/D7)", () => {
     const errs = posted.filter(isError);
     assert.lengthOf(errs, 1);
     assert.equal(errs[0].data.message, "kaboom");
+    assert.equal(errs[0].data.code, "query-failed");
+    // Post-submit: stamped with the generation it belongs to, so a
+    // consumer discards it wholesale if it is already past that one.
+    assert.equal(errs[0].data.generation, 1);
     assert.equal(resultCalls, 0);
+  });
+
+  test("a thrown submit posts transport + generation", async () => {
+    HdioClient.prototype.submitQuery = function () {
+      return Promise.reject(new Error("boom"));
+    };
+    const posted: OutboundMessage[] = [];
+    const handle = createHandler((m) => posted.push(m));
+    handle(propsEvent("h", "acme", ""));
+    handle(subEvent("s1", STATIC_REF, "x"));
+    await wait(80);
+    const errs = posted.filter(isError);
+    assert.lengthOf(errs, 1);
+    assert.equal(errs[0].data.message, "boom");
+    // A thrown submit/poll/fetch is transport, and it IS post-submit
+    // (the generation was bumped before `runQuery` ran), so it
+    // carries its stamp.
+    assert.equal(errs[0].data.code, "transport");
+    assert.equal(errs[0].data.generation, 1);
   });
 
   test("D5: widen discards stale, cancels pending", async () => {
