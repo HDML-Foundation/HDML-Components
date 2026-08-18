@@ -92,15 +92,37 @@ contract.
 
 | Dep | This repo pins | Workspace target |
 |---|---|---|
-| `@hdml/common` | `^0.0.2-alpha.15` | `0.0.2-alpha.15` |
-| `@hdml/hash` | `^0.0.2-alpha.15` | `0.0.2-alpha.15` |
-| `@hdml/parser` | `^0.0.2-alpha.15` | `0.0.2-alpha.15` |
-| `@hdml/buffer` | `^0.0.2-alpha.15` | `0.0.2-alpha.15` |
-| `@hdml/types` | `^0.0.2-alpha.15` | `0.0.2-alpha.15` |
+| `@hdml/common` | `0.0.2-alpha.24` | `0.0.2-alpha.24` |
+| `@hdml/hash` | `0.0.2-alpha.24` | `0.0.2-alpha.24` |
+| `@hdml/parser` | `0.0.2-alpha.24` | `0.0.2-alpha.24` |
+| `@hdml/buffer` | `0.0.2-alpha.24` | `0.0.2-alpha.24` |
+| `@hdml/types` | `0.0.2-alpha.24` | `0.0.2-alpha.24` |
 
-The five `@hdml/*` deps are aligned with the workspace lockstep at `0.0.2-alpha.15`
-(the `hdml-include` removal release). Bump all five together when realigning; no
+The five `@hdml/*` deps are aligned with the workspace lockstep at `0.0.2-alpha.24`
+(the HDVL display-vocabulary release). Bump all five together when realigning; no
 need to bump them individually.
+
+The pins are **exact**, not caret ranges. A caret range lets a stale
+`package-lock.json` keep resolving an older tree while the manifest reads new — a
+divergence only a clean CI run would surface. `@hdml/schemas` is not pinned here: it
+arrives transitively through `@hdml/buffer`, `@hdml/parser` and `@hdml/types`, and must
+resolve at the same lockstep version. Verify a bump by reading the **installed** tree,
+not the manifest:
+
+```bash
+for p in common hash parser buffer types schemas; do
+  printf '%-10s ' "$p"
+  node -p "require('./node_modules/@hdml/$p/package.json').version"
+done
+```
+
+**Do not regenerate `package-lock.json` wholesale to perform an `@hdml/*` bump.**
+Deleting the lockfile floats every unpinned transitive dependency — most consequentially
+`playwright`, which arrives via `@web/test-runner-playwright` and whose browser revisions
+must match the ones baked into the devcontainer's read-only `/ms-playwright`. A floated
+`playwright` fails every test on all three engines with *"Executable doesn't exist"*.
+Editing the manifest and running plain `npm install` updates only the entries the changed
+manifest no longer satisfies, which is exactly the six `@hdml/*` lines.
 
 `lit` (`^3.2.1`) and `whatwg-fetch` are not bound to the workspace lockstep.
 
