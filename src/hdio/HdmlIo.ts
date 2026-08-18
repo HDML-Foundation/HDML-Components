@@ -10,9 +10,24 @@ import { customElement, property } from "lit/decorators.js";
 import type { Endpoint } from "./endpoint";
 import { createEndpoint, closeEndpoint } from "./endpoint";
 import type { OutboundMessage } from "./onmessage";
+import type { Delivery, RequestDetail } from "./delivery";
 import { loginUrl, nextAuthAction, originPathname } from "./oidc";
 import { exchangeCode } from "./exchange";
 import { readConfig } from "./config";
+
+/**
+ * The settled D8 seam, re-exported from its leaf module because
+ * `HdmlIo` is what a consumer imports (RFC §7.5 delta 6 — these
+ * become exported). In-repo, `src/hdvl/` must import them from
+ * `./delivery` **type-only**: importing them from here would pull
+ * Lit, the endpoint and the whole hdio graph into every chart page.
+ */
+export type {
+  BufferRef,
+  Delivery,
+  DeliveryCode,
+  RequestDetail,
+} from "./delivery";
 
 /**
  * The endpoint-factory seam (RFC §2.2). Module-level — not a
@@ -31,49 +46,26 @@ export const endpoints = {
 };
 
 /**
- * One decoded column delivered back from the worker (RFC §5.6, D7) —
- * the `data` of a `result` message: the `(ref, column)` correlation,
- * the render-ready `domain` + `type`, the raw `values` when some
- * subscriber wanted them, and the row-null `nulls` bitmask when the
- * column has nulls (the faithful null carrier for a typed-array
- * column). `#fanOut` passes the payload through unchanged.
+ * The `data` of one atomic worker `result` (D8 §1): the ref, its
+ * generation stamp, the shared row count, and every subscribed column
+ * present in the result set. `#fanOut` slices it per subscriber.
  */
-type ResultPayload = Extract<
+type ResultData = Extract<
   OutboundMessage,
   { type: "result" }
 >["data"];
 
 /**
- * The provisional shape hdml-io reads off a D8 request event's
- * `detail` (RFC §8). **Provisional — pending the consumer repo:** the
- * exact detail schema, whether delivery is a callback and/or event,
- * and the consumer-side ref+column attribute are co-designed with the
- * separate consumer element and are **not** invented here. hdml-io
- * implements just enough to register a subscriber, drive
- * `subscribe`/`unsubscribe`, and fan a `result` out — reconciling
- * this against the real consumer contract later is expected, not a
- * regression.
- */
-interface RequestDetail {
-  id: string;
-  ref: string;
-  column: string;
-  raw?: boolean;
-  signal?: AbortSignal;
-  deliver?: (r: ResultPayload) => void;
-}
-
-/**
  * One main-thread subscription (RFC §2.8, D7): its `(ref, column)`
- * binding, its `raw` flag, the `deliver` sink a `result` fans out to,
- * and the optional teardown `signal`.
+ * binding, its `raw` flag, the `deliver` sink a `result` slice goes
+ * to, and the optional teardown `signal`.
  */
 interface Subscriber {
   id: string;
   ref: string;
   column: string;
   raw: boolean;
-  deliver: (r: ResultPayload) => void;
+  deliver: (d: Delivery) => void;
   signal?: AbortSignal;
 }
 
@@ -203,20 +195,55 @@ export class HdmlIo extends LitElement {
   #requestEvent: null | string = null;
 
   /**
-   * Fans one worker `result` out to **every** subscriber of that
-   * `(ref, column)` (D7): the transfer already detached it from the
-   * worker, so the main thread holds one copy — every matching
-   * subscriber's `deliver` gets that same `payload` **by reference**,
-   * never a re-clone.
+   * Slices one atomic `result` out to **every** subscriber of that
+   * ref (D8 §1): a subscribed column present in `columns` becomes a
+   * `kind:"data"` delivery, one absent from it becomes an explicit
+   * `kind:"absent"` — where the worker's old `if (col)` skip left a
+   * typo'd static-ref column spinning forever.
    *
-   * @param payload - The `result` message's `data`.
+   * The per-subscriber object is fresh, but `values` / `nulls` are
+   * passed **by reference**: the transfer already detached them from
+   * the worker, so the main thread holds one copy, and a column
+   * shared across five marks is never re-cloned (D7, D8 §6.4).
+   *
+   * Iteration is synchronous within this one task, which is what
+   * dissolves the cross-child stack barrier: every subscriber of the
+   * ref sees the same generation before any of them can paint.
+   *
+   * @param data - The `result` message's `data`.
    * @private
    */
-  #fanOut = (payload: ResultPayload): void => {
+  #fanOut = (data: ResultData): void => {
+    const has = Object.prototype.hasOwnProperty;
     this.#subscriptions.forEach((sub) => {
-      if (sub.ref === payload.ref && sub.column === payload.column) {
-        sub.deliver(payload);
+      if (sub.ref !== data.ref) {
+        return;
       }
+      const col = has.call(data.columns, sub.column)
+        ? data.columns[sub.column]
+        : undefined;
+      if (!col) {
+        sub.deliver({
+          kind: "absent",
+          ref: data.ref,
+          column: sub.column,
+          generation: data.generation,
+          rows: data.rows,
+          code: "absent-column",
+        });
+        return;
+      }
+      sub.deliver({
+        kind: "data",
+        ref: data.ref,
+        column: sub.column,
+        generation: data.generation,
+        rows: data.rows,
+        values: col.values,
+        nulls: col.nulls,
+        domain: col.domain,
+        type: col.type,
+      });
     });
   };
 
@@ -253,8 +280,15 @@ export class HdmlIo extends LitElement {
    * symmetric handshake may deliver the same request twice); an
    * already-aborted signal is a no-op. Teardown rides the request's
    * `AbortSignal` — on `abort` the subscription is dropped and
-   * `unsubscribe` posted. Reading `detail` is the marked-provisional
-   * seam (see {@link RequestDetail}).
+   * `unsubscribe` posted. The `detail` shape is the **settled** D8
+   * seam (see `RequestDetail`), no longer provisional.
+   *
+   * A detail whose `deliver` is not a function is rejected outright,
+   * alongside the three string checks: it used to default to a silent
+   * no-op, which registered a subscription whose every delivery was
+   * discarded. Rejection is a plain `return`, matching the
+   * surrounding validation — a malformed request from a non-HDVL
+   * caller is not this element's error to report.
    *
    * @param ev - The `bubbles`/`composed` request `CustomEvent`.
    * @private
@@ -265,7 +299,8 @@ export class HdmlIo extends LitElement {
       !detail ||
       typeof detail.id !== "string" ||
       typeof detail.ref !== "string" ||
-      typeof detail.column !== "string"
+      typeof detail.column !== "string" ||
+      typeof detail.deliver !== "function"
     ) {
       return;
     }
@@ -281,7 +316,7 @@ export class HdmlIo extends LitElement {
       ref: detail.ref,
       column: detail.column,
       raw,
-      deliver: detail.deliver ?? ((): void => undefined),
+      deliver: detail.deliver,
       signal: detail.signal,
     };
     this.#subscriptions.set(sub.id, sub);

@@ -28,7 +28,7 @@ const Y2K = 946684800000;
 
 suite("decode (Arrow IPC → typed columns)", () => {
   test("each Arrow field → its D9 kind + values", () => {
-    const cols = decode(
+    const { columns: cols } = decode(
       ipcOf({
         s: arrow.vectorFromArray(["x", "y", "x"], new arrow.Utf8()),
         i: arrow.vectorFromArray([1, 2, 3], new arrow.Int32()),
@@ -95,7 +95,7 @@ suite("decode (Arrow IPC → typed columns)", () => {
   });
 
   test("zone-less Timestamp → UTC, no zone key", () => {
-    const [col] = decode(
+    const { columns: c } = decode(
       ipcOf({
         ts: arrow.vectorFromArray(
           [new Date(0), new Date(Y2K)],
@@ -103,6 +103,7 @@ suite("decode (Arrow IPC → typed columns)", () => {
         ),
       }),
     );
+    const [col] = c;
     assert.deepEqual(col.type, { kind: "timestamp", unit: "ms" });
     assert.deepEqual(Array.from(col.values as Float64Array), [
       0,
@@ -111,7 +112,7 @@ suite("decode (Arrow IPC → typed columns)", () => {
   });
 
   test("zoned Timestamp → zone set, instant unchanged", () => {
-    const [col] = decode(
+    const { columns: c } = decode(
       ipcOf({
         ts: arrow.vectorFromArray(
           [new Date(0), new Date(Y2K)],
@@ -119,6 +120,7 @@ suite("decode (Arrow IPC → typed columns)", () => {
         ),
       }),
     );
+    const [col] = c;
     assert.deepEqual(col.type, {
       kind: "timestamp",
       unit: "ms",
@@ -132,18 +134,19 @@ suite("decode (Arrow IPC → typed columns)", () => {
   });
 
   test("64-bit integer → bigint kind with bigint values", () => {
-    const [col] = decode(
+    const { columns: c } = decode(
       ipcOf({
         b: arrow.vectorFromArray([10n, 20n, 30n], new arrow.Int64()),
       }),
     );
+    const [col] = c;
     assert.deepEqual(col.type, { kind: "bigint" });
     assert.instanceOf(col.values, BigInt64Array);
     assert.deepEqual(Array.from(col.values), [10n, 20n, 30n]);
   });
 
   test("nulls → mask; valid rows decode; clean col omits it", () => {
-    const cols = decode(
+    const { columns: cols } = decode(
       ipcOf({
         f: arrow.vectorFromArray(
           [1.5, null, 3.5],
@@ -169,5 +172,31 @@ suite("decode (Arrow IPC → typed columns)", () => {
 
     // A fully-valid column omits the mask entirely.
     assert.isUndefined(pick(cols, "clean").nulls);
+  });
+
+  test("rows carries table.numRows; zero rows is 0", () => {
+    const three = decode(
+      ipcOf({
+        a: arrow.vectorFromArray([1, 2, 3], new arrow.Int32()),
+        b: arrow.vectorFromArray(["x", "y", "z"], new arrow.Utf8()),
+      }),
+    );
+    assert.equal(three.rows, 3);
+    // Columns of one table share one row count by construction
+    // (D8 §3) — the wire guarantee behind V5's equal-N.
+    assert.lengthOf(three.columns, 2);
+
+    // A real empty result. Before `rows` this was inexpressible: the
+    // extent of an empty column is [NaN, NaN], the very same value an
+    // all-null column yields — so "no rows" could not be told from
+    // "all null" (and never as an error, D8 §5).
+    const none = decode(
+      ipcOf({
+        a: arrow.vectorFromArray([], new arrow.Int32()),
+      }),
+    );
+    assert.equal(none.rows, 0);
+    assert.lengthOf(none.columns, 1);
+    assert.lengthOf(none.columns[0].values, 0);
   });
 });

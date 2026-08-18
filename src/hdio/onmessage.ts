@@ -10,6 +10,7 @@ import type { HdioState } from "./parse";
 import { resolveQueryTarget } from "./artifact";
 import { decode } from "./decode";
 import type { ColumnType, DecodedColumn } from "./decode";
+import type { BufferRef } from "./delivery";
 import { domainFor } from "./reducers";
 import type { Domain } from "./reducers";
 import { HdioClient, recordStored } from "./HdioClient";
@@ -70,16 +71,35 @@ export type InboundMessage =
     };
 
 /**
- * Worker → main messages (RFC §2.5). A `result` delivers one decoded
- * column ready-to-render (D7): the type-appropriate `domain` and the
- * D9 `type` tag always, plus the raw `values` only when some
- * subscriber wants them. Numeric/temporal `values` cross as a
- * transferable `{buffer, byteOffset, byteLength}` (A4, in the
- * transfer list); a `string[]` column has no buffer, so it rides the
- * structured clone as-is. `nulls` — present only when the column has
- * nulls and `values` are pulled — is the row-null bitmask (1 bit/row,
- * bit set = null), transferred zero-copy alongside the values buffer;
- * it is the sole faithful null carrier for a typed-array column.
+ * One decoded column inside an atomic `result` (D8 §1/§3): the
+ * type-appropriate `domain` and the D9 `type` tag always, plus the
+ * raw `values` only when some subscriber of that column wants them.
+ * Numeric/temporal `values` cross as a transferable
+ * {@link BufferRef} (A4, on the message's one transfer list); a
+ * `string[]` column has no buffer, so it rides the structured clone
+ * as-is. `nulls` — present only when the column has nulls and
+ * `values` are pulled — is the row-null bitmask (1 bit/row, bit set =
+ * null), transferred zero-copy alongside; it is the sole faithful
+ * null carrier for a typed-array column.
+ */
+export interface ColumnResult {
+  values?: BufferRef | string[];
+  nulls?: BufferRef;
+  domain: Domain;
+  type: ColumnType;
+}
+
+/**
+ * Worker → main messages (RFC §2.5, D8 §1). A `result` is **one
+ * atomic snapshot per `(ref, generation)`** carrying every subscribed
+ * column, with all transferable buffers on one transfer list — not
+ * one message per column. Per-ref atomicity is *sufficient*: SPEC
+ * §4.7 and V7 mean every render unit zips its columns from one ref,
+ * and `hdml-io` fans a `result` out synchronously within the
+ * receiving task, so a stack can never observe child *k* at
+ * generation G+1 beside child *k+1* at G. The per-column split it
+ * replaces was a message-layer tear.
+ *
  * (The OIDC exchange is main-side now, so there is no `auth` reply.)
  */
 export type OutboundMessage =
@@ -87,35 +107,35 @@ export type OutboundMessage =
       type: "result";
       data: {
         ref: string;
-        column: string;
-        values?:
-          | {
-              buffer: ArrayBuffer;
-              byteOffset: number;
-              byteLength: number;
-            }
-          | string[];
-        nulls?: {
-          buffer: ArrayBuffer;
-          byteOffset: number;
-          byteLength: number;
-        };
-        domain: Domain;
-        type: ColumnType;
+        /** >= 1; strictly monotonic per ref per endpoint session. */
+        generation: number;
+        /** Arrow `table.numRows`. `0` is a real empty result. */
+        rows: number;
+        /**
+         * Every **subscribed** column present in the result set,
+         * keyed by column name. A subscribed column absent from the
+         * result set is simply absent here — the main thread
+         * synthesizes the explicit `absent` delivery from the
+         * difference against its own subscriptions (D8 §1).
+         */
+        columns: Record<string, ColumnResult>;
       };
     }
   | {
       type: "error";
-      data: { ref?: string; message: string };
+      data: {
+        ref?: string;
+        /**
+         * Present when the failure belongs to a submitted generation;
+         * absent for the pre-submit D4 gate timeout. Nothing produces
+         * it yet — `#onMessage` still drops errors (RFC §7.5 delta 4,
+         * the next step) — but it lands with the type so the wire is
+         * edited once.
+         */
+        generation?: number;
+        message: string;
+      };
     };
-
-// The transferable row-null mask descriptor on a `result` (derived so
-// it stays in sync with the message type). Undefined = the column has
-// no nulls (the mask is omitted, not empty).
-type OutboundResultNulls = Extract<
-  OutboundMessage,
-  { type: "result" }
->["data"]["nulls"];
 
 // Poll cadence (D6, §5.6): short-first, doubling to a ceiling, with
 // a wall-clock cap past which the job is declared timed out.
@@ -485,12 +505,15 @@ export function createHandler(
     }
   }
 
-  // Decode the result once, then emit one `result` per distinct
-  // subscribed column (D7). A column wanted raw by any subscriber
-  // carries `values`; the main thread fans the one message out.
+  // Decode the result once, then post ONE atomic `result` for this
+  // (ref, generation) carrying every subscribed column (D8 §1). A
+  // column wanted raw by any subscriber carries `values`; a
+  // subscribed column absent from the result set is omitted, and the
+  // main thread turns that omission into an explicit `absent`
+  // delivery (where the old per-column `if (col)` skip was silent).
   function deliver(frame: Frame, buffers: ArrayBuffer[]): void {
-    const decoded = decode(buffers.map((b) => new Uint8Array(b)));
-    const byName = new Map(decoded.map((c) => [c.name, c]));
+    const table = decode(buffers.map((b) => new Uint8Array(b)));
+    const byName = new Map(table.columns.map((c) => [c.name, c]));
     const wantRaw = new Map<string, boolean>();
     frame.subs.forEach((id) => {
       const sub = subscriptions.get(id);
@@ -499,37 +522,52 @@ export function createHandler(
         wantRaw.set(sub.column, prior || sub.raw);
       }
     });
+    // One shared transfer list for the whole message. A Set, not an
+    // array: with per-column messages a duplicated buffer detached
+    // one message, but one list that names the same `ArrayBuffer`
+    // twice throws `DataCloneError` and loses the entire generation.
+    const transfer = new Set<Transferable>();
+    const columns: Record<string, ColumnResult> = {};
     wantRaw.forEach((raw, column) => {
       const col = byName.get(column);
       if (col) {
-        emitResult(frame.ref, col, raw);
+        columns[column] = columnResult(col, raw, transfer);
       }
     });
+    post(
+      {
+        type: "result",
+        data: {
+          ref: frame.ref,
+          generation: frame.generation,
+          rows: table.rows,
+          columns,
+        },
+      },
+      [...transfer],
+    );
   }
 
-  // One `result` for one column: `domain` + `type` always; `values`
-  // only when raw is wanted, transferred zero-copy for a typed array
-  // (A4) or cloned for a `string[]` (no buffer to transfer). When the
-  // column has nulls, the row-null bitmask rides along, transferred
-  // zero-copy too (D9 null fidelity) — the only faithful null carrier
-  // for a typed-array column.
-  function emitResult(
-    ref: string,
+  // One column's slot in the atomic result: `domain` + `type` always;
+  // `values` only when raw is wanted, transferred zero-copy for a
+  // typed array (A4) or cloned for a `string[]` (no buffer to
+  // transfer). When the column has nulls, the row-null bitmask rides
+  // along, transferred zero-copy too (D9 null fidelity) — the only
+  // faithful null carrier for a typed-array column. Buffers are added
+  // to the caller's one shared transfer list.
+  function columnResult(
     col: DecodedColumn,
     raw: boolean,
-  ): void {
+    transfer: Set<Transferable>,
+  ): ColumnResult {
     const domain = domainFor(col);
     const type = col.type;
-    const column = col.name;
     if (!raw) {
-      post({ type: "result", data: { ref, column, domain, type } });
-      return;
+      return { domain, type };
     }
     // The optional null mask transfers alongside the values (present
-    // only when the column has any null); its fresh buffer is added
-    // to the transfer list of whichever branch runs.
-    const transfer: Transferable[] = [];
-    let nulls: OutboundResultNulls;
+    // only when the column has any null).
+    let nulls: undefined | BufferRef;
     if (col.nulls) {
       const m = col.nulls;
       nulls = {
@@ -537,27 +575,18 @@ export function createHandler(
         byteOffset: m.byteOffset,
         byteLength: m.byteLength,
       };
-      transfer.push(m.buffer);
+      transfer.add(m.buffer);
     }
     if (col.type.kind === "string") {
       // Ordinal string column: no values buffer to transfer — the
       // values ride the structured clone as-is (D7); only the mask
       // (if any) transfers.
-      post(
-        {
-          type: "result",
-          data: {
-            ref,
-            column,
-            values: col.values as string[],
-            nulls,
-            domain,
-            type,
-          },
-        },
-        transfer,
-      );
-      return;
+      return {
+        values: col.values as string[],
+        nulls,
+        domain,
+        type,
+      };
     }
     // Numeric/temporal: a transferable typed array (A4). A plain
     // `number[]` (the union admits it; decode never emits one) is
@@ -567,25 +596,17 @@ export function createHandler(
       ? src
       : Float64Array.from(src as number[]);
     const buffer = view.buffer as ArrayBuffer;
-    transfer.push(buffer);
-    post(
-      {
-        type: "result",
-        data: {
-          ref,
-          column,
-          values: {
-            buffer,
-            byteOffset: view.byteOffset,
-            byteLength: view.byteLength,
-          },
-          nulls,
-          domain,
-          type,
-        },
+    transfer.add(buffer);
+    return {
+      values: {
+        buffer,
+        byteOffset: view.byteOffset,
+        byteLength: view.byteLength,
       },
-      transfer,
-    );
+      nulls,
+      domain,
+      type,
+    };
   }
 
   // Re-evaluate every gated frame (event-driven release, D4): a fold

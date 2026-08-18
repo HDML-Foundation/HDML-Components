@@ -54,20 +54,35 @@ export interface DecodedColumn {
 }
 
 /**
+ * One decoded Arrow result set: its row count and its columns. The
+ * columns of one table share that one row count **by construction**
+ * (D8 §3) — which is what makes the wire's `rows` a guarantee rather
+ * than a per-column claim, and what makes a zero-row result
+ * expressible at all: an empty extent is `[NaN, NaN]`, identical to
+ * an all-null column, so "no rows" could not otherwise be told from
+ * "all null" (`reducers.ts`'s `extent`).
+ */
+export interface DecodedTable {
+  /** `table.numRows` — the wire `rows`. `0` is a real empty set. */
+  rows: number;
+  columns: DecodedColumn[];
+}
+
+/**
  * Decodes an Arrow IPC payload (one `Uint8Array`, or an array of them
  * for a chunked/multi-message stream) into one {@link DecodedColumn}
- * per field. Each column's kind is read straight from the Arrow
- * `field.type` — the self-describing result schema — and never the
- * authored frame `type` (§5.7). Every temporal family is normalized
- * to ms here; a zone-less `Timestamp` is read as UTC (the one silent
- * decision, deterministic across clients — no local-offset shift).
+ * per field, plus the table's row count. Each column's kind is read
+ * straight from the Arrow `field.type` — the self-describing result
+ * schema — and never the authored frame `type` (§5.7). Every temporal
+ * family is normalized to ms here; a zone-less `Timestamp` is read as
+ * UTC (the one silent decision, deterministic across clients — no
+ * local-offset shift).
  *
  * @param ipc - Arrow IPC bytes (single buffer or message chunks).
- * @returns One decoded column per Arrow field, in schema order.
+ * @returns The row count plus one decoded column per Arrow field, in
+ * schema order.
  */
-export function decode(
-  ipc: Uint8Array | Uint8Array[],
-): DecodedColumn[] {
+export function decode(ipc: Uint8Array | Uint8Array[]): DecodedTable {
   const table = arrow.tableFromIPC(ipc);
   const columns: DecodedColumn[] = [];
   for (let c = 0; c < table.numCols; c++) {
@@ -84,7 +99,7 @@ export function decode(
       ...(nulls ? { nulls } : {}),
     });
   }
-  return columns;
+  return { rows: table.numRows, columns };
 }
 
 /**

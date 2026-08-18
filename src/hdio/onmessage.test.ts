@@ -573,9 +573,7 @@ suite("hdio query engine (D1/D4/D5/D6/D7)", () => {
     const { port1, port2 } = new MessageChannel();
     port1.onmessage = (e): void => {
       received.push(e.data as OutboundMessage);
-      if (received.length >= 3) {
-        resolveDone();
-      }
+      resolveDone();
     };
     const handle = createHandler((m, t) => {
       captured.push({ msg: m, transfer: t ?? [] });
@@ -589,47 +587,40 @@ suite("hdio query engine (D1/D4/D5/D6/D7)", () => {
     port1.close();
     port2.close();
 
-    const rv = received
-      .filter(isResult)
-      .find((m) => m.data.column === "v")!;
-    const rd = received
-      .filter(isResult)
-      .find((m) => m.data.column === "d")!;
-    const rts = received
-      .filter(isResult)
-      .find((m) => m.data.column === "ts")!;
+    // All three columns ride ONE message now (D8 §1), not three.
+    const cols = received.filter(isResult)[0].data.columns;
 
     // raw:true numeric → transferable values (moved buffer valid).
-    assert.isDefined(rv.data.values);
-    const vv = rv.data.values as { buffer: ArrayBuffer };
+    assert.isDefined(cols.v.values);
+    const vv = cols.v.values as { buffer: ArrayBuffer };
     assert.deepEqual(
       Array.from(new Float64Array(vv.buffer)),
       [1, 2, 3],
     );
 
     // raw:false → domain only, no values pulled.
-    assert.isUndefined(rd.data.values);
-    assert.deepEqual(rd.data.domain, {
+    assert.isUndefined(cols.d.values);
+    assert.deepEqual(cols.d.domain, {
       kind: "extent",
       value: [10, 30],
     });
 
     // The D9 timestamp tag survives.
-    assert.deepEqual(rts.data.type, {
+    assert.deepEqual(cols.ts.type, {
       kind: "timestamp",
       unit: "ms",
     });
 
-    // A4: the source buffer detached when the worker transferred it.
-    const capV = captured.find(
-      (c) => isResult(c.msg) && c.msg.data.column === "v",
-    )!;
-    const cvValues = (capV.msg as ResultMsg).data.values as {
-      buffer: ArrayBuffer;
-    };
-    assert.lengthOf(capV.transfer, 1);
-    assert.equal(capV.transfer[0], cvValues.buffer);
-    assert.equal(cvValues.buffer.byteLength, 0);
+    // A4: the source buffers detached when the worker transferred
+    // them — both raw columns on the message's one transfer list.
+    const cap = captured.find((c) => isResult(c.msg))!;
+    const capCols = (cap.msg as ResultMsg).data.columns;
+    const capV = capCols.v.values as { buffer: ArrayBuffer };
+    const capTs = capCols.ts.values as { buffer: ArrayBuffer };
+    assert.lengthOf(cap.transfer, 2);
+    assert.include(cap.transfer, capV.buffer);
+    assert.include(cap.transfer, capTs.buffer);
+    assert.equal(capV.buffer.byteLength, 0);
   });
 
   test("D9: nulls mask forwarded + transferred", async () => {
@@ -668,26 +659,184 @@ suite("hdio query engine (D1/D4/D5/D6/D7)", () => {
     port2.close();
 
     // Received (deserialized) mask: row 1 null → 0b010, one byte.
-    const rv = received.filter(isResult)[0];
-    assert.isDefined(rv.data.nulls);
-    const nb = rv.data.nulls as { buffer: ArrayBuffer };
+    const rv = received.filter(isResult)[0].data.columns.v;
+    assert.isDefined(rv.nulls);
+    const nb = rv.nulls as { buffer: ArrayBuffer };
     assert.deepEqual(Array.from(new Uint8Array(nb.buffer)), [0b010]);
     // The null slot's value reads back as its zero-fill.
-    const vb = rv.data.values as { buffer: ArrayBuffer };
+    const vb = rv.values as { buffer: ArrayBuffer };
     assert.deepEqual(
       Array.from(new Float64Array(vb.buffer)),
       [1, 0, 3],
     );
 
     // A4: both the values buffer and the mask buffer transferred.
-    const cap = captured.find(
-      (c) => isResult(c.msg) && c.msg.data.column === "v",
-    )!;
-    const capNulls = (cap.msg as ResultMsg).data.nulls as {
+    const cap = captured.find((c) => isResult(c.msg))!;
+    const capNulls = (cap.msg as ResultMsg).data.columns.v.nulls as {
       buffer: ArrayBuffer;
     };
     assert.lengthOf(cap.transfer, 2);
     assert.include(cap.transfer, capNulls.buffer);
     assert.equal(capNulls.buffer.byteLength, 0);
+  });
+});
+
+// The D8 §1 atomic-result suite. `post` is captured directly (no
+// MessageChannel hop), so buffers stay readable and the transfer list
+// can be inspected for duplicates before anything detaches.
+suite("hdio atomic result (D8 §1/§2/§5)", () => {
+  teardown(() => {
+    HdioClient.prototype.submitQuery = origSubmit;
+    HdioClient.prototype.queryStatus = origStatus;
+    HdioClient.prototype.queryResult = origResult;
+    HdioClient.prototype.cancelQuery = origCancel;
+  });
+
+  function completingClient(
+    result: () => Record<string, arrow.Vector>,
+  ): void {
+    HdioClient.prototype.submitQuery = function () {
+      return Promise.resolve({ jobId: "j", status: "completed" });
+    };
+    HdioClient.prototype.queryResult = function () {
+      return Promise.resolve([ipcBuffer(result())]);
+    };
+  }
+
+  test("one message per (ref, generation), one list", async () => {
+    completingClient(() => ({
+      a: arrow.vectorFromArray([1, 2], new arrow.Int32()),
+      b: arrow.vectorFromArray(["x", "y"], new arrow.Utf8()),
+    }));
+    const captured: {
+      msg: OutboundMessage;
+      transfer: Transferable[];
+    }[] = [];
+    const handle = createHandler((m, t) => {
+      captured.push({ msg: m, transfer: t ?? [] });
+    });
+    handle(propsEvent("h", "acme", ""));
+    handle(subEvent("s1", STATIC_REF, "a"));
+    handle(subEvent("s2", STATIC_REF, "b"));
+    await wait(80);
+
+    // ONE result, not one per column: the per-column split was a
+    // message-layer tear, and per-ref atomicity is sufficient
+    // because every render unit zips from one ref.
+    const results = captured.filter((c) => isResult(c.msg));
+    assert.lengthOf(results, 1);
+    const msg = results[0].msg as ResultMsg;
+    assert.equal(msg.data.ref, STATIC_REF);
+    assert.deepEqual(Object.keys(msg.data.columns).sort(), [
+      "a",
+      "b",
+    ]);
+
+    // Every buffer rides that one transfer list — and no
+    // `ArrayBuffer` twice: with one shared list a duplicate throws
+    // `DataCloneError` and loses the whole generation, where a
+    // per-column list would only have detached one message.
+    const list = results[0].transfer;
+    // Only "a" is numeric; the ordinal "b" is a `string[]`.
+    assert.lengthOf(list, 1);
+    assert.equal(new Set(list).size, list.length);
+  });
+
+  test("generation is >= 1 and strictly increases", async () => {
+    completingClient(() => ({
+      a: arrow.vectorFromArray([1, 2], new arrow.Int32()),
+      b: arrow.vectorFromArray([3, 4], new arrow.Int32()),
+    }));
+    const posted: OutboundMessage[] = [];
+    const handle = createHandler((m) => posted.push(m));
+    handle(propsEvent("h", "acme", ""));
+    handle(subEvent("s1", STATIC_REF, "a"));
+    await wait(80);
+    // A widened union bumps the frame's generation and resubmits.
+    handle(subEvent("s2", STATIC_REF, "b"));
+    await wait(80);
+    assert.deepEqual(
+      posted.filter(isResult).map((m) => m.data.generation),
+      [1, 2],
+    );
+  });
+
+  test("rows carries numRows; zero rows is a result", async () => {
+    let empty = false;
+    completingClient(() => ({
+      a: empty
+        ? arrow.vectorFromArray([], new arrow.Int32())
+        : arrow.vectorFromArray([1, 2, 3], new arrow.Int32()),
+    }));
+    const first: OutboundMessage[] = [];
+    const h1 = createHandler((m) => first.push(m));
+    h1(propsEvent("h", "acme", ""));
+    h1(subEvent("s1", STATIC_REF, "a"));
+    await wait(80);
+    assert.equal(first.filter(isResult)[0].data.rows, 3);
+
+    empty = true;
+    const second: OutboundMessage[] = [];
+    const h2 = createHandler((m) => second.push(m));
+    h2(propsEvent("h", "acme", ""));
+    h2(subEvent("s2", STATIC_REF, "a"));
+    await wait(80);
+    // A real empty result, on the wire as a `result` and never an
+    // `error` (D8 §5). Its extent is [NaN, NaN] — the exact value an
+    // all-null column yields — so `rows` is the only thing that can
+    // tell "no rows" from "all null".
+    const msg = second.filter(isResult)[0];
+    assert.equal(msg.data.rows, 0);
+    assert.lengthOf(second.filter(isError), 0);
+    assert.deepEqual(msg.data.columns.a.domain, {
+      kind: "extent",
+      value: [NaN, NaN],
+    });
+  });
+
+  test("a column absent from the result is omitted", async () => {
+    completingClient(() => ({
+      a: arrow.vectorFromArray([1, 2], new arrow.Int32()),
+    }));
+    const posted: OutboundMessage[] = [];
+    const handle = createHandler((m) => posted.push(m));
+    handle(propsEvent("h", "acme", ""));
+    handle(subEvent("s1", STATIC_REF, "a"));
+    // A typo'd / non-existent column. It is not an error on the
+    // wire; the main thread synthesizes the `absent` delivery from
+    // the difference against its own subscriptions.
+    handle(subEvent("s2", STATIC_REF, "nope"));
+    await wait(80);
+    const results = posted.filter(isResult);
+    assert.lengthOf(results, 1);
+    assert.deepEqual(Object.keys(results[0].data.columns), ["a"]);
+    // The present sibling is still delivered, and nothing threw.
+    assert.isDefined(results[0].data.columns.a.values);
+    assert.lengthOf(posted.filter(isError), 0);
+  });
+
+  test("per-column raw is the OR over subscribers", async () => {
+    completingClient(() => ({
+      a: arrow.vectorFromArray([1, 2], new arrow.Int32()),
+      b: arrow.vectorFromArray([3, 4], new arrow.Int32()),
+    }));
+    const posted: OutboundMessage[] = [];
+    const handle = createHandler((m) => posted.push(m));
+    handle(propsEvent("h", "acme", ""));
+    // "a": a domain-only axis AND a raw mark → values pulled once.
+    handle(subEvent("s1", STATIC_REF, "a", false));
+    handle(subEvent("s2", STATIC_REF, "a", true));
+    // "b": domain-only subscribers alone → no values.
+    handle(subEvent("s3", STATIC_REF, "b", false));
+    await wait(80);
+    const cols = posted.filter(isResult)[0].data.columns;
+    assert.isDefined(cols.a.values);
+    assert.isUndefined(cols.b.values);
+    // Both still carry domain + type regardless of `raw`.
+    assert.deepEqual(cols.b.domain, {
+      kind: "extent",
+      value: [3, 4],
+    });
+    assert.deepEqual(cols.b.type, { kind: "number" });
   });
 });

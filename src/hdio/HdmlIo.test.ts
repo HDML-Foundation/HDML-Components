@@ -6,6 +6,7 @@
 
 import { assert } from "@open-wc/testing";
 import { HdmlIo, nav, endpoints } from "./HdmlIo";
+import type { Delivery } from "./delivery";
 import type { Endpoint } from "./endpoint";
 
 // The app's own page URL (origin + pathname); `?code&state` is added
@@ -168,7 +169,9 @@ function request(detail: unknown): void {
   );
 }
 
-// Feeds a worker `result` in through the fake endpoint's onmessage.
+// Feeds one atomic worker `result` in through the fake endpoint's
+// onmessage (D8 §1: one message per (ref, generation), every
+// subscribed column keyed by name).
 function feedResult(ep: FakeEndpoint, data: unknown): void {
   ep.onmessage?.(
     new MessageEvent("message", {
@@ -176,6 +179,10 @@ function feedResult(ep: FakeEndpoint, data: unknown): void {
     }),
   );
 }
+
+// A no-op sink for the requests that only assert registration —
+// `deliver` is REQUIRED now, so a detail without it is rejected.
+const sink = (): void => undefined;
 
 suite("HdmlIo D8 discovery bus + registry", () => {
   let mounted: HdmlIo[] = [];
@@ -215,7 +222,7 @@ suite("HdmlIo D8 discovery bus + registry", () => {
   test("a request before connect subscribes on ready", async () => {
     // A consumer that connected first: it dispatches now (lost — no
     // hdml-io yet) and re-dispatches on hdml-io-ready (§5.8).
-    const detail = { id: "s1", ref: REF, column: "m" };
+    const detail = { id: "s1", ref: REF, column: "m", deliver: sink };
     const redispatch = (): void => request(detail);
     document.addEventListener(READY, redispatch);
     request(detail); // before hdml-io exists → nobody hears it
@@ -230,7 +237,7 @@ suite("HdmlIo D8 discovery bus + registry", () => {
   test("a request after connect subscribes directly", async () => {
     mount({ host: "", tenant: "t" });
     await tick(20);
-    request({ id: "s1", ref: REF, column: "m" });
+    request({ id: "s1", ref: REF, column: "m", deliver: sink });
     const subs = ofType(ep, "subscribe");
     assert.lengthOf(subs, 1);
     assert.equal((subs[0].data as { id: string }).id, "s1");
@@ -239,7 +246,7 @@ suite("HdmlIo D8 discovery bus + registry", () => {
   test("a duplicate id yields one subscription", async () => {
     mount({ host: "", tenant: "t" });
     await tick(20);
-    const detail = { id: "s1", ref: REF, column: "m" };
+    const detail = { id: "s1", ref: REF, column: "m", deliver: sink };
     request(detail);
     request(detail);
     assert.lengthOf(ofType(ep, "subscribe"), 1);
@@ -265,26 +272,26 @@ suite("HdmlIo D8 discovery bus + registry", () => {
     assert.equal(cfg.queryReadyTimeout, 10000);
   });
 
-  test("one result fans out to every subscriber", async () => {
+  test("one atomic result slices to every subscriber", async () => {
     mount({ host: "", tenant: "t" });
     await tick(20);
-    const got1: unknown[] = [];
-    const got2: unknown[] = [];
-    const got3: unknown[] = [];
+    const got1: Delivery[] = [];
+    const got2: Delivery[] = [];
+    const got3: Delivery[] = [];
     request({
       id: "s1",
       ref: REF,
       column: "m",
-      deliver: (r: unknown): void => {
-        got1.push(r);
+      deliver: (d: Delivery): void => {
+        got1.push(d);
       },
     });
     request({
       id: "s2",
       ref: REF,
       column: "m",
-      deliver: (r: unknown): void => {
-        got2.push(r);
+      deliver: (d: Delivery): void => {
+        got2.push(d);
       },
     });
     // A pure axis on a different column, domain-only (raw:false).
@@ -293,37 +300,118 @@ suite("HdmlIo D8 discovery bus + registry", () => {
       ref: REF,
       column: "d",
       raw: false,
-      deliver: (r: unknown): void => {
-        got3.push(r);
+      deliver: (d: Delivery): void => {
+        got3.push(d);
       },
     });
-    // The worker emits one values-bearing result for column "m"…
-    const mPayload = {
-      ref: REF,
-      column: "m",
-      values: ["a", "b"],
-      domain: { kind: "ordinal", value: ["a", "b"] },
-      type: { kind: "string" },
-    };
-    feedResult(ep, mPayload);
-    // …and a domain-only result for the raw:false column "d".
+    // ONE message carries both columns of this (ref, generation).
+    const buffer = new Float64Array([1, 2]).buffer;
+    const values = { buffer, byteOffset: 0, byteLength: 16 };
     feedResult(ep, {
       ref: REF,
-      column: "d",
-      domain: { kind: "extent", value: [10, 30] },
-      type: { kind: "number" },
+      generation: 3,
+      rows: 2,
+      columns: {
+        m: {
+          values,
+          domain: { kind: "extent", value: [1, 2] },
+          type: { kind: "number" },
+        },
+        d: {
+          domain: { kind: "extent", value: [10, 30] },
+          type: { kind: "number" },
+        },
+      },
     });
-    // Both subscribers of (REF, "m") got the *same* object — one
-    // main-thread buffer shared by reference, never re-cloned (D7).
+    // Delivered SYNCHRONOUSLY, inside the one receiving task — this
+    // is what dissolves the cross-child stack barrier: no subscriber
+    // of the ref can observe a different generation than its
+    // siblings, with no consumer barrier code at all.
     assert.lengthOf(got1, 1);
     assert.lengthOf(got2, 1);
-    assert.strictEqual(got1[0], got2[0]);
-    assert.strictEqual(got1[0], mPayload);
-    // The raw:false subscriber got domain only, no values.
     assert.lengthOf(got3, 1);
-    const r3 = got3[0] as { values?: unknown; domain: unknown };
+
+    assert.equal(got1[0].kind, "data");
+    assert.equal(got1[0].generation, 3);
+    assert.equal(
+      (got1[0] as Extract<Delivery, { kind: "data" }>).rows,
+      2,
+    );
+    assert.equal(got1[0].column, "m");
+
+    // Each subscriber gets its own slice object, but the buffers are
+    // shared BY REFERENCE — a column bound by five marks is never
+    // re-cloned (D7, D8 §6.4).
+    const v1 = (got1[0] as Extract<Delivery, { kind: "data" }>)
+      .values;
+    const v2 = (got2[0] as Extract<Delivery, { kind: "data" }>)
+      .values;
+    assert.strictEqual(v1, v2);
+    assert.strictEqual(
+      (v1 as { buffer: ArrayBuffer }).buffer,
+      buffer,
+    );
+
+    // The raw:false subscriber got domain only, no values.
+    const r3 = got3[0] as Extract<Delivery, { kind: "data" }>;
     assert.isUndefined(r3.values);
     assert.deepEqual(r3.domain, { kind: "extent", value: [10, 30] });
+  });
+
+  test("a subscribed column absent → kind:absent", async () => {
+    mount({ host: "", tenant: "t" });
+    await tick(20);
+    const got: Delivery[] = [];
+    request({
+      id: "s1",
+      ref: REF,
+      column: "typo",
+      deliver: (d: Delivery): void => {
+        got.push(d);
+      },
+    });
+    feedResult(ep, {
+      ref: REF,
+      generation: 7,
+      rows: 4,
+      columns: {
+        m: {
+          domain: { kind: "extent", value: [1, 2] },
+          type: { kind: "number" },
+        },
+      },
+    });
+    // The worker omits it from `columns`; the main thread turns that
+    // omission into an EXPLICIT delivery. The old worker-side
+    // `if (col)` skip was silent, so a typo'd static-ref column left
+    // its widget spinning forever — this is runtime V4 for the refs
+    // the in-page validator cannot check.
+    assert.lengthOf(got, 1);
+    assert.deepEqual(got[0], {
+      kind: "absent",
+      ref: REF,
+      column: "typo",
+      generation: 7,
+      rows: 4,
+      code: "absent-column",
+    });
+  });
+
+  test("a request with no function deliver is rejected", async () => {
+    mount({ host: "", tenant: "t" });
+    await tick(20);
+    // No `deliver` at all — this used to register a subscription
+    // whose every delivery went to a silent no-op default.
+    request({ id: "s1", ref: REF, column: "m" });
+    // And a non-function one.
+    request({ id: "s2", ref: REF, column: "m", deliver: "x" });
+    assert.lengthOf(ofType(ep, "subscribe"), 0);
+    // A well-formed request on the same element still registers, so
+    // the rejection is the detail's, not the listener's.
+    request({ id: "s3", ref: REF, column: "m", deliver: sink });
+    const subs = ofType(ep, "subscribe");
+    assert.lengthOf(subs, 1);
+    assert.equal((subs[0].data as { id: string }).id, "s3");
   });
 
   test("aborting a subscriber posts unsubscribe", async () => {
@@ -336,8 +424,8 @@ suite("HdmlIo D8 discovery bus + registry", () => {
       ref: REF,
       column: "m",
       signal: ctrl.signal,
-      deliver: (r: unknown): void => {
-        got.push(r);
+      deliver: (d: Delivery): void => {
+        got.push(d);
       },
     });
     assert.lengthOf(ofType(ep, "subscribe"), 1);
@@ -345,12 +433,14 @@ suite("HdmlIo D8 discovery bus + registry", () => {
     const unsubs = ofType(ep, "unsubscribe");
     assert.lengthOf(unsubs, 1);
     assert.equal((unsubs[0].data as { id: string }).id, "s1");
-    // A later result is not delivered to the aborted subscriber.
+    // A later result is not delivered to the aborted subscriber —
+    // not even the `absent` synthesis, since the fan-out reads the
+    // registry and the entry is gone.
     feedResult(ep, {
       ref: REF,
-      column: "m",
-      domain: { kind: "ordinal", value: [] },
-      type: { kind: "string" },
+      generation: 1,
+      rows: 0,
+      columns: {},
     });
     assert.lengthOf(got, 0);
   });

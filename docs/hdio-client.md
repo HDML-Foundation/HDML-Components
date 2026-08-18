@@ -156,17 +156,58 @@ endpoint, one client). Both directions are a discriminated union on `type`
 
 | `type` | Payload | Transfer | Wired? |
 |---|---|---|---|
-| `result` | `{ref, column, values?, nulls?, domain, type}` | `[ArrayBuffer]` when `values`/`nulls` are typed-array buffers | ✅ Step 07 |
-| `error` | `{ref?, message}` | — | ✅ Step 07 |
+| `result` | `{ref, generation, rows, columns}` | **one** list per message, carrying every typed-array `values`/`nulls` buffer across all columns | ✅ |
+| `error` | `{ref?, generation?, message}` | — | ✅ posted · ⛔ **dropped on the main thread** (delta 4) |
 
-The `result` payload is now tightened to the Step 06 types (§5.6/§5.7): `domain`
-is a [`Domain`](../src/hdio/reducers.ts) (`{kind:"extent", value:[min,max]}` or
-`{kind:"ordinal", value:[…]}`), `type` is the D9 [`ColumnType`](../src/hdio/decode.ts)
-tag, and `values` is present **only when some subscriber of that column set
-`raw !== false`** — a transferable `{buffer, byteOffset, byteLength}` for a
-numeric/temporal column (the `buffer` rides the transfer list, A4; the source
-detaches) or the `string[]` itself for an ordinal column (no buffer to transfer).
-`raw:false` subscribers (a pure axis/legend) get `domain` + `type` only.
+**The `result` is atomic per `(ref, generation)`** (D8 §1). One message carries
+**every subscribed column** of that generation, keyed by name in
+`columns: Record<string, ColumnResult>`, with all transferable buffers on **one**
+transfer list. It replaced a per-column message split, which was a **message-layer
+tear**: the worker already holds every union column simultaneously (one
+`queryResult` fetch, one `decode()` off one Arrow table), so posting each column
+as its own main-thread task manufactured a torn read that the data never had.
+
+Per-ref atomicity is *sufficient* — SPEC §4.7 and V7 mean every render unit zips
+its columns from **one** ref — and `#fanOut` iterates synchronously within the
+receiving task, so a stack can never observe child *k* at generation G+1 beside
+child *k+1* at G. That dissolves the cross-child barrier with **zero** consumer
+barrier code; a consumer-side barrier would have needed an invented
+child→container generation-reporting protocol. Cross-**ref** consistency is
+explicitly *not* guaranteed (D8 §1.4).
+
+Each `ColumnResult` is `{values?, nulls?, domain, type}`: `domain` is a
+[`Domain`](../src/hdio/reducers.ts) (`{kind:"extent", value:[min,max]}` or
+`{kind:"ordinal", value:[…]}`), `type` is the D9
+[`ColumnType`](../src/hdio/decode.ts) tag, and `values` is present **only when
+some subscriber of that column set `raw !== false`** (per-column raw is the OR
+over subscribers) — a transferable `{buffer, byteOffset, byteLength}` for a
+numeric/temporal column or the `string[]` itself for an ordinal one (no buffer to
+transfer). `raw:false` subscribers (a pure axis/legend) get `domain` + `type` only.
+
+- **`generation`** — ≥ 1, strictly monotonic **per ref per endpoint session**,
+  bumped immediately before each submit. It is the worker-internal
+  `Frame.generation` put on the wire, not a new counter. Compare it only within
+  one `(session, ref)` pair — never across refs, never across sessions (a new
+  endpoint restarts the space).
+- **`rows`** — the Arrow `table.numRows`, shared by every column of the message
+  by construction (one table), which is what makes V5's equal-N a **wire-level**
+  guarantee for bound columns. **`rows === 0` is a real empty result**, mapping
+  to `:state(empty)` and *never* to an error. It had to be added because zero
+  rows was otherwise **inexpressible**: an empty extent is `[NaN, NaN]` — exactly
+  what an all-null column yields — so "no rows" could not be told from "all
+  null".
+- **A subscribed column absent from the result set is simply absent from
+  `columns`** — not an error on the wire. The main thread synthesizes the
+  explicit `absent` delivery from the difference against its own subscriptions.
+  The worker used to skip it with a silent `if (col)`, so a typo'd static-ref
+  column left its widget spinning forever.
+- **The shared transfer list is built from a `Set`.** With per-column messages a
+  duplicated buffer would have detached one message; with one shared list an
+  `ArrayBuffer` named twice throws `DataCloneError` and loses the **whole
+  generation**.
+- **`error.generation`** is present when the failure belongs to a submitted
+  generation and absent for the pre-submit D4 gate timeout. Nothing consumes it
+  yet — `#onMessage` still drops `error` messages entirely (RFC §7.5 delta 4).
 
 - **`props`** — constructs the in-Worker `HdioClient` (2-arg: `host`, `tenant`) **only on
   first `props` or a genuine `host`/`tenant` change**, closing the prior one; a repeat
@@ -199,12 +240,13 @@ detaches) or the `string[]` itself for an ordinal column (no buffer to transfer)
   off the D8 request bus (Step 08) — see [The discovery bus + subscription registry](#the-discovery-bus--subscription-registry-step-08-d7d8)
   and [The query leg](#the-query-leg-slice-d) below.
 
-`HdmlIo.ts`'s `#onMessage` now only fans out `result` — the OIDC `strip` (ok) / `re-navigate`
-(stale) branches moved to `#runExchange` when the exchange moved main-side (§3.3). `result` and
-`error` are the query-leg outbound: a `result` carries a **transferable `ArrayBuffer`** via the
-transfer-list form `post(msg, [buf])` for a raw numeric/temporal column (the source buffer
-detaches — RFC §2.6, A4); an `error` carries a failure reason for a frame the consumer
-renders empty rather than as a silent spinner.
+`HdmlIo.ts`'s `#onMessage` still handles **only** `result` — the OIDC `strip` (ok) /
+`re-navigate` (stale) branches moved to `#runExchange` when the exchange moved main-side
+(§3.3). A `result` carries its **transferable `ArrayBuffer`s** via the transfer-list form
+`post(msg, [...buffers])` for every raw numeric/temporal column (the source buffers detach —
+RFC §2.6, A4). An `error` carries a failure reason for a frame the consumer should render
+empty rather than as a silent spinner — but it is **still dropped on the main thread**, so no
+consumer can leave `:state(loading)` on failure yet. That is RFC §7.5 delta 4.
 
 ### Column decode + scale domain (Slice D, D9/D3)
 
@@ -212,7 +254,8 @@ The `result` payload's `type` / `values` / `domain` come from two **pure** modul
 calls once per coalesced column (Step 07 wires them into `subscribe` → `result`):
 
 - [src/hdio/decode.ts](../src/hdio/decode.ts) — `decode(ipc)` turns an Arrow IPC payload into
-  one `DecodedColumn { name, type, values }` per field, reading each column's kind **off the
+  a `DecodedTable { rows, columns }`: the table's `numRows` (the wire's `rows`) plus one
+  `DecodedColumn { name, type, values }` per field, reading each column's kind **off the
   self-describing Arrow result schema** (`field.type`), never the authored frame `type`
   (§5.7, D9):
 
@@ -265,10 +308,12 @@ source ref. One frame = one query; the full path is
   its completion (never delivers). Superseded jobs are **not** cancelled by default (server
   `Cancel` cannot abort a running Trino query); a still-`pending` superseded job is
   best-effort `cancelQuery`-ed (409 swallowed), running jobs never.
-- **Deliver (D7, §5.6).** The result is `decode`d **once**; the worker emits **one `result`
-  per distinct column** with its `domain` + `type`, and `values` only when some subscriber of
-  that column wants raw — the main-thread registry (Step 08) fans the one message out to every
-  subscriber of that `(ref, column)`, so a shared raw buffer transfers once.
+- **Deliver (D7, §5.6 + D8 §1).** The result is `decode`d **once**, then posted as **one
+  atomic `result` per `(ref, generation)`** carrying every subscribed column — `domain` +
+  `type` always, `values` only when some subscriber of that column wants raw — on **one**
+  transfer list. The main-thread registry slices it per subscriber, so a shared raw buffer
+  transfers once and is fanned out by reference. A subscribed column missing from the result
+  set is omitted from `columns` and becomes an `absent` delivery main-side.
 
 ### The discovery bus + subscription registry (Step 08, D7/D8)
 
@@ -293,25 +338,64 @@ themselves on a `document` event bus, `<hdml-io>` registers them and drives
   re-dispatches. Subscriptions **de-dupe by `id`**, so hdml-io-first and consumer-first both
   converge. `hdml-io-ready` means "ready to **receive**" (listener + endpoint wired) — **not**
   parsed/stored; the D4 10 s gate then handles satisfiability.
-- **Fan-out (D7).** The worker emits **one** `result {ref, column, values?, domain, type}` per
-  distinct column; `#fanOut` delivers that **one** payload object — by reference — to every
-  subscriber of the matching `(ref, column)`. The transfer already detached the buffer from
-  the worker, so the main thread holds one copy: a shared raw column (`x=month` across five
-  lines) is **never** re-cloned per subscriber.
+- **Fan-out (D7, D8 §1).** The worker emits **one** atomic
+  `result {ref, generation, rows, columns}`; `#fanOut` **slices** it, handing every subscriber
+  of that ref its own `Delivery` object — `kind:"data"` when its column is a key of `columns`,
+  `kind:"absent"` (with `code:"absent-column"`) when it is not. The per-subscriber object is
+  fresh, but `values` / `nulls` are passed **by reference**: the transfer already detached the
+  buffers from the worker, so the main thread holds one copy and a shared raw column
+  (`x=month` across five lines) is **never** re-cloned per subscriber. Iteration is
+  synchronous within the one receiving task — that, plus one message per generation, is what
+  makes tear-freedom structural.
 - **Teardown via `AbortSignal`.** A subscriber's request carries an optional `AbortSignal`; on
   `abort` (component disconnect) `<hdml-io>` drops it from the registry and posts
   `unsubscribe {id}`. Removal alone stops delivery (the fan-out reads the registry). On
   `<hdml-io>` disconnect the request listener is removed, the endpoint is closed (the worker +
   its tokens die, B4), and the registry is cleared.
 
-**The provisional D8 seam (§8).** The event-name **defaults** are settled (`hdml-io-ready` /
-`hdml-io-request` / the D4 `queryReadyTimeout`, all read from `window.HDML_CONFIG`). What
-`<hdml-io>` reads off a request event's `detail` (`{id, ref, column, raw?, signal?}` + a
-`deliver` callback) is a **marked-provisional** reading — the exact detail schema, the
-delivery mechanism (callback and/or an `hdml-data`-style event), and the consumer-side
-`ref`+`&column=` attribute are **co-designed with the separate consumer repo** and are not
-invented here (see [`RequestDetail`](../src/hdio/HdmlIo.ts) — reconciling it against the real
-consumer contract later is expected, not a regression).
+### The settled D8 seam — `Delivery` and `RequestDetail`
+
+The seam RFC 014/001 §8 left **marked-provisional** pending co-design with the consumer
+vocabulary is now **settled** by the D8 Seam Contract (016). It lives in
+[src/hdio/delivery.ts](../src/hdio/delivery.ts) — a **leaf module with no value imports**,
+re-exported from `HdmlIo.ts` for external consumers. The leaf placement is load-bearing:
+`src/hdvl/` imports it `import type`-only, and `scripts/check-dist.mjs` fails the build on a
+value import, because pulling `Delivery` as a value would drag the worker, `@hdml/parser` and
+Arrow into every chart page — and would compile silently. The emitted `esm/hdio/delivery.js`
+is `export {}`.
+
+**`RequestDetail`** is `{id, ref, column, raw?, signal?, deliver}` — the provisional shape was
+right, with one change: **`deliver` is required.** It used to be optional with a silent no-op
+default, which registered a subscription whose every delivery was discarded (a §1.5
+violation); a detail whose `deliver` is not a function is now rejected outright, registering
+nothing and posting no `subscribe`. `ref` MUST NOT carry a `&column=` tail — the worker
+coalesces frames by verbatim ref string, so a tailed ref would split one frame's union into
+several queries. **Delivery is callback-only**: SPEC §10's `hdml-data` is the consumer's own
+outward event, not the delivery mechanism.
+
+**`Delivery`** is a three-arm union, each arm carrying `ref` + `column`:
+
+| `kind` | Carries | Consumer state |
+|---|---|---|
+| `"data"` | `generation`, `rows`, `values?`, `nulls?`, `domain`, `type` | `:state(empty)` when `rows === 0`, else rendered |
+| `"absent"` | `generation`, `rows`, `code:"absent-column"` | `:state(error)` with the V4-teaching message |
+| `"error"` | `generation?`, `message`, `code: DeliveryCode` | `:state(error)` on the owning unit |
+
+`DeliveryCode` is `"gate-timeout" | "query-failed" | "absent-column" | "transport" |
+"provider-gone"` — stable ids so a host app branches on the code and never on the prose,
+disjoint from the validator's `DiagnosticCode` space.
+
+Consumers adopt by the **stamp, not the kind**: adopt iff `generation >= latest` (`>=`, so a
+future replay is idempotent), else discard **wholesale**. That is why the `error` arm's
+`generation` is optional — a stamped post-submit error obeys the ordering rule exactly like
+data, while an unstamped pre-submit gate timeout is current by ordering and is always adopted.
+Every delivered payload is **immutable and non-transferable**: buffers are shared by reference
+with sibling subscribers, so copy if mutation is needed.
+
+> **The `error` arm has no producer yet.** `#onMessage` still drops worker `error` messages,
+> so nothing constructs a `kind:"error"` delivery — that is RFC §7.5 delta 4. The arm landed
+> with the rest of the union because it is one type, and because the staleness rule above is
+> only statable once `error` carries an optional `generation` beside `data`'s required one.
 
 ### Shared config — `window.HDML_CONFIG` (§8, the sync point)
 
