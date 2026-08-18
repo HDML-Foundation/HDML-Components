@@ -6,7 +6,7 @@
 
 import { HDML_TAG_NAMES } from "@hdml/types";
 import { customElement } from "lit/decorators.js";
-import { HdomElement } from "./HdomElement";
+import { HdqlElement } from "./HdqlElement";
 
 /**
  * The `hdml-group-by` component is used within the context of an
@@ -29,4 +29,4 @@ import { HdomElement } from "./HdomElement";
  * disconnected from the `document`.
  */
 @customElement(HDML_TAG_NAMES.GROUP_BY)
-export class HdmlGroupBy extends HdomElement {}
+export class HdmlGroupBy extends HdqlElement {}

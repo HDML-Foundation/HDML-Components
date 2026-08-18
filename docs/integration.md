@@ -40,7 +40,7 @@ custom element on the global `customElementRegistry`:
 ```ts
 // src/index.ts
 import "./hdio/HdmlIo";
-import "./hdom/HdmlConnection";
+import "./hdql/HdmlConnection";
 // …10 more hdml-* elements
 ```
 
@@ -52,7 +52,7 @@ import "@hdml/components";   // registers <hdml-connection>, <hdml-model>, ..., 
 
 If a bundler tree-shakes the package, the registrations vanish — `"sideEffects"` is **not**
 declared in `package.json`. `TODO(confirm: add "sideEffects": false-with-exceptions, or
-"sideEffects": ["./esm/index.js", "./esm/hdom/*.js", "./esm/hdio/*.js"], to make this safe
+"sideEffects": ["./esm/index.js", "./esm/hdql/*.js", "./esm/hdio/*.js"], to make this safe
 under bundlers that respect the field.)`
 
 ## Dist variants

@@ -6,7 +6,7 @@
 
 import { HDML_TAG_NAMES, TABLE_ATTRS_LIST } from "@hdml/types";
 import { customElement, property } from "lit/decorators.js";
-import { HdomElement } from "./HdomElement";
+import { HdqlElement } from "./HdqlElement";
 
 /**
  * The `hdml-table` component represents a table within a data model
@@ -35,7 +35,7 @@ import { HdomElement } from "./HdomElement";
  * @attribute {string} description - The description of the table.
  */
 @customElement(HDML_TAG_NAMES.TABLE)
-export class HdmlTable extends HdomElement {
+export class HdmlTable extends HdqlElement {
   /**
    * @internal
    */

@@ -6,14 +6,14 @@
 
 import "./hdio/HdmlIo";
 
-import "./hdom/HdmlConnection";
-import "./hdom/HdmlModel";
-import "./hdom/HdmlTable";
-import "./hdom/HdmlField";
-import "./hdom/HdmlJoin";
-import "./hdom/HdmlConnective";
-import "./hdom/HdmlFilter";
-import "./hdom/HdmlFrame";
-import "./hdom/HdmlFilterBy";
-import "./hdom/HdmlGroupBy";
-import "./hdom/HdmlSortBy";
+import "./hdql/HdmlConnection";
+import "./hdql/HdmlModel";
+import "./hdql/HdmlTable";
+import "./hdql/HdmlField";
+import "./hdql/HdmlJoin";
+import "./hdql/HdmlConnective";
+import "./hdql/HdmlFilter";
+import "./hdql/HdmlFrame";
+import "./hdql/HdmlFilterBy";
+import "./hdql/HdmlGroupBy";
+import "./hdql/HdmlSortBy";

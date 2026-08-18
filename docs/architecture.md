@@ -16,7 +16,7 @@ flowchart LR
     subgraph "Page (main thread)"
       direction TB
       author([Author writes HDML in HTML])
-      subgraph "src/hdom — declarative"
+      subgraph "src/hdql — declarative"
         conn[hdml-connection]
         model[hdml-model]
         tbl[hdml-table]
@@ -29,14 +29,14 @@ flowchart LR
         grb[hdml-group-by]
         srb[hdml-sort-by]
       end
-      base["HdomElement (Lit base)<br/>connected / disconnected / attrChanged<br/>→ document.dispatchEvent('hdom-changed')"]
+      base["HdqlElement (Lit base)<br/>connected / disconnected / attrChanged<br/>→ document.dispatchEvent('hdom-changed')"]
       io["hdml-io (LitElement)<br/>props: host · tenant · token<br/>createEndpoint / closeEndpoint, owns lifecycle"]
     end
 
     subgraph "Web Worker (or MessagePort fallback in ESM/CJS)"
       router["createHandler(post) listener<br/>handles {type:'props'} | {type:'html'}"]
       parse["parse(state, html)<br/>parseHDML → serialize → fileifize"]
-      client["HdioClient<br/>fetch sessions, POST /hdio/files"]
+      client["HdioClient<br/>POST /{tenant}/api/v1/auth/token,<br/>POST /{tenant}/api/v1/documents/dynamic"]
     end
 
     server[(HDIO Server<br/>:8888)]
@@ -78,31 +78,32 @@ flowchart LR
 
 ## The `hdom-changed` event bus
 
-`HdomElement` (in [src/hdom/HdomElement.ts](../src/hdom/HdomElement.ts)) is the single point
-where every HDOM custom element notifies the rest of the page that the declarative document
-has changed. The base class dispatches a `CustomEvent<HdomElement>` named **`hdom-changed`**
+`HdqlElement` (in [src/hdql/HdqlElement.ts](../src/hdql/HdqlElement.ts)) is the single point
+where every HDQL custom element notifies the rest of the page that the declarative document
+has changed. The base class dispatches a `CustomEvent<HdqlElement>` named **`hdom-changed`**
 on the `document` whenever the element is connected, disconnected, or any observed attribute
-changes (see [src/hdom/HdomElement.ts:12-49](../src/hdom/HdomElement.ts#L12-L49)).
+changes (see [src/hdql/HdqlElement.ts:12-49](../src/hdql/HdqlElement.ts#L12-L49)).
 
 Properties of this event:
 
 - **Target:** `document` (not the element itself — listeners attach to `document`).
 - **`bubbles: false`, `composed: false`, `cancelable: false`** — fire-and-forget.
-- **`detail`** is the element instance, typed `HdomElement` but actually one of the concrete
+- **`detail`** is the element instance, typed `HdqlElement` but actually one of the concrete
   subclasses.
 
-Every subclass in `src/hdom/Hdml*.ts` is a thin shell that only declares its `@property`
+Every subclass in `src/hdql/Hdml*.ts` is a thin shell that only declares its `@property`
 fields keyed by `*_ATTRS_LIST` enums from `@hdml/types`. They do not override lifecycle hooks
-— Lit's `attributeChangedCallback` reaches `HdomElement`, which dispatches.
+— Lit's `attributeChangedCallback` reaches `HdqlElement`, which dispatches.
 
 The canonical listener is `<hdml-io>`: see
-[src/hdio/HdmlIo.ts:101-113](../src/hdio/HdmlIo.ts#L101-L113). When fired, it walks the
-document for `hdml-connection`, `hdml-model`, `hdml-frame` elements and re-posts their
-`outerHTML` to the Worker.
+[`#listenHdomChanges`](../src/hdio/HdmlIo.ts#L493) at
+[src/hdio/HdmlIo.ts:493-505](../src/hdio/HdmlIo.ts#L493-L505) (with its
+`#unlistenHdomChanges` peer). When fired, it walks the document for `hdml-connection`,
+`hdml-model`, `hdml-frame` elements and re-posts their `outerHTML` to the Worker.
 
 ## The hdml-io → Worker → HDIO chain
 
-`<hdml-io>` is **not** an `HdomElement` — it extends `LitElement` directly, because it does
+`<hdml-io>` is **not** an `HdqlElement` — it extends `LitElement` directly, because it does
 not represent HDML state, it observes it. It owns four concerns:
 
 1. **Lifecycle.** On `connectedCallback`, it calls `createEndpoint()` (through the module-level
@@ -248,12 +249,17 @@ sequenceDiagram
 ### HTTP
 
 [src/hdio/HdioClient.ts](../src/hdio/HdioClient.ts) wraps `fetch` (polyfilled via
-`whatwg-fetch`). All requests go to
-`{host}/public/api/v1/{tenant}/{api}{path}?{params}` with `Authorization: Bearer {session}`
-and `content-type: application/octet-stream`. Two endpoints are used —
-`GET sessions?tenant&token` to bootstrap the session, then
-`POST hdio/files` with `state.data.buffer` as the body. Errors decode the JSON body and
-re-throw `new Error(message.message || statusText)`. See [docs/hdio-client.md](hdio-client.md).
+`whatwg-fetch`). All requests go to the post-006 tenant routes at `{host}/{tenant}/api/v1/…`
+(the `public/api/v1/{tenant}` base is gone) carrying `Authorization: Bearer {access}` — an
+access token held **in memory only**, never a `session`. There is no `sessions` bootstrap:
+in token mode the `token` attribute is a single-use **handoff code** redeemed at
+`POST /{tenant}/api/v1/auth/token`, and the document itself goes to
+`POST /{tenant}/api/v1/documents/dynamic` (`content-type: application/octet-stream`,
+`state.data.buffer` as the body) for a `201 { stored[], ddl[] }`. The query leg adds
+`POST /{tenant}/api/v1/queries` and its `GET …/{jobId}` / `…/{jobId}/result` /
+`DELETE …/{jobId}` peers. Errors decode the JSON body and re-throw `new
+Error(message.message || statusText)`. The full endpoint table is in
+[docs/hdio-client.md](hdio-client.md#endpoint-surface).
 
 ## Build pipeline
 

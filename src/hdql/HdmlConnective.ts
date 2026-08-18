@@ -6,7 +6,7 @@
 
 import { HDML_TAG_NAMES, CONNECTIVE_ATTRS_LIST } from "@hdml/types";
 import { customElement, property } from "lit/decorators.js";
-import { HdomElement } from "./HdomElement";
+import { HdqlElement } from "./HdqlElement";
 
 /**
  * The `hdml-connective` component is utilized to define logical
@@ -30,7 +30,7 @@ import { HdomElement } from "./HdomElement";
  * needed.
  */
 @customElement(HDML_TAG_NAMES.CONNECTIVE)
-export class HdmlConnective extends HdomElement {
+export class HdmlConnective extends HdqlElement {
   /**
    * @internal
    */

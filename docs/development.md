@@ -68,7 +68,7 @@ Configured in [.testrc.js](../.testrc.js):
 
 - **Three browsers** via Playwright: chromium, firefox, webkit. All three run for every test.
 - **TDD globals.** `testFramework.config.ui = "tdd"` — write `suite(...)` / `test(...)`. See
-  [src/hdom/HdmlConnection.test.ts:11](../src/hdom/HdmlConnection.test.ts#L11) as the canonical
+  [src/hdql/HdmlConnection.test.ts:11](../src/hdql/HdmlConnection.test.ts#L11) as the canonical
   shape (uses `@open-wc/testing`'s `fixture` + `assert.shadowDom`).
 - **Timeout:** 60 000 ms (six seconds × ten — Playwright spin-up is slow on first run).
 - **Legacy polyfills:** webcomponentsjs + a custom Lit polyfill via `@web/dev-server-legacy`.
@@ -84,7 +84,7 @@ Configured in [.testrc.js](../.testrc.js):
   esbuild-bundles it into an ESM shim on the fly (esbuild is already the `bin` bundler — no new
   dependency). Without it, every hdio suite that touches the parser fails to import.
 
-Tests live next to source as `*.test.ts` in both [src/hdom/](../src/hdom/) and
+Tests live next to source as `*.test.ts` in both [src/hdql/](../src/hdql/) and
 [src/hdio/](../src/hdio/) (`endpoint` / `onmessage` / `parse` / `HdioClient`).
 
 ## Lint
@@ -118,7 +118,7 @@ npm run dev_bin             # tsc esm --watch  &  esbuild --watch  &  wds
 `polyfills: { webcomponents: false }` (full polyfilling is only in tests).
 
 [html/index.html](../html/index.html) is the demo hub; sub-pages under
-[html/hdom/](../html/hdom/) load `../../esm/index.js` directly (so they require a fresh
+[html/hdql/](../html/hdql/) load `../../esm/index.js` directly (so they require a fresh
 `compile_esm`), while [html/hdio/hdml-io.bin.html](../html/hdio/hdml-io.bin.html) loads the
 IIFE bundle for testing the Worker-spawning code path.
 

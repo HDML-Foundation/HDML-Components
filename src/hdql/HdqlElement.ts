@@ -5,7 +5,7 @@
  */
 import { LitElement, TemplateResult, html } from "lit";
 
-export class HdomElement extends LitElement {
+export class HdqlElement extends LitElement {
   /**
    * @override
    */
@@ -39,7 +39,7 @@ export class HdomElement extends LitElement {
    */
   private dispatchHdomChanges(): void {
     document.dispatchEvent(
-      new CustomEvent<HdomElement>("hdom-changed", {
+      new CustomEvent<HdqlElement>("hdom-changed", {
         cancelable: false,
         composed: false,
         bubbles: false,

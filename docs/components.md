@@ -6,17 +6,22 @@ class; treat the class file as source of truth and update it alongside any chang
 
 Adjacent reading: [docs/architecture.md](architecture.md) for the `hdom-changed` lifecycle ·
 [docs/hdio-client.md](hdio-client.md) for `<hdml-io>` (the host element, not listed here
-because it is not a `HdomElement`).
+because it is not a `HdqlElement`).
 
-## The two families
+## The three families
 
-- **`hdom/`** — declarative HDML; every element extends
-  [`HdomElement`](../src/hdom/HdomElement.ts), defines `@property` fields keyed by
+- **`hdql/`** — HyperData **Query** Language: declarative HDML data modelling; every element
+  extends [`HdqlElement`](../src/hdql/HdqlElement.ts), defines `@property` fields keyed by
   `*_ATTRS_LIST` enums from `@hdml/types`, and renders `<slot></slot>`. The element does **no
   work itself** — it just keeps DOM-attribute state and fires `hdom-changed` on the
   `document`.
 - **`hdio/`** — one element (`<hdml-io>`) that observes the document and uploads to HDIO.
   See [docs/hdio-client.md](hdio-client.md).
+- **`hdvl/`** — HyperData **Visualisation** Language: the display elements. Not yet
+  implemented; the vocabulary ships in `@hdml/types` and the elements land over RFC 016/001.
+
+`hdql` / `hdvl` name **modules**, never tag prefixes — every tag in this package is
+`hdml-*` (RFC 016/001 §2.1).
 
 ## Composition rules
 
@@ -38,7 +43,7 @@ within the same document or via an HDIO path.
 
 ## Elements
 
-### `hdml-connection` — [src/hdom/HdmlConnection.ts](../src/hdom/HdmlConnection.ts)
+### `hdml-connection` — [src/hdql/HdmlConnection.ts](../src/hdql/HdmlConnection.ts)
 
 A named connection to a database. Attribute applicability depends on `type`.
 
@@ -58,7 +63,7 @@ A named connection to a database. Attribute applicability depends on `type`.
 
 See the source JSDoc for which attribute applies to which `type`.
 
-### `hdml-model` — [src/hdom/HdmlModel.ts](../src/hdom/HdmlModel.ts)
+### `hdml-model` — [src/hdql/HdmlModel.ts](../src/hdql/HdmlModel.ts)
 
 Container for an entity-relationship graph (tables joined together).
 
@@ -69,7 +74,7 @@ Container for an entity-relationship graph (tables joined together).
 
 **Allowed children:** `hdml-table`, `hdml-join`.
 
-### `hdml-table` — [src/hdom/HdmlTable.ts](../src/hdom/HdmlTable.ts)
+### `hdml-table` — [src/hdql/HdmlTable.ts](../src/hdql/HdmlTable.ts)
 
 A physical table, view, materialized view, or SQL query inside a model.
 
@@ -82,7 +87,7 @@ A physical table, view, materialized view, or SQL query inside a model.
 
 **Allowed children:** `hdml-field`.
 
-### `hdml-field` — [src/hdom/HdmlField.ts](../src/hdom/HdmlField.ts)
+### `hdml-field` — [src/hdql/HdmlField.ts](../src/hdql/HdmlField.ts)
 
 A typed field. Reused inside `hdml-table`, `hdml-frame`, `hdml-group-by`, `hdml-sort-by`.
 
@@ -99,7 +104,7 @@ A typed field. Reused inside `hdml-table`, `hdml-frame`, `hdml-group-by`, `hdml-
 | `unit` | `second \| millisecond \| microsecond \| nanosecond` (for `type=time`/`timestamp`) |
 | `timezone` | `UTC`, `GMT`, `GMT-12`..`GMT+14` (for `type=timestamp`) |
 
-### `hdml-join` — [src/hdom/HdmlJoin.ts](../src/hdom/HdmlJoin.ts)
+### `hdml-join` — [src/hdql/HdmlJoin.ts](../src/hdql/HdmlJoin.ts)
 
 A join between two `hdml-table`s within an `hdml-model`.
 
@@ -111,7 +116,7 @@ A join between two `hdml-table`s within an `hdml-model`.
 
 **Allowed children:** an `hdml-connective` (carrying the join condition).
 
-### `hdml-connective` — [src/hdom/HdmlConnective.ts](../src/hdom/HdmlConnective.ts)
+### `hdml-connective` — [src/hdql/HdmlConnective.ts](../src/hdql/HdmlConnective.ts)
 
 Logical operator wrapper. Used under `hdml-join` (join condition) **or** under
 `hdml-filter-by` (row filter).
@@ -122,7 +127,7 @@ Logical operator wrapper. Used under `hdml-join` (join condition) **or** under
 
 **Allowed children:** any mix of `hdml-filter` and nested `hdml-connective`.
 
-### `hdml-filter` — [src/hdom/HdmlFilter.ts](../src/hdom/HdmlFilter.ts)
+### `hdml-filter` — [src/hdql/HdmlFilter.ts](../src/hdql/HdmlFilter.ts)
 
 One predicate. Always nested under `hdml-connective`.
 
@@ -134,7 +139,7 @@ One predicate. Always nested under `hdml-connective`.
 | `name` | `type=named` — one of `equals \| not-equals \| contains \| not-contains \| starts-with \| ends-with \| greater \| greater-equal \| less \| less-equal \| is-null \| is-not-null \| between` |
 | `field`, `values` | `type=named` |
 
-### `hdml-frame` — [src/hdom/HdmlFrame.ts](../src/hdom/HdmlFrame.ts)
+### `hdml-frame` — [src/hdql/HdmlFrame.ts](../src/hdql/HdmlFrame.ts)
 
 A derived dataset on top of an `hdml-model` or another `hdml-frame`.
 
@@ -163,19 +168,19 @@ absolute paths via `sourceToPath`, same-document references via the in-memory ma
 - `source="?hdml-frame=f"` (or an external `/path?hdml-frame=f`) — the parent frame exposes
   fields by their declared `name`, with no rewriting.
 
-### `hdml-filter-by` — [src/hdom/HdmlFilterBy.ts](../src/hdom/HdmlFilterBy.ts)
+### `hdml-filter-by` — [src/hdql/HdmlFilterBy.ts](../src/hdql/HdmlFilterBy.ts)
 
 Marker container for row filters inside `hdml-frame`. No attributes.
 
 **Allowed children:** exactly one `hdml-connective` (which wraps the `hdml-filter`s).
 
-### `hdml-group-by` — [src/hdom/HdmlGroupBy.ts](../src/hdom/HdmlGroupBy.ts)
+### `hdml-group-by` — [src/hdql/HdmlGroupBy.ts](../src/hdql/HdmlGroupBy.ts)
 
 Group rows by one or more fields. No attributes.
 
 **Required children:** ≥1 `hdml-field`.
 
-### `hdml-sort-by` — [src/hdom/HdmlSortBy.ts](../src/hdom/HdmlSortBy.ts)
+### `hdml-sort-by` — [src/hdql/HdmlSortBy.ts](../src/hdql/HdmlSortBy.ts)
 
 Sort the frame by one or more fields. No attributes; per-field direction comes from
 `hdml-field`'s `order` attribute.
@@ -218,7 +223,7 @@ Sort the frame by one or more fields. No attributes; per-field direction comes f
 When the `<hdml-io>` is wired up, this entire subtree is parsed in a Worker and POSTed as
 FlatBuffers. See [docs/hdio-client.md](hdio-client.md).
 
-`<hdml-io>` is not an `HdomElement`; its full attribute/protocol reference lives in
+`<hdml-io>` is not an `HdqlElement`; its full attribute/protocol reference lives in
 [docs/hdio-client.md](hdio-client.md). It takes `host` / `tenant` and one of two auth modes,
 selected by the **`mode`** attribute:
 

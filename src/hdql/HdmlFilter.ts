@@ -6,7 +6,7 @@
 
 import { HDML_TAG_NAMES, FILTER_ATTRS_LIST } from "@hdml/types";
 import { customElement, property } from "lit/decorators.js";
-import { HdomElement } from "./HdomElement";
+import { HdqlElement } from "./HdqlElement";
 
 /**
  * The `hdml-filter` component is utilized to define filters within
@@ -87,7 +87,7 @@ import { HdomElement } from "./HdomElement";
  * data.
  */
 @customElement(HDML_TAG_NAMES.FILTER)
-export class HdmlFilter extends HdomElement {
+export class HdmlFilter extends HdqlElement {
   /**
    * @internal
    */

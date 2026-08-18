@@ -6,7 +6,7 @@
 
 import { HDML_TAG_NAMES, FIELD_ATTRS_LIST } from "@hdml/types";
 import { customElement, property } from "lit/decorators.js";
-import { HdomElement } from "./HdomElement";
+import { HdqlElement } from "./HdqlElement";
 
 /**
  * The `hdml-field` component represents a field within an
@@ -63,7 +63,7 @@ import { HdomElement } from "./HdomElement";
  * `GMT+14`.
  */
 @customElement(HDML_TAG_NAMES.FIELD)
-export class HdmlField extends HdomElement {
+export class HdmlField extends HdqlElement {
   /**
    * @internal
    */

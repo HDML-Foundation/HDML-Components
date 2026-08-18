@@ -6,7 +6,7 @@
 
 import { HDML_TAG_NAMES, FRAME_ATTRS_LIST } from "@hdml/types";
 import { customElement, property } from "lit/decorators.js";
-import { HdomElement } from "./HdomElement";
+import { HdqlElement } from "./HdqlElement";
 
 /**
  * The `hdml-frame` component is used to create a data frame based on
@@ -57,7 +57,7 @@ import { HdomElement } from "./HdomElement";
  * include in the frame.
  */
 @customElement(HDML_TAG_NAMES.FRAME)
-export class HdmlFrame extends HdomElement {
+export class HdmlFrame extends HdqlElement {
   /**
    * @internal
    */

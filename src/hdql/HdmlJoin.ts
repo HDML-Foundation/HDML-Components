@@ -6,7 +6,7 @@
 
 import { HDML_TAG_NAMES, JOIN_ATTRS_LIST } from "@hdml/types";
 import { customElement, property } from "lit/decorators.js";
-import { HdomElement } from "./HdomElement";
+import { HdqlElement } from "./HdqlElement";
 
 /**
  * The `hdml-join` component is used to define joins between tables
@@ -44,7 +44,7 @@ import { HdomElement } from "./HdomElement";
  * @attribute {string} description - The description of the model.
  */
 @customElement(HDML_TAG_NAMES.JOIN)
-export class HdmlJoin extends HdomElement {
+export class HdmlJoin extends HdqlElement {
   /**
    * @internal
    */

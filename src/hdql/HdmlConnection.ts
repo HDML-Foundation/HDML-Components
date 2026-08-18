@@ -6,7 +6,7 @@
 
 import { HDML_TAG_NAMES, CONN_ATTRS_LIST } from "@hdml/types";
 import { customElement, property } from "lit/decorators.js";
-import { HdomElement } from "./HdomElement";
+import { HdqlElement } from "./HdqlElement";
 
 /**
  * The `HdmlConnection` component represents a connection to a
@@ -151,7 +151,7 @@ import { HdomElement } from "./HdomElement";
  * the `snowflake` connector.
  */
 @customElement(HDML_TAG_NAMES.CONNECTION)
-export class HdmlConnection extends HdomElement {
+export class HdmlConnection extends HdqlElement {
   /**
    * @internal
    */

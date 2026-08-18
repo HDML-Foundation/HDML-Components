@@ -6,7 +6,7 @@
 
 import { HDML_TAG_NAMES } from "@hdml/types";
 import { customElement } from "lit/decorators.js";
-import { HdomElement } from "./HdomElement";
+import { HdqlElement } from "./HdqlElement";
 
 /**
  * The `hdml-filter-by` component is used to filter data within the
@@ -29,4 +29,4 @@ import { HdomElement } from "./HdomElement";
  * disconnected from the `document`.
  */
 @customElement(HDML_TAG_NAMES.FILTER_BY)
-export class HdmlFilterBy extends HdomElement {}
+export class HdmlFilterBy extends HdqlElement {}

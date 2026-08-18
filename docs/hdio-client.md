@@ -10,7 +10,7 @@ Worker / MessagePort-fallback execution.
 ## Element surface
 
 [src/hdio/HdmlIo.ts](../src/hdio/HdmlIo.ts) registers `<hdml-io>` (extends `LitElement`, not
-`HdomElement`). It renders `<slot></slot>` and exposes three attributes:
+`HdqlElement`). It renders `<slot></slot>` and exposes three attributes:
 
 | Attribute | Type | Purpose |
 |---|---|---|
