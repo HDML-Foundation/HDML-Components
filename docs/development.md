@@ -45,11 +45,27 @@ npx playwright install           # if outside the devcontainer; the devcontainer
 | `npm run compile_esm` | `tsc -b tsconfig/esm.json` | `esm/` |
 | `npm run compile_dts` | `tsc -b tsconfig/dts.json` | `dts/` |
 | `npm run compile_tst` | `tsc -b tsconfig/tst.json` | `tst/` |
-| `npm run compile_bin` | `node ./.esbuildrc.mjs` → bundles `esm/index.js` into IIFE with worker inlined | `bin/index.min.js` |
+| `npm run compile_bin` | `node ./.esbuildrc.mjs` → bundles `esm/bundle.js` into IIFE with worker inlined | `bin/index.min.js` |
 | `npm run compile_all` | cjs + esm + dts + bin | all four |
-| `npm run docs` | TypeDoc on `src/index.ts` against `tsconfig/esm.json` | `docs/` (HTML) |
-| `npm run manifest` | `cem analyze --litelement --globs 'src/**/*.ts' --exclude 'src/index.ts'` | `custom-elements.json` |
-| `npm run build` | `clear && lint && test && compile_all && docs` | release-shaped tree |
+| `npm run check_dist` | `node ./scripts/check-dist.mjs` — the build assertion; **needs a completed `compile_all`** | — |
+| `npm run docs` | TypeDoc on the four entry points against `tsconfig/esm.json` | `docs/api/` (HTML) |
+| `npm run manifest` | `cem analyze --litelement --globs 'src/**/*.ts' --exclude 'src/index.ts' 'src/bundle.ts'` (`--exclude` takes multiple values under one flag) | `custom-elements.json` |
+| `npm run build` | `clear && lint && test && compile_all && check_dist && docs` | release-shaped tree |
+
+**`check_dist`.** It asserts six things browser tests cannot reach, because wtr runs
+`./tst/**/*.test.js` and never sees `package.json` or the emitted trees: that the `exports`
+map and the `sideEffects` list both match the ones derived from its single `ENTRIES` array;
+that every path `exports` names exists on disk; that every `exports` target is covered by
+`sideEffects`; that `src/index.ts`'s import list is still exactly the union of the `hdio`
+and `hdql` sub-entries; and that `src/hdvl/` imports no `hdio` module other than `config`
+(as a value) and `delivery` (**type-only** — a value import would pull the worker,
+`@hdml/parser` and Arrow into every page, and would compile silently). It sits after
+`compile_all` because two of those checks read the built trees.
+
+**TypeDoc warnings are expected.** `npm run docs` reports ~24 `Encountered an unknown block
+tag @copyright` warnings — one per source file carrying the license preamble, plus the
+`@hdml/types` enum `.d.ts` files the `./hdvl` entry re-exports. Warnings do not fail the
+build; a TypeDoc **error**, or a warning that is not `@copyright`, does.
 
 **`docs/` collision.** `npm run docs` and `npm run clear` both target this directory, which
 also holds the agent docs you're reading. The repo `.gitignore` was updated with

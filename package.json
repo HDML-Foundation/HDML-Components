@@ -42,13 +42,14 @@
   },
   "scripts": {
     "clear": "rm -rf bin && rm -rf tst && rm -rf cjs && rm -rf dts && rm -rf esm && rm -rf tsconfig/*.tsbuildinfo && rm -rf coverage && rm -rf docs/api",
-    "manifest": "node_modules/.bin/cem analyze --litelement --globs \"src/**/*.ts\" --exclude \"src/index.ts\"",
-    "docs": "node_modules/.bin/typedoc ./src/index.ts --tsconfig ./tsconfig/esm.json --out ./docs/api",
+    "manifest": "node_modules/.bin/cem analyze --litelement --globs \"src/**/*.ts\" --exclude \"src/index.ts\" \"src/bundle.ts\"",
+    "docs": "node_modules/.bin/typedoc ./src/index.ts ./src/hdio/index.ts ./src/hdql/index.ts ./src/hdvl/index.ts --tsconfig ./tsconfig/esm.json --out ./docs/api",
+    "check_dist": "node ./scripts/check-dist.mjs",
     "lint": "node ./node_modules/.bin/eslint -c .eslintrc.js --fix --parser-options=tsconfigRootDir:'./tsconfig' 'src/**/*.ts'",
     "tst_dev": "wtr --config .testrc.js",
     "tst_prd": "MODE=prod wtr --config .testrc.js",
     "test": "npm run compile_tst && npm run tst_dev -- --coverage",
-    "build": "npm run clear && npm run lint && npm run test && npm run compile_all && npm run docs",
+    "build": "npm run clear && npm run lint && npm run test && npm run compile_all && npm run check_dist && npm run docs",
     "compile_cjs": "tsc -b ./tsconfig/cjs.json",
     "compile_esm": "tsc -b ./tsconfig/esm.json",
     "compile_dts": "tsc -b ./tsconfig/dts.json",
@@ -62,5 +63,37 @@
   "main": "cjs/index.js",
   "module": "esm/index.js",
   "types": "dts/index.d.ts",
-  "customElements": "custom-elements.json"
+  "customElements": "custom-elements.json",
+  "exports": {
+    ".": {
+      "types": "./dts/index.d.ts",
+      "import": "./esm/index.js",
+      "require": "./cjs/index.js"
+    },
+    "./hdio": {
+      "types": "./dts/hdio/index.d.ts",
+      "import": "./esm/hdio/index.js",
+      "require": "./cjs/hdio/index.js"
+    },
+    "./hdql": {
+      "types": "./dts/hdql/index.d.ts",
+      "import": "./esm/hdql/index.js",
+      "require": "./cjs/hdql/index.js"
+    },
+    "./hdvl": {
+      "types": "./dts/hdvl/index.d.ts",
+      "import": "./esm/hdvl/index.js",
+      "require": "./cjs/hdvl/index.js"
+    }
+  },
+  "sideEffects": [
+    "./esm/index.js",
+    "./cjs/index.js",
+    "./esm/hdio/*.js",
+    "./cjs/hdio/*.js",
+    "./esm/hdql/*.js",
+    "./cjs/hdql/*.js",
+    "./esm/hdvl/*.js",
+    "./cjs/hdvl/*.js"
+  ]
 }

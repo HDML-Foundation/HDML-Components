@@ -24,6 +24,27 @@ not just incidental.)`
 shared schema — if `@hdml/types` adds a new attribute, the change is one line per affected
 component. It also keeps the JSDoc-only API the source of truth for both TypeDoc and CEM.
 
+## The display vocabulary reaches elements through one module
+
+The display half of HDML — twenty-one tag names and twenty `*_ATTRS_LIST` enums — lives
+in `@hdml/types`, exactly as the data half above does, and reaches every display element
+through a single re-export module, [`src/hdvl/vocabulary.ts`](../src/hdvl/vocabulary.ts).
+No display element imports `@hdml/types` directly, and no display tag or attribute string
+is ever written as a literal.
+
+*Why the enums live in `@hdml/types` rather than here:* they are a **published
+cross-repo contract**, so a tag renamed upstream becomes a compile error in this repo
+rather than a silently unregistered element. *Why the single re-export module rather than
+twenty-one direct imports:* the 21/20 counts are then auditable in one file instead of
+twenty-one, and it is one place to assert that no data tag has leaked into the display
+set. `HDVL_TAG_NAMES` is built by reading members off `HDML_TAG_NAMES`, so the values
+cannot drift from the published enum even by a typo.
+
+This is the same rule as *Subclasses have no logic* above, one layer out: that entry keeps
+attribute **keys** schema-driven for the data family; this one keeps tag **names** and
+attribute keys schema-driven for the display family, through an indirection the data
+family does not need because it has no second consumer.
+
 ## `<hdml-io>` is **not** a `HdqlElement`
 
 It extends `LitElement` directly. `<hdml-io>` observes the document, it does not

@@ -64,7 +64,7 @@ function buildWorkerPlugin() {
 
 async function build() {
   await esbuild.build({
-    entryPoints: ["./esm/index.js"],
+    entryPoints: ["./esm/bundle.js"],
     outfile: "./bin/index.min.js",
     bundle: true,
     minify: true,

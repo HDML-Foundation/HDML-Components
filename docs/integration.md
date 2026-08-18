@@ -23,6 +23,61 @@ access:   public
 | `module` | `esm/index.js` |
 | `types` | `dts/index.d.ts` |
 | `customElements` | `custom-elements.json` (CEM, produced by `npm run manifest`) |
+| `exports` | the four entry points below |
+| `sideEffects` | the eight paths below |
+
+`main` / `module` / `types` are kept alongside `exports` as the fallback for resolvers
+that do not read `exports` — removing them would be a second breaking change.
+
+## Entry points
+
+The package publishes **four** entries. `.` is the compatibility root and keeps today's
+surface exactly; `./hdio`, `./hdql` and `./hdvl` are purely additive.
+
+| Entry | Registers | Notes |
+|---|---|---|
+| `.` | `<hdml-io>` + the eleven HDQL elements — **twelve** tags | Byte-for-byte what it registered before the split. No display module, no geometry kernel. |
+| `./hdio` | `<hdml-io>` only | The other eleven modules in `src/hdio/` are its supporting graph and define no tag. |
+| `./hdql` | the eleven HDQL elements | Same import order as `.` — that order is the public registration order. |
+| `./hdvl` | **nothing yet** | The display half. It currently exports only the vocabulary (`HDVL_TAG_NAMES` + the twenty `*_ATTRS_LIST` enums re-exported from `@hdml/types`). The twenty-one display tags arrive later; the entry exists now so the `exports` map, `sideEffects` and the `.` bundle baseline are measured before any display module can perturb them. |
+
+```jsonc
+"exports": {
+  ".":      { "types":   "./dts/index.d.ts",
+              "import":  "./esm/index.js",
+              "require": "./cjs/index.js" },
+  "./hdio": { "types":   "./dts/hdio/index.d.ts",
+              "import":  "./esm/hdio/index.js",
+              "require": "./cjs/hdio/index.js" },
+  "./hdql": { "types":   "./dts/hdql/index.d.ts",
+              "import":  "./esm/hdql/index.js",
+              "require": "./cjs/hdql/index.js" },
+  "./hdvl": { "types":   "./dts/hdvl/index.d.ts",
+              "import":  "./esm/hdvl/index.js",
+              "require": "./cjs/hdvl/index.js" }
+}
+```
+
+**`exports` is a resolution *fence*, not just a map — this is a breaking change.** The
+moment the field exists, every path it does not list becomes unreachable to a modern
+resolver, including deep paths such as `@hdml/components/esm/hdql/HdmlFrame.js`. That is
+intended: a consumer importing a deep path breaks, the four documented entry points do
+not. Import by entry point.
+
+`src/bundle.ts` → `esm/bundle.js` is deliberately **not** an entry point. It exists only
+as the esbuild entry for `bin/index.min.js` and is excluded from CEM analysis alongside
+`src/index.ts`.
+
+### Bundle budget
+
+Ceilings, not measurements. The build assertion that enforces them is not wired yet — it
+lands with the rest of the display runtime.
+
+| Artifact | Ceiling |
+|---|---|
+| `.` | today's size ± 2 kB — the root entry may not grow |
+| `./hdvl` | 120 kB minified / 40 kB gzipped, measured with `--external:lit` |
+| `bin/index.min.js` | its current size plus the `./hdvl` ceiling |
 
 The IIFE bundle at `bin/index.min.js` is **not** referenced from `package.json` — it ships
 in the publish payload but consumers wire it manually via `<script src=…/bin/index.min.js>`.
@@ -47,13 +102,46 @@ import "./hdql/HdmlConnection";
 Consumers should import the whole module exactly once, before any `<hdml-*>` tag is parsed:
 
 ```ts
-import "@hdml/components";   // registers <hdml-connection>, <hdml-model>, ..., <hdml-io>
+import "@hdml/components";        // the twelve tags of the root entry
+import "@hdml/components/hdql";   // or just the eleven data elements
 ```
 
-If a bundler tree-shakes the package, the registrations vanish — `"sideEffects"` is **not**
-declared in `package.json`. `TODO(confirm: add "sideEffects": false-with-exceptions, or
-"sideEffects": ["./esm/index.js", "./esm/hdql/*.js", "./esm/hdio/*.js"], to make this safe
-under bundlers that respect the field.)`
+### `sideEffects`
+
+Because the whole package is side-effectful by design, it declares the field explicitly.
+This is **required, not cosmetic**: a bundler that respects `sideEffects` and finds it
+absent may still strip a bare import, and every `customElements.define` would vanish.
+
+```jsonc
+"sideEffects": [
+  "./esm/index.js",   "./cjs/index.js",
+  "./esm/hdio/*.js",  "./cjs/hdio/*.js",
+  "./esm/hdql/*.js",  "./cjs/hdql/*.js",
+  "./esm/hdvl/*.js",  "./cjs/hdvl/*.js"
+]
+```
+
+Two properties of that value are load-bearing, and the TODO this section replaces got
+both of them wrong:
+
+- **Both module formats, for every entry.** The side effect is the *registration*, not a
+  property of module syntax. Guarding `./esm/hdql/*.js` while leaving `./cjs/hdql/*.js`
+  unlisted would protect one build of the same source and not the other.
+- **The element modules, not the entry files.** `sideEffects` is a **whitelist**: every
+  file it does not match is asserted pure, and a bundler drops bare imports of it. The
+  registration lives in the element module, not in the entry that imports it. Listing
+  only `./esm/hdql/index.js` therefore strips exactly what the field exists to protect —
+  measured, with esbuild reporting *"Ignoring this import because
+  `esm/hdql/HdmlSortBy.js` was marked as having no side effects"*, and `bin/index.min.js`
+  collapsing from 1 058 169 bytes to 136 with no tag registered.
+
+A per-directory glob satisfies both while staying one pair of paths per entry, and it
+covers new modules in an entry's directory without another `package.json` edit.
+
+Both this list and the `exports` map are **generated from one array** in
+[scripts/check-dist.mjs](../scripts/check-dist.mjs), which fails the build if they
+disagree, if a named path is missing after a build, or if an `exports` target is not
+covered by `sideEffects`. A new entry point cannot silently skip its declaration.
 
 ## Dist variants
 
@@ -62,7 +150,8 @@ flowchart LR
   src["src/"] -->|tsc cjs| cjs["cjs/ — Node / older bundlers"]
   src -->|tsc esm| esm["esm/ — modern bundlers"]
   src -->|tsc dts| dts["dts/ — type defs"]
-  esm -->|esbuild + worker plugin| bin["bin/index.min.js — drop-in script tag"]
+  esm --> entry["esm/bundle.js — all three layers"]
+  entry -->|esbuild + worker plugin| bin["bin/index.min.js — drop-in script tag"]
 ```
 
 - **`esm/`** keeps `import _script from "./HdmlIo.worker"` resolving to the literal
