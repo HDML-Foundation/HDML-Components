@@ -1,0 +1,108 @@
+<!doctype html>
+<!--
+  10 — Radar (Chart.js: "radar")
+
+  MOCK — see SPEC.md. Binding modes: literal series + subscription
+  series MIXED in one chart (one widget each — multi-source stays
+  legal per widget, SPEC §4.5). Shows: point scale on the angle
+  channel (categories at spokes, first == last position closes the
+  turn), linear radius, polygonal grid (--hdml-grid-shape), spokes =
+  angle-channel grid, `closed` on line/area to close the loop.
+
+  CORPUS FINDINGS exercised here (see README):
+    - `closed` attribute on hdml-line/hdml-area — new, radar needs it.
+    - Row order must match the angle domain order (path segments
+      connect rows in row order): the bound series pins hdml-sort-by
+      to the same order as the scale's `values`.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>10 — Radar</title>
+    <script src="/bin/components.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0; max-width: 520px; }
+
+      hdml-view { width: 100%; height: 400px; }
+      hdml-polar-plane { padding: 28px; }
+
+      /* bandwidth 0 = point placement: spokes sit ON the category, which
+         is what a radar polygon connects (band↔point is one scale). */
+      hdml-ordinal-scale[channel="angle"] { --hdml-angle-start: 0deg;
+        --hdml-angle-end: 360deg; --hdml-bandwidth: 0; }
+
+      /* rings between spokes render as polygons, not circles */
+      hdml-grid[channel="radius"] { --hdml-grid-shape: polygon;
+        --hdml-line-width: 1px; --hdml-line-color: #cbd5e1; }
+      /* spokes */
+      hdml-grid[channel="angle"] { --hdml-line-width: 1px;
+        --hdml-line-color: #cbd5e1; }
+      hdml-label[channel="angle"] { --hdml-font-size: 11px; }
+      hdml-label[channel="radius"] { --hdml-font-size: 10px; }
+
+      hdml-area.model-a { --hdml-fill-color: #1c8cf433; }
+      hdml-line.model-a { --hdml-line-width: 2px; --hdml-line-color: #1c8cf4; }
+      hdml-area.model-b { --hdml-fill-color: #f59e0b33; }
+      hdml-line.model-b { --hdml-line-width: 2px; --hdml-line-color: #f59e0b; }
+    </style>
+  </head>
+  <body>
+    <hdml-io host="https://hdio.example.com" tenant="demo"
+             token="…single-use handoff code…"></hdml-io>
+
+    <!-- Bound series: long data filtered to one product. sort-by
+         metric asc matches the scale's `values` order below — the
+         polygon connects rows in row order. -->
+    <hdml-frame name="model_b_scores"
+                source="/warehouse/metrics.html?hdml-model=product_metrics">
+      <!-- model-sourced frame: parent fields surface as {table}_{field};
+           the filter references the parent's compound name too -->
+      <hdml-field name="metric" origin="scores_metric" type="utf-8"></hdml-field>
+      <hdml-field name="score" origin="scores_score" type="float-64"
+                  aggregation="avg"></hdml-field>
+      <hdml-filter-by>
+        <hdml-connective operator="and">
+          <hdml-filter type="named" name="equals" field="scores_product"
+                       values="model-b"></hdml-filter>
+        </hdml-connective>
+      </hdml-filter-by>
+      <hdml-group-by><hdml-field name="metric"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="metric" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <figure>
+      <figcaption id="cap-radar">Model A (literal) vs. Model B (subscription)</figcaption>
+      <hdml-view aria-labelledby="cap-radar">
+        <hdml-polar-plane>
+          <hdml-ordinal-scale channel="angle"
+            values='["comfort","efficiency","price","range","safety","speed"]'>
+            <hdml-continuous-scale channel="radius" min="0" max="10">
+              <hdml-grid channel="radius" count="5"></hdml-grid>
+              <hdml-grid channel="angle"></hdml-grid>
+              <hdml-label channel="angle"></hdml-label>
+              <hdml-label channel="radius" count="5"></hdml-label>
+
+              <!-- literal series: no source needed -->
+              <hdml-area class="model-a" closed
+                angle='["comfort","efficiency","price","range","safety","speed"]'
+                r0="0"
+                r1="[7, 6, 8, 5, 9, 6]"></hdml-area>
+              <hdml-line class="model-a" closed
+                angle='["comfort","efficiency","price","range","safety","speed"]'
+                radius="[7, 6, 8, 5, 9, 6]"></hdml-line>
+
+              <!-- bound series: its own source on each widget -->
+              <hdml-area class="model-b" closed
+                angle="metric" r0="0" r1="score"
+                source="?hdml-frame=model_b_scores"></hdml-area>
+              <hdml-line class="model-b" closed
+                angle="metric" radius="score"
+                source="?hdml-frame=model_b_scores"></hdml-line>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    </figure>
+  </body>
+</html>

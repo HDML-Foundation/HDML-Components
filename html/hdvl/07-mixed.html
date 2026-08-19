@@ -1,0 +1,103 @@
+<!doctype html>
+<!--
+  07 — Mixed chart (Chart.js: "mixed" — bar + line, two y axes)
+
+  MOCK — see SPEC.md. Binding modes: subscription. The load-bearing
+  demonstration: DUAL AXIS via SIBLING same-channel scales (SPEC §4.2).
+  Two y scales over one plot area are peers, not parent and child —
+  nesting them is an error. V13: a scale's children are homogeneous
+  (scales or widgets, never both), so ALL widgets live at the tips —
+  the shared x guides sit inside the revenue block, placed FIRST so
+  they paint beneath both blocks' marks. Which block is the author's
+  pick: channel="x" resolves to the single shared x-scale from either,
+  and that resolution — not placement — is what makes it the shared
+  axis. Both marks' x walks up to the same ordinal scale. DOM order =
+  paint order: the margin block comes second, so the line paints over
+  the bars.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>07 — Mixed (bar + line, dual axis)</title>
+    <script src="/bin/components.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0; max-width: 780px; }
+
+      hdml-view { width: 100%; height: 360px; }
+      hdml-cartesian-plane { padding: 16px 64px 40px 64px; }
+      hdml-ordinal-scale[channel="x"] { padding: 0 16px; --hdml-bandwidth: 0.6; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+
+      hdml-axis[channel="x"] { position: absolute; left: 0; right: 0; bottom: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis.revenue { position: absolute; top: 0; bottom: 0; left: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #1c8cf4; }
+      hdml-axis.margin { position: absolute; top: 0; bottom: 0; left: 100%;
+        --hdml-line-width: 1px; --hdml-line-color: #f59e0b; }
+      hdml-label { --hdml-font-size: 11px; }
+      hdml-label[channel="x"] { position: absolute; left: 0; right: 0; top: 100%; }
+      hdml-label.revenue { position: absolute; top: 0; bottom: 0; right: 100%; }
+      hdml-label.margin { position: absolute; top: 0; bottom: 0; left: 100%; }
+
+      hdml-bar { --hdml-fill-color: #1c8cf466; }
+      hdml-line { --hdml-line-width: 2px; --hdml-line-color: #f59e0b;
+        --hdml-curve-type: monotone; }
+      hdml-point { --hdml-tick-style: ellipse; --hdml-tick-width: 7px;
+        --hdml-tick-height: 7px; --hdml-fill-color: #ffffff;
+        --hdml-line-width: 2px; --hdml-line-color: #f59e0b; }
+    </style>
+  </head>
+  <body>
+    <hdml-io host="https://hdio.example.com" tenant="demo"
+             token="…single-use handoff code…"></hdml-io>
+
+    <hdml-frame name="monthly_perf" source="/warehouse/sales.html?hdml-model=sales">
+      <!-- model-sourced frame: parent fields surface as {table}_{field} -->
+      <hdml-field name="month" type="utf-8"
+        clause="format_datetime(orders_order_month, 'MMM')"></hdml-field>
+      <hdml-field name="revenue" origin="orders_revenue" type="float-64"
+                  aggregation="sum"></hdml-field>
+      <hdml-field name="margin" type="float-64"
+        clause="AVG((orders_revenue - orders_cost) / NULLIF(orders_revenue, 0))"></hdml-field>
+      <!-- domain-only sort key: 'MMM' strings sort alphabetically, so row
+           order is pinned by the month NUMBER instead -->
+      <hdml-field name="month_num" type="int-32"
+        clause="MIN(month(orders_order_month))"></hdml-field>
+      <hdml-group-by><hdml-field name="month"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="month_num" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <figure>
+      <figcaption id="cap-mixed">Revenue (bars, left axis) and margin (line, right axis)</figcaption>
+      <hdml-view aria-labelledby="cap-mixed">
+        <hdml-cartesian-plane source="?hdml-frame=monthly_perf">
+          <hdml-ordinal-scale channel="x" values="month">
+
+            <!-- left axis: revenue -->
+            <hdml-continuous-scale channel="y" min="0" values="revenue" nice>
+              <!-- shared x guides: any block works (V13) — channel="x"
+                   resolves to the one shared x-scale from either.
+                   First children, so they paint beneath everything. -->
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-label channel="x"></hdml-label>
+
+              <hdml-axis channel="y" class="revenue"></hdml-axis>
+              <hdml-label channel="y" class="revenue" count="5" format="compact-short"></hdml-label>
+              <hdml-bar x="month" y="revenue"></hdml-bar>
+            </hdml-continuous-scale>
+
+            <!-- right axis: margin — a sibling, not a child -->
+            <hdml-continuous-scale channel="y" min="0" max="0.4">
+              <hdml-axis channel="y" class="margin"></hdml-axis>
+              <hdml-label channel="y" class="margin" count="5" format="percent precision-integer"></hdml-label>
+              <hdml-line x="month" y="margin"></hdml-line>
+              <hdml-point x="month" y="margin"></hdml-point>
+            </hdml-continuous-scale>
+
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+  </body>
+</html>

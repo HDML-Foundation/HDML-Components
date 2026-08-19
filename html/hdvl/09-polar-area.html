@@ -1,0 +1,119 @@
+<!doctype html>
+<!--
+  09 — Polar area (Chart.js: "polarArea")
+
+  MOCK — see SPEC.md. Binding modes: subscription + literal variant.
+  Polar area = hdml-arc, NO layout exception: equal angular slices
+  come from the band scale on the angle channel (row-wise band
+  lookup); the value binds to the radius channel through a sqrt scale
+  (area-honest). Compare 08: value→angle = pie (layout), value→radius
+  = polar area (mark).
+
+  A's color is a continuous RAMP keyed to the measure (redundant
+  encoding — honest for a rose), not a 12-month categorical palette:
+  12 domain values against a smaller palette is an ERROR under §9's
+  palette-assignment rule, and 12 arbitrary hues would say nothing.
+  B keeps the categorical form (5 weekdays fit the palette).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>09 — Polar area</title>
+    <script src="/bin/components.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0 0 3rem; max-width: 480px; }
+
+      hdml-view { width: 100%; height: 340px; }
+      hdml-polar-plane { padding: 12px; }
+      /* the 120px gutter exists for A's ramp legend; B has no legend,
+         so it keeps symmetric padding (a centered rose) */
+      figure:first-of-type hdml-polar-plane { padding: 12px 120px 12px 12px; }
+
+      hdml-ordinal-scale[channel="angle"] { --hdml-angle-start: 0deg;
+        --hdml-angle-end: 360deg; --hdml-bandwidth: 1; }
+
+      hdml-grid[channel="radius"] { --hdml-grid-shape: circle;
+        --hdml-line-width: 1px; --hdml-line-style: dotted;
+        --hdml-line-color: #cbd5e1; }
+      hdml-label[channel="radius"] { --hdml-font-size: 10px; }
+      hdml-legend { position: absolute; top: 8px; left: 100%;
+        width: 110px; --hdml-font-size: 11px; }
+      /* A: ramp stops for the continuous color scale */
+      hdml-continuous-scale[channel="color"] {
+        --hdml-color-interpolate: #dbeafe #1c8cf4 #1e3a8a; }
+      /* B: categorical palette — 5 weekdays, within the list */
+      hdml-ordinal-scale[channel="color"] { --hdml-palette: #1c8cf4 #f59e0b #10b981
+        #8b5cf6 #ec4899 #14b8a6; }
+
+      /* mark-level hover via a STROKE variant: channel-bound fill wins
+         over --hdml-fill-color and its _hover variant alike (§9), so a
+         hover cue on channel-colored wedges uses what the channel does
+         not own — the outline thickens on the hovered wedge only */
+      hdml-arc { --hdml-line-width: 1px; --hdml-line-color: #ffffff;
+        --hdml-line-width_hover: 2.5px; }
+    </style>
+  </head>
+  <body>
+    <hdml-io host="https://hdio.example.com" tenant="demo"
+             token="…single-use handoff code…"></hdml-io>
+
+    <hdml-frame name="monthly_units" source="/warehouse/sales.html?hdml-model=sales">
+      <!-- model-sourced frame: parent fields surface as {table}_{field} -->
+      <hdml-field name="month" type="utf-8"
+        clause="format_datetime(orders_order_month, 'MMM')"></hdml-field>
+      <hdml-field name="units" origin="orders_units" type="int-32"
+                  aggregation="sum"></hdml-field>
+      <!-- domain-only sort key: 'MMM' strings sort alphabetically, so row
+           order is pinned by the month NUMBER instead -->
+      <hdml-field name="month_num" type="int-32"
+        clause="MIN(month(orders_order_month))"></hdml-field>
+      <hdml-group-by><hdml-field name="month"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="month_num" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <figure>
+      <figcaption id="cap-rose">A — units per month (Nightingale rose), subscription</figcaption>
+      <hdml-view aria-labelledby="cap-rose">
+        <hdml-polar-plane source="?hdml-frame=monthly_units">
+          <hdml-ordinal-scale channel="angle" values="month">
+            <hdml-continuous-scale type="sqrt" channel="radius" min="0" values="units" nice>
+              <hdml-continuous-scale channel="color" min="0" values="units">
+                <hdml-grid channel="radius" count="4"></hdml-grid>
+                <hdml-label channel="radius" count="4" format="compact-short"></hdml-label>
+
+                <!-- angle: string ↔ band (equal slices); radius:
+                     number ↔ sqrt; color: number ↔ ramp — kinds line
+                     up (V2); hdml-legend renders the labeled ramp (§2) -->
+                <hdml-arc angle="month" radius="units"
+                          color="units"></hdml-arc>
+
+                <hdml-legend channel="color" count="4" format="compact-short"></hdml-legend>
+              </hdml-continuous-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-weekdays">B — literal variant, no server</figcaption>
+      <hdml-view aria-labelledby="cap-weekdays">
+        <hdml-polar-plane>
+          <hdml-ordinal-scale channel="angle"
+                           values='["Mon","Tue","Wed","Thu","Fri"]'>
+            <hdml-continuous-scale type="sqrt" channel="radius" min="0" max="20">
+              <hdml-ordinal-scale channel="color"
+                                    values='["Mon","Tue","Wed","Thu","Fri"]'>
+                <hdml-grid channel="radius" count="4"></hdml-grid>
+                <hdml-arc angle='["Mon","Tue","Wed","Thu","Fri"]'
+                          radius="[11, 16, 7, 14, 19]"
+                          color='["Mon","Tue","Wed","Thu","Fri"]'></hdml-arc>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    </figure>
+  </body>
+</html>

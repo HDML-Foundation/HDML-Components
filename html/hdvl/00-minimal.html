@@ -1,0 +1,40 @@
+<!doctype html>
+<!--
+  00 — Minimal (the floor)
+
+  MOCK — see SPEC.md. The smallest legal render: one bar chart, literal
+  data, no server, no hdml-io, and NO CSS beyond a width. Everything
+  else comes from spec defaults: view aspect-ratio 2:1, UA plane padding
+  (the gutter the guides land in) and UA guide placement (x guides below
+  the plot, y guides left — §3), bandwidth 0.8, currentColor marks,
+  system-ui 11px labels (§9 initials). The accessible name is an
+  attribute, not CSS — the zero-CSS claim survives it (§10 floor).
+
+  Every element here is load-bearing — two scales (the space), four
+  guides (what the reader is told), one mark (the statement). That is
+  the honest answer to "why not one config object": nothing in this
+  page is boilerplate to be inferred, so nothing can be silently
+  inferred wrong.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>00 — Minimal</title>
+    <script src="/bin/components.min.js"></script>
+  </head>
+  <body>
+    <hdml-view style="width: 480px" aria-label="Quarterly revenue, Q1–Q4">
+      <hdml-cartesian-plane>
+        <hdml-ordinal-scale channel="x" values='["Q1","Q2","Q3","Q4"]'>
+          <hdml-continuous-scale channel="y" min="0" max="500">
+            <hdml-axis channel="x"></hdml-axis>
+            <hdml-label channel="x"></hdml-label>
+            <hdml-axis channel="y"></hdml-axis>
+            <hdml-label channel="y" count="5"></hdml-label>
+            <hdml-bar x='["Q1","Q2","Q3","Q4"]' y="[310, 420, 380, 490]"></hdml-bar>
+          </hdml-continuous-scale>
+        </hdml-ordinal-scale>
+      </hdml-cartesian-plane>
+    </hdml-view>
+  </body>
+</html>

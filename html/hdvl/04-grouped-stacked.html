@@ -1,0 +1,266 @@
+<!doctype html>
+<!--
+  04 — Grouped + stacked bars (Chart.js: grouped "bar", stacked "bar")
+
+  MOCK — see SPEC.md. Binding modes: subscription (wide frame via
+  CASE-pivot clauses) + STRING SCALAR CONSTANTS as series identity
+  (color='"North"') so the legend works through the color scale.
+  Shows: layout containers (SPEC §7) — hdml-cluster (dodge slots derived
+  from child order, no CSS bookkeeping) and hdml-stack (container-supplied
+  baselines) over plain hdml-bar / hdml-area children; container-hoisted
+  x (children never bind it, V6); offset="normalize" (100%); clustered
+  stacks (E — the only legal nesting, V17); explicit series identity on
+  every child.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>04 — Grouped &amp; stacked bars</title>
+    <script src="/bin/components.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0 0 3rem; max-width: 760px; }
+
+      hdml-view { width: 100%; height: 300px; }
+      hdml-cartesian-plane { padding: 16px 120px 40px 64px; }
+      hdml-ordinal-scale[channel="x"] { padding: 0 16px; --hdml-bandwidth: 0.75; }
+      /* band↔point is one scale: bandwidth 0 puts marks on the boundary,
+         which is what an area/line wants (SPEC §6). */
+      hdml-ordinal-scale.points { --hdml-bandwidth: 0; }
+      /* curve properties are read from the stack, not its children — band
+         k's top is band k+1's baseline (SPEC §7); inert on bar stacks */
+      hdml-stack { --hdml-curve-type: natural; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+
+      hdml-axis[channel="x"] { position: absolute; left: 0; right: 0; bottom: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="y"] { position: absolute; top: 0; bottom: 0; left: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-label { --hdml-font-size: 11px; }
+      hdml-label[channel="x"] { position: absolute; left: 0; right: 0; top: 100%; }
+      hdml-label[channel="y"] { position: absolute; top: 0; bottom: 0; right: 100%; }
+
+      /* hdml-legend is the color-channel legend; placed right of the plot */
+      hdml-legend { position: absolute; top: 8px; left: 100%;
+        width: 110px; --hdml-font-size: 11px; }
+
+      /* the palette is the color channel's range source */
+      hdml-ordinal-scale[channel="color"] { --hdml-palette: #1c8cf4 #f59e0b #10b981; }
+    </style>
+  </head>
+  <body>
+    <hdml-io host="https://hdio.example.com" tenant="demo"
+             token="…single-use handoff code…"></hdml-io>
+
+    <!-- Wide pivot: stacking/clustering over KNOWN series = columns
+         (author-time knowledge). Band scales take strings, so the
+         month is formatted server-side. -->
+    <hdml-frame name="regional_m" source="/warehouse/sales.html?hdml-model=sales">
+      <!-- model-sourced frame: parent fields surface as {table}_{field},
+           in clause SQL too -->
+      <hdml-field name="month" type="utf-8"
+        clause="format_datetime(orders_order_month, 'MMM')"></hdml-field>
+      <hdml-field name="north" type="float-64"
+        clause="SUM(CASE WHEN orders_region = 'north' THEN orders_revenue ELSE 0 END)"></hdml-field>
+      <hdml-field name="south" type="float-64"
+        clause="SUM(CASE WHEN orders_region = 'south' THEN orders_revenue ELSE 0 END)"></hdml-field>
+      <hdml-field name="east" type="float-64"
+        clause="SUM(CASE WHEN orders_region = 'east' THEN orders_revenue ELSE 0 END)"></hdml-field>
+
+      <!-- E only: the same pivot over cost, for the clustered stacks -->
+      <hdml-field name="north_cost" type="float-64"
+        clause="SUM(CASE WHEN orders_region = 'north' THEN orders_cost ELSE 0 END)"></hdml-field>
+      <hdml-field name="south_cost" type="float-64"
+        clause="SUM(CASE WHEN orders_region = 'south' THEN orders_cost ELSE 0 END)"></hdml-field>
+      <hdml-field name="east_cost" type="float-64"
+        clause="SUM(CASE WHEN orders_region = 'east' THEN orders_cost ELSE 0 END)"></hdml-field>
+
+      <!-- Two domain-only fields. No widget binds either: they exist so the
+           y scale has something to subscribe to (rule 2), since there is no
+           widget-union fallback — and a stack never feeds a scale (SPEC §7).
+           series_max — tallest INDIVIDUAL bar, for the clustered chart.
+           total     — tallest STACK, for the stacked charts. -->
+      <hdml-field name="series_max" type="float-64"
+        clause="GREATEST(
+                  SUM(CASE WHEN orders_region = 'north' THEN orders_revenue ELSE 0 END),
+                  SUM(CASE WHEN orders_region = 'south' THEN orders_revenue ELSE 0 END),
+                  SUM(CASE WHEN orders_region = 'east' THEN orders_revenue ELSE 0 END))"></hdml-field>
+      <hdml-field name="total" type="float-64"
+        clause="SUM(CASE WHEN orders_region IN ('north', 'south', 'east')
+                    THEN orders_revenue ELSE 0 END)"></hdml-field>
+
+      <!-- domain-only sort key: 'MMM' strings sort alphabetically (Apr,
+           Aug, Dec, …), so row order — and with it the x domain — is
+           pinned by the month NUMBER instead -->
+      <hdml-field name="month_num" type="int-32"
+        clause="MIN(month(orders_order_month))"></hdml-field>
+
+      <hdml-group-by><hdml-field name="month"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="month_num" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <figure>
+      <figcaption id="cap-grouped">A — grouped: hdml-cluster derives dodge slots from its
+        children; series identity via string constants</figcaption>
+      <hdml-view aria-labelledby="cap-grouped">
+        <hdml-cartesian-plane source="?hdml-frame=regional_m">
+          <hdml-ordinal-scale channel="x" values="month">
+            <!-- grouped: each bar is one series value ⇒ series_max -->
+            <!-- nice="5" rounds the DERIVED ceiling to the same step the
+                 labels use; the authored min="0" is never moved (V15) -->
+            <hdml-continuous-scale channel="y" min="0" values="series_max" nice="5">
+              <hdml-ordinal-scale channel="color" values='["North","South","East"]'>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+
+                <!-- the cluster hoists the shared x — children never bind
+                     it (V6). Slot = child index, slots = child count,
+                     derived from structure (SPEC §7): no slot CSS.
+                     color='"North"' broadcasts the series name through
+                     the chromatic scale — fill + legend both follow. -->
+                <hdml-cluster x="month">
+                  <hdml-bar y="north" color='"North"'></hdml-bar>
+                  <hdml-bar y="south" color='"South"'></hdml-bar>
+                  <hdml-bar y="east"  color='"East"'></hdml-bar>
+                </hdml-cluster>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-stacked">B — stacked: the same children, a different container
+        (grouped ↔ stacked is one tag rename)</figcaption>
+      <hdml-view aria-labelledby="cap-stacked">
+        <hdml-cartesian-plane source="?hdml-frame=regional_m">
+          <hdml-ordinal-scale channel="x" values="month">
+            <!-- stacked: the bar reaches the stack sum ⇒ total -->
+            <hdml-continuous-scale channel="y" min="0" values="total" nice="5">
+              <hdml-ordinal-scale channel="color" values='["North","South","East"]'>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+
+                <!-- the stack supplies each child's baseline (per row,
+                     y0ₖ = Σ of preceding siblings' y — SPEC §7); child
+                     order = stack order, bottom-up. Identity is explicit:
+                     the constant is palette key AND legend entry — no
+                     implicit lowercase column-name legend. -->
+                <hdml-stack x="month">
+                  <hdml-bar y="north" color='"North"'></hdml-bar>
+                  <hdml-bar y="south" color='"South"'></hdml-bar>
+                  <hdml-bar y="east"  color='"East"'></hdml-bar>
+                </hdml-stack>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-normalized">C — 100% stacked (offset="normalize")</figcaption>
+      <hdml-view aria-labelledby="cap-normalized">
+        <hdml-cartesian-plane source="?hdml-frame=regional_m">
+          <hdml-ordinal-scale channel="x" values="month">
+            <hdml-continuous-scale channel="y" min="0" max="1">
+              <hdml-ordinal-scale channel="color"
+                                    values='["North","South","East"]'>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5" format="percent precision-integer"></hdml-label>
+                <!-- offset is a parameter of the relation, so it lives on
+                     the container (SPEC §7) -->
+                <hdml-stack x="month" offset="normalize">
+                  <hdml-bar y="north" color='"North"'></hdml-bar>
+                  <hdml-bar y="south" color='"South"'></hdml-bar>
+                  <hdml-bar y="east"  color='"East"'></hdml-bar>
+                </hdml-stack>
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-stacked-area">D — stacked area: same container, area-shaped
+        children</figcaption>
+      <hdml-view aria-labelledby="cap-stacked-area">
+        <hdml-cartesian-plane source="?hdml-frame=regional_m">
+          <hdml-ordinal-scale class="points" channel="x" values="month">
+            <hdml-continuous-scale channel="y" min="0" values="total" nice="5">
+              <hdml-ordinal-scale channel="color" values='["North","South","East"]'>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+                <!-- children bind y in SIMPLE form only (V6): the stack
+                     owns the baseline, superseding area's y0="0" sugar.
+                     The curve comes from the stack (page CSS above). -->
+                <hdml-stack x="month">
+                  <hdml-area y="north" color='"North"'></hdml-area>
+                  <hdml-area y="south" color='"South"'></hdml-area>
+                  <hdml-area y="east"  color='"East"'></hdml-area>
+                </hdml-stack>
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-clustered">E — clustered stacks: revenue vs. cost composition per
+        month; left slot = revenue, right = cost (hdml-stack inside
+        hdml-cluster — the only legal nesting, V17)</figcaption>
+      <hdml-view aria-labelledby="cap-clustered">
+        <hdml-cartesian-plane source="?hdml-frame=regional_m">
+          <hdml-ordinal-scale channel="x" values="month">
+            <!-- two stacks share the band: no single column is the right
+                 ceiling, so the axis authors it — SPEC §6's documented
+                 multi-source-axis pattern -->
+            <hdml-continuous-scale channel="y" min="0" max="2500000">
+              <hdml-ordinal-scale channel="color" values='["North","South","East"]'>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+
+                <!-- the OUTERMOST container hoists x for the whole
+                     composition — the stacks and their bars never bind
+                     it (V6) -->
+                <hdml-cluster x="month">
+                  <hdml-stack>
+                    <hdml-bar y="north" color='"North"'></hdml-bar>
+                    <hdml-bar y="south" color='"South"'></hdml-bar>
+                    <hdml-bar y="east"  color='"East"'></hdml-bar>
+                  </hdml-stack>
+                  <hdml-stack>
+                    <hdml-bar y="north_cost" color='"North"'></hdml-bar>
+                    <hdml-bar y="south_cost" color='"South"'></hdml-bar>
+                    <hdml-bar y="east_cost"  color='"East"'></hdml-bar>
+                  </hdml-stack>
+                </hdml-cluster>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+  </body>
+</html>

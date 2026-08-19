@@ -1,0 +1,106 @@
+<!doctype html>
+<!--
+  02 — Area chart (Chart.js: "line" with fill)
+
+  MOCK — see SPEC.md. This page is deliberately server-free: no
+  hdml-io, no frames, no `source` anywhere (SPEC §4.4 — literals need
+  none). Binding modes exercised:
+    - literal arrays (numbers, strings, ISO date strings)
+    - numeric scalar constant (y0="0")
+    - string scalar constant (y0='"seed"', hdml-rule y='"growth"')
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>02 — Area</title>
+    <script src="/bin/components.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0 0 3rem; max-width: 760px; }
+
+      /* no height: the view's default aspect-ratio: 2/1 (SPEC §3) sizes it.
+         Every other page sets one explicitly — this is the one that proves
+         width alone is enough. */
+      hdml-view { width: 100%; }
+      hdml-cartesian-plane { padding: 16px 24px 40px 56px; }
+      hdml-datetime-scale[channel="x"], hdml-continuous-scale[channel="x"] { padding: 0 8px; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+      hdml-ordinal-scale[channel="y"] { padding: 16px 0; }
+
+      hdml-axis[channel="x"] { position: absolute; left: 0; right: 0; bottom: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="y"] { position: absolute; top: 0; bottom: 0; left: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-label { --hdml-font-size: 11px; }
+      hdml-label[channel="x"] { position: absolute; left: 0; right: 0; top: 100%; }
+      hdml-label[channel="y"] { position: absolute; top: 0; bottom: 0; right: 100%; }
+
+      hdml-area { --hdml-fill-color: #7ebcf6; --hdml-curve-type: natural; }
+      hdml-line { 
+        --hdml-line-width: 2px; 
+        --hdml-line-color: #1c8cf4;
+        --hdml-curve-type: natural; 
+      }
+      hdml-rule {
+        --hdml-line-width: 1px; 
+        --hdml-line-style: dashed;
+        --hdml-line-color: #dc2626; 
+      }
+    </style>
+  </head>
+  <body>
+    <figure>
+      <figcaption id="cap-numeric">A — numeric area, literal data, constant baseline</figcaption>
+      <hdml-view aria-labelledby="cap-numeric">
+        <hdml-cartesian-plane>
+          <!-- time scale parses literal ISO date strings explicitly (SPEC §6);
+               literal mode means the author knows both endpoints — rule 1 -->
+          <hdml-datetime-scale channel="x" min="2025-01-01" max="2025-06-01">
+            <hdml-continuous-scale channel="y" min="0" max="300">
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-label channel="x" format="MMM"></hdml-label>
+              <hdml-label channel="y" count="4"></hdml-label>
+
+              <!-- y0: numeric scalar broadcast to N=6 -->
+              <hdml-area
+                x='["2025-01-01","2025-02-01","2025-03-01","2025-04-01","2025-05-01","2025-06-01"]'
+                y0="0"
+                y1="[120, 180, 150, 220, 260, 240]"></hdml-area>
+              <hdml-line
+                x='["2025-01-01","2025-02-01","2025-03-01","2025-04-01","2025-05-01","2025-06-01"]'
+                y="[120, 180, 150, 220, 260, 240]"></hdml-line>
+            </hdml-continuous-scale>
+          </hdml-datetime-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-band">B — area between categories (band y), string constants</figcaption>
+      <hdml-view aria-labelledby="cap-band">
+        <hdml-cartesian-plane>
+          <hdml-continuous-scale channel="x" min="0" max="100">
+            <hdml-ordinal-scale channel="y" values='["seed","sprout","growth","bloom"]'>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-label channel="x" count="6"></hdml-label>
+              <hdml-label channel="y"></hdml-label>
+
+              <!-- y0: string scalar broadcast — replaces the PoC's
+                   11-element repeated array. Both endpoints are
+                   categories on the band scale (kinds match, V2). -->
+              <hdml-area
+                x="[0, 20, 40, 60, 80, 100]"
+                y0='"seed"'
+                y1='["sprout","growth","growth","bloom","bloom","growth"]'></hdml-area>
+
+              <!-- a categorical reference line -->
+              <hdml-rule y='"growth"'></hdml-rule>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+  </body>
+</html>

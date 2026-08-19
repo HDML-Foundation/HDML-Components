@@ -1,5 +1,6 @@
 {
   "extends": "./base.json",
+  "exclude": ["../src/**/*.test.ts", "../src/testing/**"],
   "compilerOptions": {
     "module": "commonjs",
     "target": "esnext",

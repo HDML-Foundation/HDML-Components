@@ -76,9 +76,30 @@ move typedoc output to ./docs/api/ and adjust the npm scripts so the conflict go
 ## Test
 
 ```bash
+export PLAYWRIGHT_BROWSERS_PATH=/ms-playwright   # REQUIRED — see below
 npm test                    # compile_tst + wtr --coverage (defaults: dev export condition)
 MODE=prod npm run tst_prd   # same suites against prod export condition
+npx wtr --config .testrc.js --files "tst/hdvl/*.test.js"   # scoped, still 3 engines
 ```
+
+**`PLAYWRIGHT_BROWSERS_PATH=/ms-playwright` must be exported.** The devcontainer image
+ships the browsers there, **read-only**, and *nothing in this repo sets the variable* — no
+`.env`, no npm script, no CI step. Without it Playwright looks in `~/.cache/ms-playwright`,
+finds nothing, and every test on all three engines fails with *"Executable doesn't exist"*.
+It is the single most common way a fresh session fails at step one. (Related: never delete
+`package-lock.json` — `playwright` is held at the version whose browser revisions match that
+read-only directory, and floating it fails every test with the same message.)
+
+**Use `127.0.0.1`, never `localhost`,** in any test that reaches a local server — behind the
+VS Code port forwarder `localhost` resolves to `::1` first and each request stalls ~20 s.
+Same trap as the [dev server](#dev-server) below. Same-origin `fixture(html\`…\`)` avoids it
+entirely; prefer it.
+
+**There is no single-engine run.** `.testrc.js` defines `browsers` manually, so `--playwright`
+and `--browsers` are both rejected by the CLI. Scoping `--files` to one `tst/` path is the
+fast loop, and it still runs all three engines. `npx tsc -p tsconfig/tst.json --noEmit` is the
+*real* fast feedback loop, since `npm run test` runs `compile_tst` first and a type error in a
+`.test.ts` fails the gate before a browser starts.
 
 Configured in [.testrc.js](../.testrc.js):
 
@@ -100,8 +121,140 @@ Configured in [.testrc.js](../.testrc.js):
   esbuild-bundles it into an ESM shim on the fly (esbuild is already the `bin` bundler — no new
   dependency). Without it, every hdio suite that touches the parser fails to import.
 
-Tests live next to source as `*.test.ts` in both [src/hdql/](../src/hdql/) and
-[src/hdio/](../src/hdio/) (`endpoint` / `onmessage` / `parse` / `HdioClient`).
+Tests live next to source as `*.test.ts` in [src/hdql/](../src/hdql/),
+[src/hdio/](../src/hdio/) (`endpoint` / `onmessage` / `parse` / `HdioClient`),
+[src/hdvl/](../src/hdvl/) and [src/testing/](../src/testing/).
+
+### `FakeIo` — the page-level D8 double
+
+[src/testing/FakeIo.ts](../src/testing/FakeIo.ts) is a **page-level double of the D8
+provider**: it listens for the configured request event on `document`, announces ready, and
+answers with canned `Delivery` objects. It is what every HDVL test binds against.
+
+```ts
+import { mountFakeIo } from "../testing/FakeIo";
+
+const io = mountFakeIo({
+  "?hdml-frame=sales": {
+    generation: 1,
+    rows: 3,
+    columns: {
+      month: { values: ["a", "b", "c"], domain: {…}, type: {…} },
+    },
+  },
+});
+io.feed("?hdml-frame=sales", { generation: 2, rows: 0, columns: {} });
+io.fail("?hdml-frame=sales", "boom", "query-failed", 2);
+io.announceGone();          // provider restart, without unmounting
+io.subscriptions;           // what the consumer actually asked for
+```
+
+`mountFakeIo` registers its own teardown, so a test never unmounts by hand.
+
+Six things it produces on demand that a **real** server cannot: supersession (feed G2 then
+G1), an `absent` column, a zero-row result, a classified `error`, the gone event, and a
+late-join replay.
+
+**`FakeIo` and `mockHdio` are orthogonal, and both stay.** `mockHdio` (the `.testrc.js`
+middleware above) is an **HTTP route double** for the *real* `<hdml-io>` — reach for it when
+the thing under test is `HdioClient`, the worker, or the auth flow. `FakeIo` **replaces**
+`<hdml-io>` and makes no HTTP request at all — reach for it when the thing under test is a
+consumer of the seam.
+
+**`FakeIo` is deliberately not a custom element.** `npm run manifest` globs all of `src/` and
+`custom-elements.json` is a declared package field, so a registered double would be
+advertised in the *published* manifest — and the tsconfig exclusion below cannot stop that,
+because CEM reads source, not the emitted trees.
+
+### The provider-conformance suite
+
+The D8 provider contract is written **once**, as the fourteen clauses of
+[src/testing/conformance.ts](../src/testing/conformance.ts), and
+[conformance.test.ts](../src/testing/conformance.test.ts) runs it against **both** providers —
+`FakeIo` and the real `<hdml-io>` — from one `assertProviderConformance(harness)` call each.
+A second, hand-written `FakeIo` suite that agreed with the `<hdml-io>` one would prove only
+that the same author wrote both.
+
+**A new provider behaviour belongs in `conformance.ts`, not in a second suite.** Implement a
+`ProviderHarness` (`name` / `mount` / `unmount` / `feed` / `fail`) and the clauses come free.
+The clauses assert behaviour, never a registry accessor — that is what keeps the harness
+interface to four methods and applicable to a real custom element.
+
+One gotcha the clauses encode: **every provider teardown dispatches the gone event on
+`document`**, so a suite that counts the *default* name counts its neighbours. Each harness
+suite configures its own name (`window.HDML_CONFIG = { goneEvent: "x-gone-…" }`) and asserts
+**zero** under the default.
+
+### Why `src/testing/` is excluded from `cjs`/`esm`/`dts`
+
+Anything under `src/` that is **not** `*.test.ts` ships in the published package. A test
+double added under `src/` therefore reaches npm unless a tsconfig says otherwise, so
+`tsconfig/{cjs,esm,dts}.json` each carry:
+
+```json
+"exclude": ["../src/**/*.test.ts", "../src/testing/**"],
+```
+
+**Both patterns, in every config that declares one.** A child tsconfig's `exclude`
+**replaces** its parent's — it does not merge — so naming only the new directory would
+silently un-exclude every `*.test.ts` and start publishing the whole suite. `dts.json`
+extends `esm.json` and would inherit it, and declares it anyway: an inherited exclusion is
+invisible at the file a reader opens, and this is the mechanism that must not be subtle.
+`tsconfig/tst.json`'s `"exclude": []` is untouched — it is what keeps `src/testing/`
+compiling into `tst/` and reaching the browser.
+
+Check it with:
+
+```bash
+npm run clear && npm run compile_all
+ls esm/testing cjs/testing dts/testing   # expect: No such file × 3
+find cjs esm dts -name "*.test.*"        # expect: no output
+```
+
+### The platform probe
+
+[src/hdvl/platform.test.ts](../src/hdvl/platform.test.ts) asserts, on all three engines and
+before one display element exists, the eight platform capabilities the HDVL runtime is built
+out of: no ShadyCSS/ShadyDOM; a constructed `CSSStyleSheet` adopted into a shadow root; a
+`:host(...)`-qualified rule in that sheet; `::slotted(...)`; `CSS.registerProperty` (including
+that **re-registration throws `InvalidModificationError`**, which is why the property registry
+needs a *per-property* try/catch); `:state()` via `ElementInternals.states`; `ResizeObserver`'s
+first callback; and `transitionrun` on a registered custom property, changed inline **and** via
+a stylesheet.
+
+The legacy plugin's `webcomponents` polyfill is **on** for every run; if it ever activates
+ShadyCSS, three of those capabilities change meaning underneath everything built on them.
+
+**A red probe is a stop-and-ask, not a fix-forward.** Do not weaken an assertion, skip an
+engine, or add a polyfill — a failure changes what the display elements can be built out of.
+
+### Writing a scene assertion
+
+HDVL assertions are **scene descriptions, never pixels** — a regression then names the number
+that moved, which a screenshot baseline cannot. The conventions:
+
+- `deepEqual` against a golden scene committed as a **TS literal**, obtained through a
+  precision-quantized `sceneOf(view, { precision: 6 })`. The scene itself is never quantized;
+  that would be a rendering decision.
+- `closeTo(…, 1e-9)` for anything that went through `Math.log/pow/sin/cos/exp` — ECMAScript
+  does not require correctly-rounded transcendentals and the three engines differ in the last
+  ulp. Exact `deepEqual` is for rational arithmetic only.
+- `Intl` **output strings** are asserted on chromium only (ICU version and data differ by
+  engine and OS). The cross-engine contract is the skeleton → option-bag mapping.
+- `getComputedStyle` fixtures run on all three engines, mandatory — that is precisely where
+  engines differ.
+
+`sceneOf` / `assertRenders` do not exist yet; they arrive with the scene itself.
+
+### The HDVL corpus pages
+
+[html/hdvl/](../html/hdvl/) holds the thirteen corpus pages (`00-minimal` … `12-coverage`),
+linked from [html/index.html](../html/index.html). They are **byte copies** of the originals
+in the project folder (`016. HDVL Elements/002. Product Discovery/examples/`), and they double
+as the acceptance suite.
+
+**No test can assert the two copies agree** — this repo cannot reach the project folder — so a
+corpus fix must land in **both** locations, by hand, in the same change.
 
 ## Lint
 

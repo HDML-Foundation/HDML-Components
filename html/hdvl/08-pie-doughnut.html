@@ -1,0 +1,167 @@
+<!doctype html>
+<!--
+  08 — Pie & doughnut (Chart.js: "pie", "doughnut")
+
+  MOCK — see SPEC.md. Binding modes: subscription + literal arrays.
+  Four figures:
+    A — hdml-pie (LAYOUT widget: internal value→cumulative-fraction
+        derive, SPEC §7). Its source frame MUST pin row order (V7).
+    B — doughnut: identical grammar, --hdml-inner-radius CSS; literal
+        data with a literal color column.
+    C — the PURE form: hdml-arc a0/a1 fed by window-clause frame
+        fields — the prefix sum computed in the data layer instead of
+        the widget. Both paths are legal by design.
+    D — multi-series doughnut: one hdml-pie PER RING in overlaid
+        planes (§4.8) — rings are author-named columns of one wide
+        frame (elements), slices are rows (the pie's job); ring
+        geometry is pure CSS. NOT a stack (nothing accumulates
+        radially) and NOT a sunburst (no hierarchy).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>08 — Pie &amp; doughnut</title>
+    <script src="/bin/components.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0 0 3rem; max-width: 480px; }
+
+      hdml-view { width: 100%; height: 320px; }
+      hdml-polar-plane { padding: 12px 120px 12px 12px; }
+
+      /* angle range is CSS custom props — a box has no angular extent.
+         Full turn is the default; shown explicitly for the mock. */
+      hdml-continuous-scale[channel="angle"] { --hdml-angle-start: 0deg;
+        --hdml-angle-end: 360deg; }
+
+      hdml-legend { position: absolute; top: 8px; left: 100%;
+        width: 110px; --hdml-font-size: 11px; }
+      hdml-ordinal-scale[channel="color"] { --hdml-palette: #1c8cf4 #f59e0b #10b981 #8b5cf6; }
+
+      hdml-pie, hdml-arc { --hdml-line-width: 2px; --hdml-line-color: #ffffff; }
+      hdml-pie.donut { --hdml-inner-radius: 62%; }
+
+      /* D — ring geometry is pure CSS: each ring is one plane's content
+         box + the --hdml-inner-radius floor its pie INHERITS (the
+         property is read at the widget, SPEC §9 — B sets it on the pie,
+         here the plane scopes the whole ring). The inner plane's padding
+         grows by the same 32px on every side, so the rings stay
+         concentric and the inner ring's outer edge clears the outer
+         ring's floor. */
+      figure.rings hdml-polar-plane.outer { --hdml-inner-radius: 80%; }
+      figure.rings hdml-polar-plane.inner { padding: 44px 152px 44px 44px;
+        --hdml-inner-radius: 74%; }
+    </style>
+  </head>
+  <body>
+    <hdml-io host="https://hdio.example.com" tenant="demo"
+             token="…single-use handoff code…"></hdml-io>
+
+    <!-- Pie source: row order = slice order, so sort-by is REQUIRED
+         here (V7) — an unsorted query may legally reorder between
+         refreshes and the pie would visibly rearrange. -->
+    <hdml-frame name="region_share" source="/warehouse/sales.html?hdml-model=sales">
+      <!-- model-sourced frame: parent fields surface as {table}_{field} -->
+      <hdml-field name="region" origin="orders_region" type="utf-8"></hdml-field>
+      <hdml-field name="revenue" origin="orders_revenue" type="float-64"
+                  aggregation="sum"></hdml-field>
+      <!-- D's second ring: rings = named value columns of ONE wide
+           frame, the same wide shape a stack's series have -->
+      <hdml-field name="cost" origin="orders_cost" type="float-64"
+                  aggregation="sum"></hdml-field>
+      <hdml-group-by><hdml-field name="region"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="region" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- Pure form producer: the prefix sum in the data layer.
+         Frame-on-frame chain over the aggregate above; a0/a1 are
+         cumulative fractions of the full turn. -->
+    <hdml-frame name="region_share_arcs" source="?hdml-frame=region_share">
+      <hdml-field name="region" origin="region" type="utf-8"></hdml-field>
+      <hdml-field name="a0" type="float-64"
+        clause="(SUM(revenue) OVER (ORDER BY region) - revenue) / NULLIF(SUM(revenue) OVER (), 0)"></hdml-field>
+      <hdml-field name="a1" type="float-64"
+        clause="SUM(revenue) OVER (ORDER BY region) / NULLIF(SUM(revenue) OVER (), 0)"></hdml-field>
+      <hdml-sort-by><hdml-field name="region" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <figure>
+      <figcaption id="cap-pie">A — pie: revenue share by region (layout widget)</figcaption>
+      <hdml-view aria-labelledby="cap-pie">
+        <hdml-polar-plane source="?hdml-frame=region_share">
+          <!-- hdml-pie normalizes to fractions, so the angle domain is
+               always [0, 1] — authored, never derived (SPEC §7). -->
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-ordinal-scale channel="color" values="region">
+              <hdml-pie angle="revenue" color="region"></hdml-pie>
+              <hdml-legend channel="color"></hdml-legend>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-donut">B — doughnut: literal values + literal color column,
+        no server</figcaption>
+      <hdml-view aria-labelledby="cap-donut">
+        <hdml-polar-plane>
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-ordinal-scale channel="color"
+                                  values='["Direct","Organic","Referral","Social"]'>
+              <hdml-pie class="donut"
+                        angle="[4520, 3110, 1980, 890]"
+                        color='["Direct","Organic","Referral","Social"]'></hdml-pie>
+              <hdml-legend channel="color"></hdml-legend>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-arcs">C — same pie via the pure hdml-arc form: a0/a1 bound
+        row-wise from window-clause fields (fractions 0..1 on the
+        linear angle scale)</figcaption>
+      <hdml-view aria-labelledby="cap-arcs">
+        <hdml-polar-plane source="?hdml-frame=region_share_arcs">
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-ordinal-scale channel="color" values="region">
+              <hdml-arc a0="a0" a1="a1" color="region"></hdml-arc>
+              <hdml-legend channel="color"></hdml-legend>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    </figure>
+
+    <figure class="rings">
+      <figcaption id="cap-rings">D — multi-series doughnut: outer ring = revenue
+        composition, inner ring = cost composition, by region</figcaption>
+      <!-- source on the VIEW: both planes inherit it (§4.5) and the
+           identical refs coalesce to one query (§4.8) -->
+      <hdml-view source="?hdml-frame=region_share" aria-labelledby="cap-rings">
+        <!-- outer ring: planes share data and domains, never geometry -->
+        <hdml-polar-plane class="outer">
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-ordinal-scale channel="color" values="region">
+              <hdml-pie angle="revenue" color="region"></hdml-pie>
+              <!-- one legend serves both rings: same domain source,
+                   same page palette -->
+              <hdml-legend channel="color"></hdml-legend>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+        <!-- inner ring: its own plane, its own chain (a scale's range
+             cannot cross a plane boundary), a different value column -->
+        <hdml-polar-plane class="inner">
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-ordinal-scale channel="color" values="region">
+              <hdml-pie angle="cost" color="region"></hdml-pie>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    </figure>
+  </body>
+</html>

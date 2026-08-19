@@ -1,5 +1,6 @@
 {
   "extends": "./esm.json",
+  "exclude": ["../src/**/*.test.ts", "../src/testing/**"],
   "compilerOptions": {
     "composite": true,
     "declaration": true,

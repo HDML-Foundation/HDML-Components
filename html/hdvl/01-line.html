@@ -1,0 +1,108 @@
+<!doctype html>
+<!--
+  01 — Line chart (Chart.js: "line")
+
+  MOCK — pins the authoring contract (see SPEC.md); the hdml-* viz
+  elements do not exist yet. Binding modes exercised:
+    - subscription (bare columns against local + static sources)
+    - numeric scalar constant (the target rule)
+  Also shows: two sources in one chart (one widget each), dashed
+  styling via CSS, domain precedence (scale column subscription wins
+  over widget union).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>01 — Line</title>
+    <script src="/bin/components.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0; max-width: 760px; }
+
+      hdml-view { width: 100%; height: 360px; }
+      hdml-cartesian-plane { padding: 16px 24px 40px 64px; }
+
+      /* Each scale pads only its own axis (layout-neutral nesting). */
+      hdml-datetime-scale[channel="x"] { padding: 0 8px; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+
+      /* Guides: placement is pure CSS — the x-axis box sits at the bottom. */
+      hdml-axis[channel="x"] { position: absolute; left: 0; right: 0; bottom: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="y"] { position: absolute; top: 0; bottom: 0; left: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-grid[channel="y"] { --hdml-line-width: 1px; --hdml-line-style: dotted;
+        --hdml-line-color: #cbd5e1; }
+      hdml-tick { --hdml-tick-style: rect; --hdml-tick-width: 1px;
+        --hdml-tick-height: 6px; --hdml-fill-color: #64748b; }
+      hdml-tick[channel="x"] { position: absolute; left: 0; right: 0; bottom: 0; }
+      hdml-tick[channel="y"] { position: absolute; top: 0; bottom: 0; left: 0; }
+      hdml-label { --hdml-font-size: 11px; --hdml-font-family: inherit; }
+      hdml-label[channel="x"] { position: absolute; left: 0; right: 0; top: 100%; }
+      hdml-label[channel="y"] { position: absolute; top: 0; bottom: 0; right: 100%; }
+
+      /* Marks */
+      hdml-line { --hdml-line-width: 2px; --hdml-line-color: #1c8cf4;
+        --hdml-curve-type: linear; }
+      hdml-line.forecast { --hdml-line-color: #94a3b8; --hdml-line-style: dashed; }
+      hdml-rule { --hdml-line-width: 1px; --hdml-line-style: dashed;
+        --hdml-line-color: #dc2626; }
+    </style>
+  </head>
+  <body>
+    <!-- Data layer (real, existing elements) -->
+    <hdml-io host="https://hdio.example.com" tenant="demo" token="…single-use handoff code…"></hdml-io>
+
+    <hdml-frame name="revenue_m" source="/warehouse/sales.html?hdml-model=sales">
+      <!-- model-sourced frame: parent fields surface as {table}_{field} -->
+      <hdml-field name="month" origin="orders_order_month" type="date"></hdml-field>
+      <hdml-field name="revenue" origin="orders_revenue" type="float-64" aggregation="sum"></hdml-field>
+
+      <hdml-group-by>
+        <hdml-field name="month"></hdml-field>
+      </hdml-group-by>
+
+      <hdml-sort-by>
+        <hdml-field name="month" order="asc"></hdml-field>
+      </hdml-sort-by>
+    </hdml-frame>
+
+    <figure>
+      <figcaption id="cap-revenue">Monthly revenue vs. forecast — target in red</figcaption>
+      <hdml-view aria-labelledby="cap-revenue">
+        <hdml-cartesian-plane source="?hdml-frame=revenue_m">
+          <!-- Scale's own column subscription (precedence rule 2): the x
+               domain is pinned to revenue_m's months; forecast months
+               outside it drop. There is no widget-union fallback — see
+               SPEC §6. -->
+          <hdml-datetime-scale channel="x" values="month">
+            <!-- Three things share this axis (revenue, forecast from a
+                 second frame, and a literal rule), so no single column
+                 is the right ceiling — rule 1 authors it. -->
+            <hdml-continuous-scale channel="y" min="0" max="2000000">
+              <hdml-grid channel="y" count="5"></hdml-grid>
+              
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              
+              <hdml-tick channel="x" count="12"></hdml-tick>
+              <hdml-tick channel="y" count="5"></hdml-tick>
+              
+              <hdml-label channel="x" count="12" format="MMM"></hdml-label>
+              <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+
+              <!-- inherits source from the plane -->
+              <hdml-line x="month" y="revenue"></hdml-line>
+
+              <!-- second row set: source override on the widget -->
+              <hdml-line class="forecast" x="month" y="forecast" source="/warehouse/forecast.html?hdml-frame=monthly"></hdml-line>
+
+              <!-- numeric scalar constant → horizontal reference line -->
+              <hdml-rule y="1500000"></hdml-rule>
+            </hdml-continuous-scale>
+          </hdml-datetime-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+  </body>
+</html>

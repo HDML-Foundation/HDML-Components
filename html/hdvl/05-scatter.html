@@ -1,0 +1,95 @@
+<!doctype html>
+<!--
+  05 — Scatter (Chart.js: "scatter"; log-axis variant)
+
+  MOCK — see SPEC.md. Binding modes: subscription. Shows: two
+  quantitative scales, `nice` domains, hdml-continuous-scale, point styling
+  via tick-style CSS props.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>05 — Scatter</title>
+    <script src="/bin/components.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0 0 3rem; max-width: 720px; }
+
+      hdml-view { width: 100%; height: 340px; }
+      hdml-cartesian-plane { padding: 16px 24px 40px 64px; }
+      /* one tag for linear + log: this was two selectors before the merge */
+      hdml-continuous-scale[channel="x"] { padding: 0 8px; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+
+      hdml-axis[channel="x"] { position: absolute; left: 0; right: 0; bottom: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="y"] { position: absolute; top: 0; bottom: 0; left: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-grid { --hdml-line-width: 1px; --hdml-line-style: dotted;
+        --hdml-line-color: #e2e8f0; }
+      hdml-label { --hdml-font-size: 11px; }
+      hdml-label[channel="x"] { position: absolute; left: 0; right: 0; top: 100%; }
+      hdml-label[channel="y"] { position: absolute; top: 0; bottom: 0; right: 100%; }
+
+      hdml-point { --hdml-tick-style: ellipse; --hdml-tick-width: 8px;
+        --hdml-tick-height: 8px; --hdml-fill-color: #1c8cf480;
+        --hdml-line-width: 1px; --hdml-line-color: #1c8cf4; }
+    </style>
+  </head>
+  <body>
+    <hdml-io host="https://hdio.example.com" tenant="demo" token="…single-use handoff code…"></hdml-io>
+
+    <hdml-frame name="product_stats" source="/warehouse/sales.html?hdml-model=sales">
+      <!-- model-sourced frame: parent fields surface as {table}_{field} -->
+      <hdml-field name="product" origin="orders_product" type="utf-8"></hdml-field>
+      <hdml-field name="units" origin="orders_units" type="int-32" aggregation="sum"></hdml-field>
+      <hdml-field name="margin" type="float-64" clause="AVG((orders_revenue - orders_cost) / NULLIF(orders_revenue, 0))"></hdml-field>
+      <hdml-field name="unit_price" type="float-64" clause="AVG(orders_revenue / NULLIF(orders_units, 0))"></hdml-field>
+      <hdml-group-by>
+        <hdml-field name="product"></hdml-field>
+      </hdml-group-by>
+      <hdml-sort-by>
+        <hdml-field name="product" order="asc"></hdml-field>
+      </hdml-sort-by>
+    </hdml-frame>
+
+    <figure>
+      <figcaption id="cap-scatter">A — units sold vs. average margin, per product</figcaption>
+      <hdml-view aria-labelledby="cap-scatter">
+        <hdml-cartesian-plane source="?hdml-frame=product_stats">
+          <hdml-continuous-scale channel="x" min="0" values="units" nice>
+            <hdml-continuous-scale channel="y" values="margin" nice>
+              <hdml-grid channel="x" count="6"></hdml-grid>
+              <!-- step= states the interval exactly and invokes no tick
+                   algorithm (SPEC §7); grid and label share it so they align -->
+              <hdml-grid channel="y" step="0.05"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-label channel="x" count="6" format="compact-short"></hdml-label>
+              <hdml-label channel="y" step="0.05" format="percent precision-integer"></hdml-label>
+              <hdml-point x="units" y="margin"></hdml-point>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-log">B — log y: unit price vs. units sold</figcaption>
+      <hdml-view aria-labelledby="cap-log">
+        <hdml-cartesian-plane source="?hdml-frame=product_stats">
+          <hdml-continuous-scale channel="x" min="0" values="units" nice>
+            <hdml-continuous-scale type="log" channel="y" values="unit_price" nice>
+              <hdml-grid channel="y" count="4"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-label channel="x" count="6" format="compact-short"></hdml-label>
+              <hdml-label channel="y" count="4" format="currency/USD compact-short"></hdml-label>
+              <hdml-point x="units" y="unit_price"></hdml-point>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+  </body>
+</html>

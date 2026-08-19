@@ -1,0 +1,176 @@
+<!doctype html>
+<!--
+  12 — Coverage (acceptance-suite gaps)
+
+  MOCK — see SPEC.md. This page exists because the standard-readiness
+  audit found advertised features with zero corpus coverage; unexercised
+  grammar is where wrong-by-hand errors hide (README, Mechanical
+  verification). Four figures close the set:
+    A — continuous color RAMP (--hdml-color-interpolate) + ramp legend,
+        with hdml-fallback content on the view (§2).
+    B — GAUGE: --hdml-angle-start/-end sweep on a continuous angle
+        scale (§3 polar projection: 0deg = 12 o'clock, clockwise), a
+        track arc painted under a value arc (document order = paint
+        order), doughnut floor via --hdml-inner-radius.
+    C — hidden-toggle STACK: `hidden` on a child re-derives the
+        relation (§7) — the stack rebases over rendered children; the
+        axis ceiling deliberately stays put.
+    D — type="symlog" with `constant`, over a datetime x with an IANA
+        `zone` and literal ISO strings (§6).
+
+  Deliberately server-free: every binding is literal — this page is the
+  data contract's LITERAL-ONLY conformance class (§4) exercised. The
+  cartesian figures also carry no guide-placement CSS: x guides below,
+  y guides left, and the legend overlaying the plot's top-right corner
+  all come from §3's UA defaults.
+  Palette in C is §9's 8-color initial value — no palette CSS either.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>12 — Coverage</title>
+    <script src="/bin/components.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0 0 3rem; max-width: 480px; }
+
+      hdml-view { width: 100%; height: 320px; }
+      /* no legend gutter: the UA default overlays the legend on the
+         plot's top-right corner (§3), so padding stays symmetric */
+      hdml-cartesian-plane { padding: 16px 24px 40px 64px; }
+      hdml-polar-plane { padding: 12px 12px 12px 12px; }
+
+      /* A — the ramp: stops for the continuous color scale */
+      hdml-continuous-scale[channel="color"] {
+        --hdml-color-interpolate: #dbeafe #1c8cf4 #1e3a8a; }
+      figure.ramp hdml-point { --hdml-tick-style: ellipse; }
+
+      /* B — gauge: sweep is CSS on the angle scale (§3); the doughnut
+         floor inherits from the plane to both arcs (§9 reader rule) */
+      figure.gauge hdml-continuous-scale[channel="angle"] {
+        --hdml-angle-start: -120deg; --hdml-angle-end: 120deg; }
+      figure.gauge hdml-polar-plane { --hdml-inner-radius: 70%; }
+      figure.gauge hdml-arc.track { --hdml-fill-color: #e2e8f0; }
+      figure.gauge hdml-arc.value { --hdml-fill-color: #1c8cf4; }
+
+      /* D — grid only; placement is UA-default */
+      hdml-grid[channel="y"] { --hdml-line-width: 1px;
+        --hdml-line-style: dotted; --hdml-line-color: #cbd5e1; }
+      figure.symlog hdml-line { --hdml-line-width: 2px;
+        --hdml-line-color: #1c8cf4; }
+    </style>
+  </head>
+  <body>
+    <!-- No hdml-io: literal-only conformance class (§4). -->
+
+    <figure class="ramp">
+      <figcaption id="cap-ramp">A — defect rate vs. throughput, color =
+        unit cost (continuous ramp + ramp legend)</figcaption>
+      <hdml-view aria-labelledby="cap-ramp">
+        <!-- fallback content is user-visible alternative content —
+             a chart description, never spec commentary (§2) -->
+        <hdml-fallback>
+          <p>Scatter of defect rate against throughput for 8 production
+             lines; darker points are costlier units.</p>
+        </hdml-fallback>
+        <hdml-cartesian-plane>
+          <hdml-continuous-scale channel="x" min="0" max="100">
+            <hdml-continuous-scale channel="y" min="0" max="5">
+              <!-- number ↔ continuous on the color channel = ramp (V2);
+                   hdml-legend renders the labeled ramp, not swatches (§2) -->
+              <hdml-continuous-scale channel="color" min="0" max="40">
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-tick channel="x" count="5"></hdml-tick>
+                <hdml-label channel="x" count="5"></hdml-label>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-label channel="y" count="5"></hdml-label>
+                <hdml-point
+                  x="[12, 28, 35, 47, 58, 66, 79, 91]"
+                  y="[4.1, 3.2, 3.6, 2.4, 1.9, 2.2, 1.1, 0.8]"
+                  color="[31, 26, 38, 18, 12, 22, 8, 5]"></hdml-point>
+                <hdml-legend channel="color" count="5"></hdml-legend>
+              </hdml-continuous-scale>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <figure class="gauge">
+      <figcaption id="cap-gauge">B — capacity gauge at 72% (angle sweep
+        −120deg…120deg)</figcaption>
+      <hdml-view aria-labelledby="cap-gauge">
+        <hdml-polar-plane>
+          <hdml-continuous-scale channel="angle" min="0" max="100">
+            <!-- track first, value second: document order is paint
+                 order (§1.1) — the value arc covers the track -->
+            <hdml-arc class="track" a0="0" a1="100"></hdml-arc>
+            <hdml-arc class="value" a0="0" a1="72"></hdml-arc>
+            <!-- deliberately AFTER the marks (§4.4's guides-first is
+                 the convention for guides the marks would occlude —
+                 here the ring would occlude the labels, so paint order
+                 is used the other way, on purpose) -->
+            <hdml-label channel="angle" count="5"
+                        format="precision-integer"></hdml-label>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-stack">C — stack with a hidden series: the stack
+        rebases over rendered children; the y ceiling stays put (§7)</figcaption>
+      <hdml-view aria-labelledby="cap-stack">
+        <hdml-cartesian-plane>
+          <hdml-ordinal-scale channel="x" values='["Jan","Feb","Mar","Apr"]'>
+            <hdml-continuous-scale channel="y" min="0" max="100">
+              <hdml-ordinal-scale channel="color"
+                                  values='["Alpha","Beta","Gamma"]'>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-label channel="y" count="5"></hdml-label>
+                <!-- toggle `hidden` below in DevTools: the two rendered
+                     bands rebase (relation re-derives); scale domains
+                     never follow a toggle — the ceiling is the author's
+                     statement (§6, §7) -->
+                <hdml-stack x='["Jan","Feb","Mar","Apr"]'>
+                  <hdml-bar y="[20, 25, 22, 28]" color='"Alpha"'></hdml-bar>
+                  <hdml-bar y="[15, 18, 21, 17]" color='"Beta"'></hdml-bar>
+                  <hdml-bar y="[30, 27, 24, 33]" color='"Gamma"' hidden></hdml-bar>
+                </hdml-stack>
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <figure class="symlog">
+      <figcaption id="cap-symlog">D — daily net cash flow: symlog y (linear
+        through zero, log at magnitude), datetime x with an IANA zone</figcaption>
+      <hdml-view aria-labelledby="cap-symlog">
+        <hdml-cartesian-plane>
+          <!-- literal ISO strings parse explicitly on a datetime scale
+               (§6); zone-less dates would read as UTC — the IANA zone
+               places tick boundaries in exchange-local time -->
+          <hdml-datetime-scale channel="x" zone="America/New_York"
+            values='["2026-08-03","2026-08-04","2026-08-05","2026-08-06","2026-08-07"]'>
+            <hdml-continuous-scale channel="y" type="symlog" constant="1"
+                                   min="-10000" max="10000">
+              <hdml-grid channel="y" count="5"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-label channel="x" count="5" format="MMMd"></hdml-label>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+              <hdml-line
+                x='["2026-08-03","2026-08-04","2026-08-05","2026-08-06","2026-08-07"]'
+                y="[-8200, -140, 6, 950, 7400]"></hdml-line>
+            </hdml-continuous-scale>
+          </hdml-datetime-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+  </body>
+</html>
