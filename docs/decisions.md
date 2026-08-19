@@ -45,6 +45,41 @@ attribute **keys** schema-driven for the data family; this one keeps tag **names
 attribute keys schema-driven for the display family, through an indirection the data
 family does not need because it has no second consumer.
 
+## One `<svg>` per view, and the scene is data
+
+Every display element owns a CSS box and paints nothing. **One `<svg>`, in the
+`hdml-view`'s shadow root, owns all pixels**, and each widget hands the renderer a
+plain-data [`SceneGroup`](../src/hdvl/scene.ts) describing what it wants drawn. See
+[docs/architecture.md](architecture.md#the-render-pipeline) for the shape.
+
+*Why one surface rather than one per widget:* twenty-one nested SVGs would put paint
+order at the mercy of CSS stacking rules, when SPEC's rule is simply *document order is
+paint order*. One surface makes that exact — the view concatenates groups in document
+order and array order is paint order — and it costs one `viewBox` instead of
+twenty-one coordinate systems to reconcile.
+
+*Why data rather than a drawing API:* three prototype shapes were rejected, all of them
+from the PoC. Widgets holding **d3 selections into the view's SVG** makes every widget a
+DOM writer, so paint order depends on who ran last and two widgets can fight over the
+same node. A **per-element `CSSStyleSheet` pushed into the view** inverts the cascade the
+UA sheet depends on. And recovering a datum by **inverting a scale** at hit time is
+wrong for any non-injective scale and rounds for the rest — so a node carries the source
+row index `i` it was built from, and `resolve()` returns that, never a re-derived value.
+
+The payoff is testing. A scene is immutable and `structuredClone`-serializable, so a
+widget test constructs no page and reads back no attributes: it compares one plain
+object. The renderer is asserted never to write to what it is handed, which is what
+keeps that comparison meaningful.
+
+*Why the renderer is behind an interface when SVG is the only one:* neutrality is kept
+only where it is free or simplifying. Parameterised `arc` nodes hit-test and clip more
+simply than pre-serialized paths; `resolve()` needs nearest-vertex maths the SVG
+renderer requires anyway, because `isPointInStroke` answers *whether* a point is on a
+stroke and never *which row*. Where neutrality would cost — the device-pixel mapping,
+and collapsing `line` into a degenerate cubic — the cheaper form wins. The recording
+renderer under [src/testing/](../src/testing/) is a **test double, not a second
+renderer**: it records the scene and draws nothing.
+
 ## `<hdml-io>` is **not** a `HdqlElement`
 
 It extends `LitElement` directly. `<hdml-io>` observes the document, it does not

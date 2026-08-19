@@ -261,6 +261,112 @@ in token mode the `token` attribute is a single-use **handoff code** redeemed at
 Error(message.message || statusText)`. The full endpoint table is in
 [docs/hdio-client.md](hdio-client.md#endpoint-surface).
 
+## The render pipeline
+
+The display half paints nothing per-element. **One `<svg>` per `<hdml-view>` lives in
+the view's shadow root and owns every pixel**; each display element contributes a
+*description* of what it wants drawn and touches no drawing API.
+
+```mermaid
+flowchart TD
+  subgraph light ["light DOM — layout only"]
+    view["hdml-view<br/>position: relative"]
+    plane["hdml-cartesian-plane"]
+    scale["hdml-continuous-scale"]
+    mark["hdml-line · hdml-bar · …"]
+    guide["hdml-axis · hdml-tick · …"]
+    view --> plane --> scale --> mark
+    scale --> guide
+  end
+  subgraph shadow ["hdml-view #shadow-root"]
+    slot["&lt;slot&gt;<br/>visibility: collapse"]
+    svg["&lt;svg viewBox='0 0 W H'&gt;<br/>ALL PAINT"]
+    g1["&lt;g data-w='uid-of-line'&gt;"]
+    g2["&lt;g data-w='uid-of-axis'&gt;"]
+    svg --> g1
+    svg --> g2
+  end
+  mark -. "SceneGroup" .-> scene
+  guide -. "SceneGroup" .-> scene
+  scene["Scene — plain data<br/>{width, height, groups[]}<br/>groups in DOCUMENT ORDER"]
+  scene -->|"renderer.render(scene)"| svg
+  view -.-> slot
+  slot -. "keeps every descendant's box" .-> light
+```
+
+**Two mechanisms make this keep the box promise rather than break it.**
+`visibility: collapse` on the slot keeps every slotted descendant's **layout box** — a
+slotted, absolutely positioned child of a collapsed slot still reports a non-zero rect
+on chromium, firefox and webkit, so every element has a true box that DevTools
+highlights and that CSS drives; it simply paints nothing itself. And because CSS on a
+light-DOM widget cannot reach nodes painted in the view's shadow, each `SceneGroup`
+carries its **resolved** `opacity` / `filter` / `visibility` / `clip` / `clipPath`, which
+the renderer re-applies to the group's `<g>` by explicit transfer. Both sheets that make
+this work live in [src/hdvl/ua.ts](../src/hdvl/ua.ts).
+
+### The scene is data
+
+[src/hdvl/scene.ts](../src/hdvl/scene.ts) is types only. A `Scene` is **immutable,
+serializable plain data** — `structuredClone` round-trips one, and the renderer is
+asserted never to write to what it is handed. No SVG path string, no DOM node and no CSS
+selector crosses the boundary: a `path` node carries `Subpath[]` of `line` / `cubic`
+segments, and an `arc` node stays *parameterised* (`cx cy r0 r1 a0 a1`, degrees, `0` at
+12 o'clock, clockwise) rather than pre-serialized. All geometry is in **view
+coordinates**: CSS px, origin at the view's content-box top-left, y down.
+
+That is what makes a **scene assertion** — not a DOM assertion — the primary test
+mechanism for the display half: a widget test builds no page, reads back no attributes,
+and compares one plain object.
+
+A new `Subpath` is a **gap**, never a bridge: a missing value breaks a path rather than
+interpolating across it.
+
+### The renderer seam
+
+[src/hdvl/renderer.ts](../src/hdvl/renderer.ts) declares six methods —
+
+| Method | Owed |
+|---|---|
+| `mount(root)` | takes over a shadow root; **reuses** an `<svg>` it already holds |
+| `resize(w, h, dpr)` | sets `viewBox`; under SVG the device-pixel mapping is an identity, so `dpr` is recorded and nothing is scaled by it |
+| `render(scene)` | one `<g>` per group, in array order — array order **is** paint order |
+| `resolve(x, y)` | view-local CSS px → `{widget, index}`; nearest vertex within **12 CSS px**, or containment for a discrete node |
+| `measureText(text, font)` | text extents, available **during** scene construction |
+| `unmount()` | leaves the root as it found it |
+
+**`render()` diffs; it does not rebuild.** The key is `(group.widget, node index)`: a
+group whose widget uid is unchanged patches its existing `<g>`, node *j* patches node
+*j*, surplus nodes are removed, and a node whose kind changed is replaced rather than
+patched. Node identity is stable across frames — which is what pointer targets and CSS
+transitions on the emitted nodes both need.
+
+**`measureText` is the sixth method, and it lives in its own module.** A guide cannot
+lay out what it cannot measure, and measurement must happen *before* the scene exists —
+so [src/hdvl/measure-text.ts](../src/hdvl/measure-text.ts) holds one memoised
+offscreen-2D implementation that both the SVG renderer and the test-double recording
+renderer delegate to. A measurement utility, explicitly not a canvas renderer.
+
+`renderers.create` is a **mutable module-level property**, the same test seam shape as
+`HdmlIo.ts`'s exported `nav` / `endpoints`: a test swaps in the recording renderer by
+assigning to it. A per-instance injection would be clobbered by the legacy
+webcomponents polyfill's upgrade-on-connect.
+
+**Author strings never become markup.** Every node is created with
+`document.createElementNS` and every author string reaches the DOM through
+`textContent` — never `innerHTML`, `insertAdjacentHTML` or `unsafeHTML`.
+
+**`clip-path` is resolved by the runtime, not passed through.** The emitted `<g>` has no
+CSS box, so a percentage or a `border-box` keyword would resolve against a different
+reference than the author wrote. [src/hdvl/kernel/clip-shape.ts](../src/hdvl/kernel/clip-shape.ts)
+converts `inset()` / `circle()` / `ellipse()` / `polygon()` against the widget's measured
+box into explicit geometry; the `url()` form is unsupported and reported rather than
+half-applied, and the same rule applies to `filter`. Everything under
+[src/hdvl/kernel/](../src/hdvl/kernel/) is **pure**: no DOM, no computed style, no import
+side effect.
+
+*What drives a render — the invalidation sources, the `ResizeObserver`, and the
+three-phase frame — is not built yet; this section describes only what exists.*
+
 ## Build pipeline
 
 ```mermaid
