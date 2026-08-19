@@ -86,3 +86,84 @@ export const HDVL_TAG_NAMES = {
  */
 export type HdvlTagName =
   (typeof HDVL_TAG_NAMES)[keyof typeof HDVL_TAG_NAMES];
+
+/**
+ * The seven families of the display vocabulary (RFC 016/001 §2.2).
+ *
+ * `view` and `fallback` are families of one rather than a shared
+ * `structural` bucket: V13 asks "a view's children are planes plus
+ * at most one fallback", which has to tell those two apart, and a
+ * `SceneGroup`'s `role` is `mark | guide` — so a family that maps to
+ * neither must be visibly distinct.
+ */
+export type HdvlFamily =
+  | "view"
+  | "plane"
+  | "scale"
+  | "mark"
+  | "container"
+  | "guide"
+  | "fallback";
+
+/**
+ * Tag → family, over every member of {@link HDVL_TAG_NAMES}.
+ *
+ * With one flat `HDML_TAG_NAMES`, family membership has no home in
+ * `@hdml/types` (step-plan S3), yet V13's homogeneity check, W1's
+ * unknown-element warning, `HDML.supports()` and `SceneGroup.role`
+ * all need it. The `Record<HdvlTagName, HdvlFamily>` annotation is
+ * load-bearing: a twenty-second tag becomes a compile error rather
+ * than a silent `undefined`.
+ *
+ * `hdml-pie` is a **mark**, not a container. §2.2 calls it a layout
+ * *widget* — "the same, with one cross-row `derive()` in data space
+ * before projection" — while a layout *container* "is not a
+ * painter". A pie paints, and §3.4.1 decides `empty` on
+ * mark-producing widgets, so a pie of four zero rows must count as
+ * "produced no marks" rather than be excluded from the question.
+ */
+export const HDVL_FAMILIES: Readonly<
+  Record<HdvlTagName, HdvlFamily>
+> = {
+  [HDVL_TAG_NAMES.VIEW]: "view",
+  [HDVL_TAG_NAMES.CARTESIAN_PLANE]: "plane",
+  [HDVL_TAG_NAMES.POLAR_PLANE]: "plane",
+  [HDVL_TAG_NAMES.CONTINUOUS_SCALE]: "scale",
+  [HDVL_TAG_NAMES.DATETIME_SCALE]: "scale",
+  [HDVL_TAG_NAMES.ORDINAL_SCALE]: "scale",
+  [HDVL_TAG_NAMES.LINE]: "mark",
+  [HDVL_TAG_NAMES.AREA]: "mark",
+  [HDVL_TAG_NAMES.BAR]: "mark",
+  [HDVL_TAG_NAMES.POINT]: "mark",
+  [HDVL_TAG_NAMES.ARC]: "mark",
+  [HDVL_TAG_NAMES.RULE]: "mark",
+  [HDVL_TAG_NAMES.PIE]: "mark",
+  [HDVL_TAG_NAMES.CLUSTER]: "container",
+  [HDVL_TAG_NAMES.STACK]: "container",
+  [HDVL_TAG_NAMES.AXIS]: "guide",
+  [HDVL_TAG_NAMES.TICK]: "guide",
+  [HDVL_TAG_NAMES.LABEL]: "guide",
+  [HDVL_TAG_NAMES.GRID]: "guide",
+  [HDVL_TAG_NAMES.LEGEND]: "guide",
+  [HDVL_TAG_NAMES.FALLBACK]: "fallback",
+};
+
+/**
+ * The family of a tag name, or `null` if it is not display
+ * vocabulary.
+ *
+ * The own-property guard is not defensive noise: the argument is an
+ * author-supplied `localName`, and a plain object literal carries
+ * `Object.prototype`, so `familyOf("constructor")` would otherwise
+ * answer with a function. No case folding is done — `localName` is
+ * already lowercased by the platform.
+ *
+ * @param tag - The tag name to classify.
+ * @returns The family, or `null`.
+ */
+export function familyOf(tag: string): HdvlFamily | null {
+  if (!Object.prototype.hasOwnProperty.call(HDVL_FAMILIES, tag)) {
+    return null;
+  }
+  return (<Record<string, HdvlFamily>>HDVL_FAMILIES)[tag];
+}

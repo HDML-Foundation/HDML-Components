@@ -17,8 +17,13 @@ because it is not a `HdqlElement`).
   `document`.
 - **`hdio/`** — one element (`<hdml-io>`) that observes the document and uploads to HDIO.
   See [docs/hdio-client.md](hdio-client.md).
-- **`hdvl/`** — HyperData **Visualisation** Language: the display elements. Not yet
-  implemented; the vocabulary ships in `@hdml/types` and the elements land over RFC 016/001.
+- **`hdvl/`** — HyperData **Visualisation** Language: the display elements. All **21 tags are
+  registered** by the `./hdvl` entry; every element extends
+  [`HdvlElement`](../src/hdvl/base.ts) except `hdml-fallback`, takes its tag and attribute keys
+  from [`src/hdvl/vocabulary.ts`](../src/hdvl/vocabulary.ts), and **never fires
+  `hdom-changed`** — a display element changes no part of the HDML document, so display
+  invalidation travels the scheduler path only. Bodies land per slice over RFC 016/001; see
+  [Display elements](#display-elements-hdvl) below for what is implemented today.
 
 `hdql` / `hdvl` name **modules**, never tag prefixes — every tag in this package is
 `hdml-*` (RFC 016/001 §2.1).
@@ -186,6 +191,138 @@ Sort the frame by one or more fields. No attributes; per-field direction comes f
 `hdml-field`'s `order` attribute.
 
 **Required children:** ≥1 `hdml-field`.
+
+## Display elements (`hdvl/`)
+
+The display half registers **21 tags**, in seven families
+([`HDVL_FAMILIES`](../src/hdvl/vocabulary.ts)): `view`, `plane`, `scale`, `mark`,
+`container`, `guide`, `fallback`. Only the four structural elements below have bodies as of
+this commit — see [Registered but inert](#registered-but-inert) for the rest.
+
+Two constructed UA stylesheets ([`src/hdvl/ua.ts`](../src/hdvl/ua.ts)) supply every box
+default. The **element sheet** is adopted by every HDVL shadow root as one shared instance and
+is host-qualified throughout, so a rule written for the view can never reach a mark; the
+**document sheet** carries only the two `hdml-fallback` rules, because they are the one thing
+that must work on light DOM *before* upgrade. Every default is a `:host` rule, which any
+author rule from the outer document beats.
+
+Every display element except the view is `position: absolute; inset: 0` and renders
+`<div class="plot"><slot></slot></div>` in its shadow. `.plot` **is** the host's content box,
+so a slotted child resolves against its parent's *content* box — which is what makes a
+plane's `8px 8px 24px 40px` gutter inset everything below it, and what SPEC §3 means by "a
+guide's containing block is its scale". Because every element is positioned with no
+`z-index`, **document order is paint order**.
+
+### `hdml-view` — [src/hdvl/view.ts](../src/hdvl/view.ts)
+
+The only display element that owns pixels: it holds the shadow root, the single `<svg>`
+surface, and the collapsed `<slot>` that keeps every descendant's box measurable. It sets
+`role="img"` on itself at connect (an author `role` is not overwritten), which prunes the
+whole subtree — including an unupgraded `hdml-fallback` — from the accessibility tree.
+
+| | |
+|---|---|
+| **Attributes** | `source` — the default data source for the subtree, nearest-ancestor-wins |
+| **Children** | any number of planes, plus at most one `hdml-fallback` |
+| **UA box** | `display: block; aspect-ratio: 2 / 1; position: relative` — a 2∶1 graphics box with no CSS at all, so `width: 100%` alone yields a chart rather than a collapsed box |
+| **States** | `:state(loading)` from connect. Nothing clears it yet: with no frame, every widget's scene is empty, which is exactly what `loading` describes |
+
+Its `<svg>` is created in the SVG namespace and sized to the view; **nothing draws into it
+yet** — the renderer is a later slice. The `ResizeObserver`, the resolution index and the
+frame scheduler are likewise not here; `invalidate()` currently sets a flag and bumps a
+counter (`view.dirty` / `view.dirtyCount`).
+
+### `hdml-cartesian-plane` · `hdml-polar-plane` — [plane-cartesian.ts](../src/hdvl/plane-cartesian.ts) · [plane-polar.ts](../src/hdvl/plane-polar.ts)
+
+A **geometric anchor**: a CSS box plus the projection that gives positional channels their
+screen meaning. A plane contributes no dimension of its own and emits nothing — the
+multidimensional space is built by the scale chain inside it.
+
+| | |
+|---|---|
+| **Attributes** | `source` |
+| **Parent** | `hdml-view` |
+| **Children** | scales (and, through them, widgets and guides) |
+| **UA box** | `position: absolute; inset: 0; container-type: size`, plus a padding gutter: `8px 8px 24px 40px` cartesian, `8px` polar — the gutter zero-CSS guides spill into |
+| **States** | `:state(loading)`, alongside the view |
+
+`container-type: size` is what makes `@container` — not `@media` — the correct selector for
+responsive guides: a chart in a 300 px sidebar must respond to the *plane*, not the viewport.
+The `Projection` each plane supplies lands with the frame (cartesian) and with the polar
+slice (polar).
+
+### `hdml-fallback` — [src/hdvl/fallback.ts](../src/hdvl/fallback.ts)
+
+Light-DOM flow content shown only while the view is **not upgraded** — "your browser can't
+render this chart", or a table of the same numbers. It is **not vocabulary**: it is exempt
+from every validator rule, is never slotted, and is never revived.
+
+It is a bare `HTMLElement` with **no shadow root, no adopted stylesheet and no attributes**,
+and that is deliberate. The element sheet begins with a generic
+`:host { position: absolute; inset: 0 }`; adopting it would absolutely position the author's
+flow content in precisely the window this element exists for. Its whole behaviour is two
+document-sheet rules and no JavaScript:
+
+```css
+hdml-view:not(:defined) > hdml-fallback { display: block }
+hdml-view:defined       > hdml-fallback { display: none  }
+```
+
+so no script, a failed script, or a pre-upgrade page renders the fallback, and an upgraded one
+does not. Registration exists only so tag support can be queried, so an unknown-element
+warning stays quiet, and so "at most one fallback" is countable.
+
+### Registered but inert
+
+The other seventeen tags are **registered as of this commit and carry no behaviour yet** —
+each declares its tag, its family and its observed attributes, and nothing else. They are
+listed here so the tag surface is discoverable; do not read an entry as a description of
+working behaviour.
+
+| Tag | Family | Module | Body lands in |
+|---|---|---|---|
+| `hdml-continuous-scale` | scale | [scale-continuous.ts](../src/hdvl/scale-continuous.ts) | Slice C (the three scale elements, `Scale` whole) |
+| `hdml-datetime-scale` | scale | [scale-datetime.ts](../src/hdvl/scale-datetime.ts) | Slice C |
+| `hdml-ordinal-scale` | scale | [scale-ordinal.ts](../src/hdvl/scale-ordinal.ts) | Slice C |
+| `hdml-line` | mark | [mark-line.ts](../src/hdvl/mark-line.ts) | Slice D |
+| `hdml-rule` | mark | [mark-rule.ts](../src/hdvl/mark-rule.ts) | Slice D |
+| `hdml-area` | mark | [mark-area.ts](../src/hdvl/mark-area.ts) | Slice D |
+| `hdml-bar` | mark | [mark-bar.ts](../src/hdvl/mark-bar.ts) | Slice D |
+| `hdml-point` | mark | [mark-point.ts](../src/hdvl/mark-point.ts) | Slice D |
+| `hdml-arc` | mark | [mark-arc.ts](../src/hdvl/mark-arc.ts) | Slice D, radial forms in Slice F |
+| `hdml-pie` | mark | [layout-pie.ts](../src/hdvl/layout-pie.ts) | Slice F |
+| `hdml-axis` | guide | [guide-axis.ts](../src/hdvl/guide-axis.ts) | Slice E |
+| `hdml-grid` | guide | [guide-grid.ts](../src/hdvl/guide-grid.ts) | Slice E |
+| `hdml-tick` | guide | [guide-tick.ts](../src/hdvl/guide-tick.ts) | Slice E |
+| `hdml-label` | guide | [guide-label.ts](../src/hdvl/guide-label.ts) | Slice E |
+| `hdml-legend` | guide | [guide-legend.ts](../src/hdvl/guide-legend.ts) | Slice H |
+| `hdml-stack` | container | [container-stack.ts](../src/hdvl/container-stack.ts) | Slice G |
+| `hdml-cluster` | container | [container-cluster.ts](../src/hdvl/container-cluster.ts) | Slice G |
+
+`hdml-pie` is a **mark**, not a container: a container "is not a painter", and a pie paints.
+
+The five guides take **no `source`** and bind no columns — a guide is a function of the
+resolved scale, its own box and its computed style.
+
+`hdml-area`, `hdml-bar` and `hdml-stack` observe a `hidden` attribute. Because
+`HTMLElement.hidden` is a platform **boolean** IDL property, the class field behind it is
+named `hiddenAttr`; the observed attribute is still `hidden`, and the platform's own property
+is left alone.
+
+### The `--hdml-*` registry
+
+All chart appearance is CSS custom properties, and the **complete 35-property registry** —
+31 base properties plus the four `_hover` paint variants — is registered with
+`CSS.registerProperty` at import time
+([`src/hdvl/properties.ts`](../src/hdvl/properties.ts)). Every one of them **inherits**, which
+is what makes plane-level scoping and theme-at-the-view work. Registration is guarded
+**per property**, so a page that loads two builds of this package ends up with a complete
+registry rather than one truncated at the first duplicate.
+
+The full table of names, syntaxes and initial values is SPEC §9; `properties.ts` exports
+`HDVL_PROPERTIES` so the set can be asserted against without re-deriving it. (Like `./hdql`,
+the `./hdvl` entry re-exports no class or module symbol beyond the vocabulary — the tag
+registrations are its public surface.)
 
 ## Authoring example
 

@@ -7,7 +7,11 @@
 import { assert } from "@open-wc/testing";
 import { HDML_TAG_NAMES } from "@hdml/types";
 import * as vocabulary from "./vocabulary";
-import { HDVL_TAG_NAMES } from "./vocabulary";
+import {
+  HDVL_FAMILIES,
+  HDVL_TAG_NAMES,
+  familyOf,
+} from "./vocabulary";
 
 // The twenty attribute enums the display half publishes — every
 // display element except `hdml-fallback`, which has no attributes by
@@ -66,6 +70,36 @@ const DATA_TAG_KEYS = [
   "FIELD",
 ];
 
+// S3's taxonomy, hardcoded off RFC 016/001 §2.2 rather than read
+// back out of the module under test. Two assignments are load
+// bearing and are asserted by name below: `hdml-pie` is a MARK (it
+// paints, and §3.4.1 decides `empty` over mark-producing widgets),
+// and `hdml-view` / `hdml-fallback` are families of one (V13 has to
+// tell them apart).
+const FAMILY_TABLE: [string, string][] = [
+  ["hdml-view", "view"],
+  ["hdml-cartesian-plane", "plane"],
+  ["hdml-polar-plane", "plane"],
+  ["hdml-continuous-scale", "scale"],
+  ["hdml-datetime-scale", "scale"],
+  ["hdml-ordinal-scale", "scale"],
+  ["hdml-line", "mark"],
+  ["hdml-area", "mark"],
+  ["hdml-bar", "mark"],
+  ["hdml-point", "mark"],
+  ["hdml-arc", "mark"],
+  ["hdml-rule", "mark"],
+  ["hdml-pie", "mark"],
+  ["hdml-cluster", "container"],
+  ["hdml-stack", "container"],
+  ["hdml-axis", "guide"],
+  ["hdml-tick", "guide"],
+  ["hdml-label", "guide"],
+  ["hdml-grid", "guide"],
+  ["hdml-legend", "guide"],
+  ["hdml-fallback", "fallback"],
+];
+
 const vocab = <Record<string, unknown>>(<unknown>vocabulary);
 const tags = <Record<string, string>>HDVL_TAG_NAMES;
 const allTags = <Record<string, string>>(<unknown>HDML_TAG_NAMES);
@@ -114,7 +148,73 @@ suite("hdvl/vocabulary", () => {
   });
 
   test("the module exports nothing else", () => {
-    const expected = ATTRS_ENUMS.concat(["HDVL_TAG_NAMES"]).sort();
+    const expected = ATTRS_ENUMS.concat([
+      "HDVL_TAG_NAMES",
+      "HDVL_FAMILIES",
+      "familyOf",
+    ]).sort();
     assert.deepEqual(Object.keys(vocab).sort(), expected);
+  });
+
+  test("HDVL_FAMILIES covers every tag, once", () => {
+    const keys = Object.keys(HDVL_FAMILIES).sort();
+    const expected = FAMILY_TABLE.map(([tag]) => tag).sort();
+    assert.deepEqual(keys, expected);
+    assert.lengthOf(keys, 21);
+  });
+
+  test("every tag has its RFC §2.2 family", () => {
+    const map = <Record<string, string>>HDVL_FAMILIES;
+    for (const [tag, family] of FAMILY_TABLE) {
+      assert.strictEqual(map[tag], family, tag);
+    }
+  });
+
+  test("the taxonomy has exactly seven families", () => {
+    const families = new Set(Object.values(HDVL_FAMILIES));
+    assert.deepEqual([...families].sort(), [
+      "container",
+      "fallback",
+      "guide",
+      "mark",
+      "plane",
+      "scale",
+      "view",
+    ]);
+  });
+
+  test("hdml-pie is a mark, not a container", () => {
+    // §2.2 calls it a layout *widget* — it paints — while a layout
+    // *container* "is not a painter". A `container` here would make
+    // SceneGroup.role wrong and exclude a four-zero-row pie from
+    // §3.4.1's `empty` question instead of answering it.
+    const map = <Record<string, string>>HDVL_FAMILIES;
+    assert.strictEqual(map["hdml-pie"], "mark");
+    assert.strictEqual(map["hdml-cluster"], "container");
+    assert.strictEqual(map["hdml-stack"], "container");
+  });
+
+  test("familyOf answers for every display tag", () => {
+    for (const [tag, family] of FAMILY_TABLE) {
+      assert.strictEqual(familyOf(tag), family, tag);
+    }
+  });
+
+  test("familyOf is null off the vocabulary", () => {
+    assert.isNull(familyOf("hdml-frame"));
+    assert.isNull(familyOf("hdml-model"));
+    assert.isNull(familyOf("hdml-io"));
+    assert.isNull(familyOf("div"));
+    assert.isNull(familyOf(""));
+  });
+
+  test("familyOf does not answer from Object", () => {
+    // The argument is an author-supplied `localName` and the map is
+    // a plain object literal, so an own-property guard is the
+    // difference between `null` and a Function.
+    assert.isNull(familyOf("constructor"));
+    assert.isNull(familyOf("toString"));
+    assert.isNull(familyOf("hasOwnProperty"));
+    assert.isNull(familyOf("__proto__"));
   });
 });

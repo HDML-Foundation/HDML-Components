@@ -39,7 +39,7 @@ surface exactly; `./hdio`, `./hdql` and `./hdvl` are purely additive.
 | `.` | `<hdml-io>` + the eleven HDQL elements — **twelve** tags | Byte-for-byte what it registered before the split. No display module, no geometry kernel. |
 | `./hdio` | `<hdml-io>` only | The other eleven modules in `src/hdio/` are its supporting graph and define no tag. |
 | `./hdql` | the eleven HDQL elements | Same import order as `.` — that order is the public registration order. |
-| `./hdvl` | **nothing yet** | The display half. It currently exports only the vocabulary (`HDVL_TAG_NAMES` + the twenty `*_ATTRS_LIST` enums re-exported from `@hdml/types`). The twenty-one display tags arrive later; the entry exists now so the `exports` map, `sideEffects` and the `.` bundle baseline are measured before any display module can perturb them. |
+| `./hdvl` | the **twenty-one** display tags | The display half. It also exports the vocabulary (`HDVL_TAG_NAMES`, `HDVL_FAMILIES`, `familyOf` + the twenty `*_ATTRS_LIST` enums re-exported from `@hdml/types`) and no element class — importing it additionally registers SPEC §9's 35 `--hdml-*` custom properties and adopts the two `hdml-fallback` rules into `document.adoptedStyleSheets`. Deliberately **not** reachable from `.`: a consumer authoring an HDML document does not pay for the display layer. |
 
 ```jsonc
 "exports": {
