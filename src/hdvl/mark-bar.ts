@@ -12,6 +12,7 @@
 
 import { customElement, property } from "lit/decorators.js";
 import { HdvlElement } from "./base";
+import type { SceneGroup } from "./scene";
 import {
   BAR_ATTRS_LIST,
   HDVL_FAMILIES,
@@ -131,4 +132,15 @@ export class HdmlBarElement extends HdvlElement {
    */
   @property({ type: String })
   [BAR_ATTRS_LIST.SOURCE]: null | string = null;
+
+  /**
+   * @override
+   *
+   * Contract-complete at `null` (§2.3): "returns null to paint
+   * nothing (hidden, errored, or still loading)". **Step 21** puts
+   * a band-width rect here, and replaces this line alone.
+   */
+  public scene(): SceneGroup | null {
+    return null;
+  }
 }

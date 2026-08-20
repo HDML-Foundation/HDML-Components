@@ -11,10 +11,23 @@ import "./index";
 import { HdvlElement } from "./base";
 import { HdmlViewElement } from "./view";
 import {
+  SENTINEL_MARKER,
+  SENTINEL_PROPERTIES,
   adoptDocumentSheet,
   documentSheet,
   elementSheet,
 } from "./ua";
+import { HDVL_PROPERTIES } from "./properties";
+
+/** The five box properties the sentinel carries beyond §9's set. */
+const BOX_PROPS = [
+  "color",
+  "inset",
+  "margin",
+  "padding",
+  "width",
+  "height",
+];
 
 /**
  * Two sheets, two scopes (R28), and one host-qualified sheet
@@ -124,17 +137,61 @@ suite("hdvl/ua — the element sheet", () => {
     }
   });
 
-  test("the sheet declares no transition", () => {
+  test("the sentinel is longhands, never shorthand", () => {
     // R24: RFC §3.2 writes the frame sentinel as the `transition`
     // SHORTHAND, which a later rule of ours would replace wholesale
-    // and silently kill. The sentinel is step 11's, and it will use
-    // longhands.
+    // and silently kill. Step 09 asserted the sheet carried no
+    // transition at all, because the sentinel had not landed; this
+    // is the positive form of the same rule.
+    let host: CSSStyleRule | null = null;
     for (const rule of Array.from(elementSheet.cssRules)) {
-      assert.notInclude(
-        rule.cssText.toLowerCase(),
-        "transition",
-        rule.cssText,
+      const styleRule = <CSSStyleRule>rule;
+      assert.notMatch(
+        styleRule.cssText.toLowerCase(),
+        /transition\s*:/,
+        styleRule.cssText,
       );
+      if (styleRule.selectorText === ":host") {
+        host = styleRule;
+      }
+    }
+    assert.isNotNull(host);
+    const declared = host.style;
+    assert.strictEqual(
+      declared.getPropertyValue("transition-duration"),
+      "1ms",
+    );
+    const listed = declared
+      .getPropertyValue("transition-property")
+      .split(",")
+      .map((s) => s.trim());
+    // Built from HDVL_PROPERTIES, never by hand: a thirty-sixth
+    // registered property must not be able to go unobserved.
+    for (const def of HDVL_PROPERTIES) {
+      assert.include(listed, def.name);
+    }
+    for (const box of BOX_PROPS) {
+      assert.include(listed, box);
+    }
+    assert.strictEqual(listed.length, SENTINEL_PROPERTIES.length);
+  });
+
+  test("the sentinel reaches every host", async () => {
+    const view = await fixture<HdmlViewElement>(html`
+      <hdml-view style="width: 400px; height: 200px">
+        <hdml-cartesian-plane>
+          <hdml-bar x="a" y="b"></hdml-bar>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    await settle(view);
+    const bar = <Element>view.querySelector("hdml-bar");
+    for (const el of [view, bar]) {
+      const listed = getComputedStyle(el)
+        .transitionProperty.split(",")
+        .map((s) => s.trim());
+      assert.include(listed, SENTINEL_MARKER);
+      assert.include(listed, "width");
     }
   });
 

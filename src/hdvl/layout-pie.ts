@@ -12,6 +12,7 @@
 
 import { customElement, property } from "lit/decorators.js";
 import { HdvlElement } from "./base";
+import type { SceneGroup } from "./scene";
 import {
   HDVL_FAMILIES,
   HDVL_TAG_NAMES,
@@ -67,4 +68,15 @@ export class HdmlPieElement extends HdvlElement {
    */
   @property({ type: String })
   [PIE_ATTRS_LIST.SOURCE]: null | string = null;
+
+  /**
+   * @override
+   *
+   * Contract-complete at `null` (§2.3): "returns null to paint
+   * nothing (hidden, errored, or still loading)". **Step 27** puts
+   * the derived slices here, and replaces this line alone.
+   */
+  public scene(): SceneGroup | null {
+    return null;
+  }
 }

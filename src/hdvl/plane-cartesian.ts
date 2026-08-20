@@ -12,6 +12,7 @@
 
 import { customElement, property } from "lit/decorators.js";
 import { HdvlElement } from "./base";
+import type { SceneGroup } from "./scene";
 import {
   CARTESIAN_PLANE_ATTRS_LIST,
   HDVL_FAMILIES,
@@ -57,5 +58,16 @@ export class HdmlCartesianPlaneElement extends HdvlElement {
   public connectedCallback(): void {
     super.connectedCallback();
     this.setState("loading", true);
+  }
+
+  /**
+   * @override
+   *
+   * §5.1: a plane emits **no group at all** — it is a geometric
+   * anchor, not a painter (§2.2). Permanent; no later slice fills
+   * this in.
+   */
+  public scene(): SceneGroup | null {
+    return null;
   }
 }

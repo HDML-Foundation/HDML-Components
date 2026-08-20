@@ -12,6 +12,7 @@
 
 import { customElement, property } from "lit/decorators.js";
 import { HdvlElement } from "./base";
+import type { SceneGroup } from "./scene";
 import {
   CLUSTER_ATTRS_LIST,
   HDVL_FAMILIES,
@@ -66,4 +67,16 @@ export class HdmlClusterElement extends HdvlElement {
    */
   @property({ type: String })
   [CLUSTER_ATTRS_LIST.SOURCE]: null | string = null;
+
+  /**
+   * @override
+   *
+   * §6.4: a layout container emits **no nodes of its own** — it
+   * re-parameterises its children, and the ranged form is the
+   * primitive it compiles into. Permanent; step 29 changes what its
+   * children emit, never this.
+   */
+  public scene(): SceneGroup | null {
+    return null;
+  }
 }

@@ -12,6 +12,7 @@
 
 import { customElement, property } from "lit/decorators.js";
 import { HdvlElement } from "./base";
+import type { SceneGroup } from "./scene";
 import {
   HDVL_FAMILIES,
   HDVL_TAG_NAMES,
@@ -84,4 +85,15 @@ export class HdmlLegendElement extends HdvlElement {
    */
   @property({ type: String })
   [LEGEND_ATTRS_LIST.FORMAT]: null | string = null;
+
+  /**
+   * @override
+   *
+   * Contract-complete at `null` (§2.3): "returns null to paint
+   * nothing (hidden, errored, or still loading)". **Step 31** puts
+   * the colour scale's key here, and replaces this line alone.
+   */
+  public scene(): SceneGroup | null {
+    return null;
+  }
 }

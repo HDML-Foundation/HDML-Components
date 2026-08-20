@@ -31,6 +31,7 @@
  */
 
 import { HDVL_TAG_NAMES } from "./vocabulary";
+import { HDVL_PROPERTIES } from "./properties";
 
 const VIEW = HDVL_TAG_NAMES.VIEW;
 const CARTESIAN = HDVL_TAG_NAMES.CARTESIAN_PLANE;
@@ -55,6 +56,46 @@ const CLIPPED = [
   .map((tag) => `:host(${tag})`)
   .join(",\n");
 
+/**
+ * The box properties the sentinel covers beyond the registry.
+ *
+ * `ResizeObserver` reports size and never position (§5.6), so a
+ * guide moved by `top: 100%` → `top: 110%` at an unchanged size
+ * fires nothing. These five close that hole for the declarative
+ * case — a class flip, a stylesheet swap, a container-query
+ * breakpoint — and `color` is here because R16 resolves
+ * `currentcolor` against it.
+ */
+const SENTINEL_BOX = [
+  "color",
+  "inset",
+  "margin",
+  "padding",
+  "width",
+  "height",
+];
+
+/**
+ * Every property whose change schedules a frame (§5.6, R24).
+ *
+ * **Built from {@link HDVL_PROPERTIES}, never by hand** — a
+ * thirty-sixth registered property must not be able to become
+ * silently unobserved.
+ */
+export const SENTINEL_PROPERTIES: readonly string[] = [
+  ...HDVL_PROPERTIES.map((def) => def.name),
+  ...SENTINEL_BOX,
+];
+
+/**
+ * The one name MEASURE looks for to decide the sentinel survived.
+ *
+ * An author `transition` shorthand replaces our declaration
+ * wholesale, so its absence from the computed `transition-property`
+ * is exactly the W5 condition (§5.6).
+ */
+export const SENTINEL_MARKER: string = SENTINEL_PROPERTIES[0];
+
 /*
  * ── R33: every rule below is host-qualified, except two ──
  *
@@ -64,14 +105,21 @@ const CLIPPED = [
  * the generic `:host` box rule are legitimately generic, because
  * they are true of every display element.
  *
- * ── R24: this sheet ships no `transition` declaration ──
+ * ── R24: the sentinel is LONGHANDS, never the shorthand ──
  *
  * RFC §3.2 shows the frame sentinel written as the `transition`
  * shorthand. That form must never be copied literally: a shorthand
  * is replaced *wholesale* by any later rule of ours, which would
- * silently kill the sentinel. The sentinel is step 11's, and when it
- * lands it uses the longhands (`transition-property` /
- * `transition-duration`) or appends to an existing list.
+ * silently kill the sentinel for that family and force the fallback
+ * observer on. The generic `:host` rule below therefore declares
+ * `transition-property` + `transition-duration`, and every step that
+ * adds a `:host(...)` rule must keep doing the same.
+ *
+ * The 1 ms duration is the whole detection mechanism: a
+ * `transitionrun` on any listed property is what tells the view a
+ * declarative change happened — inline, inherited or
+ * stylesheet-driven — which is what retires the PoC's document-wide
+ * `MutationObserver`.
  *
  * ── The `inset: 0` in the generic rule ──
  *
@@ -86,7 +134,12 @@ const CLIPPED = [
  * resets it because the view is the one element in normal flow.
  */
 const ELEMENT_CSS = [
-  ":host { position: absolute; inset: 0 }",
+  ":host {",
+  "  position: absolute;",
+  "  inset: 0;",
+  `  transition-property: ${SENTINEL_PROPERTIES.join(", ")};`,
+  "  transition-duration: 1ms;",
+  "}",
   "",
   `:host(${VIEW}) {`,
   "  display: block;",

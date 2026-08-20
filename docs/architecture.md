@@ -364,8 +364,96 @@ half-applied, and the same rule applies to `filter`. Everything under
 [src/hdvl/kernel/](../src/hdvl/kernel/) is **pure**: no DOM, no computed style, no import
 side effect.
 
-*What drives a render — the invalidation sources, the `ResizeObserver`, and the
-three-phase frame — is not built yet; this section describes only what exists.*
+### What drives a render — one frame, three phases
+
+Every invalidation in a view, from whatever source, ends the same way: **mark the
+owning view dirty and request one animation frame.** *n* invalidations before that
+frame produce **one** frame. A *structural* change additionally reindexes first.
+
+```mermaid
+flowchart TD
+  subgraph sources ["invalidation sources"]
+    attr["observed attribute change"]
+    dom["child connect / disconnect"]
+    ro["ResizeObserver — view AND every descendant"]
+    tr["transitionrun — a --hdml-*, color or box change"]
+    data["D8 delivery adopted (step 13)"]
+  end
+  attr --> reindex
+  dom --> reindex
+  reindex["view.reindex() — ONE depth-first walk<br/>builds the resolution index<br/>updates the observed set"] --> dirty
+  ro --> dirty
+  tr --> dirty
+  data --> dirty
+  dirty["view.markDirty()<br/>requestAnimationFrame, coalesced"]
+  dirty --> measure
+  subgraph frame ["one rAF, per view, three phases"]
+    measure["1 · MEASURE — every descendant's box +<br/>ONE computed style each, top-down.<br/>No writes."]
+    compute["2 · COMPUTE — each widget's pure scene()"]
+    paint["3 · PAINT — renderer.render(scene), once"]
+    measure --> compute --> paint
+  end
+  paint --> done["clearDirty() — the frame's last act"]
+```
+
+**The phases may not interleave, and that is the point.** MEASURE reads and writes
+nothing; COMPUTE calls `scene()`; PAINT hands over one `Scene`. So no element ever
+reads a box after another has written one, and a widget's `scene()` is a pure
+function of the snapshot rather than of whoever ran before it. It also means a D8
+delivery can never tear a frame: `deliver` stores a payload and sets a flag, and
+paint happens a whole frame later.
+
+Every real `scene()` returns `null` today, which is a **contract-complete answer** —
+"returns null to paint nothing (hidden, errored, or still loading)" — so PAINT
+renders a real, empty `Scene`. Widget bodies arrive per slice and replace nothing
+around them.
+
+### The resolution index
+
+[src/hdvl/resolve.ts](../src/hdvl/resolve.ts) answers *"who is my scale?"* **once per
+structural change** instead of once per element per question. One rect-free
+depth-first walk from the view carries the scale chain **down** and the tip flag
+**up**, and records for every element: its view, its plane, the nearest ancestor
+scale per channel (resolution stopping at the plane boundary), whether it sits at a
+chain tip, its nearest and error-owning container, and its effective `source`.
+
+Two consequences are load-bearing:
+
+- **`HdvlElement.view` is a read of the index and of nothing else.** There is no
+  `closest()` in the display half. A second resolution source would disagree after a
+  DOM move *and* would produce an element the `ResizeObserver` never observes.
+- **A removed element can still name its view.** The index holds an element's
+  resolution until its view's next walk drops it, which is what makes
+  `disconnectedCallback` able to invalidate anything at all.
+
+### MEASURE is the only computed-style reader
+
+[src/hdvl/measure.ts](../src/hdvl/measure.ts) calls `getComputedStyle` **once per
+element per frame** and nowhere else in `src/hdvl/`. One call yields the box-level
+properties, the font, every registered `--hdml-*` the element reads **and** its
+`_hover` variant — which is why one pass suffices for a hover model at all. Measured
+over a nineteen-element view: ~0.3–0.7 ms for the whole pass, so no per-property
+caching is specified.
+
+Two values are resolved rather than passed through. **`currentcolor` is resolved by
+us**, because the computed value is the literal keyword on chromium and firefox and
+an already-resolved `rgb()` on webkit — without this, "an unstyled chart is legible
+and dark-mode-correct" would hold on one engine of three. And `clip-path` becomes
+explicit geometry, as above.
+
+### The CSS invalidation sentinel
+
+`ResizeObserver` reports size and never position, so a purely declarative reposition
+would fire nothing. The gap is closed by a **1 ms UA transition** declared on the
+generic `:host` rule over every registered property plus `color`, `inset`, `margin`,
+`padding`, `width` and `height`: a declarative change to any of them fires
+`transitionrun`, which a capturing listener on the view turns into one frame.
+
+It is written as the **longhands** `transition-property` + `transition-duration`,
+never the `transition` shorthand — a shorthand is replaced wholesale by any later
+rule, including one of ours. An author rule that does replace it removes detection
+for that element, so MEASURE also reads `transition-property` back and records
+whether the sentinel survived.
 
 ## Build pipeline
 

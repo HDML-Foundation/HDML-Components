@@ -12,6 +12,7 @@
 
 import { customElement, property } from "lit/decorators.js";
 import { HdvlElement } from "./base";
+import type { SceneGroup } from "./scene";
 import {
   GRID_ATTRS_LIST,
   HDVL_FAMILIES,
@@ -73,4 +74,15 @@ export class HdmlGridElement extends HdvlElement {
    */
   @property({ type: String })
   [GRID_ATTRS_LIST.VALUES]: null | string = null;
+
+  /**
+   * @override
+   *
+   * Contract-complete at `null` (§2.3): "returns null to paint
+   * nothing (hidden, errored, or still loading)". **Step 23** puts
+   * one line per domain value here, and replaces this line alone.
+   */
+  public scene(): SceneGroup | null {
+    return null;
+  }
 }

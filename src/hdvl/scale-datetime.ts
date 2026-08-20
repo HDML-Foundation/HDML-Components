@@ -12,6 +12,7 @@
 
 import { customElement, property } from "lit/decorators.js";
 import { HdvlElement } from "./base";
+import type { SceneGroup } from "./scene";
 import {
   DATETIME_SCALE_ATTRS_LIST,
   HDVL_FAMILIES,
@@ -119,4 +120,15 @@ export class HdmlDatetimeScaleElement extends HdvlElement {
    */
   @property({ type: String })
   [DATETIME_SCALE_ATTRS_LIST.SOURCE]: null | string = null;
+
+  /**
+   * @override
+   *
+   * §5.1: a scale emits **no group at all**. It resolves a domain
+   * and a range for the widgets below it and paints nothing itself.
+   * Permanent; step 18 gives this element a `Scale`, not a scene.
+   */
+  public scene(): SceneGroup | null {
+    return null;
+  }
 }

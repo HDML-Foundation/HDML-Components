@@ -12,6 +12,7 @@
 
 import { customElement, property } from "lit/decorators.js";
 import { HdvlElement } from "./base";
+import type { SceneGroup } from "./scene";
 import {
   AXIS_ATTRS_LIST,
   HDVL_FAMILIES,
@@ -47,4 +48,15 @@ export class HdmlAxisElement extends HdvlElement {
    */
   @property({ type: String })
   [AXIS_ATTRS_LIST.CHANNEL]: null | string = null;
+
+  /**
+   * @override
+   *
+   * Contract-complete at `null` (§2.3): "returns null to paint
+   * nothing (hidden, errored, or still loading)". **Step 23** puts
+   * the range-spanning line here, and replaces this line alone.
+   */
+  public scene(): SceneGroup | null {
+    return null;
+  }
 }

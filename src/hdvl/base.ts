@@ -34,13 +34,12 @@
 import { LitElement, TemplateResult, html } from "lit";
 import { uid } from "@hdml/hash";
 import type { HdmlViewElement } from "./view";
-import {
-  HdvlFamily,
-  HdvlTagName,
-  HDVL_TAG_NAMES,
-} from "./vocabulary";
+import type { SceneGroup } from "./scene";
+import type { FrameContext } from "./measure";
+import { HdvlFamily, HdvlTagName } from "./vocabulary";
 import { elementSheet, adoptDocumentSheet } from "./ua";
 import { registerProperties } from "./properties";
+import { viewOf } from "./resolve";
 
 registerProperties();
 adoptDocumentSheet();
@@ -63,14 +62,13 @@ interface StateSet {
 }
 
 /**
- * Every display element.
+ * Every display element. **Contract 1 is complete here.**
  *
- * `scene(ctx: FrameContext): SceneGroup | null` is deliberately
- * **not** declared here. `FrameContext` is made of the frame's
- * MEASURE snapshot, which does not exist until the scheduler does,
- * so it and `scene()` land together at step 11 (step-plan C6).
- * Returning `null` is a contract-complete state, which is what lets
- * the spine land box-first without half-applying Contract 1.
+ * `scene()` is declared `abstract` rather than defaulted to
+ * `return null` on purpose. A default would be the smaller diff and
+ * the wrong call: a silently inherited `null` is indistinguishable
+ * from a widget whose body was forgotten, and the base's job is to
+ * make every subclass state its own answer.
  */
 export abstract class HdvlElement extends LitElement {
   /**
@@ -96,22 +94,35 @@ export abstract class HdvlElement extends LitElement {
   }
 
   /**
-   * The owning view, or `null`.
+   * The owning view, or `null` — **a read of the resolution index
+   * and nothing else** (R35, §3.3).
    *
-   * Step 09 answers by an ancestor walk; step 11 replaces the body
-   * with a read of the resolution index. **The getter is the seam**
-   * — no caller ever walks the DOM itself (R35), so that swap is a
-   * one-file change rather than a twenty-one-file one. A field
-   * would not be swappable at all.
+   * Step 09 answered by an ancestor walk and made this a getter so
+   * that this swap would be a one-file change rather than a
+   * twenty-element one. A second resolution source would disagree
+   * after a DOM move *and* produce an element the `ResizeObserver`
+   * never observes (R27), so `src/hdvl/` now contains no
+   * `closest()` at all.
    *
-   * `closest` includes the element itself, so a view owns itself:
-   * `view.invalidate()` marks the right view dirty with no special
-   * case.
+   * The index answers for an element that has already been removed
+   * from the DOM, which is the whole reason
+   * {@link HdvlElement.disconnectedCallback} can invalidate
+   * anything.
    */
   public get view(): HdmlViewElement | null {
-    const el = this.closest(HDVL_TAG_NAMES.VIEW);
-    return el === null ? null : <HdmlViewElement>el;
+    return viewOf(this);
   }
+
+  /**
+   * Called in the COMPUTE phase. Pure: reads only the measured box,
+   * the measured style, the adopted data and the resolved scales.
+   * Returns null to paint nothing (hidden, errored, or still
+   * loading).
+   *
+   * @param ctx - The frame's MEASURE snapshot and resolved scales.
+   * @returns This widget's contribution, or `null`.
+   */
+  public abstract scene(ctx: FrameContext): SceneGroup | null;
 
   /**
    * @override
@@ -124,17 +135,35 @@ export abstract class HdvlElement extends LitElement {
    */
   public connectedCallback(): void {
     super.connectedCallback();
-    this.invalidate();
+    this.view?.reindex();
+  }
+
+  /**
+   * @override
+   *
+   * The other half of §5.6's structural pair, and **the one step 09
+   * could not wire**: an ancestor walk from a removed element finds
+   * no view, so there was nothing to invalidate. The index still
+   * holds this element's `Resolution` — including its view — until
+   * that view's next walk drops it, so the answer is available
+   * exactly when it is needed.
+   */
+  public disconnectedCallback(): void {
+    const view = this.view;
+    super.disconnectedCallback();
+    view?.reindex();
   }
 
   /**
    * @override
    *
    * **The single funnel.** R35 forbids classifying an attribute
-   * change into structural vs presentational, so every observed
-   * attribute lands here and goes one place. At step 09 that place
-   * is `invalidate()`; at step 11 it becomes `view.reindex()`, and
-   * because there is exactly one call site that is one edit.
+   * change into structural vs presentational — one attribute filed
+   * under the wrong class leaves a stale subscription or an
+   * unvalidated tree — so every observed attribute lands here and
+   * goes one place: **reindex first, then dirty**, exactly as §2.8's
+   * pipeline shows. Because there is exactly one call site, that is
+   * one edit rather than twenty.
    *
    * @param name - The attribute that changed.
    * @param old - Its previous value.
@@ -146,7 +175,7 @@ export abstract class HdvlElement extends LitElement {
     value: null | string,
   ): void {
     super.attributeChangedCallback(name, old, value);
-    this.invalidate();
+    this.view?.reindex();
   }
 
   /**
@@ -184,8 +213,8 @@ export abstract class HdvlElement extends LitElement {
 
   /**
    * The single invalidation path: mark the **owning view** dirty.
-   * Never paints, never measures (§5.6). The view's implementation
-   * is a flag and a counter at step 09; step 11 gives it the rAF.
+   * Never paints, never measures (§5.6) — the view answers with one
+   * `requestAnimationFrame`, coalesced.
    */
   protected invalidate(): void {
     this.view?.markDirty();

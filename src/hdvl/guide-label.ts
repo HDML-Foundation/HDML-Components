@@ -12,6 +12,7 @@
 
 import { customElement, property } from "lit/decorators.js";
 import { HdvlElement } from "./base";
+import type { SceneGroup } from "./scene";
 import {
   HDVL_FAMILIES,
   HDVL_TAG_NAMES,
@@ -83,4 +84,15 @@ export class HdmlLabelElement extends HdvlElement {
    */
   @property({ type: String })
   [LABEL_ATTRS_LIST.FORMAT]: null | string = null;
+
+  /**
+   * @override
+   *
+   * Contract-complete at `null` (§2.3): "returns null to paint
+   * nothing (hidden, errored, or still loading)". **Step 24** puts
+   * one text run per domain value here, and replaces this line alone.
+   */
+  public scene(): SceneGroup | null {
+    return null;
+  }
 }

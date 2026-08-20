@@ -80,6 +80,48 @@ and collapsing `line` into a degenerate cubic — the cheaper form wins. The rec
 renderer under [src/testing/](../src/testing/) is a **test double, not a second
 renderer**: it records the scene and draws nothing.
 
+## `transitionrun` replaces the document-wide `MutationObserver`
+
+A chart has to repaint when its **CSS** changes, not only when its markup or its data
+does — a class flip, a stylesheet swap or a container-query breakpoint can change a
+`--hdml-*` value, a colour, or an element's position with nothing in the DOM moving.
+The PoC answered that with a **document-wide `MutationObserver`**, watching every
+`style`/`class` attribute and every `<style>`/`<link>` node in the page. That is
+rejected here: it costs every page that embeds a chart, it fires on mutations that
+change no computed value, and — the fatal part — it still cannot see a rule that
+*already existed* and merely started matching.
+
+What replaces it is a **1 ms UA transition** declared in the element sheet over every
+registered `--hdml-*` property plus `color`, `inset`, `margin`, `padding`, `width` and
+`height`. The platform then answers the question directly: a declarative change to any
+of those fires `transitionrun` on the element, and one capturing listener on the view
+turns that into one frame. It was measured on all three engines for **inline**,
+**inherited** and **stylesheet-driven** changes before anything was built on it.
+Combined with a `ResizeObserver` over the view *and every descendant*, that is the whole
+of CSS-driven invalidation, at zero cost to pages that never change a style.
+
+**It is written as longhands, and that is not a style preference.** `transition` is a
+shorthand, so any later rule of ours that used the shorthand form would replace the
+sentinel wholesale and silently kill detection for that family — the hardest class of
+bug to attribute, because the CSS is visibly correct in DevTools. The sheet declares
+`transition-property` + `transition-duration`, and every rule added to it must keep
+doing so.
+
+**The hole is stated rather than hidden.** An *author* `transition` shorthand on a
+display element removes the sentinel the same way:
+
+```css
+hdml-line { transition: none }              /* detection off */
+hdml-line { transition: opacity 200ms }     /* also off */
+hdml-line { transition-duration: 300ms }    /* still on */
+```
+
+MEASURE already reads a computed-style block per element, so it also reads
+`transition-property` back and records whether the sentinel survived. The fallback
+`MutationObserver` is not deleted — it stays available, **off by default**, as the
+manual `HDML_CONFIG.paranoidObserver` opt-in and as the automatic self-heal for pages
+that actually override.
+
 ## `<hdml-io>` is **not** a `HdqlElement`
 
 It extends `LitElement` directly. `<hdml-io>` observes the document, it does not
