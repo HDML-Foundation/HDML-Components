@@ -453,7 +453,86 @@ It is written as the **longhands** `transition-property` + `transition-duration`
 never the `transition` shorthand — a shorthand is replaced wholesale by any later
 rule, including one of ours. An author rule that does replace it removes detection
 for that element, so MEASURE also reads `transition-property` back and records
-whether the sentinel survived.
+whether the sentinel survived. When it did not, the view logs **W5** once and
+switches on a document-wide `MutationObserver` for itself — so correctness is
+restored without the author knowing the mechanism exists, and the observer's cost
+is paid only by the pages that actually override. `HDML_CONFIG.paranoidObserver`
+forces it on regardless.
+
+### Diagnostics — two passes, edge-triggered
+
+[`validate.ts`](../src/hdvl/validate.ts) is **the only module under `src/hdvl/`
+that writes to the console**, and that is a load-bearing rule rather than a style
+one. It runs two passes, both always on in dev and prod builds:
+
+| Pass | Runs in | Rules |
+|---|---|---|
+| **structural** | `view.reindex()`, once per structural change, over the walk that just ran | V1 (a bound channel resolves to exactly one ancestor scale), V13 (a level is homogeneous), W2 (the view has an accessible name) |
+| **binding** | per widget in COMPUTE, on adopted data | none yet — the seam is named and empty until a resolved scale exists |
+
+W5 and W6 are neither: both are flags MEASURE produced, reported from the same
+sink so they are edge-triggered like everything else.
+
+**Edge-triggering is the reason the sink is centralised.** Validation runs on
+every structural change and every COMPUTE pass, so a resize drag would otherwise
+re-dispatch the same `hdml-error` and reprint the same console line sixty times a
+second. Each unit remembers the identity of the diagnostic it currently carries —
+`` `${rule}|${code}|${channel ?? ""}|${message}` `` — and reports only when that
+identity changes. There is **no event on recovery**: the state disappears, the
+identity is cleared, and nothing is dispatched, because the vocabulary defines no
+resolution event. A bare `console.warn` anywhere else in `src/hdvl/` bypasses all
+of this, which is why the build's own grep expects exactly one console writer.
+
+Messages are **contract**: the teaching text is quoted verbatim from the spec, so
+every negative test hardcodes the literal rather than importing the constant.
+The element that violates a rule and the element that *blanks* are not the same —
+the blast radius is the **error unit** the resolution index precomputes, which
+for a widget inside a layout container is the container.
+
+### Interaction — one delegated listener, and the proxy fence
+
+The view installs **one** pointer listener and asks the renderer to resolve a hit
+in **view-local CSS px**; the renderer converts back to viewport coordinates for
+its own `elementFromPoint` tier, so the seam never leaks viewport semantics. The
+hit names a widget `uid`, the index resolves it to an element, and the event is
+re-dispatched **from that widget** — so series identity is the event target and
+there is no `series` field to invent.
+
+The first line of the listener is the **proxy fence**:
+
+```ts
+if (e instanceof HdmlPointerEvent) return;
+```
+
+It is mandatory. Proxied events are `bubbles` + `composed` by contract, so one
+dispatched from a descendant bubbles straight back into the same listener.
+Measured with an unfenced replica and one native `pointermove`: chromium
+re-enters **44** times before Blink's nested-dispatch cap stops it, firefox
+**448**, and webkit recurses until `RangeError: Maximum call stack size
+exceeded`. Two alternatives are rejected permanently — `bubbles: false` breaks a
+host app listening on an ancestor, and `e.isTrusted` is test-hostile, because a
+script-dispatched `PointerEvent` is untrusted and every synthetic-interaction
+test would then pass while testing nothing.
+
+`HdmlPointerEvent` carries `index` and `datum` as **own properties**, never in
+`detail`: `UIEvent.detail` is a `long`, so an object assigned to it coerces to
+`0` on all three engines. It stays a real `PointerEvent`, so a host app's
+existing pointer handling keeps working and simply gains two properties, and the
+native event is never stopped — a listener sees both and tells them apart by
+class.
+
+The four named `hdml-*` events are the opposite: they are `CustomEvent`s
+collected into a queue during the frame and dispatched **after PAINT**, because a
+listener is entitled to mutate the DOM and a mutation mid-phase corrupts the pass
+in flight. Dispatched at end of frame, such a mutation simply schedules the next
+one.
+
+### `HDML.supports`
+
+Registered additively on `globalThis.HDML` when the `./hdvl` entry is imported.
+It answers from the custom-element registry and the published attribute enums, so
+it cannot drift from what this build actually registers — see
+[decisions.md](decisions.md).
 
 ## Build pipeline
 

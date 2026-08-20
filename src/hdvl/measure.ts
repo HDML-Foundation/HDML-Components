@@ -58,17 +58,18 @@ export interface Measured {
    *  the SAME computed style. */
   props: ReadonlyMap<string, string>;
   /** false when the author replaced the `transition`
-   *  shorthand and the sentinel is gone (R24). */
+   *  shorthand and the sentinel is gone (R24). W5's
+   *  trigger, reported by `validate.ts`. */
   sentinel: boolean;
   /**
    * A `url()` form appeared in `clip-path` or `filter`, so the
    * value was **ignored, never half-applied** (§5.4).
    *
-   * **W6's trigger, carried and not reported.** There is no
-   * diagnostics sink until step 12, and a bare `console.warn` here
-   * would fire every frame — §8's warnings are edge-triggered
-   * (R25). The flag exists so step 12 adds a sink rather than
-   * re-plumbing the phase.
+   * **W6's trigger, carried and not reported here.** A bare
+   * `console.warn` in this phase would fire every frame — §8's
+   * warnings are edge-triggered (R25) — so the flag travels to
+   * `validate.ts`, which is the only module under `src/hdvl/` that
+   * writes to the console.
    */
   w6: boolean;
 }
@@ -135,6 +136,30 @@ function sentinelOf(style: CSSStyleDeclaration): boolean {
   return false;
 }
 
+/**
+ * §9's `visibility`, read **against the collapsed-slot baseline**.
+ *
+ * `:host(hdml-view) > slot { visibility: collapse }` is how R1's box
+ * preservation works (§3.2), and `visibility` **inherits** — so
+ * every display element in every view computes `collapse`, measured
+ * on all three engines. Reading "anything but `visible`" as hidden
+ * would therefore mark **every group in every scene** hidden: the
+ * SVG renderer writes the value onto its `<g>` and skips hidden
+ * groups in `resolve()`, so every chart would paint blank and no
+ * pointer would ever hit anything.
+ *
+ * The collapsed slot is **ours**, not an author signal. Only an
+ * explicit author `hidden` is one. The cost is that an author
+ * cannot hide a widget with `visibility: collapse` — it is
+ * indistinguishable from our baseline — and does not need to:
+ * `visibility: hidden` and SPEC §7's `hidden` attribute both work.
+ */
+function visibilityOf(
+  style: CSSStyleDeclaration,
+): "visible" | "hidden" {
+  return style.visibility === "hidden" ? "hidden" : "visible";
+}
+
 /** Reads one element, from exactly one computed style. */
 function measureOne(
   el: HdvlElement,
@@ -165,7 +190,7 @@ function measureOne(
     box,
     opacity: len(style.opacity, 1),
     filter: filterUrl ? "none" : rawFilter,
-    visibility: style.visibility === "visible" ? "visible" : "hidden",
+    visibility: visibilityOf(style),
     clip:
       style.overflowX !== "visible" || style.overflowY !== "visible",
     clipPath: shape.subpaths,

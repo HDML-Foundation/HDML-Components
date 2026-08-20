@@ -45,9 +45,13 @@ registerProperties();
 adoptDocumentSheet();
 
 /**
- * The four custom states of SPEC §1's lifecycle surface
- * (RFC §3.4). Step 09 sets `loading` only: `empty` is decided on
- * emitted marks after COMPUTE, and `error` needs the validator.
+ * The four custom states of SPEC §1's lifecycle surface (RFC §3.4).
+ *
+ * Every one of them is **derived**, never authored: `loading` from
+ * whether a required subscription has a terminal delivery, `empty`
+ * from the mark nodes COMPUTE emitted, `error` from the validator,
+ * and `hover` from hit resolution. That is why the two writers are
+ * {@link writeState} and nothing wider.
  */
 export type HdvlState = "loading" | "empty" | "error" | "hover";
 
@@ -59,6 +63,56 @@ interface StateSet {
   add(value: string): void;
   delete(value: string): void;
   has(value: string): boolean;
+}
+
+/**
+ * The custom-state surface, granted to the two modules that own a
+ * state the element itself cannot decide: the validator (`error`,
+ * §8.1) and the pointer path (`hover`, §5.7).
+ *
+ * {@link HdvlElement.setState} stays **protected**, deliberately.
+ * Making it public would put SPEC §1's lifecycle states — which are
+ * *derived*, never authored — on the element's public API, where a
+ * host app could set `error` on a chart that is fine and `hover` on
+ * a mark the pointer is nowhere near. This map is the narrower
+ * grant: the class hands its own state set to its own module at
+ * construction, and the module exports exactly the two capabilities
+ * needed. Nothing outside `src/hdvl/` can reach either.
+ */
+const stateOf = new WeakMap<HdvlElement, StateSet>();
+
+/**
+ * Adds or removes a custom state from outside the class.
+ *
+ * @param el - The element.
+ * @param name - The state.
+ * @param on - Whether to add it.
+ */
+export function writeState(
+  el: HdvlElement,
+  name: HdvlState,
+  on: boolean,
+): void {
+  const states = stateOf.get(el);
+  if (states === undefined) {
+    return;
+  }
+  if (on) {
+    states.add(name);
+  } else {
+    states.delete(name);
+  }
+}
+
+/**
+ * Reads a custom state from outside the class.
+ *
+ * @param el - The element.
+ * @param name - The state.
+ * @returns Whether it carries it.
+ */
+export function readState(el: HdvlElement, name: HdvlState): boolean {
+  return stateOf.get(el)?.has(name) ?? false;
 }
 
 /**
@@ -91,6 +145,7 @@ export abstract class HdvlElement extends LitElement {
   public constructor() {
     super();
     this.internals = this.attachInternals();
+    stateOf.set(this, <StateSet>(<unknown>this.internals.states));
   }
 
   /**

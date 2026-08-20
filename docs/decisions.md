@@ -122,6 +122,34 @@ MEASURE already reads a computed-style block per element, so it also reads
 manual `HDML_CONFIG.paranoidObserver` opt-in and as the automatic self-heal for pages
 that actually override.
 
+## `HDML.supports()` answers from the registry, not from a feature list
+
+`HDML.supports("hdml-stack")` is specified as answering what the runtime
+**implements**, not what the vocabulary names — and during v1 the two genuinely
+differ: all twenty-one display tags are registered with their attributes, but
+most of them still have no body. The obvious reading of "implements" is a
+per-element completeness flag, and that is the option this rejects.
+
+A hand-maintained list of which elements are "done" is stale the moment a slice
+lands, and it is stale *silently* — nothing fails, `supports()` just starts
+lying. That is precisely the drift the same specification closes one sentence
+later by requiring the answer to come from the published enums. So the
+implemented rule is the one that is mechanically true: **a tag is supported if
+this build registered it, and an attribute is supported if it is in that tag's
+published `*_ATTRS_LIST`.**
+
+That answers the question a host app is actually asking. `supports()` lives in
+the display half, so a page that never imports `@hdml/components/hdvl` gets
+`false` for all twenty-one — which is the real feature-detection case — and a
+page that does gets an answer that cannot disagree with `customElements`. The
+residual gap is honest and bounded: during v1, `supports("hdml-pie")` is `true`
+before `hdml-pie` draws anything. The alternative was a flag that would report
+`false` for an element whose tag, attributes and CSS surface all work.
+
+Registration is **additive**. The namespace object is reused, never replaced, so
+a page that loads two builds — or a host app that already owns `window.HDML` —
+keeps everything else on it.
+
 ## `<hdml-io>` is **not** a `HdqlElement`
 
 It extends `LitElement` directly. `<hdml-io>` observes the document, it does not

@@ -62,5 +62,10 @@ import "./guide-tick";
 import "./guide-label";
 import "./guide-grid";
 import "./guide-legend";
+// §8.5: `HDML.supports` registers on `globalThis.HDML` as an import
+// side effect, so it must be imported for that effect — an
+// unimported module registers nothing. It exports no element and
+// adds nothing to this entry's public surface.
+import "./supports";
 
 export * from "./vocabulary";

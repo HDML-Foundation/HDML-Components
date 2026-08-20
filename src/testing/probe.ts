@@ -67,6 +67,31 @@ export class HdvlProbeElement extends HdvlElement {
    */
   public emit = false;
 
+  /**
+   * The rows a proxied pointer event's `datum` is drawn from
+   * (§5.7).
+   *
+   * A real mark gains `datumAt` when it gains adopted data; the
+   * pointer path duck-types it, so nothing on `HdvlElement` had to
+   * grow a member for a payload no widget can supply yet. Left
+   * empty, `datum` is `null` — which is the honest answer for a
+   * widget bound to literals.
+   */
+  public rows: Readonly<Record<string, unknown>>[] = [];
+
+  /**
+   * The source row a hit index names, restricted to the bound
+   * channels (§5.7's `DatumSource`).
+   *
+   * @param index - The row index a hit resolved.
+   * @returns The row, or `null`.
+   */
+  public datumAt(
+    index: number,
+  ): Readonly<Record<string, unknown>> | null {
+    return this.rows[index] ?? null;
+  }
+
   /** The most recent call, or `null`. */
   public get last(): ProbeCall | null {
     return this.calls.length === 0

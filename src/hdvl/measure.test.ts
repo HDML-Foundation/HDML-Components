@@ -195,10 +195,14 @@ suite("hdvl/measure — the one computed-style pass", () => {
     assert.isFalse(bar.w6);
   });
 
-  test("a url() form clips nothing and logs nothing", async () => {
-    // §5.4: ignored, never half-applied. The flag is CARRIED —
-    // there is no diagnostics sink until step 12, and a bare
-    // console.warn here would re-fire every frame (R25).
+  test("a url() clips nothing; MEASURE logs nothing", async () => {
+    // §5.4: ignored, never half-applied. The flag is CARRIED, not
+    // reported: a bare console.warn in this phase would re-fire
+    // every frame, and §8's warnings are edge-triggered (R25). W6
+    // is emitted from `validate.ts` — the only module under
+    // `src/hdvl/` that writes to the console — and asserted in
+    // `validate.test.ts`. What this asserts is the other half:
+    // MEASURE itself still says nothing.
     const view = await fixture<HdmlViewElement>(html`
       <hdml-view style="width: 400px; height: 200px">
         <hdml-cartesian-plane>

@@ -23,6 +23,7 @@ import type { Renderer } from "./renderer";
 import type { SceneGroup } from "./scene";
 import { renderers } from "./renderer";
 import {
+  byUid,
   elementsOf,
   registerView,
   reindexView,
@@ -30,6 +31,21 @@ import {
   unregisterView,
 } from "./resolve";
 import { FrameLoop, createFrameLoop, runFrame } from "./schedule";
+import {
+  EventQueue,
+  HDML_RENDER,
+  POINTER_TYPES,
+  PointerBridge,
+  createEventQueue,
+  createPointerBridge,
+  outward,
+} from "./events";
+import {
+  forgetView,
+  validateMeasured,
+  validateStructure,
+} from "./validate";
+import { readConfig } from "../hdio/config";
 
 /**
  * The view holds the shadow root, the single `<svg>` surface (R1)
@@ -80,10 +96,26 @@ export class HdmlViewElement extends HdvlElement {
 
   private observer: ResizeObserver | null = null;
 
+  private fallback: MutationObserver | null = null;
+
   private readonly observed = new Set<Element>();
 
   private readonly loop: FrameLoop = createFrameLoop(() => {
     this.frame();
+  });
+
+  /** §5.11's after-PAINT dispatch queue. */
+  private readonly events: EventQueue = createEventQueue();
+
+  /**
+   * §5.7's single delegated listener. The renderer answers the hit;
+   * the view owns the listener and dispatches from the widget, so
+   * the series identity is the event target (R10, SPEC §10).
+   */
+  private readonly pointer: PointerBridge = createPointerBridge({
+    rect: () => this.surfaceRect(),
+    resolve: (x, y) => this.renderer?.resolve(x, y) ?? null,
+    widget: (uid) => byUid(uid),
   });
 
   /**
@@ -125,9 +157,39 @@ export class HdmlViewElement extends HdvlElement {
     this.markDirty();
   };
 
+  /** §5.7's delegated listener, one per view for every type. */
+  private readonly onPointer = (e: Event): void => {
+    this.pointer.handle(e);
+  };
+
+  /** The pointer left the view entirely; nothing is hovered. */
+  private readonly onPointerLeave = (): void => {
+    this.pointer.clear();
+  };
+
   /** Whether an invalidation is outstanding. */
   public get dirty(): boolean {
     return this.dirtyFlag;
+  }
+
+  /**
+   * Whether the `MutationObserver` fallback is running for this
+   * view (§5.6).
+   *
+   * It is switched on by W5 — an author `transition` shorthand
+   * replaced the UA sentinel wholesale, so a later stylesheet-driven
+   * `--hdml-*` change would schedule no frame — or unconditionally
+   * by `HDML_CONFIG.paranoidObserver`. Exposed because "the
+   * self-heal happened" is otherwise unobservable from outside, and
+   * a silent self-heal is indistinguishable from a broken one.
+   */
+  public get observingFallback(): boolean {
+    return this.fallback !== null;
+  }
+
+  /** The element under the pointer, or `null` (§5.7). */
+  public get hovered(): Element | null {
+    return this.pointer.hovered;
   }
 
   /**
@@ -171,6 +233,13 @@ export class HdmlViewElement extends HdvlElement {
         this.observed.add(el);
       }
     }
+    // §8.2's STRUCTURAL pass, over the walk that just ran and the
+    // index it just filled — V1 and V13 read `chain`, `tip`,
+    // `container` and `unit` rather than re-deriving any of them.
+    // Its `hdml-error`s are queued, not dispatched: §5.11 puts every
+    // outward event after PAINT, and `markDirty()` below guarantees
+    // the frame that drains them.
+    validateStructure(this, elements, this.events);
     this.markDirty();
   }
 
@@ -193,8 +262,19 @@ export class HdmlViewElement extends HdvlElement {
     this.loop.request();
   }
 
-  /** Clears the dirty flag. The frame's last act. */
+  /**
+   * Clears the dirty flag. The frame's last act.
+   *
+   * It is a no-op while another frame is already outstanding, which
+   * is not defensiveness: §5.11 drains the outward-event queue just
+   * before this call, and a listener is entitled to mutate the DOM.
+   * Clearing unconditionally would leave `dirty` false with a frame
+   * pending — and `dirty` is what every quiescence check reads.
+   */
   public clearDirty(): void {
+    if (this.loop.pending) {
+      return;
+    }
     this.dirtyFlag = false;
   }
 
@@ -222,6 +302,11 @@ export class HdmlViewElement extends HdvlElement {
       this.observer = new ResizeObserver(this.onResize);
     }
     this.addEventListener("transitionrun", this.onTransition, true);
+    // §5.7, R10: ONE delegated listener per type, on the view.
+    for (const type of POINTER_TYPES) {
+      this.addEventListener(type, this.onPointer);
+    }
+    this.addEventListener("pointerleave", this.onPointerLeave);
     super.connectedCallback();
     if (!this.hasAttribute("role")) {
       this.setAttribute("role", "img");
@@ -245,6 +330,17 @@ export class HdmlViewElement extends HdvlElement {
       this.onTransition,
       true,
     );
+    for (const type of POINTER_TYPES) {
+      this.removeEventListener(type, this.onPointer);
+    }
+    this.removeEventListener("pointerleave", this.onPointerLeave);
+    this.pointer.clear();
+    this.fallback?.disconnect();
+    this.fallback = null;
+    // A queued outward event whose frame never came must not fire
+    // into a detached tree on some later reconnection.
+    this.events.clear();
+    forgetView(this);
     this.renderer?.unmount();
     this.renderer = null;
     // Drops this view's whole index slice, which is also what makes
@@ -316,6 +412,14 @@ export class HdmlViewElement extends HdvlElement {
       measureText: (text, font) => renderer.measureText(text, font),
       render: (scene) => renderer.render(scene),
     });
+    // W5 and W6 — MEASURE produced both flags and reported
+    // neither, because §8's warnings are edge-triggered (R25).
+    if (
+      validateMeasured(this, result.measured) ||
+      readConfig().paranoidObserver
+    ) {
+      this.enableFallback();
+    }
     // §3.4.1: `empty` is decided on emitted MARK nodes, never on a
     // row count, and applied at end of frame. §3.4's first clause
     // is what keeps it from colliding with `loading` — a view that
@@ -324,6 +428,45 @@ export class HdmlViewElement extends HdvlElement {
       "empty",
       !this.hasState("loading") && result.marks === 0,
     );
+    // §5.11: every outward event is dispatched AFTER PAINT, from
+    // the queue collected during the frame. A listener may mutate
+    // the DOM, and a mutation mid-phase corrupts the pass in
+    // flight; here it simply marks the view dirty for the next one.
+    this.events.push(this, outward(HDML_RENDER));
+    this.events.flush();
     this.clearDirty();
+  }
+
+  /** The surface's viewport rect, read fresh per event (§5.7). */
+  private surfaceRect(): DOMRect | null {
+    const svg = this.shadowRoot?.querySelector("svg") ?? null;
+    return svg === null ? null : svg.getBoundingClientRect();
+  }
+
+  /**
+   * Switches on the document-wide `MutationObserver` fallback
+   * (§5.6), at most once per connection.
+   *
+   * The cost is paid only by pages that actually override
+   * `transition` — which is the whole point of detecting the loss
+   * rather than running the observer for everyone, as the PoC did.
+   * It watches the light DOM only; the renderer writes into the
+   * shadow root, which a `MutationObserver` never crosses, so there
+   * is no feedback loop.
+   */
+  private enableFallback(): void {
+    if (this.fallback !== null) {
+      return;
+    }
+    const observer = new MutationObserver(() => {
+      this.markDirty();
+    });
+    observer.observe(document, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["style", "class"],
+    });
+    this.fallback = observer;
   }
 }
