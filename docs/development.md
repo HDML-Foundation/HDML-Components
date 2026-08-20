@@ -246,6 +246,44 @@ that moved, which a screenshot baseline cannot. The conventions:
 
 `sceneOf` / `assertRenders` do not exist yet; they arrive with the scene itself.
 
+### Writing a kernel fixture table
+
+[src/hdvl/kernel/](../src/hdvl/kernel/) is pure maths and parsing — no DOM, no
+`getComputedStyle`, no import side effect — so its tests look nothing like the rest of
+the suite. A kernel test **imports `assert` and the module under test and nothing
+else**: no `fixture`, no `setup`, no element, no `await`, and no `PLAYWRIGHT`-specific
+anything. If you find yourself reaching for a fixture, the module is not pure and the
+directory invariant has already been broken.
+
+The shape:
+
+- A `const` table of `[input, …, expected]` tuples at suite scope, with the **reason
+  for each row in a comment** — the boundary it pins, the branch it reaches. A row
+  whose reason is "it was what the code returned" is not a fixture, it is a snapshot.
+- A `for … of` over the table emitting one `test()` per row, so a failure names the
+  row rather than the tenth assertion in a wall of them.
+- The purity invariant restated in the file's header JSDoc, naming the grep that
+  enforces it: `grep -rn "document\.\|window\." src/hdvl/kernel/`.
+
+**Which cross-engine rule applies to which number** — this is the part that is easy to
+get wrong, and getting it wrong in the *lenient* direction throws away the reason the
+code was hand-written:
+
+| The value went through… | Assert with | Why |
+|---|---|---|
+| Rational arithmetic only — `i / divisor`, `i * step` at a non-negative power, a `{1, 2, 5}` multiplier, an identity transform, a projection over an exactly-representable domain, the band formula | **exact `deepEqual` / `strictEqual`** | IEEE-754 `+ − × ÷` are exactly specified, so all three engines agree bit-for-bit. A `closeTo` here would hide a real defect — and, for the tick ladder, would discard the whole point of the integer-reciprocal step form |
+| `Math.log`, `Math.log10`, `Math.log1p`, `Math.pow`, `Math.exp`, `Math.expm1`, `Math.sin`, `Math.cos` | **`closeTo(…, 1e-9)`** | ECMAScript does not require correctly-rounded transcendentals; V8, SpiderMonkey and JavaScriptCore differ in the last ulp |
+| `Math.pow(base, p)` for a small integer `p` | **exact — but say so in the test** | An integer result at these magnitudes is exactly representable and every engine returns it. This is the one place the two rules touch, so a bare exact assertion reads as an oversight unless the comment explains it |
+| `measureText` | **`closeTo(…, 1e-2)`** | Text extents are deterministic *per engine*, not *across* them: `"North"` at `11px system-ui` measures 30.765625 on chromium and webkit and 30.766666412353516 on firefox |
+| `Intl` **output strings** | chromium only | ICU version and data differ by engine and OS. The cross-engine contract is the skeleton → option-bag mapping, which *is* asserted on all three |
+
+**A sign, and a `-0`, are asserted exactly even on a transcendental path.** Use
+`Object.is(x, 0)` or wrap in an array and `deepEqual` — `assert.strictEqual(x, 0)`
+**passes for `-0`** and is the single easiest way to land a silent cross-engine split.
+Any kernel function that can produce a signed zero normalises it at the source; the
+known producers are `Math.sign(-0)`, `Math.ceil(x)` for `x ∈ (−1, 0)`, and a
+difference or product of equal coordinates.
+
 ### The HDVL corpus pages
 
 [html/hdvl/](../html/hdvl/) holds the thirteen corpus pages (`00-minimal` … `12-coverage`),

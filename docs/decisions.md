@@ -80,6 +80,40 @@ and collapsing `line` into a degenerate cubic — the cheaper form wins. The rec
 renderer under [src/testing/](../src/testing/) is a **test double, not a second
 renderer**: it records the scene and draws nothing.
 
+## No d3 — the geometry kernel is hand-written
+
+[src/hdvl/kernel/](../src/hdvl/kernel/) is the display half's maths, and it has **no
+dependency**. Not d3-scale, not d3-array, not d3-shape — and not as a reference
+implementation copied by hand either. This is a decision about *divergence*, not about
+bundle size, and it was taken before a line of the kernel existed.
+
+**Where the model differs from d3, specifically:**
+
+- **The tick ladder.** SPEC's `tickStep` rounds the raw step **up** to the next
+  `{1, 2, 5} × 10ⁿ` rung, so `count` is a target that round values beat. d3's
+  `tickIncrement` rounds to the **geometric nearest** (`√50`, `√10`, `√2`). The two
+  disagree about how many ticks a chart has for the same domain and target.
+- **The step's representation.** At a negative power our step is an **integer
+  divisor**, not a multiplied `10^power`: the ladder generates `i / 10`, never
+  `i * 0.1`. That is the difference between `0.3` and `0.30000000000000004` at index 3
+  of `ticks(0, 1, 10)` — and, at a domain endpoint, the difference between a tick that
+  is inside the domain and one that is 4 ulp outside it. A tick that exists on one
+  engine and not another is a chart with a different number of labels per browser, not
+  a rounding difference.
+- **The band formula.** `step = W / (n − 1 + b)` with every non-band-filling lookup
+  resolving to the band **centre**, which is what makes a line's vertices sit on its
+  bars' centrelines at any `--hdml-bandwidth`. Deliberately not d3's
+  `paddingInner`/`paddingOuter` model.
+- **Three of the eight `--hdml-curve-type` values** do not correspond to a
+  `d3.curve*` as registered.
+
+Adopting d3 and then overriding those would mean shipping four packages to use a
+fraction of one of them, while the parts that matter most are the parts we replace.
+The whole kernel is on the order of a few hundred lines, every function is pure, and
+every one has a fixture table asserted on all three engines — which is the other half
+of the argument: a hand-written ladder we can assert **exactly** is worth more here
+than a borrowed one we would have to assert approximately.
+
 ## `transitionrun` replaces the document-wide `MutationObserver`
 
 A chart has to repaint when its **CSS** changes, not only when its markup or its data
