@@ -45,6 +45,12 @@ import {
   validateMeasured,
   validateStructure,
 } from "./validate";
+import {
+  applyLifecycle,
+  drainDataEvents,
+  forgetSubscriptions,
+  reconcileView,
+} from "./subscribe";
 import { readConfig } from "../hdio/config";
 
 /**
@@ -64,11 +70,14 @@ import { readConfig } from "../hdio/config";
  * a capturing `transitionrun` listener for the CSS sentinel (R24),
  * and — at step 13 — a D8 delivery.
  *
- * `:state(loading)` is set at connect and never cleared, which is
- * §3.6 applied rather than a placeholder: with no data layer, every
- * widget's `scene()` returns `null`. `empty` is computed from the
- * frame's mark-node count at end of frame (§3.4.1) and gated on
- * `loading`, so the two can never both be set.
+ * `:state(loading)` is set at connect — §3.6's "before the first
+ * delivery" — and from the first frame on it is **derived**: §3.4's
+ * quantifier over the reconciler's `desired` set, computed by
+ * `subscribe.ts` and applied at end of frame. A view with no
+ * subscriptions at all is therefore not loading after its first
+ * frame, which is what makes `empty` reachable: `empty` is computed
+ * from the frame's mark-node count (§3.4.1) and gated on `loading`,
+ * so the two can never both be set.
  *
  * @tagname hdml-view
  *
@@ -240,6 +249,13 @@ export class HdmlViewElement extends HdvlElement {
     // outward event after PAINT, and `markDirty()` below guarantees
     // the frame that drains them.
     validateStructure(this, elements, this.events);
+    // §7.2.2 runs in the SAME pass, over the same walk: R35 funnels
+    // every observed attribute change through here, so "after every
+    // structural reindex and after any attribute change that can
+    // alter a binding" is exactly this call site. It is a set diff
+    // over data the index already holds — O(bindings), and a no-op
+    // when nothing moved.
+    reconcileView(this, elements);
     this.markDirty();
   }
 
@@ -311,6 +327,10 @@ export class HdmlViewElement extends HdvlElement {
     if (!this.hasAttribute("role")) {
       this.setAttribute("role", "img");
     }
+    // §3.6: between upgrade and the first frame nothing is known
+    // about who subscribes, so the honest answer is `loading`. The
+    // first `applyLifecycle` replaces it with §3.4's quantifier —
+    // including clearing it outright for a literal-only view.
     this.setState("loading", true);
   }
 
@@ -341,6 +361,9 @@ export class HdmlViewElement extends HdvlElement {
     // into a detached tree on some later reconnection.
     this.events.clear();
     forgetView(this);
+    // Aborts every subscription this view owns — one controller per
+    // subscription, so this is the only place they all go at once.
+    forgetSubscriptions(this);
     this.renderer?.unmount();
     this.renderer = null;
     // Drops this view's whole index slice, which is also what makes
@@ -405,9 +428,10 @@ export class HdmlViewElement extends HdvlElement {
       return;
     }
     this.frameCounter++;
+    const elements = elementsOf(this);
     const result = runFrame({
       view: this,
-      elements: elementsOf(this),
+      elements,
       resolution: resolutionOf,
       measureText: (text, font) => renderer.measureText(text, font),
       render: (scene) => renderer.render(scene),
@@ -420,6 +444,10 @@ export class HdmlViewElement extends HdvlElement {
     ) {
       this.enableFallback();
     }
+    // §7.4's delivery → lifecycle mapping, applied HERE rather than
+    // in `deliver`: clause 1.3 forbids `deliver` touching style at
+    // all, and the frame is where every other derived state lands.
+    applyLifecycle(this, elements);
     // §3.4.1: `empty` is decided on emitted MARK nodes, never on a
     // row count, and applied at end of frame. §3.4's first clause
     // is what keeps it from colliding with `loading` — a view that
@@ -428,6 +456,11 @@ export class HdmlViewElement extends HdvlElement {
       "empty",
       !this.hasState("loading") && result.marks === 0,
     );
+    // §5.11's `hdml-data`, edge-triggered on the adopted set and
+    // dispatched from the element that adopted — queued ahead of
+    // `hdml-render`, so a listener sees the data before the frame
+    // that painted it is announced.
+    drainDataEvents(this, this.events);
     // §5.11: every outward event is dispatched AFTER PAINT, from
     // the queue collected during the frame. A listener may mutate
     // the DOM, and a mutation mid-phase corrupts the pass in

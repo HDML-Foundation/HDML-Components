@@ -346,11 +346,19 @@ source ref. One frame = one query; the full path is
 
 ### The discovery bus + subscription registry (Step 08, D7/D8)
 
-The consumer-facing half lives on the **main thread** in
+The **provider** half lives on the main thread in
 [src/hdio/HdmlIo.ts](../src/hdio/HdmlIo.ts) (RFC §2.8/§5.8, D7/D8). Data-binding consumers
-(charts / axes / legends — a **separate repo**, §8) never touch the worker: they announce
-themselves on a `document` event bus, `<hdml-io>` registers them and drives
-`subscribe`/`unsubscribe`, and each worker `result` fans out to every matching subscriber.
+(charts / axes / legends) never touch the worker: they announce themselves on a `document`
+event bus, `<hdml-io>` registers them and drives `subscribe`/`unsubscribe`, and each worker
+`result` fans out to every matching subscriber.
+
+**The consumer half is [src/hdvl/subscribe.ts](../src/hdvl/subscribe.ts), in this package.**
+The seam was designed as a separate-repo contract and is still specified as one — it is a
+`document` event plus a callback, and any consumer can implement it, which is exactly what
+makes [`FakeIo`](../src/testing/FakeIo.ts) and the fourteen-clause conformance suite possible.
+The display half simply turned out to be the first consumer. Everything below this line
+describes the **provider**; the consumer's identity rules, reconciler and five adoption duties
+are in [architecture.md](architecture.md#data-binding), and are not repeated here.
 
 - **Rendezvous — a `bubbles`/`composed` request event.** `<hdml-io>` listens on `document`
   for the request event (the W3C/Lit context-request pattern); `composed:true` keeps it
@@ -411,10 +419,11 @@ themselves on a `document` event bus, `<hdml-io>` registers them and drives
   means *the provider is gone and its generation space has ended*. Without it the registry was
   cleared **silently**, leaving every view painting the last generation forever. It is
   announced **after** the listener teardown and both `clear()`s, so a consumer reacting
-  synchronously cannot re-register against a dying element. **This repo only dispatches it.**
-  The reaction — reset the adopted generation to 0, return to `:state(loading)` (§7.4: *not*
-  `:state(error)`), await the next `hdml-io-ready` — belongs to the consumer element in the
-  separate repo, and no listener for it exists here.
+  synchronously cannot re-register against a dying element. Its consumer now exists: the
+  reaction — reset the adopted generation to 0, return to `:state(loading)` (§7.4: *not*
+  `:state(error)`), await the next `hdml-io-ready`, which re-dispatches every subscription
+  with a fresh id — is in
+  [src/hdvl/subscribe.ts](../src/hdvl/subscribe.ts).
 
 ### The settled D8 seam — `Delivery` and `RequestDetail`
 

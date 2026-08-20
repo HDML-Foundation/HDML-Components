@@ -218,18 +218,20 @@ suite("hdvl/base — Contract 1", () => {
   });
 
   test("loading lands on the view and its planes", async () => {
-    const view = await fixture<HdmlViewElement>(html`
-      <hdml-view style="width: 400px; height: 200px">
-        <hdml-cartesian-plane>
-          <hdml-line x="a" y="b"></hdml-line>
-        </hdml-cartesian-plane>
-        <hdml-polar-plane></hdml-polar-plane>
-      </hdml-view>
-    `);
-    await settle(view);
-    const cart = <Element>view.querySelector("hdml-cartesian-plane");
-    const polar = <Element>view.querySelector("hdml-polar-plane");
-    const line = <Element>view.querySelector("hdml-line");
+    // §3.6's window: connected, nothing yet known about who
+    // subscribes, no frame run. Asserted by building the tree by
+    // hand, because `fixture()` resolves after Lit's update and a
+    // frame may already have refined the state.
+    const host = await fixture<HTMLElement>(html`<div></div>`);
+    const view = document.createElement("hdml-view");
+    view.setAttribute("aria-label", "states at connect");
+    const cart = document.createElement("hdml-cartesian-plane");
+    const polar = document.createElement("hdml-polar-plane");
+    const line = document.createElement("hdml-line");
+    cart.appendChild(line);
+    view.appendChild(cart);
+    view.appendChild(polar);
+    host.appendChild(view);
 
     assert.isTrue(view.matches(":state(loading)"));
     assert.isTrue(cart.matches(":state(loading)"));

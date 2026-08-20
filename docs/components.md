@@ -376,8 +376,10 @@ declared directly on the class.
 
 Beyond uploading the document, `<hdml-io>` exposes a **subscription bus** so data-binding
 consumers (charts, axes, legends) can bind a `(source-ref, column)` and receive live query
-results (RFC 014/001 §5.8, D8). The consumer elements themselves live in a **separate repo**
-(§8) — this repo ships only hdml-io's side:
+results (RFC 014/001 §5.8, D8). The seam is specified so **any** consumer can implement it, and
+this repo now ships both sides: hdml-io's, described below, and the display half's in
+[`src/hdvl/subscribe.ts`](../src/hdvl/subscribe.ts) — see
+[architecture.md](architecture.md#data-binding).
 
 - `<hdml-io>` announces `hdml-io-ready` on `document` when it connects, and listens there for a
   `bubbles`/`composed` **request event**. A consumer, on its own connect, both listens for

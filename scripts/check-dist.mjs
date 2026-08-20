@@ -273,8 +273,14 @@ for (const spec of rootSet) {
 // 6. The §2.1 edge invariant.
 // ---------------------------------------------------------------
 for (const file of tsFilesUnder("src/hdvl")) {
+  // The clause may not itself contain `from`, so the match cannot
+  // run backwards over a PRECEDING import. Without the lookahead the
+  // non-greedy `[\s\S]*?` swallows every earlier import statement in
+  // the file, and a perfectly correct `import type { Delivery }` is
+  // reported as a value import unless it happens to be the first
+  // import in the module (measured at step 13).
   const re =
-    /(?:^|\n)\s*import\s+([\s\S]*?)from\s+["']\.\.\/hdio\/([^"']+)["']/g;
+    /(?:^|\n)\s*import\s+((?:(?!\bfrom\b)[\s\S])*?)from\s+["']\.\.\/hdio\/([^"']+)["']/g;
   const source = read(file);
   let m;
   while ((m = re.exec(source)) !== null) {

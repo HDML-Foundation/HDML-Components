@@ -29,8 +29,11 @@ import { FramePhase, currentPhase, frameTrace } from "./schedule";
  * trip.
  *
  * §5.6's clause 1.3 — "paint is a whole frame after `deliver`" — is
- * **not asserted here**, because there is no `deliver` until step
- * 13. Stated rather than claimed.
+ * satisfied **structurally** by this loop, and is asserted from
+ * inside `deliver` itself in `subscribe.test.ts`
+ * (*"clause 1.3 — deliver never paints"*, step 13), where the trace
+ * seam reports `currentPhase() === null` and an unchanged
+ * `framesRun` while the view is merely dirty.
  */
 
 /** Every renderer the seam has handed out, in order. */
@@ -239,10 +242,17 @@ suite("hdvl/schedule — the frame", () => {
     assert.isFalse(view.dirty);
   });
 
-  test("a loading view is never also empty", async () => {
+  test("empty is reachable, and never also loading", async () => {
     // §3.4.1: `empty` is decided on emitted MARK nodes at end of
     // frame, and §3.4's first clause is what keeps the two states
     // from colliding.
+    //
+    // Step 13 made `loading` §3.4's real quantifier — "≥ 1
+    // currently-required subscription has no terminal delivery" —
+    // so this view, which has no subscriptions at all, leaves it
+    // on its first frame. That is not a relaxation: it is what
+    // makes `empty` reachable, which step 11 recorded it was not.
+    // A genuinely loading view is asserted in `subscribe.test.ts`.
     const [view] = await mount(html`
       <hdml-view style="width: 400px; height: 200px">
         <hdml-cartesian-plane>
@@ -252,8 +262,8 @@ suite("hdvl/schedule — the frame", () => {
     `);
     view.markDirty();
     await tick();
-    assert.isTrue(view.matches(":state(loading)"));
-    assert.isFalse(view.matches(":state(empty)"));
+    assert.isFalse(view.matches(":state(loading)"));
+    assert.isTrue(view.matches(":state(empty)"));
   });
 
   test("a disconnected view leaks nothing", async () => {

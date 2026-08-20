@@ -203,14 +203,19 @@ it (a still-`pending` superseded job is best-effort cancelled, running jobs neve
 
 ### The discovery bus
 
-The consumer-facing half of the query leg lives on the **main thread** in
+The provider half of the query leg lives on the **main thread** in
 [src/hdio/HdmlIo.ts](../src/hdio/HdmlIo.ts) (RFC §5.8, D8). Data-binding consumers (charts /
-axes / legends — a **separate repo**) never touch the worker: they rendezvous with `<hdml-io>`
-over a `document` event bus, symmetric and race-free.
+axes / legends) never touch the worker: they rendezvous with `<hdml-io>` over a `document`
+event bus, symmetric and race-free.
+
+**The consumer half is [src/hdvl/subscribe.ts](../src/hdvl/subscribe.ts)**, in this package —
+see [Data binding](#data-binding) below. It was designed as a separate-repo contract and is
+still specified as one (the seam is an event plus a callback, so any consumer can implement
+it); the display half simply turned out to be the first consumer, and ships here.
 
 ```mermaid
 sequenceDiagram
-  participant C as consumer (separate repo)
+  participant C as consumer (src/hdvl/subscribe.ts)
   participant Doc as document
   participant Io as hdml-io (main)
   participant W as worker
@@ -526,6 +531,97 @@ collected into a queue during the frame and dispatched **after PAINT**, because 
 listener is entitled to mutate the DOM and a mutation mid-phase corrupts the pass
 in flight. Dispatched at end of frame, such a mutation simply schedules the next
 one.
+
+### Data binding
+
+[src/hdvl/subscribe.ts](../src/hdvl/subscribe.ts) is Contract 4's **consumer** half — the
+counterpart of [the discovery bus](#the-discovery-bus) above, and the only module in
+`src/hdvl/` that imports `../hdio/delivery` (type-only; a value import would pull the worker,
+`@hdml/parser` and Arrow into every chart page, and `check-dist.mjs` is what stops it).
+
+**The request path.** An element declares bindings by implementing a duck-typed `Binder` —
+`bindings(): readonly Binding[]`, exactly as a mark declares `datumAt` when it gains data.
+Nothing was added to the element base for it. Each binding names a slot (a channel attribute,
+or `"values"` for a scale), the bare identifier it binds, `raw` (`false` = domain-only, which
+is what makes a scale an ordinary subscriber), and the **effective `source`** — read from the
+resolution index, nearest-ancestor-wins, so an inherited `source` changed on the view reaches
+every descendant through one field. The ref never carries a `&column=` tail: the worker
+coalesces frames by verbatim ref string, and a tailed ref would split one frame's union into
+several queries. A widget whose channels are all literal declares no binding, has no
+subscription, and paints on the first frame.
+
+**Two identities, and the concrete bug each prevents.**
+
+| Identity | Value | What it prevents |
+|---|---|---|
+| the **key** | `` `${element.uid}:${slot}` `` — the binding **site** | `y="revenue"` → `y="profit"` is one site changing target. Keyed by column instead, a rebind would accumulate a dead `revenue` entry beside a live `profit` one, and the widget would read whichever the scene function happened to ask for. The adopted map is keyed by slot for the same reason |
+| the **id** | `uid()`, minted per subscription **instance** | `<hdml-io>` de-dupes requests by `id`. A `source` swap that left the column name unchanged would otherwise mint the same id, be discarded as a duplicate, and **never subscribe at all** — while the widget kept painting the previous frame's data forever |
+
+Each subscription owns **its own `AbortController`**, never one shared per element, so
+cancelling one binding cannot tear down its siblings; disconnecting the view aborts all of
+them at once.
+
+**The reconciler** is a set diff, run inside `reindex()` — which is where every structural
+change and every observed attribute change already lands, so "after any attribute change that
+can alter a binding" needs no classification. `desired \ active` is ADD, `active \ desired` is
+REMOVE, and a site whose `(ref, column, raw)` changed is **REPLACE = REMOVE then ADD**, never a
+mutation in place: the id must change, and the adopted data must go. REMOVE also **resets
+`latest` to 0**, because generations are monotonic only within one `(session, ref)` pair —
+without the reset the new ref's generation 1 would be rejected as stale against the old ref's
+7, and the widget would never paint again. Discard happens at reconcile time, not on the
+replacement's arrival, so the interval between rebinding and re-delivery paints *nothing* for
+that slot rather than the previous column's values.
+
+**Adoption — the five duties.** `deliver` is a closure created once per subscription instance,
+capturing the site key and the instance id:
+
+1. **The instance fence comes first.** The subscription that produced a delivery may already
+   have been replaced. The generation cannot decide it — across a `source` swap the two
+   generation spaces are unrelated — so the **id** decides, and a loser is dropped silently.
+2. **Duty 1 adopts iff `generation >= latest`** for that instance. `>=`, so a replay of an
+   already-adopted generation is idempotent. A stale delivery is discarded **wholesale**: no
+   field adopted, no event, no state change.
+3. **Staleness is decided by the stamp, never the kind** (duty 2). An error **may** be stamped,
+   and a stamped one obeys ordering exactly like data — a late error stamped generation 7 must
+   not blank a widget already showing generation 8. Only the **unstamped** error, the
+   pre-submit gate timeout, is current by ordering and always adopted. `absent` carries a
+   required generation and is covered by the same predicate.
+4. **Payloads are immutable and non-transferable** (duty 4): `values` / `nulls` are shared by
+   reference with sibling subscribers and with the provider's replay cache. Every derive that
+   would mutate allocates its own array.
+5. **Re-adoption under a new generation is normal** (duty 5); rendering is idempotent because
+   the scene is a pure function of the adopted set.
+
+**`deliver` stores and invalidates. It never paints, never measures, and never writes a custom
+state** (D8 clause 1.3). The frame gives it a whole rAF of margin, and that margin is not a
+licence to do work there — so §7.4's delivery → lifecycle mapping is applied at **end of
+frame**, beside `empty`, and not in `deliver`.
+
+**The `loading` quantifier**, exactly: *≥ 1 currently-required subscription in the view has no
+terminal delivery* — "currently required" being the reconciler's `desired` set and "terminal"
+any of `data`, `absent`, `error`. An `error` therefore **resolves** loading; it does not
+prolong it. A view with no subscriptions at all is not loading, which is what makes
+`:state(empty)` reachable for a literal-only page. Painting under it is two-phase:
+
+- **Until the view has resolved once**, `loading` suppresses *all* painting in it — a chart
+  that reveals its axes, then its bars, then its line is worse than one that appears whole.
+- **After that first resolution**, `loading` is a status flag: a rebind leaves its own error
+  unit blank and its siblings painting, because re-suppressing the whole view would blank an
+  entire dashboard on every series toggle.
+
+**`hdml-io-gone` finally has a consumer**: reset `latest` to 0, drop back to un-terminal so the
+view returns to `:state(loading)` on its next frame, and await the next `hdml-io-ready`, which
+re-dispatches every subscription with a fresh id. No `Delivery` is synthesized and no
+`:state(error)` is set — "the provider went away" reads like a delivery kind and is not one,
+and a widget must not be `loading` and `error` for a single cause.
+
+**`hdml-data`** is dispatched from the element that adopted, through the same after-PAINT queue
+as the other three named events, carrying `{channels, length, domains}`. It is **edge-triggered
+on the adopted set**, so a resize does not re-fire it. `domains` currently carries the
+*delivered* domain; RFC §5.11 specifies the *resolved* one — what the chart actually drew,
+including `zero`, `nice` and authored endpoints — and that arrives with `Scale`. Shipping the
+field now keeps the event's shape stable across that change instead of making it a breaking
+addition later.
 
 ### `HDML.supports`
 
