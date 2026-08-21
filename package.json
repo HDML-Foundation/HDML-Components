@@ -13,6 +13,7 @@
     "@hdml/buffer": "0.0.2-alpha.24",
     "@hdml/types": "0.0.2-alpha.24",
     "lit": "^3.2.1",
+    "temporal-polyfill": "1.0.4",
     "whatwg-fetch": "^3.6.20"
   },
   "devDependencies": {

@@ -114,6 +114,49 @@ every one has a fixture table asserted on all three engines — which is the oth
 of the argument: a hand-written ladder we can assert **exactly** is worth more here
 than a borrowed one we would have to assert approximately.
 
+## `temporal-polyfill` behind a four-operation seam
+
+The kernel has exactly **one** runtime dependency, and it is the only one this package
+adds for the display half: [`temporal-polyfill`](https://www.npmjs.com/package/temporal-polyfill),
+pinned **exactly**, imported from [src/hdvl/kernel/zone.ts](../src/hdvl/kernel/zone.ts)
+and from nowhere else.
+
+*Why a dependency at all, given the entry above:* because `Temporal` is a **standard**,
+not a library. The *No d3* decision is not "write everything ourselves" — it is that we
+will not ship a library whose model contradicts the spec we implement. Here the
+situation is the opposite: the model we want *is* the platform's, and the polyfill is
+the platform's own semantics delivered early. Taking it **is** the
+standards-over-libraries rule rather than an exception to it. The alternative —
+hand-rolling IANA zone arithmetic, DST gap and overlap resolution, and a leap-year-aware
+calendar — is the one place in the kernel where "a few hundred lines of pure functions
+we can assert exactly" stops being true.
+
+*Why a ponyfill value and never a global patch:* `import "temporal-polyfill/global"`
+would make the whole embedding page's `Temporal` ours. A charting library has no
+business deciding that for the application that loaded it, and a page that also loads
+its own polyfill would get whichever import ran last. We import the value by name and
+nothing observable outside this package changes.
+
+*Why the module reads no ambient binding, ever:* the native `Temporal` is present on
+chromium and firefox and **absent on webkit** (measured). An implementation that
+feature-detected would therefore run *different calendar code on different engines*,
+which would turn every calendar assertion in the suite into a claim about three
+implementations that happen to agree today. That is asserted against `zone.ts`'s
+**source text**, not its behaviour, because no behavioural test can tell a polyfilled
+implementation from a native one — which is the whole failure mode.
+
+*Why four operations and not `Temporal` objects passed around:* the seam is `floorTo`,
+`ceilTo`, `addUnits` and `fieldsOf`, and **only epoch milliseconds cross it**. No
+library object escapes the module, so no call site anywhere in the package names a type
+from the package. Every boundary the calendar ladder emits is therefore an exact
+integer, assertable bit-for-bit on all three engines rather than through a tolerance.
+
+*The removal condition:* the day `Temporal` ships everywhere we support, the swap is
+**one import line** and no call site changes. That is the property the four-operation
+surface exists to buy, and it is the test of whether the seam is still doing its job —
+if a fifth operation ever looks necessary, the seam has started leaking and that is a
+design change, not a convenience.
+
 ## `transitionrun` replaces the document-wide `MutationObserver`
 
 A chart has to repaint when its **CSS** changes, not only when its markup or its data
