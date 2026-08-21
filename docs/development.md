@@ -277,6 +277,17 @@ code was hand-written:
 | `measureText` | **`closeTo(…, 1e-2)`** | Text extents are deterministic *per engine*, not *across* them: `"North"` at `11px system-ui` measures 30.765625 on chromium and webkit and 30.766666412353516 on firefox |
 | `Intl` **output strings** | chromium only | ICU version and data differ by engine and OS. The cross-engine contract is the skeleton → option-bag mapping, which *is* asserted on all three |
 
+**The `Intl` row is the suite's only engine-scoped rule, so it is the only one that
+has to be *declared*.** Keep the scoped assertions in one suite, guard them with an
+explicit engine predicate, and **assert the predicate itself on all three engines** —
+otherwise an engine-detection change makes the whole suite silently assert nothing and
+the build stays green. `format-skeleton.test.ts` is the worked example. Two traps
+measured there: a structural claim compares labels **to each other**, or to a value
+read from the *same* `Intl` call, and therefore is **not** engine-scoped; and a bare
+locale tag is not a numbering system — `"ar"` resolves to `latn` on chromium and
+firefox and to `arab` on webkit, so a test that reads digits must spell
+`"ar-u-nu-arab"`.
+
 **A sign, and a `-0`, are asserted exactly even on a transcendental path.** Use
 `Object.is(x, 0)` or wrap in an array and `deepEqual` — `assert.strictEqual(x, 0)`
 **passes for `-0`** and is the single easiest way to land a silent cross-engine split.
