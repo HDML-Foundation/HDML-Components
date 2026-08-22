@@ -72,10 +72,10 @@ suite("hdvl/resolve — the index", () => {
     const view = await fixture<HdmlViewElement>(html`
       <hdml-view style="width: 400px; height: 200px">
         <hdml-cartesian-plane>
-          <hdml-ordinal-scale channel="x">
-            <hdml-continuous-scale channel="y">
-              <hdml-continuous-scale channel="color">
-                <hdml-ordinal-scale channel="size">
+          <hdml-ordinal-scale values='["a"]' channel="x">
+            <hdml-continuous-scale min="0" max="1" channel="y">
+              <hdml-continuous-scale min="0" max="1" channel="color">
+                <hdml-ordinal-scale values='["a"]' channel="size">
                   <hdml-line x="a" y="b"></hdml-line>
                   <hdml-area x="a" y="b"></hdml-area>
                   <hdml-bar x="a" y="b"></hdml-bar>
@@ -117,9 +117,14 @@ suite("hdvl/resolve — the index", () => {
     const view = await fixture<HdmlViewElement>(html`
       <hdml-view style="width: 400px; height: 200px">
         <hdml-cartesian-plane id="a">
-          <hdml-ordinal-scale channel="x">
-            <hdml-continuous-scale channel="y">
-              <hdml-continuous-scale channel="y" id="inner">
+          <hdml-ordinal-scale values='["a"]' channel="x">
+            <hdml-continuous-scale min="0" max="1" channel="y">
+              <hdml-continuous-scale
+                min="0"
+                max="1"
+                channel="y"
+                id="inner"
+              >
                 <hdml-line x="a" y="b"></hdml-line>
               </hdml-continuous-scale>
             </hdml-continuous-scale>
@@ -162,8 +167,8 @@ suite("hdvl/resolve — the index", () => {
     const view = await fixture<HdmlViewElement>(html`
       <hdml-view style="width: 400px; height: 200px">
         <hdml-cartesian-plane>
-          <hdml-ordinal-scale channel="x">
-            <hdml-continuous-scale channel="y">
+          <hdml-ordinal-scale values='["a"]' channel="x">
+            <hdml-continuous-scale min="0" max="1" channel="y">
               <hdml-bar x="a" y="b"></hdml-bar>
             </hdml-continuous-scale>
           </hdml-ordinal-scale>
@@ -186,7 +191,11 @@ suite("hdvl/resolve — the index", () => {
     const view = await fixture<HdmlViewElement>(html`
       <hdml-view source="?a/b" style="width: 400px; height: 200px">
         <hdml-cartesian-plane>
-          <hdml-ordinal-scale channel="x" source="?c/d">
+          <hdml-ordinal-scale
+            values='["a"]'
+            channel="x"
+            source="?c/d"
+          >
             <hdml-bar x="a" y="b"></hdml-bar>
           </hdml-ordinal-scale>
           <hdml-line x="a" y="b"></hdml-line>
@@ -219,7 +228,7 @@ suite("hdvl/resolve — the index", () => {
     const view = await fixture<HdmlViewElement>(html`
       <hdml-view style="width: 400px; height: 200px">
         <hdml-cartesian-plane>
-          <hdml-ordinal-scale channel="x">
+          <hdml-ordinal-scale values='["a"]' channel="x">
             <hdml-stack x="m" y="v">
               <hdml-bar x="m" y="v"></hdml-bar>
             </hdml-stack>
@@ -279,7 +288,7 @@ suite("hdvl/resolve — the index", () => {
     const view = await fixture<HdmlViewElement>(html`
       <hdml-view style="width: 400px; height: 200px">
         <hdml-cartesian-plane>
-          <hdml-continuous-scale channel="y">
+          <hdml-continuous-scale min="0" max="1" channel="y">
             <hdml-bar x="a" y="b"></hdml-bar>
             <hdml-axis channel="y"></hdml-axis>
           </hdml-continuous-scale>

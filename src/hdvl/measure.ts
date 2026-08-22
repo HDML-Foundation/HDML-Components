@@ -42,6 +42,19 @@ export interface Measured {
   /** getBoundingClientRect() minus the view's content-box
    *  origin (§2.7). View coordinates, CSS px. */
   box: Rect;
+  /**
+   * {@link Measured.box} inset by this element's own border and
+   * padding — its **content** box, same coordinates.
+   *
+   * §4.3 is literal about it: *"a positional scale's range is its
+   * own content box along its channel's axis"*, and *"each scale's
+   * padding insets only its own range"*. `getBoundingClientRect`
+   * gives the border box, and the four insets can only be read
+   * from a computed style — which R16 confines to this module, so
+   * they are read here, from the **same** `getComputedStyle` call
+   * everything else on this snapshot comes from.
+   */
+  content: Rect;
   /** The four box-level properties §9's reach rule needs,
    *  already resolved. */
   opacity: number;
@@ -174,6 +187,20 @@ function measureOne(
     w: px(r.width),
     h: px(r.height),
   };
+  const insetL =
+    len(style.borderLeftWidth, 0) + len(style.paddingLeft, 0);
+  const insetT =
+    len(style.borderTopWidth, 0) + len(style.paddingTop, 0);
+  const insetR =
+    len(style.borderRightWidth, 0) + len(style.paddingRight, 0);
+  const insetB =
+    len(style.borderBottomWidth, 0) + len(style.paddingBottom, 0);
+  const content: Rect = {
+    x: px(box.x + insetL),
+    y: px(box.y + insetT),
+    w: px(Math.max(0, box.w - insetL - insetR)),
+    h: px(Math.max(0, box.h - insetT - insetB)),
+  };
 
   const color = style.color;
   const props = new Map<string, string>();
@@ -188,6 +215,7 @@ function measureOne(
 
   return {
     box,
+    content,
     opacity: len(style.opacity, 1),
     filter: filterUrl ? "none" : rawFilter,
     visibility: visibilityOf(style),

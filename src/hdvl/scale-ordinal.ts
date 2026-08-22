@@ -13,6 +13,10 @@
 import { customElement, property } from "lit/decorators.js";
 import { HdvlElement } from "./base";
 import type { SceneGroup } from "./scene";
+import type { FrameContext } from "./measure";
+import type { Binding } from "./subscribe";
+import type { Scale, ScaleDomain } from "./scale";
+import { resolveScaleFrame, scaleBindings, scaleOf } from "./scale";
 import {
   HDVL_FAMILIES,
   HDVL_TAG_NAMES,
@@ -22,14 +26,8 @@ import {
 /**
  * A categorical `domain → range` map, banded by `--hdml-bandwidth`
  * (§4.4). On `channel="color"` it is the palette scale, and its
- * key is what `hdml-legend` renders.
- *
- * **Registered and inert as of this commit.** Step 09 lands the tag
- * surface once and for all — the tag, the family and the observed
- * attributes — and every body arrives in its own slice. In
- * particular this element declares no `scene()`: `FrameContext` is
- * made of the frame's MEASURE snapshot, so it and `scene()` land
- * together at step 11 (step-plan C6).
+ * key is what `hdml-legend` renders. Contract 2 itself lives in
+ * [`scale.ts`](./scale.ts), shared by all three scale tags.
  *
  * @tagname hdml-ordinal-scale
  *
@@ -103,13 +101,44 @@ export class HdmlOrdinalScaleElement extends HdvlElement {
   [ORDINAL_SCALE_ATTRS_LIST.SOURCE]: null | string = null;
 
   /**
+   * §7.2's request path — R6's `raw: false` `values` subscription.
+   *
+   * @returns The bindings this scale currently wants.
+   */
+  public bindings(): readonly Binding[] {
+    return scaleBindings(this);
+  }
+
+  /**
+   * The **resolved** domain this scale last drew with (§5.11, H14).
+   *
+   * @returns The domain, or `null` while it is unresolved.
+   */
+  public resolvedDomain(): ScaleDomain | null {
+    return scaleOf(this)?.domain() ?? null;
+  }
+
+  /**
+   * This element's Contract 2 object for the frame in flight.
+   *
+   * @param ctx - The frame's snapshot.
+   * @returns The `Scale`, or `null` with no legal `channel`.
+   */
+  public scale(ctx: FrameContext): Scale | null {
+    return resolveScaleFrame(this, ctx);
+  }
+
+  /**
    * @override
    *
-   * §5.1: a scale emits **no group at all**. It resolves a domain
-   * and a range for the widgets below it and paints nothing itself.
-   * Permanent; step 18 gives this element a `Scale`, not a scene.
+   * §5.1: a scale emits **no group at all**. Permanent — this is
+   * the `Scale`'s per-frame hook, not a scene.
+   *
+   * @param ctx - The frame's snapshot.
+   * @returns Always `null`.
    */
-  public scene(): SceneGroup | null {
+  public scene(ctx: FrameContext): SceneGroup | null {
+    resolveScaleFrame(this, ctx);
     return null;
   }
 }

@@ -42,6 +42,7 @@ import {
 } from "./events";
 import {
   forgetView,
+  validateBindings,
   validateMeasured,
   validateStructure,
 } from "./validate";
@@ -51,6 +52,7 @@ import {
   forgetSubscriptions,
   reconcileView,
 } from "./subscribe";
+import { drainScaleEvents } from "./scale";
 import { readConfig } from "../hdio/config";
 
 /**
@@ -436,6 +438,13 @@ export class HdmlViewElement extends HdvlElement {
       measureText: (text, font) => renderer.measureText(text, font),
       render: (scene) => renderer.render(scene),
     });
+    // §8.2's BINDING pass, over the scales COMPUTE just resolved
+    // and the deliveries they adopted. It runs here rather than
+    // inside COMPUTE because both halves of V2 read what the frame
+    // produced — the resolved domain most of all — and because a
+    // `writeState` mid-phase would invalidate style in the middle
+    // of the pass that is reading it.
+    validateBindings(this, elements, this.events);
     // W5 and W6 — MEASURE produced both flags and reported
     // neither, because §8's warnings are edge-triggered (R25).
     if (
@@ -456,6 +465,11 @@ export class HdmlViewElement extends HdvlElement {
       "empty",
       !this.hasState("loading") && result.marks === 0,
     );
+    // §5.11's `hdml-scale-change`, edge-triggered on the resolved
+    // `(domain, range)` pair — a DIFFERENT edge from `hdml-data`'s:
+    // a resize changes a range and so re-fires this, while §5.11
+    // says a resize does not re-fire `hdml-data`.
+    drainScaleEvents(elements, this.events);
     // §5.11's `hdml-data`, edge-triggered on the adopted set and
     // dispatched from the element that adopted — queued ahead of
     // `hdml-render`, so a listener sees the data before the frame

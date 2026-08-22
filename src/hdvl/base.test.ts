@@ -70,7 +70,11 @@ suite("hdvl/base — the box", () => {
     const view = await fixture<HdmlViewElement>(html`
       <hdml-view style="width: 400px; height: 200px">
         <hdml-cartesian-plane>
-          <hdml-continuous-scale channel="y"></hdml-continuous-scale>
+          <hdml-continuous-scale
+            min="0"
+            max="1"
+            channel="y"
+          ></hdml-continuous-scale>
         </hdml-cartesian-plane>
       </hdml-view>
     `);
@@ -133,8 +137,16 @@ suite("hdvl/base — the box", () => {
     const view = await fixture<HdmlViewElement>(html`
       <hdml-view style="width: 400px; height: 200px">
         <hdml-cartesian-plane>
-          <hdml-continuous-scale channel="y" style="padding: 10px">
-            <hdml-ordinal-scale channel="x"></hdml-ordinal-scale>
+          <hdml-continuous-scale
+            min="0"
+            max="1"
+            channel="y"
+            style="padding: 10px"
+          >
+            <hdml-ordinal-scale
+              values='["a"]'
+              channel="x"
+            ></hdml-ordinal-scale>
           </hdml-continuous-scale>
         </hdml-cartesian-plane>
       </hdml-view>
@@ -247,7 +259,7 @@ suite("hdvl/base — Contract 1", () => {
     const view = await fixture<HdmlViewElement>(html`
       <hdml-view style="width: 400px; height: 200px">
         <hdml-cartesian-plane>
-          <hdml-continuous-scale channel="y">
+          <hdml-continuous-scale min="0" max="1" channel="y">
             <hdml-line x="a" y="b"></hdml-line>
           </hdml-continuous-scale>
         </hdml-cartesian-plane>
@@ -276,7 +288,11 @@ suite("hdvl/base — Contract 1", () => {
     const view = await fixture<HdmlViewElement>(html`
       <hdml-view style="width: 400px; height: 200px">
         <hdml-cartesian-plane>
-          <hdml-continuous-scale channel="y"></hdml-continuous-scale>
+          <hdml-continuous-scale
+            min="0"
+            max="1"
+            channel="y"
+          ></hdml-continuous-scale>
         </hdml-cartesian-plane>
       </hdml-view>
     `);

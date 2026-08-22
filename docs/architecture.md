@@ -617,11 +617,18 @@ and a widget must not be `loading` and `error` for a single cause.
 
 **`hdml-data`** is dispatched from the element that adopted, through the same after-PAINT queue
 as the other three named events, carrying `{channels, length, domains}`. It is **edge-triggered
-on the adopted set**, so a resize does not re-fire it. `domains` currently carries the
-*delivered* domain; RFC §5.11 specifies the *resolved* one — what the chart actually drew,
-including `zero`, `nice` and authored endpoints — and that arrives with `Scale`. Shipping the
-field now keeps the event's shape stable across that change instead of making it a breaking
-addition later.
+on the adopted set**, so a resize does not re-fire it. `domains` carries the **resolved**
+domain — what the chart actually drew, including `zero`, `nice` and authored endpoints. It
+shipped carrying the *delivered* domain for the five steps before `Scale` existed, precisely
+so that landing `Scale` would change the **value** and not the event's published shape;
+`subscribe.ts` reads it through a duck-typed `resolvedDomain()`, so the spine still has no
+import of the scale module. A widget has no domain of its own — its domain is its scale's —
+so a bound mark keeps reporting what was delivered to it.
+
+**`hdml-scale-change`** is dispatched from the scale, through the same queue, carrying
+`{channel, domain, range}`. Its edge is the resolved `(domain, range)` **pair**, which is a
+different edge from `hdml-data`'s and deliberately so: a resize changes a range and therefore
+**does** re-fire this event, while it does not re-fire `hdml-data`.
 
 ### `HDML.supports`
 

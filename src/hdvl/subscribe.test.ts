@@ -97,7 +97,7 @@ async function one(source: string): Promise<{
       style="width: 400px; height: 200px"
     >
       <hdml-cartesian-plane>
-        <hdml-continuous-scale channel="y">
+        <hdml-continuous-scale min="0" max="1" channel="y">
           <hdvl-binder
             style="width: 40px; height: 40px"
           ></hdvl-binder>
@@ -126,13 +126,23 @@ async function two(
       style="width: 400px; height: 200px"
     >
       <hdml-cartesian-plane>
-        <hdml-continuous-scale channel="y" source="${a}">
+        <hdml-continuous-scale
+          min="0"
+          max="1"
+          channel="y"
+          source="${a}"
+        >
           <hdvl-binder
             id="first"
             style="width: 40px; height: 40px"
           ></hdvl-binder>
         </hdml-continuous-scale>
-        <hdml-continuous-scale channel="x" source="${b}">
+        <hdml-continuous-scale
+          min="0"
+          max="1"
+          channel="x"
+          source="${b}"
+        >
           <hdvl-binder
             id="second"
             style="width: 40px; height: 40px"
@@ -243,13 +253,13 @@ suite("hdvl/subscribe — identity and reconciliation", () => {
         style="width: 400px; height: 200px"
       >
         <hdml-cartesian-plane>
-          <hdml-continuous-scale channel="y">
+          <hdml-continuous-scale min="0" max="1" channel="y">
             <hdvl-binder
               id="a"
               style="width: 40px; height: 40px"
             ></hdvl-binder>
           </hdml-continuous-scale>
-          <hdml-continuous-scale channel="x">
+          <hdml-continuous-scale min="0" max="1" channel="x">
             <hdvl-binder
               id="b"
               style="width: 40px; height: 40px"
@@ -571,7 +581,8 @@ suite("hdvl/subscribe — lifecycle", () => {
         style="width: 400px; height: 200px"
       >
         <hdml-cartesian-plane>
-          <hdml-continuous-scale channel="y"> </hdml-continuous-scale>
+          <hdml-continuous-scale min="0" max="1" channel="y">
+          </hdml-continuous-scale>
         </hdml-cartesian-plane>
       </hdml-view>
     `);

@@ -157,6 +157,50 @@ surface exists to buy, and it is the test of whether the seam is still doing its
 if a fifth operation ever looks necessary, the seam has started leaking and that is a
 design change, not a convenience.
 
+## `Scale.format()` formats one value; a label **set** goes to the kernel
+
+`Scale` has a `format(v, skeleton?)` and it is deliberately **single-value**. The
+temptation is to let a guide call it once per tick, and that would be wrong in a way no
+test of `format()` itself could catch: SPEC §7 makes axis coherence a property of the
+label **set**, so per-value formatting emits `900K, 1.2M, 1.5M` on one axis — the exact
+bug [`kernel/format-skeleton.ts`](../src/hdvl/kernel/format-skeleton.ts)'s
+`formatCompactSet` exists to prevent, and every per-value assertion would still pass.
+
+Two ways out were available. Giving `Scale` a **twelfth member** — a set-formatter — is a
+change to a published contract, and it would put the shared-prefix algorithm behind a
+*scale* method when the thing that actually shares it is `hdml-label` and a continuous
+`hdml-legend`'s ramp values, neither of which is a scale. Instead the guide calls
+`formatCompactSet` **directly**, with the scale's kind, skeleton, zone and locale.
+
+There is still exactly **one** implementation, which is what the rule requires; the
+shared boundary is simply the kernel module rather than a `Scale` method. `Scale.format()`
+keeps the cases that are genuinely per-value — a datum readout, a tooltip, one date
+label — and an ordinal scale's `format()` returns the domain string verbatim, because
+SPEC says an ordinal channel renders its domain strings as written.
+
+*The locale, and where it is **not** resolved:* §4.9's nearest-`lang` walk is a DOM read
+and belongs to the guide. A `Scale` that captured a locale at construction would freeze
+it against a `lang` change, so the single-value path reads the **view's** locale per
+frame and the guide passes its own resolved locale to the kernel.
+
+## The ramp is a `color-mix()` string, resolved by the page and not by us
+
+`paint()` on a continuous colour scale returns
+`color-mix(in <space>, A <p>%, B)` — a legal CSS `<color>` — rather than a resolved
+`rgb()`. Two consequences were weighed and both point the same way.
+
+Resolving it would mean **re-implementing OKLCh interpolation**, which is a second
+interpolator that can disagree with the one the page's own CSS uses; the registry names
+`oklch` as the initial `--hdml-color-interpolate-space` precisely because the platform
+already does this correctly on all three engines.
+
+Reading it back resolved would mean a `getComputedStyle` call, and computed style is read
+**once per element per frame**. The ramp's fraction is per **row**, so a per-value
+read-back could not go through MEASURE at all — it would be a style read inside COMPUTE,
+which is the one thing the frame's phase separation exists to forbid. A mark painting the
+unresolved string paints correctly; only the legend's ramp *bar* needs a resolved value,
+and that is one read for one element.
+
 ## `transitionrun` replaces the document-wide `MutationObserver`
 
 A chart has to repaint when its **CSS** changes, not only when its markup or its data

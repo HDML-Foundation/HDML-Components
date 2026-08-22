@@ -35,11 +35,15 @@
  * work here. Every lifecycle state this module owns is applied by
  * {@link applyLifecycle}, at end of frame, beside `empty`.
  *
- * **This is the only module in `src/hdvl/` that imports
- * `../hdio/delivery`, and it imports it `type`-only** (§2.1 edge). A
- * value import would pull the worker, `@hdml/parser` and Arrow into
- * every chart page and would compile silently; `check-dist.mjs`'s
- * check 6 is the only thing that catches it.
+ * **It imports `../hdio/delivery` `type`-only** (§2.1 edge), as does
+ * `./scale`, which reads the delivered domain and the delivered
+ * column type off the same union. Those two are the whole of
+ * `src/hdvl/`'s reach into that module. A value import would pull
+ * the worker, `@hdml/parser` and Arrow into every chart page and
+ * would compile silently; `check-dist.mjs`'s check 6 is the only
+ * thing that catches it — and it also forbids `../hdio/decode`
+ * outright, which is why `ColumnType` is reached through
+ * `Delivery` rather than imported.
  *
  * @module hdvl/subscribe
  */
@@ -636,16 +640,37 @@ function unitOf(sub: Sub): HdvlElement {
 }
 
 /**
+ * An element that resolves a domain of its own — a scale (§5.11).
+ *
+ * **Duck-typed, exactly like {@link Binder}**, so this module gains
+ * no import of `./scale` and Contract 1 gains no member. It is what
+ * makes `domains` the RESOLVED domain without a cycle.
+ */
+export interface DomainSource {
+  /** What this element actually drew with, or `null`. */
+  resolvedDomain(): unknown;
+}
+
+/** Duck-typed: only a scale resolves a domain of its own. */
+function resolvedDomainOf(el: HdvlElement): unknown {
+  const src = <Partial<DomainSource>>(<unknown>el);
+  return typeof src.resolvedDomain === "function"
+    ? src.resolvedDomain()
+    : undefined;
+}
+
+/**
  * `hdml-data`'s detail — `{channels, length, domains}` (§5.11).
  *
- * **`domains` carries the DELIVERED domain, not the resolved one.**
- * §5.11 specifies the resolved domain — what the chart actually drew,
- * including `zero`, `nice` and authored endpoints — and no `Scale`
- * exists until **step 18**. Shipping the field with the delivered
- * value keeps the event's shape stable across that step and improves
- * only the provenance; omitting it would make step 18 a breaking
- * change to a published event detail. Named here rather than left to
- * be discovered.
+ * **`domains` carries the RESOLVED domain** — what the chart
+ * actually drew, including `zero`, `nice` and authored endpoints.
+ * Step 13 shipped the delivered one because no `Scale` existed, and
+ * step 18 replaced the **value**: the key, and therefore the event's
+ * published shape, did not move (H14).
+ *
+ * A widget has no domain of its own — its domain is its scale's — so
+ * a bound mark keeps reporting what was delivered to it, which is
+ * the honest answer for an element that resolves nothing.
  */
 function detailFor(
   state: ViewSubs,
@@ -657,6 +682,7 @@ function detailFor(
 } {
   const channels: Slot[] = [];
   const domains: Record<Slot, unknown> = {};
+  const resolved = resolvedDomainOf(el);
   let length = 0;
   for (const sub of state.subs.values()) {
     if (sub.element !== el || sub.adopted === null) {
@@ -664,7 +690,9 @@ function detailFor(
     }
     channels.push(sub.slot);
     const d = sub.adopted;
-    if (d.kind === "data") {
+    if (resolved !== undefined) {
+      domains[sub.slot] = resolved;
+    } else if (d.kind === "data") {
       domains[sub.slot] = d.domain;
     }
     if (d.kind !== "error" && d.rows > length) {

@@ -24,9 +24,13 @@
  *   change, over the whole view, off the resolution index the same
  *   walk just built. It re-derives nothing: `chain`, `tip`,
  *   `container` and `unit` are all read.
- * - **binding** — per widget in COMPUTE, on adopted data. Its first
- *   rule lands at step 18; {@link validateBindings} names the seam
- *   so that step adds a rule rather than a caller.
+ * - **binding** — per widget in COMPUTE, on adopted data.
+ *
+ * **The two passes share one edge-triggering memo and one apply.**
+ * Each recomputes only its own half and then re-applies the union,
+ * so a binding finding cannot clear a structural one and vice
+ * versa — which is what would happen if each pass owned
+ * `memo.errors` outright.
  *
  * @module hdvl/validate
  */
@@ -35,13 +39,25 @@ import type { HdmlViewElement } from "./view";
 import type { Measured } from "./measure";
 import type { Channel } from "./resolve";
 import type { EventQueue } from "./events";
+import type { ScaleKind } from "./scale";
 import { HdvlElement, writeState } from "./base";
 import { channelOf, resolutionOf } from "./resolve";
 import { HDML_ERROR, outward } from "./events";
+import { adoptedOf } from "./subscribe";
+import {
+  MODIFIERS,
+  VALUES_SLOT,
+  kindOfColumn,
+  looksLikeRef,
+  scaleKindOf,
+  scaleOf,
+  valuesSpecOf,
+} from "./scale";
 import {
   ARC_ATTRS_LIST,
   AREA_ATTRS_LIST,
   AXIS_ATTRS_LIST,
+  CONTINUOUS_SCALE_ATTRS_LIST,
   HDVL_TAG_NAMES,
   POINT_ATTRS_LIST,
 } from "./vocabulary";
@@ -158,8 +174,10 @@ interface Memo {
   errors: Map<HdvlElement, string>;
   /** `${uid}|${rule}` → the identity last printed. */
   warned: Map<string, string>;
-  /** The last pass's diagnostics, for {@link diagnosticsOf}. */
-  last: Finding[];
+  /** The last structural pass's findings. */
+  structural: Finding[];
+  /** The last binding pass's findings. */
+  binding: Finding[];
 }
 
 const memos = new Map<HdmlViewElement, Memo>();
@@ -167,7 +185,12 @@ const memos = new Map<HdmlViewElement, Memo>();
 function memoOf(view: HdmlViewElement): Memo {
   let memo = memos.get(view);
   if (memo === undefined) {
-    memo = { errors: new Map(), warned: new Map(), last: [] };
+    memo = {
+      errors: new Map(),
+      warned: new Map(),
+      structural: [],
+      binding: [],
+    };
     memos.set(view, memo);
   }
   return memo;
@@ -365,6 +388,100 @@ function urlFormMessage(): string {
   );
 }
 
+function noChannelMessage(): string {
+  return 'every scale declares a channel — add channel="x"';
+}
+
+function unknownChannelMessage(raw: string): string {
+  return (
+    `no channel "${raw}" — the channels are ` +
+    "x, y, angle, radius, size and color"
+  );
+}
+
+function noFloorMessage(ch: Channel): string {
+  return (
+    `no domain floor for channel "${ch}" — ` + "add min= or values="
+  );
+}
+
+function noCeilingMessage(ch: Channel): string {
+  return (
+    `no domain ceiling for channel "${ch}" — ` + "add max= or values="
+  );
+}
+
+function noDomainMessage(ch: Channel): string {
+  return (
+    `no domain for channel "${ch}" — ` +
+    "add min= and max=, or values="
+  );
+}
+
+function refInChannelMessage(attr: string, value: string): string {
+  return (
+    "a full source ref belongs in source — " +
+    `move "${value}" out of ${attr}`
+  );
+}
+
+function forbiddenCharMessage(attr: string, value: string): string {
+  return (
+    `${attr}="${value}" is not a channel binding — ` +
+    "? and / are forbidden"
+  );
+}
+
+function badJsonMessage(attr: string, value: string): string {
+  return (
+    `${attr}="${value}" is not valid JSON — ` +
+    "a value that starts with it must parse"
+  );
+}
+
+function badIdentifierMessage(attr: string, value: string): string {
+  return (
+    `${attr}="${value}" is not a bindable identifier — ` +
+    "start with a letter or _"
+  );
+}
+
+/** `["continuous", "datetime"]` → `"continuous or datetime"`. */
+function kindList(kinds: readonly ScaleKind[]): string {
+  return kinds.length < 2
+    ? kinds.join("")
+    : `${kinds.slice(0, -1).join(", ")} or ${
+        kinds[kinds.length - 1]
+      }`;
+}
+
+function modifierMessage(
+  attr: string,
+  kinds: readonly ScaleKind[],
+  tag: string,
+): string {
+  return (
+    `"${attr}" applies to a ${kindList(kinds)} scale — ` +
+    `remove it from ${tag}`
+  );
+}
+
+function kindMismatchMessage(
+  column: string,
+  got: string,
+  tag: string,
+  takes: string,
+): string {
+  return `column "${column}" is ${got} — ${tag} takes ${takes}`;
+}
+
+function logDomainMessage(lo: number, hi: number): string {
+  return (
+    "a log domain cannot cross or touch zero — " +
+    `[${lo}, ${hi}] does`
+  );
+}
+
 // ---------------------------------------------------------------
 // V1 · V13 · W2 — the structural rules
 // ---------------------------------------------------------------
@@ -487,6 +604,285 @@ function checkV13(el: HdvlElement, out: Finding[]): void {
         ),
       );
     }
+  }
+}
+
+// ---------------------------------------------------------------
+// V3 · V10 — the channel-attribute grammar (SPEC §5)
+// ---------------------------------------------------------------
+
+/**
+ * The attribute values one element binds through §5's grammar: its
+ * channel attributes, plus a **scale's** `values`, which SPEC §6
+ * says uses the same first-character grammar.
+ *
+ * A guide's `values` is a `TickSpec` literal governed by V16 and is
+ * deliberately not scanned here — step 24 owns it.
+ */
+function boundValues(el: HdvlElement): [string, string][] {
+  const out: [string, string][] = [];
+  for (const [attr] of CHANNEL_ATTRS) {
+    const raw = el.getAttribute(attr);
+    if (raw !== null && !out.some((p) => p[0] === attr)) {
+      out.push([attr, raw]);
+    }
+  }
+  if (el.family === "scale") {
+    const raw = el.getAttribute(VALUES_SLOT);
+    if (raw !== null) {
+      out.push([VALUES_SLOT, raw]);
+    }
+  }
+  return out;
+}
+
+/**
+ * V3 and V10, which both fire on `?` and `/` and are separated by
+ * **shape**: a value that names a document or carries HDML's own
+ * query form is a full source specifier (V10, the more specific
+ * rule, checked first); anything else carrying those characters is
+ * a grammar error (V3).
+ */
+function checkGrammar(el: HdvlElement, out: Finding[]): void {
+  for (const [attr, raw] of boundValues(el)) {
+    const value = raw.trim();
+    if (value === "") {
+      continue;
+    }
+    if (looksLikeRef(value)) {
+      out.push(
+        error(
+          "V10",
+          "ref-in-channel",
+          el,
+          refInChannelMessage(attr, value),
+        ),
+      );
+      continue;
+    }
+    if (value.includes("?") || value.includes("/")) {
+      out.push(
+        error(
+          "V3",
+          "bad-binding-grammar",
+          el,
+          forbiddenCharMessage(attr, value),
+        ),
+      );
+      continue;
+    }
+    const head = value[0];
+    if (/[[{"\-0-9]/.test(head)) {
+      try {
+        JSON.parse(value);
+      } catch {
+        out.push(
+          error(
+            "V3",
+            "bad-binding-grammar",
+            el,
+            badJsonMessage(attr, value),
+          ),
+        );
+      }
+      continue;
+    }
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
+      out.push(
+        error(
+          "V3",
+          "bad-binding-grammar",
+          el,
+          badIdentifierMessage(attr, value),
+        ),
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------
+// V8 · V18 — the scale's own structural rules
+// ---------------------------------------------------------------
+
+/** Whether an attribute is present and not blank. */
+function declared(el: HdvlElement, attr: string): boolean {
+  const raw = el.getAttribute(attr);
+  return raw !== null && raw.trim() !== "";
+}
+
+/**
+ * V8 — *no implicit scales*. `channel` is mandatory, and **every
+ * endpoint must resolve from `min`/`max` or `values`** per SPEC
+ * §6's combination table.
+ *
+ * **It is decided from ATTRIBUTES ALONE** (§4.2 step 0, §8.3). It
+ * asks whether a legal domain *source* exists, never whether that
+ * source returned anything: a `values` column delivering zero rows
+ * is `empty`, not invalid, and conflating the two would turn every
+ * genuinely-empty result set into a composition error.
+ */
+function checkV8(el: HdvlElement, out: Finding[]): void {
+  if (el.family !== "scale") {
+    return;
+  }
+  const raw = el.getAttribute(AXIS_ATTRS_LIST.CHANNEL);
+  const ch = channelOf(raw);
+  if (ch === null) {
+    const trimmed = (raw ?? "").trim();
+    out.push(
+      error(
+        "V8",
+        "unresolved-domain",
+        el,
+        trimmed === ""
+          ? noChannelMessage()
+          : unknownChannelMessage(trimmed),
+      ),
+    );
+    return;
+  }
+  // A malformed `values` still DECLARES a source; V3 reports the
+  // malformation, and piling V8 on top would only hide it.
+  if (valuesSpecOf(el.getAttribute(VALUES_SLOT)).kind !== "none") {
+    return;
+  }
+  const low = declared(el, CONTINUOUS_SCALE_ATTRS_LIST.MIN);
+  const high = declared(el, CONTINUOUS_SCALE_ATTRS_LIST.MAX);
+  if (low && high) {
+    return;
+  }
+  const message = low
+    ? noCeilingMessage(ch)
+    : high
+    ? noFloorMessage(ch)
+    : noDomainMessage(ch);
+  out.push(error("V8", "unresolved-domain", el, message, ch));
+}
+
+/**
+ * V18 — domain-modifier scoping. `nice` continuous/datetime ·
+ * `zero` continuous-only · `clamp` continuous/datetime · `sort`
+ * ordinal-only · `reverse` any kind.
+ *
+ * Presence is what counts, not the value: SPEC §6 says *a modifier
+ * on the wrong scale kind is an error*, and `zero="false"` on a
+ * datetime scale is still an author writing `zero` where it means
+ * nothing.
+ */
+function checkV18(el: HdvlElement, out: Finding[]): void {
+  const kind = el.family === "scale" ? scaleKindOf(el) : null;
+  if (kind === null) {
+    return;
+  }
+  for (const modifier of MODIFIERS) {
+    if (
+      !el.hasAttribute(modifier.attr) ||
+      modifier.kinds.includes(kind)
+    ) {
+      continue;
+    }
+    out.push(
+      error(
+        "V18",
+        "modifier-kind",
+        el,
+        modifierMessage(modifier.attr, modifier.kinds, el.localName),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------
+// V2 — the binding pass's first rule
+// ---------------------------------------------------------------
+
+/** How a mismatched column reads in V2's message. */
+const GOT: Readonly<Record<ScaleKind, string>> = {
+  ordinal: "text",
+  continuous: "a number",
+  datetime: "a datetime",
+};
+
+/** What each tag takes, in V2's message. */
+const TAKES: Readonly<Record<ScaleKind, string>> = {
+  ordinal: "text",
+  continuous: "numbers",
+  datetime: "datetimes",
+};
+
+/**
+ * V2 — *the binding's data kind equals the scale's tag kind*. One
+ * rule, no table, which is what the three-tag collapse buys.
+ *
+ * Both halves are **binding-pass** rules and neither could be
+ * anything else: the delivered kind is `Delivery.type`, and the
+ * `log` clause is checked *after* domain resolution (§4.5), so it
+ * needs the resolved `Scale` this frame drew with.
+ */
+function checkV2(el: HdvlElement, out: Finding[]): void {
+  const kind = el.family === "scale" ? scaleKindOf(el) : null;
+  if (kind === null) {
+    return;
+  }
+  const ch = channelOf(el.getAttribute(AXIS_ATTRS_LIST.CHANNEL));
+  const d = adoptedOf(el, VALUES_SLOT);
+  if (d !== null && d.kind === "data") {
+    const got = kindOfColumn(d.type);
+    if (kind === "datetime" && d.type.kind === "time") {
+      out.push(
+        error(
+          "V2",
+          "kind-mismatch",
+          el,
+          kindMismatchMessage(
+            d.column,
+            "a time of day, not an instant",
+            el.localName,
+            TAKES.datetime,
+          ),
+          ch ?? undefined,
+        ),
+      );
+    } else if (got !== kind) {
+      out.push(
+        error(
+          "V2",
+          "kind-mismatch",
+          el,
+          kindMismatchMessage(
+            d.column,
+            GOT[got],
+            el.localName,
+            TAKES[kind],
+          ),
+          ch ?? undefined,
+        ),
+      );
+    }
+  }
+  const type = (
+    el.getAttribute(CONTINUOUS_SCALE_ATTRS_LIST.TYPE) ?? ""
+  )
+    .trim()
+    .toLowerCase();
+  if (kind !== "continuous" || type !== "log") {
+    return;
+  }
+  const extent = scaleOf(el)?.domain()?.extent;
+  if (extent === undefined) {
+    return;
+  }
+  const [lo, hi] = extent;
+  if (Math.min(lo, hi) <= 0 && Math.max(lo, hi) >= 0) {
+    out.push(
+      error(
+        "V2",
+        "kind-mismatch",
+        el,
+        logDomainMessage(lo, hi),
+        ch ?? undefined,
+      ),
+    );
   }
 }
 
@@ -658,33 +1054,46 @@ export function validateStructure(
   for (const el of elements) {
     checkV1(el, found);
     checkV13(el, found);
+    // V3 and V10 before V8: a malformed `values` has a better
+    // message than "no domain", and a unit reports one error.
+    checkGrammar(el, found);
+    checkV18(el, found);
+    checkV8(el, found);
   }
   const memo = memoOf(view);
-  memo.last = found;
-  applyErrors(view, found, queue);
+  memo.structural = found;
+  applyErrors(view, [...found, ...memo.binding], queue);
   applyWarnings(view, found, new Set(elements));
 }
 
 /**
- * The **binding pass** (§8.2) — per widget in COMPUTE, on adopted
- * data.
+ * The **binding pass** (§8.2) — on adopted data and the resolved
+ * scales, run once per frame.
  *
- * **Deliberately empty at step 12.** Every data-dependent rule needs
- * either a resolved `Scale` (V2, V8, V15, V18 — step 18) or an
- * adopted delivery (V4, V5, V7 — steps 22 and 29), and neither
- * exists yet. The seam is named here so the step that lands the
- * first of them adds a *rule*, rather than moving a caller the
- * scheduler would then have to grow.
+ * **V2 is its whole content, and both halves of V2 belong here by
+ * necessity**: the delivered kind is `Delivery.type`, and §4.5's
+ * `log`-domain clause is checked *after* domain resolution. V3,
+ * V8, V10 and V18 are attribute-only and run in the structural
+ * pass beside V1 and V13; V15 is a *behaviour* — `nice` moving
+ * derived endpoints only — and is asserted as one rather than
+ * reported, because SPEC says it is *"a no-op, not an error"*.
  *
  * @param view - The view being validated.
  * @param elements - Its display elements, document order.
+ * @param queue - The frame's outward-event queue (§5.11).
  */
 export function validateBindings(
   view: HdmlViewElement,
   elements: readonly HdvlElement[],
+  queue: EventQueue,
 ): void {
-  void view;
-  void elements;
+  const found: Finding[] = [];
+  for (const el of elements) {
+    checkV2(el, found);
+  }
+  const memo = memoOf(view);
+  memo.binding = found;
+  applyErrors(view, [...memo.structural, ...found], queue);
 }
 
 /**
@@ -732,18 +1141,22 @@ export function validateMeasured(
 }
 
 /**
- * The diagnostics the last structural pass produced.
+ * The diagnostics the last pass of each kind produced — structural
+ * first, then binding, each in document order.
  *
  * Exists for the corpus gate every slice from step 25 on is built
  * out of — *a valid page produces none*.
  *
  * @param view - The view.
- * @returns Its diagnostics, in document order.
+ * @returns Its diagnostics.
  */
 export function diagnosticsOf(
   view: HdmlViewElement,
 ): readonly Diagnostic[] {
-  return memos.get(view)?.last ?? [];
+  const memo = memos.get(view);
+  return memo === undefined
+    ? []
+    : [...memo.structural, ...memo.binding];
 }
 
 /**

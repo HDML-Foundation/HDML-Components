@@ -272,18 +272,88 @@ so no script, a failed script, or a pre-upgrade page renders the fallback, and a
 does not. Registration exists only so tag support can be queried, so an unknown-element
 warning stays quiet, and so "at most one fallback" is countable.
 
+### `hdml-continuous-scale` · `hdml-datetime-scale` · `hdml-ordinal-scale`
+
+[scale-continuous.ts](../src/hdvl/scale-continuous.ts) ·
+[scale-datetime.ts](../src/hdvl/scale-datetime.ts) ·
+[scale-ordinal.ts](../src/hdvl/scale-ordinal.ts), over the shared
+[scale.ts](../src/hdvl/scale.ts).
+
+A `domain → range` map. **The tag *is* the kind** — string ↔ ordinal, number ↔ continuous,
+datetime ↔ datetime — which is what makes V2 one rule rather than a lookup table, and what
+makes discrete-vs-ramp colour the tag you wrote rather than a mode derived from the data.
+A scale **emits no group at all**: it resolves a domain and a range for the widgets below it
+and paints nothing itself.
+
+| | |
+|---|---|
+| **Shared attributes** | `channel` (**mandatory**), `min`, `max`, `values`, `reverse`, `source` |
+| **Continuous only** | `type=linear\|log\|sqrt\|pow\|symlog`, `base`, `exponent`, `constant`, `nice`, `zero`, `clamp` |
+| **Datetime only** | `zone=utc\|local\|<IANA>`, `nice`, `clamp` |
+| **Ordinal only** | `sort=domain\|ascending\|descending` |
+| **Parent** | a plane, or another scale |
+| **Children** | scales **xor** widgets — never both (V13) |
+
+**Domain sources.** `values` uses the same first-character grammar as a channel binding: a
+bare identifier is a **column** of the effective `source`, a `[` is a **literal array**. A
+column opens an ordinary `raw: false` subscription on the `values` slot, so a scale is an
+ordinary data subscriber and a scale and a mark binding the same column coalesce into one
+query. A literal opens **no subscription at all**, which is what keeps a literal-only page
+out of `:state(loading)`. `min` / `max` override their endpoint **per endpoint**, so
+`min="0"` beside a derived ceiling is legal and common. There is no third rule and no
+widget-union fallback; an endpoint with no source is **V8**, an error naming the channel and
+both fixes.
+
+A legal source that **returns nothing** — a zero-row column — is a different thing entirely:
+the domain is *unresolved but legal*, `domain()` is `null`, the scale paints nothing and the
+view goes to `:state(empty)`. It is never a diagnostic.
+
+**Modifiers, and which kind each is meaningful on** (a modifier on the wrong kind is **V18**):
+
+| Modifier | Kinds | Effect |
+|---|---|---|
+| `zero` | continuous | extends a **derived** endpoint to include 0 |
+| `nice` | continuous, datetime | moves **derived** endpoints out to the next tick-step multiple; the optional value is its own target count, bare `nice` = 10 |
+| `clamp` | continuous, datetime | out-of-domain values project to the range **edge** |
+| `sort` | ordinal | `domain` keeps first-occurrence row order; `ascending`/`descending` by code point |
+| `reverse` | **any** | reverses the range mapping; the domain is untouched |
+
+Resolution order is fixed at **domain → `zero` → `nice`**: `zero` may create the endpoint
+`nice` then rounds, never the reverse. `nice` moves derived endpoints **only**, so on a fully
+authored domain it is a no-op rather than an error (V15) — and it is computed from the domain
+and its own count, never from pixels, so a resize cannot move the data.
+
+**Ranges come from boxes** — each scale's own **content box**, so its padding insets only its
+own range:
+
+| Channel | Range | Direction |
+|---|---|---|
+| `x` | `[contentLeft, contentRight]` | left → right |
+| `y` | `[contentBottom, contentTop]` | bottom → top, so **descending** in view coordinates |
+| `radius` | `[0, min(contentW, contentH) / 2]` | pole outward |
+| `angle` | `--hdml-angle-start` → `--hdml-angle-end`, in degrees | clockwise from 12 o'clock |
+| `size` | `--hdml-size-min` → `--hdml-size-max`, in CSS px | — |
+| `color` | **none** — `paint()` instead | — |
+
+**`paint()`** is `color`-only and `range()` is `null` there; both are contracts, not
+omissions. An ordinal colour scale assigns domain slot *k* the *k*-th `--hdml-palette` entry
+and returns `null` once the palette is exhausted — two series sharing a colour is a silent
+wrong chart, where `null` is visible. A continuous one interpolates `--hdml-color-interpolate`
+in `--hdml-color-interpolate-space` via `color-mix()`, so the mark ramp and the legend's ramp
+bar are the same computed gradient because both call the same `paint()`.
+
+Each scale dispatches **`hdml-scale-change`** `{channel, domain, range}` when its resolved
+pair changes — a new delivery, a modifier re-resolving, or **its box resizing**.
+
 ### Registered but inert
 
-The other seventeen tags are **registered as of this commit and carry no behaviour yet** —
+The other fourteen tags are **registered as of this commit and carry no behaviour yet** —
 each declares its tag, its family and its observed attributes, and nothing else. They are
 listed here so the tag surface is discoverable; do not read an entry as a description of
 working behaviour.
 
 | Tag | Family | Module | Body lands in |
 |---|---|---|---|
-| `hdml-continuous-scale` | scale | [scale-continuous.ts](../src/hdvl/scale-continuous.ts) | Slice C (the three scale elements, `Scale` whole) |
-| `hdml-datetime-scale` | scale | [scale-datetime.ts](../src/hdvl/scale-datetime.ts) | Slice C |
-| `hdml-ordinal-scale` | scale | [scale-ordinal.ts](../src/hdvl/scale-ordinal.ts) | Slice C |
 | `hdml-line` | mark | [mark-line.ts](../src/hdvl/mark-line.ts) | Slice D |
 | `hdml-rule` | mark | [mark-rule.ts](../src/hdvl/mark-rule.ts) | Slice D |
 | `hdml-area` | mark | [mark-area.ts](../src/hdvl/mark-area.ts) | Slice D |
