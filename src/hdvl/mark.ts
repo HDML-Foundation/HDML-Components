@@ -390,9 +390,16 @@ export function slotValuesOf(
  * N; scalars broadcast to N; an all-scalar widget has N = 1."*
  * Where they disagree, this takes the longest — the shorter slot
  * then reads `null` past its end and §4.7 drops those rows, so
- * nothing is invented and nothing is silently truncated. **V5 makes
- * the disagreement itself an error at step 22**; until then the
- * drop is the honest behaviour.
+ * nothing is invented and nothing is silently truncated.
+ *
+ * **V5 landed at step 22 and this did not change.** §8.3's *"never
+ * a `Math.max` zip"* forbids the *silence*, and the rule removes
+ * it: a widget whose bindings disagree in length is now an error
+ * that names both slots and both counts. Blanking is the error
+ * **unit's**, through `:state(error)` (§3.5) — one mechanism, not
+ * two — so no rule in this project stops a frame, and a count of
+ * zero here could not tell a real mismatch from a column still in
+ * flight anyway.
  *
  * @param slots - The widget's slots; `null` entries are ignored.
  * @returns N.

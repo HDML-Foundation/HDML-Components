@@ -196,9 +196,9 @@ Sort the frame by one or more fields. No attributes; per-field direction comes f
 
 The display half registers **21 tags**, in seven families
 ([`HDVL_FAMILIES`](../src/hdvl/vocabulary.ts)): `view`, `plane`, `scale`, `mark`,
-`container`, `guide`, `fallback`. Eleven of them have bodies as of this commit — the four
-structural elements, the three scales and the first four marks — see
-[Registered but inert](#registered-but-inert) for the ten that do not.
+`container`, `guide`, `fallback`. Thirteen of them have bodies as of this commit — the four
+structural elements, the three scales and **all six marks** — see
+[Registered but inert](#registered-but-inert) for the eight that do not.
 
 Two constructed UA stylesheets ([`src/hdvl/ua.ts`](../src/hdvl/ua.ts)) supply every box
 default. The **element sheet** is adopted by every HDVL shadow root as one shared instance and
@@ -249,10 +249,15 @@ multidimensional space is built by the scale chain inside it.
 
 `container-type: size` is what makes `@container` — not `@media` — the correct selector for
 responsive guides: a chart in a 300 px sidebar must respond to the *plane*, not the viewport.
-Each plane **supplies its own `Projection`** — the seam every mark projects through,
+**Both planes supply their own `Projection`** — the seam every mark projects through,
 declared in [mark.ts](../src/hdvl/mark.ts) and read duck-typed, so a mark never names a
-channel. The cartesian one is here; the polar one lands with the polar slice, and adds no
-branch to any widget.
+channel. The whole of the plane-kind difference is the *composition*: the identity pair for
+cartesian, `polarPoint` about the pole for polar. Everything else — the chain lookup, the
+drop rule, the ordinal test — is shared by `createProjection`, so the two planes cannot
+disagree about when a row drops, and **no widget carries a plane branch**. The **pole** is
+the centre of the radius-channel scale's content box, or the plane's where no radius scale
+exists, read off the MEASURE snapshot and resolved per widget, because the widget's own
+chain says which radius scale serves it.
 
 ### `hdml-fallback` — [src/hdvl/fallback.ts](../src/hdvl/fallback.ts)
 
@@ -423,17 +428,61 @@ variant, and neither also strokes: `strokeWidth` is `0` and `stroke` is `null`. 
 single `path` node carries a single paint; it is legal on `hdml-bar`, which resolves a colour
 per row and emits a node per row. See [decisions.md](decisions.md).
 
+### `hdml-point` · `hdml-arc` — [mark-point.ts](../src/hdvl/mark-point.ts) · [mark-arc.ts](../src/hdvl/mark-arc.ts)
+
+The **discrete** marks — one node per row, each carrying its own source row index. With them
+every mark in the vocabulary paints.
+
+| | |
+|---|---|
+| **`hdml-point` attributes** | `x`, `y`, `angle`, `radius`, `color`, `size`, `source` — the only tag that publishes `size` |
+| **`hdml-arc` attributes** | `a0`, `a1`, `angle`, `radius`, `r0`, `r1`, `color`, `source` — **polar only**, by design, the mirror of `hdml-bar` |
+| **Parent** | a chain-tip scale (or, later, a container) |
+| **Children** | none |
+| **UA box** | as the other marks |
+
+`hdml-point` emits **one `ellipse` per row**, or one `rect` under `--hdml-tick-style: rect`,
+both centred on the projected point and sharing one extent — so switching the property moves
+nothing. **The registered initial is `rect`**, not `ellipse`: every corpus page that wants
+dots says `--hdml-tick-style: ellipse` explicitly.
+
+The extent comes from `--hdml-tick-width`/`-height`, or from the `size` channel when bound,
+and **both forms are diameters** — an `ellipse` takes half of each. A bound `size` supplies
+*both* extents, so the glyph is a circle and the two tick properties are ignored: the channel
+is one number and there is no second one to keep an aspect ratio against. The ramp is the
+**scale's** — `--hdml-size-min`/`-max` are the `size` channel's *range*, read once in
+[scale.ts](../src/hdvl/scale.ts) from the size scale's own box — so the widget calls
+`project()` and interpolates nothing, and a value past the domain projects past
+`--hdml-size-max` rather than clamping.
+
+`hdml-arc` emits **one parameterised `arc` per row** — `{cx, cy, r0, r1, a0, a1}`, never a
+pre-serialized path: the annulus and the 360° two-command case are the renderer's business,
+and parameters hit-test and clip more simply. Angles are **degrees**, `0` at 12 o'clock,
+increasing clockwise, so `a0`/`a1` come straight off the projection with no conversion.
+
+Its three radial cases are not one rule: `r0` **and** `r1` bound is the author's on both
+edges; `radius` bound is sugar for `r1` with a synthetic lower edge, mirroring the area's `y`
+sugar; **nothing bound is the full radius range**, which the ranged resolver cannot express
+because `null` is exactly what it returns for an unbound channel — and that third case is what
+makes the pure `a0`/`a1` form interchangeable with `hdml-pie`. `--hdml-inner-radius` supplies
+the **synthetic** `r0` only: an authored `r0` may legally paint inside the hole, because
+authored data is sacred. A percentage in it resolves against the radial ceiling; a length is
+already px.
+
+Its second angle form — `angle` on an *ordinal* scale, equal slices — lands with the polar
+guides, and it paints nothing meanwhile. Both marks are **filled** and neither strokes, and
+both carry a **per-row `color`** honestly, which is why the varying-`color` error is the two
+path widgets' alone.
+
 ### Registered but inert
 
-The other ten tags are **registered as of this commit and carry no behaviour yet** —
+The other eight tags are **registered as of this commit and carry no behaviour yet** —
 each declares its tag, its family and its observed attributes, and nothing else. They are
 listed here so the tag surface is discoverable; do not read an entry as a description of
 working behaviour.
 
 | Tag | Family | Module | Body lands in |
 |---|---|---|---|
-| `hdml-point` | mark | [mark-point.ts](../src/hdvl/mark-point.ts) | Slice D |
-| `hdml-arc` | mark | [mark-arc.ts](../src/hdvl/mark-arc.ts) | Slice D, radial forms in Slice F |
 | `hdml-pie` | mark | [layout-pie.ts](../src/hdvl/layout-pie.ts) | Slice F |
 | `hdml-axis` | guide | [guide-axis.ts](../src/hdvl/guide-axis.ts) | Slice E |
 | `hdml-grid` | guide | [guide-grid.ts](../src/hdvl/guide-grid.ts) | Slice E |

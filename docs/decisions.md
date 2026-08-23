@@ -161,10 +161,17 @@ that is the only piece a plane supplies.
 `element`, `at`, `outOfDomain`, `point` — and `createProjection` implements all of it
 except the composition, which arrives as an argument.
 [`plane-cartesian.ts`](../src/hdvl/plane-cartesian.ts) passes the identity pair;
-`plane-polar.ts` will pass `polarPoint`. A mark reads `projection.channels[0]`, never
-the string `"x"`, so **the polar slice adds no widget-level branch to any of the six
-marks** — the grep that proves it is `"x"|"y"|"angle"|"radius"` over the mark bodies,
-which returns nothing.
+[`plane-polar.ts`](../src/hdvl/plane-polar.ts) passes `polarPoint` about the pole. A
+mark reads `projection.channels[0]`, never the string `"x"`, so **the polar
+composition arrived without a widget-level branch in any of the six marks** — the
+prediction the seam was built on, and it held on contact: adding it changed
+`plane-polar.ts` and nothing else.
+
+**The pole is resolved per widget, not per plane**, because §4.6 puts it at the centre
+of *the radius-channel scale's* content box (the plane's, where no radius scale
+exists) and the widget's own chain is what says which radius scale serves it. It is
+read off the MEASURE snapshot's content box, never a `getBoundingClientRect()` in
+COMPUTE.
 
 The rejected alternative is the one that writes itself: `chainScaleOf(ctx, this, "x")`
 and `"y"` inside each mark, with a `TODO: polar` beside it. It is smaller today and it
@@ -258,6 +265,72 @@ Two scoping decisions worth keeping:
   the resolved colours across surviving rows, is more permissive but would make a
   page's validity depend on which rows came back that morning, and would have to move
   the rule out of the structural pass to do it.
+
+## A `size` value is a diameter, and it makes the glyph a circle
+
+`hdml-point`'s extent comes from `--hdml-tick-width`/`-height`, or from the `size`
+channel when it is bound, and two things about that were decisions rather than
+readings.
+
+**Both forms are diameters.** `--hdml-tick-width` is a *width*, and
+`--hdml-size-min`'s `2px` initial reads as a 2 px dot; the alternative — treating
+either as a radius — draws every glyph at twice its declared size, and **no scene
+assertion catches it**, because every number in the scene is then self-consistently
+wrong. That is why [`mark-point.test.ts`](../src/hdvl/mark-point.test.ts) asserts the
+extent against the *computed property* rather than against a transcribed number.
+
+**A bound `size` supplies both extents**, so the glyph is a circle and the two tick
+properties are ignored rather than scaled. The channel is one number and there is no
+second one to keep an authored aspect ratio against; any factor-based reading would
+have to invent a denominator. The corpus's only `size` user
+([`06-bubble.html`](../html/hdvl/06-bubble.html)) declares neither tick property and
+asks for *area ∝ value*, which a circle of that diameter through a `sqrt` scale is
+exactly.
+
+The **ramp itself is the scale's** and not the widget's: `--hdml-size-min`/`-max` are
+the `size` channel's *range*, resolved once in [`scale.ts`](../src/hdvl/scale.ts) from
+the size scale's own measured snapshot. The widget calls `project()` — a second
+interpolation here would be a second implementation of one rule, and the two would
+eventually disagree.
+
+## An arc's fully-unbound radial case is its own clause
+
+`hdml-arc`'s radial extent has three cases, and the ranged resolver expresses only
+two of them: `r0` **and** `r1` bound is the author's on both edges, and `radius`
+bound is sugar for `r1`. The third — **nothing bound at all** — is the full radius
+range, and the resolver cannot say it, because `null` is exactly what it returns for
+an unbound channel. So the widget carries one explicit clause for it, and that clause
+is what makes the pure `a0`/`a1` arc interchangeable with `hdml-pie`.
+
+`--hdml-inner-radius` replaces the **synthetic** lower edge only. An authored `r0`
+may paint inside the hole — authored data is sacred — and the predicate for
+"synthetic" is `RangedValues.sugar`, whose JSDoc otherwise forbids branching on it.
+This is **the one place in the project it is read**, and it is not a geometry branch:
+both sides compute the same kind of number, and the question being asked is *did the
+author say anything about the lower edge*, which is precisely what the flag means.
+
+The property registers as a `<length-percentage>`, and a registered one **computes to
+a percentage unresolved** — there is no layout box for the UA to resolve it against —
+so the widget separates the two forms itself: a percentage takes the radial ceiling,
+a length is already px.
+
+## V5 reports a length mismatch; it does not stop the paint
+
+*Equal length N across a widget's array/column bindings; scalars broadcast; mismatch
+is an error, **never a `Math.max` zip**.* The rule landed as a diagnostic and
+`rowCountOf`'s longest-wins behaviour did not change, for three reasons.
+
+Every other rule in [`validate.ts`](../src/hdvl/validate.ts) reports and lets the
+frame render; blanking belongs to the error **unit**, through `:state(error)`. Making
+one rule additionally suppress geometry would be a second mechanism for the same
+thing. What the spec forbids is the **silence** — two columns of 12 and 7 rows quietly
+becoming a chart of 7 points — and a diagnostic that names both slots and both counts
+removes exactly that.
+
+And a count of zero could not carry the meaning anyway: a column that has not
+delivered yet also has no rows, and a rule that could not tell it from a real
+mismatch would turn every loading page into an error. That is also why the rule
+counts **delivered** rows (`Delivery.rows`) and skips a column still in flight.
 
 ## §4.7's ordinal notice is a notice, not a diagnostic
 

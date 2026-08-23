@@ -408,8 +408,8 @@ function of the snapshot rather than of whoever ran before it. It also means a D
 delivery can never tear a frame: `deliver` stores a payload and sets a flag, and
 paint happens a whole frame later.
 
-**Four widgets paint today** — `hdml-line`, `hdml-rule`, `hdml-area` and `hdml-bar` —
-and the other sixteen
+**All six marks paint today** — `hdml-line`, `hdml-rule`, `hdml-area`, `hdml-bar`,
+`hdml-point` and `hdml-arc` — and the other fourteen
 `scene()` implementations still return `null`, which is a **contract-complete answer**
 — "returns null to paint nothing (hidden, errored, or still loading)". Eight of those
 return it permanently: the view, both planes, the three scales and both containers emit
@@ -418,9 +418,9 @@ no group at all. Widget bodies arrive per slice and replace nothing around them.
 A mark reaches its scales through the chain and its geometry through the **`Projection`**
 its plane supplies ([src/hdvl/mark.ts](../src/hdvl/mark.ts)). That indirection is the
 point: a mark reads `Projection.channels` and never the strings `x` and `y`, so the polar
-plane's projection — one `compose` function, supplied by
-[plane-polar.ts](../src/hdvl/plane-polar.ts) — reaches every mark without a widget-level
-branch anywhere. The same seam collapses the three clauses of *out-of-domain, clipping and
+plane's projection — one `compose` function, `polarPoint` about the pole, supplied by
+[plane-polar.ts](../src/hdvl/plane-polar.ts) — reached every mark **without a widget-level
+branch anywhere**, which is exactly what the seam was built to buy. The same seam collapses the three clauses of *out-of-domain, clipping and
 missing values* into a single `null`: a row that projects to `null` produces no mark, a
 path breaks rather than bridging, and a continuous value outside the domain projects
 truthfully and is clipped by the widget's own box rather than clamped into it.
@@ -494,8 +494,8 @@ one. It runs two passes, both always on in dev and prod builds:
 
 | Pass | Runs in | Rules |
 |---|---|---|
-| **structural** | `view.reindex()`, once per structural change, over the walk that just ran | V1 (a bound channel resolves to exactly one ancestor scale), V13 (a level is homogeneous), W2 (the view has an accessible name) |
-| **binding** | after the frame, on adopted data and the scales COMPUTE resolved | V2 (the binding's data kind is the scale's tag kind; a `log` domain may not cross or touch zero), plus §4.7's **all-drop** — every row outside an ordinal domain errors on the scale |
+| **structural** | `view.reindex()`, once per structural change, over the walk that just ran | V1 (a bound channel resolves to exactly one ancestor scale), V3 + V10 (the channel-attribute grammar, and a varying `color` on a path widget), V4's local half (a bare identifier has an effective `source`, and names a field of an in-page one), V8 (no implicit scales), V9 (positional attribute names match the plane), V13 (a level is homogeneous), V18 (domain-modifier scoping), V19 (required bindings, naming the channel — never an implicit index), W2 (the view has an accessible name) |
+| **binding** | after the frame, on adopted data and the scales COMPUTE resolved | V2 (the binding's data kind is the scale's tag kind; a `log` domain may not cross or touch zero), V4's runtime half (an `absent` delivery — the generation arrived and the column was not in it), V5 (equal N across one widget's per-row bindings, against the delivery's `rows`), plus §4.7's **all-drop** — every row outside an ordinal domain errors on the scale |
 
 W5 and W6 are neither: both are flags MEASURE produced, reported from the same
 sink so they are edge-triggered like everything else.

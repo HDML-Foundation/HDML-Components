@@ -23,8 +23,10 @@
  * - **structural** — inside `view.reindex()`, once per structural
  *   change, over the whole view, off the resolution index the same
  *   walk just built. It re-derives nothing: `chain`, `tip`,
- *   `container` and `unit` are all read.
- * - **binding** — per widget in COMPUTE, on adopted data.
+ *   `container` and `unit` are all read. V1, V3, V4 (local refs),
+ *   V8, V9, V10, V13, V18, V19, W2.
+ * - **binding** — per widget in COMPUTE, on adopted data. V2, V4
+ *   (the runtime `absent`), V5.
  *
  * **The two passes share one edge-triggering memo and one apply.**
  * Each recomputes only its own half and then re-applies the union,
@@ -253,6 +255,37 @@ const NODE_BUDGET = 20000;
  * *"no scale for channel `x` in scope"* is exactly what is wrong.
  */
 const SPANNING_CHANNELS: readonly Channel[] = ["x", "y"];
+
+/** Compared as a string, for the reason {@link RULE_TAG} gives. */
+const BAR_TAG: string = HDVL_TAG_NAMES.BAR;
+
+/** See {@link RULE_TAG}. */
+const POINT_TAG: string = HDVL_TAG_NAMES.POINT;
+
+/** See {@link RULE_TAG}. */
+const ARC_TAG: string = HDVL_TAG_NAMES.ARC;
+
+/** See {@link RULE_TAG}. */
+const PIE_TAG: string = HDVL_TAG_NAMES.PIE;
+
+/** See {@link RULE_TAG}. */
+const CARTESIAN_TAG: string = HDVL_TAG_NAMES.CARTESIAN_PLANE;
+
+/** See {@link RULE_TAG}. */
+const POLAR_TAG: string = HDVL_TAG_NAMES.POLAR_PLANE;
+
+/** SPEC §5's bindable-identifier form: a letter or `_`, then word. */
+const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * An **in-page** source ref — `?hdml-frame=sales`, no path — which
+ * is the only kind V4 can complete without the network (§8.3).
+ *
+ * The captured tag comes out of the ref itself: `?hdml-frame=` names
+ * the element that declares it, so nothing here has to know the data
+ * vocabulary and R8 is untouched.
+ */
+const LOCAL_REF = /^\?(hdml-[a-z-]+)=([^&#]+)$/;
 
 /**
  * The channel-bearing attributes, and the base channel each one
@@ -567,6 +600,62 @@ function varyingColorMessage(tag: string, value: string): string {
   );
 }
 
+function noSourceMessage(attr: string, value: string): string {
+  return (
+    `${attr}="${value}" names a field, but no source is in ` +
+    "scope — add source= here or on an ancestor"
+  );
+}
+
+function unknownFieldMessage(value: string, ref: string): string {
+  return `no field "${value}" in ${ref} — check the field names`;
+}
+
+function absentFieldMessage(value: string, ref: string): string {
+  return (
+    `${ref} delivered no field "${value}" — ` +
+    "check the column name"
+  );
+}
+
+function lengthMismatchMessage(
+  a: string,
+  an: number,
+  b: string,
+  bn: number,
+): string {
+  return (
+    `${a} has ${an} rows and ${b} has ${bn} — a widget's ` +
+    "bindings must agree in length; scalars broadcast"
+  );
+}
+
+function wrongPlaneMessage(
+  ch: Channel,
+  channels: readonly Channel[],
+): string {
+  return (
+    `channel "${ch}" is not this plane's — ` +
+    `it anchors ${channels.join(" and ")}`
+  );
+}
+
+/** `[["y"], ["y0", "y1"]]` → `"y, or y0 and y1"`. */
+function slotList(alts: readonly (readonly string[])[]): string {
+  return alts.map((alt) => alt.join(" and ")).join(", or ");
+}
+
+function missingBindingMessage(
+  ch: Channel,
+  alts: readonly (readonly string[])[],
+  tag: string,
+): string {
+  return (
+    `no binding for channel "${ch}" — ` +
+    `${tag} needs ${slotList(alts)}`
+  );
+}
+
 function logDomainMessage(lo: number, hi: number): string {
   return (
     "a log domain cannot cross or touch zero — " +
@@ -871,6 +960,459 @@ function checkPathColor(el: HdvlElement, out: Finding[]): void {
       "color",
     ),
   );
+}
+
+// ---------------------------------------------------------------
+// V9 · V19 — the plane's channels, and the bindings it requires
+// ---------------------------------------------------------------
+
+/**
+ * The two positional channels each plane anchors (§2.7, §4.6).
+ *
+ * Read from the plane's **tag**, deliberately. `plane-polar.ts` now
+ * declares a `Projection` whose `channels` say the same thing, but
+ * that object exists only inside a frame and V9 and V19 are
+ * *structural* rules — they answer inside `reindex()`, before any
+ * frame has run.
+ */
+const PLANE_CHANNELS = new Map<string, readonly Channel[]>([
+  [CARTESIAN_TAG, ["x", "y"]],
+  [POLAR_TAG, ["angle", "radius"]],
+]);
+
+/** The four channels V9 quantifies over — `color` and `size` are
+ *  not positional and belong to neither plane. */
+const POSITIONAL: readonly Channel[] = ["x", "y", "angle", "radius"];
+
+/** The channels the plane an element sits in anchors, or `null`. */
+function planeChannelsOf(el: HdvlElement): readonly Channel[] | null {
+  const plane = resolutionOf(el)?.plane ?? null;
+  return plane === null
+    ? null
+    : PLANE_CHANNELS.get(plane.localName) ?? null;
+}
+
+/**
+ * V9 — *positional attribute names match the plane*.
+ *
+ * `x`/`y` (and their ranged spellings) belong to a cartesian plane,
+ * `angle`/`radius`/`a0`/`a1`/`r0`/`r1` to a polar one. `color` and
+ * `size` are visual, not positional, and are legal under both.
+ *
+ * It reports **once per channel**, not once per attribute: an author
+ * who wrote `r0` and `r1` under a cartesian plane made one mistake.
+ */
+function checkV9(el: HdvlElement, out: Finding[]): void {
+  if (el.family !== "mark" && el.family !== "container") {
+    return;
+  }
+  const channels = planeChannelsOf(el);
+  if (channels === null) {
+    return;
+  }
+  const seen = new Set<Channel>();
+  for (const [attr, channel] of CHANNEL_ATTRS) {
+    if (
+      !POSITIONAL.includes(channel) ||
+      channels.includes(channel) ||
+      seen.has(channel) ||
+      !declared(el, attr)
+    ) {
+      continue;
+    }
+    seen.add(channel);
+    out.push(
+      error(
+        "V9",
+        "wrong-plane-channel",
+        el,
+        wrongPlaneMessage(channel, channels),
+        channel,
+      ),
+    );
+  }
+}
+
+/**
+ * One required positional channel, and the spellings that satisfy
+ * it — SPEC §7's **bold** column. Any one alternative fully bound
+ * is enough.
+ */
+interface Requirement {
+  channel: Channel;
+  alts: readonly (readonly string[])[];
+}
+
+/** `x`,`y` — `hdml-line` and `hdml-point`, cartesian. */
+const XY: readonly Requirement[] = [
+  { channel: "x", alts: [[AREA_ATTRS_LIST.X]] },
+  { channel: "y", alts: [[AREA_ATTRS_LIST.Y]] },
+];
+
+/** `angle`,`radius` — the same two, polar. */
+const ANGLE_RADIUS: readonly Requirement[] = [
+  { channel: "angle", alts: [[AREA_ATTRS_LIST.ANGLE]] },
+  { channel: "radius", alts: [[AREA_ATTRS_LIST.RADIUS]] },
+];
+
+/** `x` + (`y` | `y0`,`y1`) — `hdml-area` and `hdml-bar`. */
+const XY_RANGED: readonly Requirement[] = [
+  { channel: "x", alts: [[AREA_ATTRS_LIST.X]] },
+  {
+    channel: "y",
+    alts: [
+      [AREA_ATTRS_LIST.Y],
+      [AREA_ATTRS_LIST.Y0, AREA_ATTRS_LIST.Y1],
+    ],
+  },
+];
+
+/** `angle` + (`radius` | `r0`,`r1`) — `hdml-area`, polar. */
+const ANGLE_RADIUS_RANGED: readonly Requirement[] = [
+  { channel: "angle", alts: [[AREA_ATTRS_LIST.ANGLE]] },
+  {
+    channel: "radius",
+    alts: [
+      [AREA_ATTRS_LIST.RADIUS],
+      [AREA_ATTRS_LIST.R0, AREA_ATTRS_LIST.R1],
+    ],
+  },
+];
+
+/** `hdml-rule` — *exactly one of* `x`/`y`. */
+const ONE_OF_XY: readonly Requirement[] = [
+  {
+    channel: "x",
+    alts: [[AREA_ATTRS_LIST.X], [AREA_ATTRS_LIST.Y]],
+  },
+];
+
+/** `hdml-arc` — (`a0`,`a1`) **or** `angle`. */
+const ARC_ANGLE: readonly Requirement[] = [
+  {
+    channel: "angle",
+    alts: [
+      [ARC_ATTRS_LIST.A0, ARC_ATTRS_LIST.A1],
+      [AREA_ATTRS_LIST.ANGLE],
+    ],
+  },
+];
+
+/** `hdml-pie` — the value column it derives fractions from. */
+const PIE_ANGLE: readonly Requirement[] = [
+  { channel: "angle", alts: [[AREA_ATTRS_LIST.ANGLE]] },
+];
+
+/**
+ * SPEC §7's bold column, per tag **per plane form**.
+ *
+ * A tag with no entry for the plane it sits in requires nothing
+ * there — `hdml-bar` under a polar plane, `hdml-arc` under a
+ * cartesian one — because **V9 already reports that page**, and
+ * naming the same mistake twice on one unit would only hide the
+ * better message. A tag absent from the table entirely (the test
+ * probe, the binder) requires nothing anywhere.
+ */
+const REQUIRED = new Map<
+  string,
+  ReadonlyMap<string, readonly Requirement[]>
+>([
+  [
+    LINE_TAG,
+    new Map([
+      [CARTESIAN_TAG, XY],
+      [POLAR_TAG, ANGLE_RADIUS],
+    ]),
+  ],
+  [
+    AREA_TAG,
+    new Map([
+      [CARTESIAN_TAG, XY_RANGED],
+      [POLAR_TAG, ANGLE_RADIUS_RANGED],
+    ]),
+  ],
+  [BAR_TAG, new Map([[CARTESIAN_TAG, XY_RANGED]])],
+  [
+    POINT_TAG,
+    new Map([
+      [CARTESIAN_TAG, XY],
+      [POLAR_TAG, ANGLE_RADIUS],
+    ]),
+  ],
+  [ARC_TAG, new Map([[POLAR_TAG, ARC_ANGLE]])],
+  [RULE_TAG, new Map([[CARTESIAN_TAG, ONE_OF_XY]])],
+  [PIE_TAG, new Map([[POLAR_TAG, PIE_ANGLE]])],
+]);
+
+/**
+ * V19 — **required bindings**, and *"never an implicit index"*.
+ *
+ * A mark at a chain tip must bind every positional channel its
+ * plane form requires. There is no fallback to the row number: a
+ * `hdml-point y="v"` with no `x` is an error naming `x`, because
+ * inventing an index would draw a chart the data did not describe.
+ *
+ * §8.3's *"a container-hoisted channel satisfies it for the
+ * children"* is implemented rather than deferred: a container is an
+ * ordinary channel binder to `boundChannels`, so a child under one
+ * that binds the channel is satisfied. No container binds anything
+ * until step 29 — the clause costs three lines and is here so that
+ * step lands `hdml-stack` without also having to remember this.
+ */
+function checkV19(el: HdvlElement, out: Finding[]): void {
+  const res = resolutionOf(el);
+  if (res === undefined || !res.tip || el.family !== "mark") {
+    return;
+  }
+  const plane = res.plane;
+  if (plane === null) {
+    return;
+  }
+  const reqs =
+    REQUIRED.get(el.localName)?.get(plane.localName) ?? null;
+  if (reqs === null) {
+    return;
+  }
+  const hoisted =
+    res.container === null ? [] : boundChannels(res.container);
+  for (const req of reqs) {
+    if (
+      hoisted.includes(req.channel) ||
+      req.alts.some((alt) => alt.every((slot) => declared(el, slot)))
+    ) {
+      continue;
+    }
+    out.push(
+      error(
+        "V19",
+        "missing-binding",
+        el,
+        missingBindingMessage(req.channel, req.alts, el.localName),
+        req.channel,
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------
+// V4 — a bare identifier has a source, and names a field of it
+// ---------------------------------------------------------------
+
+/**
+ * The fields an **in-page** source declares, or `null` when the
+ * page cannot answer.
+ *
+ * §8.3 splits V4 exactly here: *"an in-page `?hdml-frame=` ref is
+ * checkable locally; a static ref completes at runtime via
+ * `kind:"absent"`"*. A ref carrying a path names another document
+ * and returns `null`; so does a ref whose element this page does not
+ * declare, because *"unresolvable"* is a different claim from
+ * *"resolves, and has no such field"* and only the second is V4's.
+ *
+ * The projected fields are the host's **direct children carrying a
+ * `name`** — which is exactly the field elements, since a frame's
+ * `group-by` / `sort-by` / `filter-by` blocks carry none. Derived
+ * rather than matched by tag, so this module still names no data
+ * vocabulary.
+ */
+function localFieldsOf(
+  el: HdvlElement,
+  ref: string,
+): Set<string> | null {
+  const hit = LOCAL_REF.exec(ref.trim());
+  if (hit === null) {
+    return null;
+  }
+  const root = <Document | ShadowRoot>el.getRootNode();
+  let host: Element | null = null;
+  for (const cand of Array.from(root.querySelectorAll(hit[1]))) {
+    if (cand.getAttribute("name") === hit[2]) {
+      host = cand;
+      break;
+    }
+  }
+  if (host === null) {
+    return null;
+  }
+  const fields = new Set<string>();
+  for (const kid of Array.from(host.children)) {
+    const name = kid.getAttribute("name");
+    if (name !== null && name.trim() !== "") {
+      fields.add(name.trim());
+    }
+  }
+  return fields.size === 0 ? null : fields;
+}
+
+/**
+ * V4's **structural** half — every bare identifier has an effective
+ * `source`, and names a field of it where the page declares one.
+ *
+ * A value that is not a bare identifier is a literal or a scalar and
+ * binds no field at all; a malformed one is V3's, already reported,
+ * and a second finding would only hide the first.
+ */
+function checkV4(el: HdvlElement, out: Finding[]): void {
+  const res = resolutionOf(el);
+  if (res === undefined) {
+    return;
+  }
+  const ref = res.source;
+  let fields: Set<string> | null | undefined;
+  for (const [attr, raw] of boundValues(el)) {
+    const value = raw.trim();
+    if (!IDENTIFIER.test(value)) {
+      continue;
+    }
+    if (ref === null) {
+      out.push(
+        error(
+          "V4",
+          "unknown-field",
+          el,
+          noSourceMessage(attr, value),
+        ),
+      );
+      continue;
+    }
+    if (fields === undefined) {
+      fields = localFieldsOf(el, ref);
+    }
+    if (fields !== null && !fields.has(value)) {
+      out.push(
+        error(
+          "V4",
+          "unknown-field",
+          el,
+          unknownFieldMessage(value, ref),
+        ),
+      );
+    }
+  }
+}
+
+/**
+ * V4's **binding** half — the runtime completion, for the static
+ * refs the in-page check cannot reach.
+ *
+ * `kind:"absent"` is the D8 seam's own answer to this rule: *"the
+ * generation arrived; this column is not in the result set"*. Before
+ * it existed a typo'd column span forever.
+ */
+function checkV4Delivery(el: HdvlElement, out: Finding[]): void {
+  for (const [attr, raw] of boundValues(el)) {
+    if (!IDENTIFIER.test(raw.trim())) {
+      continue;
+    }
+    const d = adoptedOf(el, attr);
+    if (d !== null && d.kind === "absent") {
+      out.push(
+        error(
+          "V4",
+          "unknown-field",
+          el,
+          absentFieldMessage(d.column, d.ref),
+        ),
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------
+// V5 — equal N across one widget's per-row bindings
+// ---------------------------------------------------------------
+
+/**
+ * One slot's row count, or `null` when it has none to disagree
+ * with.
+ *
+ * Three cases return `null` and each for its own reason: a
+ * **scalar** broadcasts to whatever N is (SPEC §5); a **malformed**
+ * value is V3's, already reported; and a **column still in flight**
+ * has no delivered `rows` yet — §3.4 suppresses the paint meanwhile,
+ * and counting it as zero would make every loading page a
+ * mismatch.
+ *
+ * §8.3 says *"against `rows`"*, and this is that: a delivered
+ * column answers with the delivery's own `rows`, never with a
+ * length derived from the values buffer.
+ *
+ * It re-derives SPEC §5's shape classification rather than calling
+ * `mark.ts`'s `slotValuesOf` — that module imports this one, so the
+ * reverse is a cycle.
+ */
+function rowsOfSlot(
+  el: HdvlElement,
+  slot: string,
+  raw: string,
+): number | null {
+  const value = raw.trim();
+  if (value === "") {
+    return null;
+  }
+  if (/[[{"\-0-9]/.test(value[0])) {
+    try {
+      const json = <unknown>JSON.parse(value);
+      return Array.isArray(json) ? (<unknown[]>json).length : null;
+    } catch {
+      return null;
+    }
+  }
+  if (!IDENTIFIER.test(value)) {
+    return null;
+  }
+  const d = adoptedOf(el, slot);
+  return d !== null && d.kind === "data" ? d.rows : null;
+}
+
+/**
+ * V5 — *equal length N across a widget's array/column bindings;
+ * scalars broadcast; mismatch = error.*
+ *
+ * §8.3 adds the clause that gives the rule its point: **never a
+ * `Math.max` zip**. Two columns of 12 and 7 rows are not a chart of
+ * 7 points plus 5 silent drops — they are a page whose author
+ * believes something untrue about their data.
+ *
+ * **It reports; it does not stop the paint.** Every rule in this
+ * module reports and lets the frame render, and §3.5 gives blanking
+ * to the error *unit* — one mechanism, not two. `rowCountOf`'s
+ * longest-wins is therefore unchanged, and what the rule removes is
+ * the *silence*, which is the whole of what §8.3 forbids. Recorded
+ * in `docs/decisions.md` so a later step does not re-litigate it.
+ *
+ * One finding per widget: the first disagreement names both slots
+ * and their counts, and a unit carries one diagnostic anyway.
+ */
+function checkV5(el: HdvlElement, out: Finding[]): void {
+  if (el.family !== "mark" && el.family !== "container") {
+    return;
+  }
+  let slot = "";
+  let rows = -1;
+  for (const [attr, raw] of boundValues(el)) {
+    const n = rowsOfSlot(el, attr, raw);
+    if (n === null) {
+      continue;
+    }
+    if (rows < 0) {
+      slot = attr;
+      rows = n;
+      continue;
+    }
+    if (n === rows) {
+      continue;
+    }
+    out.push(
+      error(
+        "V5",
+        "length-mismatch",
+        el,
+        lengthMismatchMessage(slot, rows, attr, n),
+      ),
+    );
+    return;
+  }
 }
 
 // ---------------------------------------------------------------
@@ -1236,6 +1778,12 @@ export function validateStructure(
     // message than "no domain", and a unit reports one error.
     checkGrammar(el, found);
     checkPathColor(el, found);
+    // V9 before V19: a widget carrying the other plane's channels
+    // is missing this plane's too, and "that channel is not this
+    // plane's" is the message that fixes the page.
+    checkV9(el, found);
+    checkV19(el, found);
+    checkV4(el, found);
     checkV18(el, found);
     checkV8(el, found);
   }
@@ -1249,11 +1797,15 @@ export function validateStructure(
  * The **binding pass** (§8.2) — on adopted data and the resolved
  * scales, run once per frame.
  *
- * **V2 is its whole content, and both halves of V2 belong here by
- * necessity**: the delivered kind is `Delivery.type`, and §4.5's
- * `log`-domain clause is checked *after* domain resolution. V3,
- * V8, V10 and V18 are attribute-only and run in the structural
- * pass beside V1 and V13; V15 is a *behaviour* — `nice` moving
+ * **Three rules, and each is here by necessity.** Both halves of
+ * **V2** need what the frame produced: the delivered kind is
+ * `Delivery.type`, and §4.5's `log`-domain clause is checked *after*
+ * domain resolution. **V4**'s runtime half needs a `kind:"absent"`
+ * delivery, which is the seam's own answer to *"that column is not
+ * in the result set"*. **V5** counts *delivered* rows, which is what
+ * §8.3's *"against `rows`"* means. V3, V8, V9, V10, V18 and V19 are
+ * attribute-only and run in the structural pass beside V1 and V13,
+ * V4's local-ref half included; V15 is a *behaviour* — `nice` moving
  * derived endpoints only — and is asserted as one rather than
  * reported, because SPEC says it is *"a no-op, not an error"*.
  *
@@ -1270,6 +1822,8 @@ export function validateBindings(
   const found: Finding[] = [];
   for (const el of elements) {
     checkV2(el, found);
+    checkV4Delivery(el, found);
+    checkV5(el, found);
   }
   // §4.7's all-drop is decided in COMPUTE, by the widget that met
   // the rows, and is drained here — the pass that runs immediately

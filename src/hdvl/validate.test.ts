@@ -19,9 +19,47 @@ import { elementsOf } from "./resolve";
 import { measureView } from "./measure";
 import { subscriptionsOf } from "./subscribe";
 import { diagnosticsOf } from "./validate";
+import type { DiagnosticCode } from "./validate";
+import type { HdvlElement } from "./base";
 
 /** The one source ref the V2 fixtures subscribe to. */
 const REF = "?hdml-frame=v2";
+
+/**
+ * §8.1's whole error-code space, spelled out.
+ *
+ * The annotation is what makes it an assertion rather than a list:
+ * a `Record<DiagnosticCode, …>` literal must name **every** member
+ * and may name no other, so a twenty-third code is a `compile_tst`
+ * failure in this file and a deleted one is too. Step 12 landed all
+ * twenty-one at once for H5's reason; step 21 added the
+ * twenty-second as a §8 amendment; **step 22 added four rules and
+ * no code at all.**
+ */
+const CODES: Readonly<Record<DiagnosticCode, true>> = {
+  "no-scale-in-scope": true,
+  "duplicate-scale": true,
+  "kind-mismatch": true,
+  "bad-binding-grammar": true,
+  "unknown-field": true,
+  "length-mismatch": true,
+  "container-binding": true,
+  "container-source": true,
+  "unresolved-domain": true,
+  "wrong-plane-channel": true,
+  "ref-in-channel": true,
+  "heterogeneous-children": true,
+  "bad-format-skeleton": true,
+  "exclusive-guide-attrs": true,
+  "container-composition": true,
+  "modifier-kind": true,
+  "missing-binding": true,
+  "channel-guide-fit": true,
+  "palette-exhausted": true,
+  "all-rows-dropped": true,
+  "negative-pie-value": true,
+  "varying-path-color": true,
+};
 
 /**
  * The validator (§8, R7, R23, R25) — **V1, V13, W2, W5 and W6**.
@@ -241,7 +279,11 @@ suite("hdvl/validate — diagnostics", () => {
 
   test("the unit is §3.5's, not the violator", async () => {
     const [, view] = await mount(html`
-      <hdml-view aria-label="u" style="width: 400px; height: 200px">
+      <hdml-view
+        aria-label="u"
+        source="${REF}"
+        style="width: 400px; height: 200px"
+      >
         <hdml-cartesian-plane>
           <hdml-ordinal-scale values='["a"]' channel="x">
             <hdml-stack x="m">
@@ -272,7 +314,11 @@ suite("hdvl/validate — diagnostics", () => {
     // R25. Validation runs on every structural change, so a resize
     // drag would otherwise re-dispatch this sixty times a second.
     const [, view] = await mount(html`
-      <hdml-view aria-label="e" style="width: 400px; height: 200px">
+      <hdml-view
+        aria-label="e"
+        source="${REF}"
+        style="width: 400px; height: 200px"
+      >
         <hdml-cartesian-plane>
           <hdml-ordinal-scale values='["a"]' channel="x">
             <hdml-continuous-scale min="0" max="1" channel="y">
@@ -306,7 +352,11 @@ suite("hdvl/validate — diagnostics", () => {
 
   test("a changed identity reports again", async () => {
     const [, view] = await mount(html`
-      <hdml-view aria-label="i" style="width: 400px; height: 200px">
+      <hdml-view
+        aria-label="i"
+        source="${REF}"
+        style="width: 400px; height: 200px"
+      >
         <hdml-cartesian-plane>
           <hdml-ordinal-scale values='["a"]' channel="x">
             <hdml-continuous-scale min="0" max="1" channel="y">
@@ -339,7 +389,11 @@ suite("hdvl/validate — diagnostics", () => {
     // SPEC §10 defines no resolution event, and inventing one would
     // be a vocabulary addition.
     const [, view] = await mount(html`
-      <hdml-view aria-label="r" style="width: 400px; height: 200px">
+      <hdml-view
+        aria-label="r"
+        source="${REF}"
+        style="width: 400px; height: 200px"
+      >
         <hdml-cartesian-plane>
           <hdml-ordinal-scale values='["a"]' channel="x">
             <hdml-continuous-scale min="0" max="1" channel="y">
@@ -366,7 +420,11 @@ suite("hdvl/validate — diagnostics", () => {
 
   test("W5 — a transition shorthand kills detection", async () => {
     const [, view] = await mount(html`
-      <hdml-view aria-label="w5" style="width: 400px; height: 200px">
+      <hdml-view
+        aria-label="w5"
+        source="${REF}"
+        style="width: 400px; height: 200px"
+      >
         <hdml-cartesian-plane>
           <hdml-ordinal-scale values='["a"]' channel="x">
             <hdml-continuous-scale min="0" max="1" channel="y">
@@ -931,11 +989,440 @@ suite("hdvl/validate — diagnostics", () => {
     assert.deepEqual(diagnosticsOf(view), []);
   });
 
+  // ---------------------------------------------------------------
+  // Step 22's four rules — V4 · V5 · V9 · V19. Every message is
+  // HARDCODED, for the reason §8.4 gives.
+  // ---------------------------------------------------------------
+
+  /**
+   * A cartesian `x`/`y` chain with a rendering probe beside it, so
+   * "a sibling still renders" is real on every fixture below.
+   */
+  const CHAIN = (
+    widget: ReturnType<typeof html>,
+  ): ReturnType<typeof html> => html`
+    <hdml-cartesian-plane>
+      <hdml-continuous-scale channel="x" min="0" max="1">
+        <hdml-continuous-scale channel="y" min="0" max="1">
+          ${widget}
+        </hdml-continuous-scale>
+        ${SIBLING}
+      </hdml-continuous-scale>
+    </hdml-cartesian-plane>
+  `;
+
+  /** One numeric column, for the two delivery-driven fixtures. */
+  const COLUMN = {
+    values: undefined,
+    nulls: undefined,
+    domain: <const>{
+      kind: "extent",
+      value: <[number, number]>[0, 1],
+    },
+    type: <const>{ kind: "number" },
+  };
+
+  test("V4 — a bare identifier with no source", async () => {
+    const [, view] = await mount(html`
+      <hdml-view aria-label="v4a" style="width: 400px; height: 200px">
+        ${CHAIN(html`<hdml-point x="units" y="[0]"></hdml-point>`)}
+      </hdml-view>
+    `);
+    const point = <Element>view.querySelector("hdml-point");
+    assert.strictEqual(
+      messageOf(said("V4")[0]),
+      'x="units" names a field, but no source is in scope — ' +
+        "add source= here or on an ancestor",
+    );
+    assert.lengthOf(said("V4"), 1);
+    assert.isTrue(point.matches(":state(error)"));
+    assert.strictEqual(errs[0].detail.code, "unknown-field");
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("V4 — a local ref that has no such field", async () => {
+    // §8.3: "an in-page ?hdml-frame= ref is checkable locally".
+    const [, view] = await mount(html`
+      <div>
+        <hdml-frame name="f">
+          <hdml-field name="units"></hdml-field>
+          <hdml-group-by>
+            <hdml-field name="units"></hdml-field>
+          </hdml-group-by>
+        </hdml-frame>
+        <hdml-view
+          aria-label="v4b"
+          source="?hdml-frame=f"
+          style="width: 400px; height: 200px"
+        >
+          ${CHAIN(html`<hdml-point x="unit" y="[0]"></hdml-point>`)}
+        </hdml-view>
+      </div>
+    `);
+    assert.strictEqual(
+      messageOf(said("V4")[0]),
+      'no field "unit" in ?hdml-frame=f — check the field names',
+    );
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("V4 — the same ref, spelled right, is silent", async () => {
+    const [, view] = await mount(html`
+      <div>
+        <hdml-frame name="f">
+          <hdml-field name="units"></hdml-field>
+        </hdml-frame>
+        <hdml-view
+          aria-label="v4c"
+          source="?hdml-frame=f"
+          style="width: 400px; height: 200px"
+        >
+          ${CHAIN(html`<hdml-point x="units" y="[0]"></hdml-point>`)}
+        </hdml-view>
+      </div>
+    `);
+    assert.lengthOf(said("V4"), 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+  });
+
+  test("V4 — the runtime half, on an absent delivery", async () => {
+    // The static-ref completion §8.3 defers to the binding pass:
+    // the generation arrived and the column is not in it.
+    mountFakeIo({
+      [REF]: { generation: 1, rows: 2, columns: { good: COLUMN } },
+    });
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v4d"
+        source="${REF}"
+        style="width: 400px; height: 200px"
+      >
+        ${CHAIN(html`<hdml-point x="typo" y="[0, 1]"></hdml-point>`)}
+      </hdml-view>
+    `);
+    const point = <Element>view.querySelector("hdml-point");
+    assert.strictEqual(
+      messageOf(said("V4")[0]),
+      '?hdml-frame=v2 delivered no field "typo" — ' +
+        "check the column name",
+    );
+    assert.isTrue(point.matches(":state(error)"));
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V5 — two literal arrays of unequal length", async () => {
+    const [, view] = await mount(html`
+      <hdml-view aria-label="v5a" style="width: 400px; height: 200px">
+        ${CHAIN(
+          html`<hdml-point x="[0, 0.5, 1]" y="[0, 1]"></hdml-point>`,
+        )}
+      </hdml-view>
+    `);
+    const point = <Element>view.querySelector("hdml-point");
+    assert.strictEqual(
+      messageOf(said("V5")[0]),
+      "x has 3 rows and y has 2 — a widget's bindings must " +
+        "agree in length; scalars broadcast",
+    );
+    assert.lengthOf(said("V5"), 1);
+    assert.isTrue(point.matches(":state(error)"));
+    assert.strictEqual(errs[0].detail.code, "length-mismatch");
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V5 — a column disagrees with a literal", async () => {
+    // §8.3 says "against `rows`", and this is that: the count comes
+    // from the delivery, never from a values buffer.
+    mountFakeIo({
+      [REF]: { generation: 1, rows: 2, columns: { col: COLUMN } },
+    });
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v5b"
+        source="${REF}"
+        style="width: 400px; height: 200px"
+      >
+        ${CHAIN(
+          html`<hdml-point x="col" y="[0, 0.5, 1]"></hdml-point>`,
+        )}
+      </hdml-view>
+    `);
+    assert.strictEqual(
+      messageOf(said("V5")[0]),
+      "x has 2 rows and y has 3 — a widget's bindings must " +
+        "agree in length; scalars broadcast",
+    );
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V5 — scalars broadcast and are not counted", async () => {
+    const [, view] = await mount(html`
+      <hdml-view aria-label="v5c" style="width: 400px; height: 200px">
+        <hdml-cartesian-plane>
+          <hdml-continuous-scale channel="x" min="0" max="1">
+            <hdml-continuous-scale channel="y" min="0" max="1">
+              <hdml-ordinal-scale channel="color" values='["N"]'>
+                <hdml-point
+                  x="[0, 0.5, 1]"
+                  y="[0, 0.5, 1]"
+                  color='"N"'
+                ></hdml-point>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+            ${SIBLING}
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V5"), 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+  });
+
+  test("★ V9 — a polar channel under a cartesian plane", async () => {
+    const [, view] = await mount(html`
+      <hdml-view aria-label="v9a" style="width: 400px; height: 200px">
+        <hdml-cartesian-plane>
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-continuous-scale channel="radius" min="0" max="1">
+              <hdml-point angle="[0, 1]" radius="[0, 1]"></hdml-point>
+            </hdml-continuous-scale>
+            ${SIBLING}
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    const point = <Element>view.querySelector("hdml-point");
+    assert.strictEqual(
+      messageOf(said("V9")[0]),
+      'channel "angle" is not this plane\'s — ' +
+        "it anchors x and y",
+    );
+    assert.lengthOf(said("V9"), 1);
+    // V9 runs BEFORE V19, so the page that says "wrong plane" does
+    // not also say "missing x" — one unit, one diagnostic, and the
+    // one that fixes the page.
+    assert.lengthOf(said("V19"), 0);
+    assert.isTrue(point.matches(":state(error)"));
+    assert.strictEqual(errs[0].detail.code, "wrong-plane-channel");
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V9 — a cartesian channel under a polar plane", async () => {
+    const [, view] = await mount(html`
+      <hdml-view aria-label="v9b" style="width: 400px; height: 200px">
+        <hdml-polar-plane>
+          <hdml-continuous-scale channel="x" min="0" max="1">
+            <hdml-continuous-scale channel="y" min="0" max="1">
+              <hdml-point x="[0, 1]" y="[0, 1]"></hdml-point>
+            </hdml-continuous-scale>
+            ${SIBLING}
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    assert.strictEqual(
+      messageOf(said("V9")[0]),
+      'channel "x" is not this plane\'s — ' +
+        "it anchors angle and radius",
+    );
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("V9 — x and y under a cartesian plane pass", async () => {
+    const [, view] = await mount(html`
+      <hdml-view aria-label="v9c" style="width: 400px; height: 200px">
+        ${CHAIN(
+          html`<hdml-point x="[0, 1]" y="[0, 1]"></hdml-point>`,
+        )}
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V9"), 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+  });
+
+  test("★ V19 — a missing channel, never implied", async () => {
+    // The clause that forbids the obvious convenience: a point with
+    // only `y` must ERROR, not fall back to the row number.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v19a"
+        style="width: 400px; height: 200px"
+      >
+        ${CHAIN(html`<hdml-point y="[0, 1]"></hdml-point>`)}
+      </hdml-view>
+    `);
+    const point = <Element>view.querySelector("hdml-point");
+    assert.strictEqual(
+      messageOf(said("V19")[0]),
+      'no binding for channel "x" — hdml-point needs x',
+    );
+    assert.lengthOf(said("V19"), 1);
+    assert.isTrue(point.matches(":state(error)"));
+    assert.strictEqual(errs[0].detail.code, "missing-binding");
+    assert.strictEqual(errs[0].detail.channel, "x");
+    // Nothing was invented: the widget paints no group at all.
+    assert.isFalse(paints((<HdvlElement>(<unknown>point)).uid));
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V19 — the ranged spelling satisfies it", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v19b"
+        style="width: 400px; height: 200px"
+      >
+        <hdml-cartesian-plane>
+          <hdml-ordinal-scale channel="x" values='["a", "b"]'>
+            <hdml-continuous-scale channel="y" min="0" max="1">
+              <hdml-bar
+                x='["a", "b"]'
+                y0="[0, 0]"
+                y1="[1, 1]"
+              ></hdml-bar>
+            </hdml-continuous-scale>
+            ${SIBLING}
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V19"), 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+  });
+
+  test("★ V19 — a bar with neither y spelling", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v19c"
+        style="width: 400px; height: 200px"
+      >
+        <hdml-cartesian-plane>
+          <hdml-ordinal-scale channel="x" values='["a", "b"]'>
+            <hdml-continuous-scale channel="y" min="0" max="1">
+              <hdml-bar x='["a", "b"]' y1="[1, 1]"></hdml-bar>
+            </hdml-continuous-scale>
+            ${SIBLING}
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    // Half a ranged pair is not a range: §6.1's grammar is
+    // (y | y0,y1), both or neither.
+    assert.strictEqual(
+      messageOf(said("V19")[0]),
+      'no binding for channel "y" — hdml-bar needs y, or y0 and y1',
+    );
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V19 — hdml-rule needs exactly one of x/y", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v19d"
+        style="width: 400px; height: 200px"
+      >
+        ${CHAIN(html`<hdml-rule></hdml-rule>`)}
+      </hdml-view>
+    `);
+    assert.strictEqual(
+      messageOf(said("V19")[0]),
+      'no binding for channel "x" — hdml-rule needs x, or y',
+    );
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V19 — the arc's a0/a1 form satisfies it", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v19e"
+        style="width: 200px; height: 200px"
+      >
+        <hdml-polar-plane>
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-continuous-scale channel="radius" min="0" max="1">
+              <hdml-arc a0="[0]" a1="[1]"></hdml-arc>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V19"), 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+  });
+
+  test("★ V19 — an arc binding no angle at all", async () => {
+    await mount(html`
+      <hdml-view
+        aria-label="v19f"
+        style="width: 200px; height: 200px"
+      >
+        <hdml-polar-plane>
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-continuous-scale channel="radius" min="0" max="1">
+              <hdml-arc radius="[1]"></hdml-arc>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    assert.strictEqual(
+      messageOf(said("V19")[0]),
+      'no binding for channel "angle" — ' +
+        "hdml-arc needs a0 and a1, or angle",
+    );
+  });
+
+  test("★ the four rules edge-trigger like every other", async () => {
+    // R25, on the newest rules: an unchanged violation re-derived
+    // every frame reports exactly once.
+    const [, view] = await mount(html`
+      <hdml-view aria-label="v22" style="width: 400px; height: 200px">
+        ${CHAIN(html`<hdml-point y="[0, 1]"></hdml-point>`)}
+      </hdml-view>
+    `);
+    for (let i = 0; i < 5; i++) {
+      view.reindex();
+      await quiesce(view);
+    }
+    assert.lengthOf(said("V19"), 1);
+    assert.lengthOf(errs, 1);
+    // And recovery clears it, dispatching nothing (§10).
+    const point = <Element>view.querySelector("hdml-point");
+    lines.length = 0;
+    errs.length = 0;
+    point.setAttribute("x", "[0, 1]");
+    view.reindex();
+    await quiesce(view);
+    assert.isFalse(point.matches(":state(error)"));
+    assert.lengthOf(errs, 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+  });
+
+  test("★ the code space is still twenty-two", () => {
+    // A `Record<DiagnosticCode, …>` literal is exhaustive AND
+    // closed, so a twenty-third code fails `compile_tst` — before
+    // any browser starts — and a deleted one fails here. Step 22
+    // added four rules and no code: all four were already in the
+    // union step 12 landed whole (H5).
+    assert.lengthOf(Object.keys(CODES), 22);
+    for (const code of [
+      "unknown-field",
+      "length-mismatch",
+      "wrong-plane-channel",
+      "missing-binding",
+    ]) {
+      assert.property(CODES, code);
+    }
+  });
+
   test("a valid view produces zero diagnostics", async () => {
     // The assertion every corpus gate from step 25 on is built out
     // of.
     const [, view] = await mount(html`
-      <hdml-view aria-label="ok" style="width: 400px; height: 200px">
+      <hdml-view
+        aria-label="ok"
+        source="${REF}"
+        style="width: 400px; height: 200px"
+      >
         <hdml-cartesian-plane>
           <hdml-ordinal-scale values='["a"]' channel="x">
             <hdml-continuous-scale min="0" max="1" channel="y">
