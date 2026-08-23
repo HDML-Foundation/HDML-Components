@@ -408,7 +408,8 @@ function of the snapshot rather than of whoever ran before it. It also means a D
 delivery can never tear a frame: `deliver` stores a payload and sets a flag, and
 paint happens a whole frame later.
 
-**Two widgets paint today** — `hdml-line` and `hdml-rule` — and the other eighteen
+**Four widgets paint today** — `hdml-line`, `hdml-rule`, `hdml-area` and `hdml-bar` —
+and the other sixteen
 `scene()` implementations still return `null`, which is a **contract-complete answer**
 — "returns null to paint nothing (hidden, errored, or still loading)". Eight of those
 return it permanently: the view, both planes, the three scales and both containers emit
@@ -423,6 +424,12 @@ branch anywhere. The same seam collapses the three clauses of *out-of-domain, cl
 missing values* into a single `null`: a row that projects to `null` produces no mark, a
 path breaks rather than bridging, and a continuous value outside the domain projects
 truthfully and is clipped by the widget's own box rather than clamped into it.
+
+The same module carries the **ranged primitive**. A channel may be spelled `y` or
+`y0`/`y1`, and `rangedValuesOf` resolves the first into the second *before* any geometry
+exists — the sugar's lower edge is a synthetic scalar identical to what `y0="0"` produces
+— so `hdml-area` and `hdml-bar` have exactly one code path and the container slice can
+supply a per-row baseline through it without touching either widget.
 
 The end of the frame counts what COMPUTE produced twice: **mark** nodes decide
 `:state(empty)`, and **every** node is measured against the 20 000-node budget, which

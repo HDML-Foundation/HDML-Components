@@ -72,6 +72,12 @@ import {
  * added "when its rule arrives" makes the union's completeness
  * untestable meanwhile, and every later slice would then edit this
  * type instead of adding a rule (H5's reasoning, re-applied).
+ *
+ * **`varying-path-color` is the twenty-second, added at step 21**
+ * and the one exception to that sentence — a §8 amendment rather
+ * than a rule finding its code, because the gap it names was found
+ * during implementation and not during sequencing. See
+ * {@link checkPathColor}.
  */
 export type DiagnosticCode =
   | "no-scale-in-scope"
@@ -94,7 +100,8 @@ export type DiagnosticCode =
   | "channel-guide-fit"
   | "palette-exhausted"
   | "all-rows-dropped"
-  | "negative-pie-value";
+  | "negative-pie-value"
+  | "varying-path-color";
 
 /**
  * Warnings are machine-readable too — W5 and W6 in particular are
@@ -212,6 +219,16 @@ const FALLBACK_TAG: string = HDVL_TAG_NAMES.FALLBACK;
 
 /** Compared as a string, for the same reason. */
 const RULE_TAG: string = HDVL_TAG_NAMES.RULE;
+
+/**
+ * The two **path** widgets — the marks that emit one `path` node for
+ * a whole series and therefore carry one `Paint` for it (§2.5, §6.1).
+ * Compared as strings, for the same reason as {@link RULE_TAG}.
+ */
+const LINE_TAG: string = HDVL_TAG_NAMES.LINE;
+
+/** The other path widget. See {@link LINE_TAG}. */
+const AREA_TAG: string = HDVL_TAG_NAMES.AREA;
 
 /**
  * R20's budget — *"above 20 000 scene nodes: warn (W4) and keep
@@ -543,6 +560,13 @@ function nodeBudgetMessage(nodes: number): string {
   );
 }
 
+function varyingColorMessage(tag: string, value: string): string {
+  return (
+    `color="${value}" varies per row — ${tag} paints one path ` +
+    "with one colour; use a scalar, like color='\"North\"'"
+  );
+}
+
 function logDomainMessage(lo: number, hi: number): string {
   return (
     "a log domain cannot cross or touch zero — " +
@@ -766,6 +790,87 @@ function checkGrammar(el: HdvlElement, out: Finding[]): void {
       );
     }
   }
+}
+
+/**
+ * Whether a channel value is **per-row** rather than one broadcast
+ * scalar — SPEC §5's grammar, read for its *shape*.
+ *
+ * A bindable identifier is a column and a JSON array is a literal
+ * column; every other JSON value is a scalar. A value that does not
+ * classify is malformed and returns `false`, because
+ * {@link checkGrammar} already reports it and a second finding on
+ * one attribute would only hide the first.
+ *
+ * The classification is deliberately a statement about the
+ * **document**, not about the delivered data: a column that happens
+ * to hold one repeated value is still a per-row binding, and
+ * deciding otherwise would move this rule into the binding pass and
+ * make a page's validity depend on which rows came back.
+ */
+function varies(raw: string): boolean {
+  const value = raw.trim();
+  if (value === "") {
+    return false;
+  }
+  if (/[[{"\-0-9]/.test(value[0])) {
+    try {
+      return Array.isArray(<unknown>JSON.parse(value));
+    } catch {
+      return false;
+    }
+  }
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
+}
+
+/**
+ * V3, on the two **path** widgets: a `color` binding that varies per
+ * row cannot be painted.
+ *
+ * **The plan's second scheduled D1 escalation, decided with the user
+ * on 2026-08-23.** SPEC §7 grants `hdml-line` and `hdml-area` the
+ * `color` channel with no scalar-only qualifier, while RFC §2.5's
+ * `path` node carries **one** `Paint` for the whole series — so a
+ * varying binding has no honest rendering and taking one row's
+ * colour for all of them is exactly §1.5's silent wrong chart.
+ *
+ * Three things about its scope, all decided rather than assumed:
+ *
+ * - **A new `DiagnosticCode`**, `varying-path-color`, rather than a
+ *   reuse of `bad-binding-grammar` — the value *is* grammatical, and
+ *   a host app branching on the code should be able to tell "you
+ *   mistyped this" from "this widget cannot express that".
+ * - **`hdml-line` and `hdml-area` only.** `hdml-bar` emits one node
+ *   per row and resolves its colour per row, so a per-row colour is
+ *   honest there; `hdml-rule` publishes no `color` attribute at all,
+ *   so it cannot arise. "Path widget" is not "mark".
+ * - **Reported as V3**, whose §8.3 row is *"attribute parse"* and
+ *   whose SPEC §11 statement is the channel-attribute grammar of §5.
+ *   This narrows that grammar — on these two tags the `color`
+ *   attribute takes the scalar form alone — which keeps it an
+ *   attribute-only, structural-pass decision and adds no rule to
+ *   SPEC §11's twenty.
+ */
+function checkPathColor(el: HdvlElement, out: Finding[]): void {
+  if (
+    el.family !== "mark" ||
+    (el.localName !== LINE_TAG && el.localName !== AREA_TAG)
+  ) {
+    return;
+  }
+  const raw = el.getAttribute(AREA_ATTRS_LIST.COLOR);
+  if (raw === null || !varies(raw)) {
+    return;
+  }
+  out.push(
+    error(
+      "V3",
+      "varying-path-color",
+      el,
+      varyingColorMessage(el.localName, raw.trim()),
+      "color",
+    ),
+  );
 }
 
 // ---------------------------------------------------------------
@@ -1130,6 +1235,7 @@ export function validateStructure(
     // V3 and V10 before V8: a malformed `values` has a better
     // message than "no domain", and a unit reports one error.
     checkGrammar(el, found);
+    checkPathColor(el, found);
     checkV18(el, found);
     checkV8(el, found);
   }

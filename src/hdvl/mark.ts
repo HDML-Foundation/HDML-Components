@@ -422,6 +422,111 @@ export function rowCountOf(
   return scalars ? 1 : 0;
 }
 
+// ---------------------------------------------------------------
+// ★ H8 — the ranged form is the primitive, the simple form is sugar
+// ---------------------------------------------------------------
+
+/**
+ * One channel's values as a **(low, high) pair** — §6.4's primitive.
+ *
+ * §6.4 makes *"the ranged form the primitive a container **compiles
+ * into**"*, and §6.1 spells the sugar out: `y` ≡ `y0="0"`, polar
+ * `radius` ≡ `r0="0"`. {@link rangedValuesOf} resolves one into the
+ * other **before any geometry exists**, so from the moment it
+ * returns no code below it can tell which form the author wrote.
+ * That is H8's mechanical test: a widget reads {@link low} and
+ * {@link high} and never names the simple slot at all, and step 29's
+ * `hdml-stack` therefore changes nothing inside `hdml-bar` or
+ * `hdml-area`.
+ *
+ * **★ How step 29 supplies `y0ₖ` through this.** A stack's lower
+ * edge is neither a literal nor a column — it is a per-row array the
+ * container derives from its siblings' values during COMPUTE. It
+ * needs no new shape here, because {@link low} is an ordinary
+ * {@link SlotValues}: a container builds
+ * `{slot, rows: N, scalar: false, at: (k) => baseline[k]}` over its
+ * own allocated array (§12 duty 4 — never mutating a delivered
+ * buffer) and hands it to the resolver, which consults a
+ * per-frame, per-element override **before** it reads attributes.
+ * The override is the only thing step 29 adds; both widgets already
+ * read `.low`/`.high` and nothing else.
+ */
+export interface RangedValues {
+  /** The base channel both endpoints project through (§3.3). */
+  readonly channel: Channel;
+  /** The low endpoint — `y0`, or the sugar's synthetic zero. */
+  readonly low: SlotValues;
+  /** The high endpoint — `y1`, or the simple form as written. */
+  readonly high: SlotValues;
+  /**
+   * Whether the author wrote the simple form.
+   *
+   * **No geometry may branch on this.** It exists so a test can
+   * assert the desugaring happened; an `if (sugar)` below this
+   * point is precisely the half-applied H8 the plan forbids, and
+   * would reintroduce the two code paths the resolver removes.
+   */
+  readonly sugar: boolean;
+}
+
+/**
+ * The sugar's lower edge: the scalar `0` that `y0="0"` produces,
+ * synthesized rather than parsed.
+ *
+ * It is byte-identical to what {@link slotValuesOf} returns for the
+ * literal spelling — SPEC §5's JSON head accepts `0`, which is not
+ * an array, so it classifies as a **scalar broadcast** whose `at()`
+ * ignores the row. That is what makes the sugar free: it is not a
+ * special case, it is the same reader over a value the author did
+ * not have to type.
+ */
+function baselineZero(slot: Slot): SlotValues {
+  return {
+    slot,
+    rows: 0,
+    scalar: true,
+    at: (): CellValue => 0,
+  };
+}
+
+/**
+ * H8's resolver: a channel's values as a `(low, high)` pair.
+ *
+ * The ranged pair wins when **both** endpoints are bound, because it
+ * is the primitive; a half-written pair (`y1` with no `y0`) is not
+ * a range and falls through to the simple form, which V19 reports at
+ * step 22. A channel with no ranged spelling — `color`, `size` —
+ * has no ranged form to resolve and returns `null`.
+ *
+ * @param el - The widget.
+ * @param channel - The base channel.
+ * @returns Its endpoints, or `null` when the channel is unbound.
+ */
+export function rangedValuesOf(
+  el: HdvlElement,
+  channel: Channel,
+): RangedValues | null {
+  const pair = CHANNEL_SLOTS[channel].ranged;
+  if (pair === null) {
+    return null;
+  }
+  const low = slotValuesOf(el, pair[0]);
+  const high = slotValuesOf(el, pair[1]);
+  if (low !== null && high !== null) {
+    return { channel, low, high, sugar: false };
+  }
+  const simple = slotValuesOf(el, CHANNEL_SLOTS[channel].simple);
+  if (simple === null) {
+    return null;
+  }
+  return {
+    channel,
+    low: baselineZero(pair[0]),
+    high: simple,
+    sugar: true,
+  };
+}
+
 /**
  * §7.2's request path for a mark — one `Binding` per slot bound to
  * a **column**, and none for a literal.
@@ -597,16 +702,56 @@ export function strokePaint(
 }
 
 /**
+ * The paint of a **filled** mark — `hdml-area`'s band and
+ * `hdml-bar`'s rect (§6.1).
+ *
+ * This is §6.1's paint sentence read literally, on the two marks it
+ * was written for: *a bound `color` channel wins over
+ * `--hdml-fill-color` and over its `_hover` variant*. SPEC §9 gives
+ * the `--hdml-fill-*` properties to *"filled widgets"* and the
+ * `--hdml-line-*` properties to *"stroked"* ones, so this is
+ * {@link strokePaint}'s sibling and not a superset of it.
+ *
+ * **A filled mark does not also stroke.** §6.1 gives the area *"one
+ * `path`, filled"* and the bar *"one `rect`"*, neither of which
+ * mentions an outline, and SPEC §9 registers no property that would
+ * control one — a stroke here would take `--hdml-line-color`'s
+ * initial value and put a visible edge on every bar in the corpus
+ * that no author asked for and none could turn off. `strokeWidth` is
+ * therefore `0` and `stroke` is `null`.
+ *
+ * @param m - The widget's measured snapshot.
+ * @param color - The resolved `color`-channel paint, or `null`.
+ * @returns The fill paint.
+ */
+export function fillPaint(m: Measured, color: string | null): Paint {
+  return {
+    fill: color ?? m.props.get("--hdml-fill-color") ?? null,
+    stroke: null,
+    strokeWidth: 0,
+    dash: null,
+  };
+}
+
+/**
  * §6.1's paint resolution: the `color` channel's contribution, or
  * `null` when the widget binds none.
  *
  * A scalar `color='"North"'` — SPEC §5's authoring convention, and
- * every corpus use — broadcasts one colour to every row. A *varying*
- * `color` column on a path widget is the plan's second scheduled D1
- * escalation and is **deferred to step 21**, when `hdml-area`
- * arrives and one rule can cover both path widgets; until then row
- * `row`'s colour is resolved, which for the scalar case is the only
- * colour there is.
+ * every corpus use — broadcasts one colour to every row, and `row`
+ * is then the only colour there is.
+ *
+ * **A *varying* `color` on a path widget is an error** — the plan's
+ * second scheduled D1 escalation, decided with the user on
+ * 2026-08-23. §2.5's `path` node carries **one** `Paint`, so a
+ * `hdml-line`/`hdml-area` binding `color` to a column or a literal
+ * array cannot be painted honestly; `validate.ts`'s `checkPathColor`
+ * reports it as **V3** under the `varying-path-color` code and the
+ * unit blanks. `hdml-bar` is deliberately **not** in that rule: it
+ * emits one node per row and calls this per row, which is a per-row
+ * colour carried honestly. So on a path widget this function is only
+ * ever reached with a scalar binding, for which every row's answer
+ * is the same one — it is not a live fallback for the varying case.
  *
  * @param ctx - The frame's snapshot.
  * @param el - The widget.

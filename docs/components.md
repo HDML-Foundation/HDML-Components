@@ -196,9 +196,9 @@ Sort the frame by one or more fields. No attributes; per-field direction comes f
 
 The display half registers **21 tags**, in seven families
 ([`HDVL_FAMILIES`](../src/hdvl/vocabulary.ts)): `view`, `plane`, `scale`, `mark`,
-`container`, `guide`, `fallback`. Nine of them have bodies as of this commit — the four structural elements, the three
-scales and the first two marks — see [Registered but inert](#registered-but-inert) for
-the twelve that do not.
+`container`, `guide`, `fallback`. Eleven of them have bodies as of this commit — the four
+structural elements, the three scales and the first four marks — see
+[Registered but inert](#registered-but-inert) for the ten that do not.
 
 Two constructed UA stylesheets ([`src/hdvl/ua.ts`](../src/hdvl/ua.ts)) supply every box
 default. The **element sheet** is adopted by every HDVL shadow root as one shared instance and
@@ -378,17 +378,60 @@ never as zero. An out-of-domain ordinal value prints one console notice naming i
 A continuous value outside the domain **projects truthfully** and is clipped by the box,
 never clamped into it. A bound `color` channel wins over the sheet.
 
+### `hdml-area` · `hdml-bar` — [mark-area.ts](../src/hdvl/mark-area.ts) · [mark-bar.ts](../src/hdvl/mark-bar.ts)
+
+The **ranged** marks. Both are written against the ranged form as the primitive and resolve
+the simple form into it before any geometry exists, so `y="v"` and `y0="0" y1="v"` produce
+byte-identical scenes and a layout container can supply a per-row baseline without either
+file changing.
+
+| | |
+|---|---|
+| **`hdml-area` attributes** | `x`, `x0`, `x1`, `y`, `y0`, `y1`, `angle`, `radius`, `r0`, `r1`, `color`, `closed`, `hidden`, `source` |
+| **`hdml-bar` attributes** | `x`, `x0`, `x1`, `y`, `y0`, `y1`, `color`, `hidden`, `source` — **cartesian only**, by design |
+| **Parent** | a chain-tip scale (or, later, a container) |
+| **Children** | none |
+| **UA box** | as the other marks |
+
+**`y` is sugar for `y0="0"`** (polar `radius` for `r0="0"`), and the sugar is expressed as a
+synthetic **scalar** binding — the same object shape the literal `y0="0"` produces — so
+nothing below the resolver can tell which form the author wrote. There is no
+`if (y0 !== null)` branch anywhere in either element.
+
+`hdml-area` emits **one filled `path`** for the whole series, `i: -1`, with row identity in
+its per-vertex `i`. Each contiguous stretch of rows is one **closed** subpath: the upper edge
+forward, a line across, then the lower edge **reversed**. The lower edge is reversed *before*
+it is curved, not after — a curve fitted to a reversed point list is not the reverse of the
+curve fitted to the forward one, because `natural`'s solve is global over its run and
+`bezier` picks its tangents per segment. A gap breaks **both** edges at the same row, and a
+stretch of fewer than two rows yields no region at all.
+
+`hdml-bar` emits **one `rect` per row**, each with a real `i`, and its **orientation is
+derived, never authored** — the band-filling side is whichever channel resolves an *ordinal*
+scale, so `x="cat" y="n"` stands the bars up and `x="n" y="cat"` lays them down from the same
+markup. There is no orientation attribute and there must not be one. With no ordinal scale in
+scope there is no band, and it paints nothing rather than inventing a width.
+
+**`hdml-bar` is the one widget in the project that reads `bandOf().width`.** It *spans* the
+band, centred by construction; every other lookup — an area's vertex included — resolves to
+`centre`, and nothing ever resolves to a band edge. A row whose two ends are equal is a real
+datum and gets a **zero-extent** rect; missing is still *absent, never zero*.
+
+Both are **filled**, so a bound `color` wins over `--hdml-fill-color` and over its `_hover`
+variant, and neither also strokes: `strokeWidth` is `0` and `stroke` is `null`. A **varying**
+`color` — a column or a literal array — is an **error** on `hdml-area` and `hdml-line`, whose
+single `path` node carries a single paint; it is legal on `hdml-bar`, which resolves a colour
+per row and emits a node per row. See [decisions.md](decisions.md).
+
 ### Registered but inert
 
-The other twelve tags are **registered as of this commit and carry no behaviour yet** —
+The other ten tags are **registered as of this commit and carry no behaviour yet** —
 each declares its tag, its family and its observed attributes, and nothing else. They are
 listed here so the tag surface is discoverable; do not read an entry as a description of
 working behaviour.
 
 | Tag | Family | Module | Body lands in |
 |---|---|---|---|
-| `hdml-area` | mark | [mark-area.ts](../src/hdvl/mark-area.ts) | Slice D |
-| `hdml-bar` | mark | [mark-bar.ts](../src/hdvl/mark-bar.ts) | Slice D |
 | `hdml-point` | mark | [mark-point.ts](../src/hdvl/mark-point.ts) | Slice D |
 | `hdml-arc` | mark | [mark-arc.ts](../src/hdvl/mark-arc.ts) | Slice D, radial forms in Slice F |
 | `hdml-pie` | mark | [layout-pie.ts](../src/hdvl/layout-pie.ts) | Slice F |
@@ -408,7 +451,9 @@ resolved scale, its own box and its computed style.
 `hdml-area`, `hdml-bar` and `hdml-stack` observe a `hidden` attribute. Because
 `HTMLElement.hidden` is a platform **boolean** IDL property, the class field behind it is
 named `hiddenAttr`; the observed attribute is still `hidden`, and the platform's own property
-is left alone.
+is left alone. **Nothing reads it yet** — the two marks with bodies observe it and do not
+consult it, because whether HDVL's `hidden` *is* the platform's is a semantic question the
+container slice decides.
 
 ### The `--hdml-*` registry
 

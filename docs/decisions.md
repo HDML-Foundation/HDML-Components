@@ -198,6 +198,67 @@ against a one-value-per-channel base in half the lines. They were not, because
 to supply the lower one — and a base that assumed one value would have to be rewritten
 by the first of those, with both marks rewritten along with it.
 
+## The sugar is desugared once, into a synthetic scalar
+
+`y` is sugar for `y0="0"`; polar `radius` is sugar for `r0="0"`. The obvious
+implementation reads `y`, computes a geometry, and puts an `if (y0 !== null)` branch
+beside it. That is the thing this codebase most wants to avoid: two code paths that
+agree today, one of which a later change will forget.
+
+So `rangedValuesOf(el, channel)` resolves *both* spellings into one `(low, high)` pair
+before any geometry exists, and the sugar's lower edge is a **synthetic scalar**
+`SlotValues` — byte-identical to what the literal `y0="0"` actually produces, because
+SPEC §5 classifies `0` as a scalar broadcast and a scalar's `at()` ignores the row.
+From the moment the resolver returns, nothing below it can tell which form the author
+wrote, and `y="v"` and `y0="0" y1="v"` produce byte-identical scenes. `RangedValues`
+does carry a `sugar` flag, and no geometry may branch on it: it exists so a test can
+assert the desugaring happened.
+
+The payoff is a slice away. `hdml-stack`'s per-row baseline is neither a literal nor a
+column, but `low` is an ordinary `SlotValues` — so the container builds one over its
+own derived array and the resolver consults that override before it reads attributes.
+Nothing inside `hdml-bar` or `hdml-area` changes.
+
+## An area region is one closed subpath, and the lower edge is reversed first
+
+§6.1 says *the upper edge forward then the lower edge reversed, both curved*. That is
+two `curve()` calls and a join, and the order matters twice.
+
+**Reverse, then curve — not curve, then reverse.** A curve fitted to a reversed point
+list is not the reverse of the curve fitted to the forward one: `natural`'s tridiagonal
+solve is global over its run and `bezier` picks the dominant axis per segment, so a
+curve-then-reverse implementation puts the lower edge somewhere the data is not. It
+looks right on a flat baseline — which is every simple area — and is wrong on every
+floating or stacked one, so it is asserted with a deliberately asymmetric lower edge.
+
+**One closed subpath per region, not two subpaths.** A `Subpath` boundary means a GAP
+(§4.7), and a renderer must never draw between two of them; an area's two edges are the
+opposite — they are joined. So each contiguous stretch of rows becomes one subpath —
+upper forward, a `line` across, lower reversed — and `closed: true` supplies the
+left-hand cap. That reading does not collide with `hdml-line`'s `closed` (its polar
+radar loop): both mean "this subpath closes", on different elements' geometry.
+
+## A varying `color` on a path widget is an error
+
+SPEC §7 grants `hdml-line` and `hdml-area` the `color` channel with no scalar-only
+qualifier, while a `path` node carries **one** `Paint` for the whole series. Something
+has to give, and painting the series in whichever row happened to survive first is
+exactly the silent wrong chart the strict semantics exist to prevent. So it is an error
+— `varying-path-color`, the twenty-second `DiagnosticCode`, reported as **V3**, whose
+rule is §5's channel-attribute grammar and which this narrows on two tags.
+
+Two scoping decisions worth keeping:
+
+- **`hdml-bar` is not in it.** A bar emits one node per row and resolves a colour per
+  row, so a per-row colour is honest there. "Path widget" is not "mark", and a rule
+  written over marks would forbid something that works.
+- **"Varying" is a statement about the document, not the data.** The test is that the
+  `color` slot is not a scalar — the author wrote a column or a JSON array. A column
+  that happens to hold one repeated value is still rejected. The alternative, comparing
+  the resolved colours across surviving rows, is more permissive but would make a
+  page's validity depend on which rows came back that morning, and would have to move
+  the rule out of the structural pass to do it.
+
 ## §4.7's ordinal notice is a notice, not a diagnostic
 
 *"A value outside the domain produces no mark and one console notice naming the
