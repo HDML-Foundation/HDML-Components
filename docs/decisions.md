@@ -105,7 +105,15 @@ bundle size, and it was taken before a line of the kernel existed.
   bars' centrelines at any `--hdml-bandwidth`. Deliberately not d3's
   `paddingInner`/`paddingOuter` model.
 - **Three of the eight `--hdml-curve-type` values** do not correspond to a
-  `d3.curve*` as registered.
+  `d3.curve*` as registered, and [src/hdvl/kernel/curves.ts](../src/hdvl/kernel/curves.ts)
+  now says which. `--hdml-curve-cubic-monotonicity` is a `<number>` 0..1 — a *blend*
+  between the Catmull–Rom tangent and the Fritsch–Carlson limited one, applied **per
+  component** rather than along a chosen axis — where d3 ships `curveMonotoneX`/`Y`
+  and no parameter at all. `--hdml-curve-basis-beta` maps to `curveBundle`, which is
+  **open-curve only**, while SPEC allows curves on `hdml-area` and on `closed` radar
+  lines. And `--hdml-curve-bezier-tangents` has an **"auto" initial** that picks the
+  dominant axis per *segment*, where `curveBumpX`/`Y` are axis-fixed for the whole
+  path.
 
 Adopting d3 and then overriding those would mean shipping four packages to use a
 fraction of one of them, while the parts that matter most are the parts we replace.
@@ -113,6 +121,34 @@ The whole kernel is on the order of a few hundred lines, every function is pure,
 every one has a fixture table asserted on all three engines — which is the other half
 of the argument: a hand-written ladder we can assert **exactly** is worth more here
 than a borrowed one we would have to assert approximately.
+
+## `curve()` takes runs, not a flat list with a sentinel
+
+[`kernel/curves.ts`](../src/hdvl/kernel/curves.ts) is
+`(runs, type, options) → Subpath[]` — the **caller** splits a series at its missing
+values, and the kernel curves each run independently. The alternative reads just as
+naturally from the call site (`(points: (Point | null)[], …)`, splitting inside), so
+this is written down rather than left to be re-litigated.
+
+Two reasons, and the second is the load-bearing one:
+
+- **What "missing" means is data-space knowledge.** It is a `Delivery`'s nulls plus a
+  non-finite check, and it belongs to the mark that read the column. A kernel that
+  owned a sentinel would be encoding a data contract in a module whose entire input is
+  view-coordinate geometry.
+- **Splitting first is what §4.7 actually requires.** *"Never bridged by
+  interpolation"* is not satisfied by curving across a gap and slicing the result
+  afterwards: `natural`'s tridiagonal solve is **global over its run**, so a bridged
+  gap bends the whole curve around data that is not there — including the parts either
+  side of the gap that *are* real. Curving each run separately is the only construction
+  where the gap changes nothing about its neighbours, and the test suite asserts
+  exactly that for all eight values.
+
+**A run of fewer than two points is dropped.** It has no segment on any of the eight,
+and a zero-segment `Subpath` would put a pen-down that strokes nothing into every
+scene, which the renderer's diff and `hdml-area`'s forward/reversed edge assembly
+would each have to special-case. A lone point that must be *visible* is
+`hdml-point`'s job, not a line's.
 
 ## `temporal-polyfill` behind a four-operation seam
 
