@@ -409,11 +409,12 @@ delivery can never tear a frame: `deliver` stores a payload and sets a flag, and
 paint happens a whole frame later.
 
 **All six marks paint today** — `hdml-line`, `hdml-rule`, `hdml-area`, `hdml-bar`,
-`hdml-point` and `hdml-arc` — and the other fourteen
-`scene()` implementations still return `null`, which is a **contract-complete answer**
-— "returns null to paint nothing (hidden, errored, or still loading)". Eight of those
-return it permanently: the view, both planes, the three scales and both containers emit
-no group at all. Widget bodies arrive per slice and replace nothing around them.
+`hdml-point` and `hdml-arc` — as do two of the five guides, `hdml-axis` and
+`hdml-grid`. The other twelve `scene()` implementations still return `null`, which is a
+**contract-complete answer** — "returns null to paint nothing (hidden, errored, or
+still loading)". Eight of those return it permanently: the view, both planes, the three
+scales and both containers emit no group at all. Widget bodies arrive per slice and
+replace nothing around them.
 
 A mark reaches its scales through the chain and its geometry through the **`Projection`**
 its plane supplies ([src/hdvl/mark.ts](../src/hdvl/mark.ts)). That indirection is the

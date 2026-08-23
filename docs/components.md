@@ -196,9 +196,9 @@ Sort the frame by one or more fields. No attributes; per-field direction comes f
 
 The display half registers **21 tags**, in seven families
 ([`HDVL_FAMILIES`](../src/hdvl/vocabulary.ts)): `view`, `plane`, `scale`, `mark`,
-`container`, `guide`, `fallback`. Thirteen of them have bodies as of this commit — the four
-structural elements, the three scales and **all six marks** — see
-[Registered but inert](#registered-but-inert) for the eight that do not.
+`container`, `guide`, `fallback`. Fifteen of them have bodies as of this commit — the four
+structural elements, the three scales, **all six marks** and two of the five guides — see
+[Registered but inert](#registered-but-inert) for the six that do not.
 
 Two constructed UA stylesheets ([`src/hdvl/ua.ts`](../src/hdvl/ua.ts)) supply every box
 default. The **element sheet** is adopted by every HDVL shadow root as one shared instance and
@@ -226,12 +226,15 @@ whole subtree — including an unupgraded `hdml-fallback` — from the accessibi
 | **Attributes** | `source` — the default data source for the subtree, nearest-ancestor-wins |
 | **Children** | any number of planes, plus at most one `hdml-fallback` |
 | **UA box** | `display: block; aspect-ratio: 2 / 1; position: relative` — a 2∶1 graphics box with no CSS at all, so `width: 100%` alone yields a chart rather than a collapsed box |
-| **States** | `:state(loading)` from connect. Nothing clears it yet: with no frame, every widget's scene is empty, which is exactly what `loading` describes |
+| **States** | `:state(loading)` from connect, and **derived** from the first frame on — from §3.4's quantifier over the reconciler's desired set. `:state(empty)` is computed from the frame's **mark**-node count and gated on `loading`, so the two can never both be set; `:state(error)` is the validator's and `:state(hover)` the pointer path's |
 
-Its `<svg>` is created in the SVG namespace and sized to the view; **nothing draws into it
-yet** — the renderer is a later slice. The `ResizeObserver`, the resolution index and the
-frame scheduler are likewise not here; `invalidate()` currently sets a flag and bumps a
-counter (`view.dirty` / `view.dirtyCount`).
+Its `<svg>` is created in the SVG namespace, sized to the view, and is **the one surface the
+whole view paints into** — the SVG renderer diffs against it by `(widget uid, node index)`.
+The view also owns the single `ResizeObserver` over itself and every descendant, the
+capturing `transitionrun` listener for the UA sentinel, the resolution index, and the
+coalescing one-`requestAnimationFrame` MEASURE → COMPUTE → PAINT loop. `invalidate()` marks
+the view dirty and requests a frame (`view.dirty` / `view.dirtyCount` / `view.framesRun`
+expose the coalescing for assertions).
 
 ### `hdml-cartesian-plane` · `hdml-polar-plane` — [plane-cartesian.ts](../src/hdvl/plane-cartesian.ts) · [plane-polar.ts](../src/hdvl/plane-polar.ts)
 
@@ -474,9 +477,61 @@ guides, and it paints nothing meanwhile. Both marks are **filled** and neither s
 both carry a **per-row `color`** honestly, which is why the varying-`color` error is the two
 path widgets' alone.
 
+### `hdml-axis` · `hdml-grid` — [guide-axis.ts](../src/hdvl/guide-axis.ts) · [guide-grid.ts](../src/hdvl/guide-grid.ts)
+
+The first two of the five guides. A guide takes **no `source`**, binds no columns and
+implements no `Binder`: it is a function of the resolved scale, its own box and its computed
+style. Its one input from the document is `channel`, and a channel with no scale in scope is
+already V1's error — the same condition the geometry sees as "nothing to span".
+
+| | |
+|---|---|
+| **`hdml-axis` attributes** | `channel` — **and nothing else**. §6.5 is explicit that it takes no `count`/`step`/`values`, and `AXIS_ATTRS_LIST` has one member, so the whole-range span is not a default that could be argued down |
+| **`hdml-grid` attributes** | `channel`, `count`, `step`, `values` |
+| **Parent** | a scale (its containing block, so CSS placement resolves against the plot area) |
+| **Emits** | axis: one stroked `path` over the whole range. grid: one `path` per tick, across the plane |
+| **Group role** | `guide` — never `mark`, which is what keeps `:state(empty)` a statement about data |
+
+**What an axis spans is the scale's `range()`, not its own box** — §4.3 gives a positional
+scale a range taken from *that scale's* content box, the same rule `hdml-rule` follows.
+**Where it sits across that span is its own box**: the edge nearest the scale, derived from
+the two measured boxes by [guide-spec.ts](../src/hdvl/guide-spec.ts). Below the plot that is
+the top edge; above it, the bottom one. Nothing is authored — SPEC §7 gives the tag no
+`position` attribute — so moving the guide with one CSS rule moves the line with it.
+`hdml-label` reuses the identical derivation for its anchor and baseline.
+
+**A grid's positions come from `scale.ticks(spec)` and are never re-derived.** §4.8's ladders
+have one implementation and `kernel/` owns it, so a grid and a label written with the same
+`step=` land on the same pixels because there is one generator, not because two agree. The
+three attributes are *modes*, not options — `step=` states the interval exactly and invokes
+no tick algorithm — and a guide **forwards** all three rather than resolving between them:
+`Scale.ticks` tests `values`, then `step`, then `count`, and that is the whole of the
+precedence. Writing two of them is V16's error, from step 24. An attribute present but empty
+reads as absent. On an **ordinal** scale a grid lands on band **centres**, never edges.
+
+A guide node carries `i: -1` and **no vertices**: `i` is a source row index and `vertices`
+are projected *data* vertices, and a guide has neither. Hit resolution therefore never
+resolves to a guide, which is correct — it implements no `datumAt` and could answer nothing.
+
+The `--hdml-grid-shape` `circle` / `polygon` forms, and every guide under a polar plane, land
+with `hdml-pie` in Slice F. Until then a guide resolved under a polar plane paints **nothing**
+rather than a straight segment through polar space.
+
+**UA placement (SPEC §3).** An x-channel `hdml-axis` / `hdml-tick` / `hdml-label` is placed
+just below the plot (`top: 100%`), a y-channel one just left of it (`right: 100%`), each
+spilling into the plane's gutter — which is what the gutter is for, and why the two take
+their extent (`24px` high, `40px` wide) from the very numbers that set the plane's padding.
+`hdml-grid` needs **no rule of its own**: the generic `:host` box rule is already `inset: 0`,
+which is SPEC §3's grid row verbatim. Each placement rule **resets the opposite offset
+explicitly** (`bottom: auto`, `left: auto`); without that, `inset: 0` would leave the far
+offset in force and over-constrain the box to zero extent — a guide that renders, measures
+nothing, and reports no error. Every rule is `:host(<tag>[channel="…"])`, so it is
+host-qualified per tag *and* per channel, and any author rule from the outer document beats
+it.
+
 ### Registered but inert
 
-The other eight tags are **registered as of this commit and carry no behaviour yet** —
+The other six tags are **registered as of this commit and carry no behaviour yet** —
 each declares its tag, its family and its observed attributes, and nothing else. They are
 listed here so the tag surface is discoverable; do not read an entry as a description of
 working behaviour.
@@ -484,8 +539,6 @@ working behaviour.
 | Tag | Family | Module | Body lands in |
 |---|---|---|---|
 | `hdml-pie` | mark | [layout-pie.ts](../src/hdvl/layout-pie.ts) | Slice F |
-| `hdml-axis` | guide | [guide-axis.ts](../src/hdvl/guide-axis.ts) | Slice E |
-| `hdml-grid` | guide | [guide-grid.ts](../src/hdvl/guide-grid.ts) | Slice E |
 | `hdml-tick` | guide | [guide-tick.ts](../src/hdvl/guide-tick.ts) | Slice E |
 | `hdml-label` | guide | [guide-label.ts](../src/hdvl/guide-label.ts) | Slice E |
 | `hdml-legend` | guide | [guide-legend.ts](../src/hdvl/guide-legend.ts) | Slice H |

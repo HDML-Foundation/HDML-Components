@@ -444,6 +444,74 @@ which is the one thing the frame's phase separation exists to forbid. A mark pai
 unresolved string paints correctly; only the legend's ramp *bar* needs a resolved value,
 and that is one read for one element.
 
+## A guide forwards `count`/`step`/`values`; it resolves between them nowhere
+
+§6.5 makes the three *"mutually exclusive (V16)"*, and SPEC §7 makes them **modes**
+rather than options — *"`step=` states the interval exactly and invokes no tick
+algorithm"*. So an author who writes two of them has asked two questions at once, and
+V16 (step 24) reports it. But the page paints meanwhile, which means some answer is
+owed *before* the diagnostic exists, and the tempting move — pick one in
+`guide-spec.ts` — is the wrong one.
+
+`Scale.ticks` already has a precedence, and publishes it: `ticksFor` tests `values`,
+then `step`, then `count`, and `kernel/scale-band.ts`'s `thinOrdinal` does the same in
+the same order, its own doc comment saying it *"states the precedence it applies if
+more than one arrives anyway"*. A second resolution in the guide would be a second
+ladder entry point in all but name — R12's exact failure mode — and the two could
+drift apart. So [`tickSpecOf`](../src/hdvl/guide-spec.ts) parses each attribute
+independently and forwards **every** member the author wrote. A guide states no
+precedence because it has none to state.
+
+The same function reads an attribute that is present but **empty** as absent, which is
+what lets one fixture helper spell all four cases; and it parses `values` as literal
+JSON **locally** rather than through `mark.ts`'s `slotValuesOf`. That reader classifies
+SPEC §5's *binding* grammar, where a bare identifier names a column and a bare number
+broadcasts — neither of which means anything on an element that binds nothing. Reusing
+it would have silently accepted `values="units"` as a tick list.
+
+## An axis's line sits on its own box's near edge, derived from two measured boxes
+
+§6.5 says what an axis spans — the whole range — and says nothing about where it sits
+across that span, because SPEC §7 has already answered: *"placement is pure CSS… no
+`position` attribute"*. There is therefore nothing to read, and the answer has to be
+**derived**: the line goes on the edge of the guide's own content box nearest the scale
+it serves, measured against the scale's content-box **centre** rather than its near
+edge, so a guide overlapping the plot still has one answer instead of a tie between two
+zero distances.
+
+That gives the placements SPEC §3 describes without encoding them: a guide in the bottom
+gutter draws on its **top** edge, one moved above the plot on its **bottom** edge, one in
+the left gutter on its **right**. It is also why the derivation lives in
+[`guide-spec.ts`](../src/hdvl/guide-spec.ts) rather than in the axis — §6.5 derives
+`hdml-label`'s anchor and baseline from the identical fact, and two implementations of
+"which side faces the plot" could disagree about a guide the author moved.
+
+## The guide placement rules reset the opposite offset, and state an extent
+
+This one looks like noise and is load-bearing. The element sheet's generic rule is
+`:host { position: absolute; inset: 0 }`, and `inset` is **four longhands**. SPEC §3's
+idiom for an x-channel guide is `top: 100%` — but `top: 100%` *alone* leaves `bottom: 0`
+in force, and an absolutely positioned box with both offsets and `height: auto` is
+over-constrained: its used height is *containerHeight − containerHeight − 0*, i.e.
+**zero**. A zero-high guide measures as a zero box and every scene it produces is
+geometry against nothing — and it renders, silently, with no diagnostic and no failing
+assertion anywhere near the cause.
+
+`bottom: auto` alone does not fix it either: the box would then shrink-to-fit shadow
+content whose `.plot` is `height: 100%` of an indefinite height. So each rule carries a
+third declaration — `height: 24px` for the x row, `width: 40px` for the y — and those
+numbers are not written twice: [`ua.ts`](../src/hdvl/ua.ts) builds both the plane's
+`padding` and the guides' extent from one `GUTTER` object, because SPEC §3 calls that
+padding *"the gutter the guide defaults spill into"* and a gutter that disagreed with
+what spills into it is invisible in a scene assertion.
+
+The corpus pages never hit any of this: they were written against no UA sheet at all and
+set three offsets each, which is why the trap survived until the sheet existed.
+
+`hdml-grid` gets **no rule of its own**, deliberately. SPEC §3's grid row is `inset: 0`
+over the plot area, which the generic `:host` rule already *is*. A redundant rule would
+be harmless and would also be a thing a later reader trusts as load-bearing.
+
 ## `transitionrun` replaces the document-wide `MutationObserver`
 
 A chart has to repaint when its **CSS** changes, not only when its markup or its data

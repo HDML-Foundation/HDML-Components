@@ -81,6 +81,42 @@ async function settle(root: Element): Promise<void> {
   }
 }
 
+/** A box in the view's own coordinates (§2.7), rounded to px. */
+function rectOf(
+  view: Element,
+  el: Element,
+): { x: number; y: number; w: number; h: number } {
+  const origin = view.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  return {
+    x: Math.round(r.left - origin.left),
+    y: Math.round(r.top - origin.top),
+    w: Math.round(r.width),
+    h: Math.round(r.height),
+  };
+}
+
+/**
+ * A view carrying one zero-CSS `hdml-axis` on a channel, with the
+ * UA plane gutter in force.
+ */
+async function placed(
+  channel: "x" | "y",
+): Promise<[HdmlViewElement, ReturnType<typeof rectOf>]> {
+  const view = await fixture<HdmlViewElement>(html`
+    <hdml-view style="width: 400px; height: 200px">
+      <hdml-cartesian-plane>
+        ${channel === "x"
+          ? html`<hdml-axis channel="x"></hdml-axis>`
+          : html`<hdml-axis channel="y"></hdml-axis>`}
+      </hdml-cartesian-plane>
+    </hdml-view>
+  `);
+  await settle(view);
+  const axis = <Element>view.querySelector("hdml-axis");
+  return [view, rectOf(view, axis)];
+}
+
 suite("hdvl/ua — the element sheet", () => {
   teardown(() => {
     planted.forEach((el) => el.remove());
@@ -242,6 +278,102 @@ suite("hdvl/ua — the element sheet", () => {
     assert.strictEqual(ratioOf(view), "2/1");
     assert.strictEqual(ratioOf(axis), "auto");
     assert.strictEqual(getComputedStyle(axis).paddingLeft, "0px");
+  });
+
+  test("★ a zero-CSS x guide lands in the gutter", async () => {
+    // SPEC §3: "x-channel guides just below the plot (the
+    // `top: 100%` idiom)". The trap the rule exists to dodge is the
+    // generic `:host { inset: 0 }`: `top: 100%` alone leaves
+    // `bottom: 0` in force, which over-constrains the box to a used
+    // height of ZERO — it renders, silently, measuring nothing.
+    const [view, box] = await placed("x");
+    const axis = <Element>view.querySelector("hdml-axis");
+    assert.strictEqual(getComputedStyle(axis).position, "absolute");
+    assert.strictEqual(getComputedStyle(axis).height, "24px");
+    assert.strictEqual(getComputedStyle(axis).width, "352px");
+    // …and the box that produces: the full plot width, in the
+    // plane's 24px bottom gutter, immediately below the plot.
+    assert.isAbove(box.h, 0);
+    assert.deepEqual(box, { x: 40, y: 176, w: 352, h: 24 });
+  });
+
+  test("★ a zero-CSS y guide lands left of the plot", async () => {
+    const [view, box] = await placed("y");
+    const axis = <Element>view.querySelector("hdml-axis");
+    assert.strictEqual(getComputedStyle(axis).width, "40px");
+    assert.strictEqual(getComputedStyle(axis).height, "168px");
+    assert.isAbove(box.w, 0);
+    assert.deepEqual(box, { x: 0, y: 8, w: 40, h: 168 });
+  });
+
+  test("★ an author rule beats it, on both rows", async () => {
+    // §3.2's cascade fact, which is the whole reason SPEC §3's
+    // defaults are `:host` rules: an outer-document rule matching
+    // the element wins, wherever it was written.
+    adoptScratch(
+      'hdml-axis[channel="x"] { top: 0; height: 12px }\n' +
+        'hdml-axis[channel="y"] { right: auto; left: 0; width: 9px }',
+    );
+    const [xView, xBox] = await placed("x");
+    assert.deepEqual(xBox, { x: 40, y: 8, w: 352, h: 12 });
+    const [yView, yBox] = await placed("y");
+    assert.deepEqual(yBox, { x: 40, y: 8, w: 9, h: 168 });
+    assert.isNotNull(xView.shadowRoot);
+    assert.isNotNull(yView.shadowRoot);
+  });
+
+  test("★ the placement rules keep the sentinel", async () => {
+    // R24, mechanically. A `transition` shorthand in either new
+    // rule would replace the generic `:host` declaration WHOLESALE
+    // and silently force the fallback observer on for the view.
+    const view = await fixture<HdmlViewElement>(html`
+      <hdml-view style="width: 400px; height: 200px">
+        <hdml-cartesian-plane>
+          <hdml-axis channel="x"></hdml-axis>
+          <hdml-axis channel="y"></hdml-axis>
+          <hdml-grid channel="x"></hdml-grid>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    await settle(view);
+    for (const el of Array.from(view.querySelectorAll("*"))) {
+      const listed = getComputedStyle(el)
+        .transitionProperty.split(",")
+        .map((s) => s.trim());
+      assert.include(listed, SENTINEL_MARKER, el.localName);
+      assert.include(listed, "inset", el.localName);
+    }
+    assert.isFalse(view.observingFallback);
+  });
+
+  test("★ no other host picks up a guide's box", async () => {
+    // R33: one sheet reaches every host, so a rule that was not
+    // host-qualified would put the gutter on marks and on the view.
+    const view = await fixture<HdmlViewElement>(html`
+      <hdml-view style="width: 400px; height: 200px">
+        <hdml-cartesian-plane>
+          <hdml-bar x="a" y="b" channel="x"></hdml-bar>
+          <hdml-grid channel="x"></hdml-grid>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    await settle(view);
+    const bar = <Element>view.querySelector("hdml-bar");
+    const grid = <Element>view.querySelector("hdml-grid");
+    // The bar even carries a `channel="x"` attribute — the selector
+    // is host-qualified by TAG as well, so it still does not match.
+    assert.strictEqual(getComputedStyle(bar).height, "168px");
+    assert.strictEqual(rectOf(view, bar).y, 8);
+    // SPEC §3's grid row is `inset: 0`, which the generic `:host`
+    // rule already is — no rule of its own, and none needed.
+    assert.deepEqual(rectOf(view, grid), {
+      x: 40,
+      y: 8,
+      w: 352,
+      h: 168,
+    });
+    // And the view keeps its own row.
+    assert.strictEqual(getComputedStyle(view).position, "relative");
   });
 
   test("a document rule cannot reach a shadow plot", async () => {

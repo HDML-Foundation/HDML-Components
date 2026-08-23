@@ -30,13 +30,30 @@
  * @module hdvl/ua
  */
 
-import { HDVL_TAG_NAMES } from "./vocabulary";
+import type { Channel } from "./resolve";
+import { AXIS_ATTRS_LIST, HDVL_TAG_NAMES } from "./vocabulary";
 import { HDVL_PROPERTIES } from "./properties";
 
 const VIEW = HDVL_TAG_NAMES.VIEW;
 const CARTESIAN = HDVL_TAG_NAMES.CARTESIAN_PLANE;
 const POLAR = HDVL_TAG_NAMES.POLAR_PLANE;
 const FALLBACK = HDVL_TAG_NAMES.FALLBACK;
+
+/**
+ * SPEC §3's cartesian plane padding — *"the gutter the guide
+ * defaults spill into; without it, zero-CSS guides would clip at
+ * the view edge"*.
+ *
+ * It is a named object rather than four numbers in a string
+ * because the **guide placement rules below take their extent from
+ * the same members**. A gutter and a guide box that disagreed would
+ * either clip the guide at the view edge or leave dead space under
+ * the plot, and neither is visible in a scene assertion.
+ */
+const GUTTER = { top: 8, right: 8, bottom: 24, left: 40 };
+
+/** SPEC §3's polar plane padding. */
+const POLAR_GUTTER = 8;
 
 /**
  * The seven mark-painting hosts that clip to the plot area
@@ -55,6 +72,83 @@ const CLIPPED = [
 ]
   .map((tag) => `:host(${tag})`)
   .join(",\n");
+
+/**
+ * The three guides SPEC §3 places **per channel** — an axis, its
+ * ticks and its labels all sit in the same gutter, which is the
+ * whole point of a gutter. `hdml-grid` is not among them: it runs
+ * *across* the plane and is covered already (see
+ * {@link GUIDE_PLACEMENT}); `hdml-legend` sits inside the plot and
+ * lands at step 31.
+ */
+const PLACED = [
+  HDVL_TAG_NAMES.AXIS,
+  HDVL_TAG_NAMES.TICK,
+  HDVL_TAG_NAMES.LABEL,
+];
+
+/**
+ * ★ SPEC §3's positional-guide rows, per channel — *"x-channel
+ * guides just below the plot (the `top: 100%` idiom); y-channel
+ * guides just left (`right: 100%`)"*, spilling into
+ * {@link GUTTER}.
+ *
+ * Keyed by {@link Channel} rather than by a string so that a
+ * renamed channel is a compile error instead of a selector that
+ * silently stops matching; the key is read back out for the
+ * attribute selector, so no channel name is written as a literal
+ * (R8).
+ *
+ * **★ Each row resets the opposite offset, and states an extent.**
+ * This is not defensive noise and must not be "cleaned up". The
+ * generic `:host` rule declares `inset: 0` — four longhands — so
+ * `top: 100%` **alone** leaves `bottom: 0` in force, and an
+ * absolutely positioned box with both offsets and `height: auto`
+ * is over-constrained to a used height of *containerHeight −
+ * containerHeight − 0*, i.e. **zero**. A zero-high guide measures
+ * as a zero box and every scene it produces is geometry against
+ * nothing — and it renders, silently, with no diagnostic. Setting
+ * `bottom: auto` alone is not enough either: the box would then
+ * shrink-to-fit shadow content whose `.plot` is `height: 100%` of
+ * an indefinite height. Hence the third declaration, whose value
+ * is the gutter the guide is being placed into.
+ *
+ * The corpus pages do not hit any of this, because they were
+ * written against no UA sheet at all and set three offsets each.
+ */
+const GUIDE_PLACEMENT: Partial<Record<Channel, readonly string[]>> = {
+  x: [
+    "  top: 100%;",
+    "  bottom: auto;",
+    `  height: ${GUTTER.bottom}px;`,
+  ],
+  y: [
+    "  right: 100%;",
+    "  left: auto;",
+    `  width: ${GUTTER.left}px;`,
+  ],
+};
+
+/**
+ * {@link GUIDE_PLACEMENT} as CSS text.
+ *
+ * @returns The rules, as sheet lines.
+ */
+function guideRules(): string[] {
+  const attr = AXIS_ATTRS_LIST.CHANNEL;
+  const out: string[] = [];
+  for (const channel of Object.keys(GUIDE_PLACEMENT)) {
+    const decls = GUIDE_PLACEMENT[<Channel>channel];
+    if (decls === undefined) {
+      continue;
+    }
+    const selector = PLACED.map(
+      (tag) => `:host(${tag}[${attr}="${channel}"])`,
+    ).join(",\n");
+    out.push(`${selector} {`, ...decls, "}", "");
+  }
+  return out;
+}
 
 /**
  * The box properties the sentinel covers beyond the registry.
@@ -154,9 +248,18 @@ const ELEMENT_CSS = [
   "  inset: 0;",
   "  container-type: size;",
   "}",
-  `:host(${CARTESIAN}) { padding: 8px 8px 24px 40px }`,
-  `:host(${POLAR}) { padding: 8px }`,
+  `:host(${CARTESIAN}) {`,
+  `  padding: ${GUTTER.top}px ${GUTTER.right}px` +
+    ` ${GUTTER.bottom}px ${GUTTER.left}px;`,
+  "}",
+  `:host(${POLAR}) { padding: ${POLAR_GUTTER}px }`,
   "",
+  // SPEC §3's `hdml-grid` row — "inset: 0, over the plot area" —
+  // needs NO rule of its own: the generic `:host` above already IS
+  // that declaration, and a grid is the one guide that wants it
+  // unchanged. Stated rather than omitted, so a later reader does
+  // not add a rule that changes nothing and then trust it.
+  ...guideRules(),
   ".plot { position: relative; width: 100%; height: 100% }",
   "",
   `:host(${VIEW}) > slot { visibility: collapse }`,
