@@ -408,10 +408,25 @@ function of the snapshot rather than of whoever ran before it. It also means a D
 delivery can never tear a frame: `deliver` stores a payload and sets a flag, and
 paint happens a whole frame later.
 
-Every real `scene()` returns `null` today, which is a **contract-complete answer** —
-"returns null to paint nothing (hidden, errored, or still loading)" — so PAINT
-renders a real, empty `Scene`. Widget bodies arrive per slice and replace nothing
-around them.
+**Two widgets paint today** — `hdml-line` and `hdml-rule` — and the other eighteen
+`scene()` implementations still return `null`, which is a **contract-complete answer**
+— "returns null to paint nothing (hidden, errored, or still loading)". Eight of those
+return it permanently: the view, both planes, the three scales and both containers emit
+no group at all. Widget bodies arrive per slice and replace nothing around them.
+
+A mark reaches its scales through the chain and its geometry through the **`Projection`**
+its plane supplies ([src/hdvl/mark.ts](../src/hdvl/mark.ts)). That indirection is the
+point: a mark reads `Projection.channels` and never the strings `x` and `y`, so the polar
+plane's projection — one `compose` function, supplied by
+[plane-polar.ts](../src/hdvl/plane-polar.ts) — reaches every mark without a widget-level
+branch anywhere. The same seam collapses the three clauses of *out-of-domain, clipping and
+missing values* into a single `null`: a row that projects to `null` produces no mark, a
+path breaks rather than bridging, and a continuous value outside the domain projects
+truthfully and is clipped by the widget's own box rather than clamped into it.
+
+The end of the frame counts what COMPUTE produced twice: **mark** nodes decide
+`:state(empty)`, and **every** node is measured against the 20 000-node budget, which
+warns (W4) and keeps rendering — it never decimates and never truncates.
 
 ### The resolution index
 
@@ -473,7 +488,7 @@ one. It runs two passes, both always on in dev and prod builds:
 | Pass | Runs in | Rules |
 |---|---|---|
 | **structural** | `view.reindex()`, once per structural change, over the walk that just ran | V1 (a bound channel resolves to exactly one ancestor scale), V13 (a level is homogeneous), W2 (the view has an accessible name) |
-| **binding** | per widget in COMPUTE, on adopted data | none yet — the seam is named and empty until a resolved scale exists |
+| **binding** | after the frame, on adopted data and the scales COMPUTE resolved | V2 (the binding's data kind is the scale's tag kind; a `log` domain may not cross or touch zero), plus §4.7's **all-drop** — every row outside an ordinal domain errors on the scale |
 
 W5 and W6 are neither: both are flags MEASURE produced, reported from the same
 sink so they are edge-triggered like everything else.

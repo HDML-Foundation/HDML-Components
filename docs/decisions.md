@@ -150,6 +150,79 @@ scene, which the renderer's diff and `hdml-area`'s forward/reversed edge assembl
 would each have to special-case. A lone point that must be *visible* is
 `hdml-point`'s job, not a line's.
 
+## The plane supplies the `Projection`; a mark never names a channel
+
+A mark's geometry is *"a pure function from (adopted data ⊗ resolved scales ⊗ own box
+⊗ computed style)"*, and the piece that differs between a cartesian chart and a polar
+one is exactly one function: how two projected channel positions become a point. So
+that is the only piece a plane supplies.
+
+[`mark.ts`](../src/hdvl/mark.ts) declares `Projection` — `channels`, `scale`,
+`element`, `at`, `outOfDomain`, `point` — and `createProjection` implements all of it
+except the composition, which arrives as an argument.
+[`plane-cartesian.ts`](../src/hdvl/plane-cartesian.ts) passes the identity pair;
+`plane-polar.ts` will pass `polarPoint`. A mark reads `projection.channels[0]`, never
+the string `"x"`, so **the polar slice adds no widget-level branch to any of the six
+marks** — the grep that proves it is `"x"|"y"|"angle"|"radius"` over the mark bodies,
+which returns nothing.
+
+The rejected alternative is the one that writes itself: `chainScaleOf(ctx, this, "x")`
+and `"y"` inside each mark, with a `TODO: polar` beside it. It is smaller today and it
+costs six edits and six chances to disagree later — and the disagreements would be
+silent, because a mark that projects polar coordinates cartesianly still draws
+*something*.
+
+Two consequences worth stating, because both look like accidents from outside:
+
+- **The cartesian composition is the identity pair, and that is not a placeholder.** A
+  cartesian scale's range is taken from its own content box, and a box is measured in
+  view coordinates — so a projected `x` already *is* a view `x`. There is nothing left
+  to compose.
+- **§4.7's three clauses collapse into one `null`.** Missing, non-finite, and
+  outside-an-ordinal-domain all make `Projection.at` return `null`, so no widget
+  re-implements the drop rule and the two planes cannot disagree about when a row
+  drops. What the widget still owns is what a drop *means* for its own shape: a path
+  breaks, a discrete mark is omitted.
+
+## Every reader is keyed by slot, never by `x` and `y`
+
+The ranged forms (`x0`/`x1`, `y0`/`y1`, `a0`/`a1`, `r0`/`r1`) are spellings of their
+base channel, not channels of their own — and a layout container *compiles into* the
+ranged form rather than into a special case. So the mark base is written against
+**slots**: `CHANNEL_SLOTS` carries each channel's simple attribute *and* its ranged
+pair, `slotValuesOf` reads one slot, and `rowCountOf` takes a list of them.
+
+`hdml-line` and `hdml-rule` use the simple form only, and could have been written
+against a one-value-per-channel base in half the lines. They were not, because
+`hdml-area` and `hdml-bar` need two values per channel per row and `hdml-stack` needs
+to supply the lower one — and a base that assumed one value would have to be rewritten
+by the first of those, with both marks rewritten along with it.
+
+## §4.7's ordinal notice is a notice, not a diagnostic
+
+*"A value outside the domain produces no mark and one console notice naming the
+value."* It is emitted by [`validate.ts`](../src/hdvl/validate.ts), which is still the
+only module down here that writes to the console, and it is edge-triggered per
+`(element, channel, value)` like everything else — but it is **not** a `Diagnostic`
+and does not appear in `diagnosticsOf()`.
+
+Three reasons:
+
+- SPEC and the RFC both say *notice*. The six warnings are enumerated exhaustively and
+  none of them is this one.
+- Every diagnostic in the validator is a statement about the **composition** — what the
+  author wrote. An out-of-domain row is a statement about the **data**, which changes
+  between Tuesday and Wednesday without anybody editing the page.
+- The corpus gate asserts that a valid page produces no diagnostics. A page can be
+  perfectly valid and still meet a category the author filtered out, and a gate that
+  went red for it would be teaching the wrong lesson.
+
+The **all-drop** is the opposite case and *is* an error, on the scale: every row
+outside the domain is a mistyped column far more often than a filter, and the code
+`all-rows-dropped` already existed for it. It is filed under **V2**, whose pass asks
+whether the delivered data fits this scale — an all-drop being the strongest possible
+answer of *no*.
+
 ## `temporal-polyfill` behind a four-operation seam
 
 The kernel has exactly **one** runtime dependency, and it is the only one this package

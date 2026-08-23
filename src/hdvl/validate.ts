@@ -178,6 +178,12 @@ interface Memo {
   structural: Finding[];
   /** The last binding pass's findings. */
   binding: Finding[];
+  /**
+   * What COMPUTE reported this frame — §4.7's all-drop clause is
+   * decided by a **widget**, from data only the frame has, and is
+   * folded into the binding pass that runs immediately after it.
+   */
+  computed: Finding[];
 }
 
 const memos = new Map<HdmlViewElement, Memo>();
@@ -190,6 +196,7 @@ function memoOf(view: HdmlViewElement): Memo {
       warned: new Map(),
       structural: [],
       binding: [],
+      computed: [],
     };
     memos.set(view, memo);
   }
@@ -202,6 +209,33 @@ function memoOf(view: HdmlViewElement): Memo {
  * question; the tag name is a string here by construction.
  */
 const FALLBACK_TAG: string = HDVL_TAG_NAMES.FALLBACK;
+
+/** Compared as a string, for the same reason. */
+const RULE_TAG: string = HDVL_TAG_NAMES.RULE;
+
+/**
+ * R20's budget — *"above 20 000 scene nodes: warn (W4) and keep
+ * rendering. Never decimate, never truncate silently."*
+ */
+const NODE_BUDGET = 20000;
+
+/**
+ * The channels `hdml-rule` needs a scale for, bound or not.
+ *
+ * §6.1 spans a rule across *"the **other** channel's full range"*,
+ * so the channel it did **not** bind is load-bearing geometry: a
+ * `hdml-rule y="target"` with no `x` scale in scope has nothing to
+ * span. V1 constrains only bound channels, so that page validated
+ * and painted nothing.
+ *
+ * **The plan's scheduled D1 escalation, decided with the user on
+ * 2026-08-23**: it applies to `hdml-rule` **alone** — every other
+ * mark's missing channel is a step-22 V19 `missing-binding` case, so
+ * a general rule would report the same authoring mistake twice — and
+ * it is reported as **V1** with its existing code and message, since
+ * *"no scale for channel `x` in scope"* is exactly what is wrong.
+ */
+const SPANNING_CHANNELS: readonly Channel[] = ["x", "y"];
 
 /**
  * The channel-bearing attributes, and the base channel each one
@@ -279,6 +313,19 @@ function boundChannels(el: HdvlElement): Channel[] {
     }
   }
   return out;
+}
+
+/**
+ * The channels an element must resolve a scale for.
+ *
+ * For every element but `hdml-rule` that is exactly what it binds.
+ * See {@link SPANNING_CHANNELS} for why the rule is the exception.
+ */
+function requiredChannels(el: HdvlElement): readonly Channel[] {
+  if (el.family === "mark" && el.localName === RULE_TAG) {
+    return SPANNING_CHANNELS;
+  }
+  return boundChannels(el);
 }
 
 /** The display children of an element — a read of the index. */
@@ -475,6 +522,27 @@ function kindMismatchMessage(
   return `column "${column}" is ${got} — ${tag} takes ${takes}`;
 }
 
+function outOfDomainMessage(ch: Channel, value: string): string {
+  return (
+    `"${value}" is outside the "${ch}" domain — ` +
+    "the row produces no mark"
+  );
+}
+
+function allDroppedMessage(ch: Channel): string {
+  return (
+    `every row is outside the "${ch}" domain — ` +
+    "check the bound column"
+  );
+}
+
+function nodeBudgetMessage(nodes: number): string {
+  return (
+    `${nodes} scene nodes, over the ${NODE_BUDGET} budget — ` +
+    "rendering all of them"
+  );
+}
+
 function logDomainMessage(lo: number, hi: number): string {
   return (
     "a log domain cannot cross or touch zero — " +
@@ -510,7 +578,7 @@ function checkV1(el: HdvlElement, out: Finding[]): void {
     }
     return;
   }
-  for (const ch of boundChannels(el)) {
+  for (const ch of requiredChannels(el)) {
     if (res.chain[ch] === undefined) {
       out.push(
         error("V1", "no-scale-in-scope", el, noScaleMessage(ch), ch),
@@ -994,20 +1062,25 @@ function applyErrors(
 function applyWarnings(
   view: HdmlViewElement,
   found: Finding[],
-  live: ReadonlySet<HdvlElement>,
+  live?: ReadonlySet<HdvlElement>,
 ): void {
   const memo = memoOf(view);
-  for (const key of Array.from(memo.warned.keys())) {
-    const uid = key.slice(0, key.indexOf("|"));
-    let alive = false;
-    for (const el of live) {
-      if (el.uid === uid) {
-        alive = true;
-        break;
+  // A caller that does not enumerate the view's elements — the node
+  // budget, which is a property of the whole scene — must not
+  // re-arm every other warning by claiming nothing is alive.
+  if (live !== undefined) {
+    for (const key of Array.from(memo.warned.keys())) {
+      const uid = key.slice(0, key.indexOf("|"));
+      let alive = false;
+      for (const el of live) {
+        if (el.uid === uid) {
+          alive = true;
+          break;
+        }
       }
-    }
-    if (!alive) {
-      memo.warned.delete(key);
+      if (!alive) {
+        memo.warned.delete(key);
+      }
     }
   }
   for (const f of found) {
@@ -1087,13 +1160,145 @@ export function validateBindings(
   elements: readonly HdvlElement[],
   queue: EventQueue,
 ): void {
+  const memo = memoOf(view);
   const found: Finding[] = [];
   for (const el of elements) {
     checkV2(el, found);
   }
-  const memo = memoOf(view);
+  // §4.7's all-drop is decided in COMPUTE, by the widget that met
+  // the rows, and is drained here — the pass that runs immediately
+  // after the frame and already owns every data-dependent finding.
+  // Draining rather than accumulating is what makes recovery work:
+  // a frame in which no widget reports one leaves the bucket empty
+  // and `applyErrors` clears the state.
+  found.push(...memo.computed);
+  memo.computed = [];
   memo.binding = found;
   applyErrors(view, [...memo.structural, ...found], queue);
+}
+
+/**
+ * §4.7's ordinal clause: *"a value outside the domain produces no
+ * mark and one **console notice** naming the value."*
+ *
+ * **It is a notice, not a `Diagnostic`, and the distinction was
+ * taken with the user on 2026-08-23.** §4.7 says *notice*; §8.3
+ * enumerates W1–W6 exhaustively and none of them is this; and a row
+ * whose category is not in the domain is a statement about the
+ * **data**, where every `Diagnostic` in §8 is a statement about the
+ * **composition**. Filing it as a seventh warning would put it into
+ * `diagnosticsOf()` and so into every corpus gate's *"a valid page
+ * produces none"*, where a page can be perfectly valid and still
+ * meet a row the author filtered for. The all-drop **is** an error,
+ * and that is {@link reportAllRowsDropped}.
+ *
+ * Edge-triggered per `(element, channel, value)` through the same
+ * memo the warnings use (R25), so a resize drag notices nothing and
+ * a second distinct value notices once more. The key is
+ * `${uid}|…`-shaped, so {@link applyWarnings}'s re-arming drops it
+ * when the element leaves the view.
+ *
+ * @param el - The widget whose row dropped.
+ * @param channel - The channel that rejected it.
+ * @param value - The value, as the notice names it.
+ */
+export function noticeOutOfDomain(
+  el: HdvlElement,
+  channel: Channel,
+  value: string,
+): void {
+  const view = resolutionOf(el)?.view;
+  if (view === undefined) {
+    return;
+  }
+  const memo = memoOf(view);
+  const key = `${el.uid}|out-of-domain|${channel}|${value}`;
+  if (memo.warned.has(key)) {
+    return;
+  }
+  memo.warned.set(key, key);
+  console.warn(
+    `hdml ${label(el)} — ${outOfDomainMessage(channel, value)}`,
+    el,
+  );
+}
+
+/**
+ * §4.7's all-drop clause: *"If every row drops, the **scale**
+ * errors (an all-drop is a mistyped column far more often than a
+ * filter)."*
+ *
+ * Reported from a widget's `scene()` during COMPUTE and folded into
+ * the binding pass that runs immediately after the frame, so it
+ * edge-triggers, dispatches `hdml-error` and lands `:state(error)`
+ * through exactly the same path every other error does. The
+ * **scale** is the element and, by §3.5, its own unit.
+ *
+ * It is filed under **V2**, whose §8.3 row is the binding pass's
+ * *"does the delivered data fit this scale"* question — an all-drop
+ * is the strongest possible answer of *no*, and `all-rows-dropped`
+ * is already its own code.
+ *
+ * @param scale - The scale element whose domain rejected every row.
+ * @param channel - The channel it serves.
+ */
+export function reportAllRowsDropped(
+  scale: HdvlElement,
+  channel: Channel,
+): void {
+  const view = resolutionOf(scale)?.view;
+  if (view === undefined) {
+    return;
+  }
+  const memo = memoOf(view);
+  const finding = error(
+    "V2",
+    "all-rows-dropped",
+    scale,
+    allDroppedMessage(channel),
+    channel,
+  );
+  const identity = identityOf(finding);
+  for (const seen of memo.computed) {
+    if (seen.element === scale && identityOf(seen) === identity) {
+      return;
+    }
+  }
+  memo.computed.push(finding);
+}
+
+/**
+ * R20's node budget — **W4**, verbatim: *"above 20 000 scene nodes:
+ * warn and keep rendering. Never decimate, never truncate
+ * silently."*
+ *
+ * The count is over the **scene**, not over one widget, so this is
+ * the frame's question and not a mark's: `runFrame` totals what
+ * COMPUTE produced and the view brings the number here. Nothing in
+ * the pipeline reads the answer — that is the point of the rule.
+ *
+ * The count is part of the message and therefore part of R25's
+ * identity, so a growing scene re-warns with its new figure while a
+ * static one warns once. Dropping back under the budget dispatches
+ * nothing.
+ *
+ * @param view - The view that just painted.
+ * @param nodes - How many nodes its scene carried.
+ */
+export function validateNodeBudget(
+  view: HdmlViewElement,
+  nodes: number,
+): void {
+  const found: Finding[] = [];
+  if (nodes > NODE_BUDGET) {
+    found.push(
+      warning("W4", "node-budget", view, nodeBudgetMessage(nodes)),
+    );
+  } else {
+    // Re-arm, so a scene that crosses the budget again warns again.
+    memoOf(view).warned.delete(`${view.uid}|W4`);
+  }
+  applyWarnings(view, found);
 }
 
 /**

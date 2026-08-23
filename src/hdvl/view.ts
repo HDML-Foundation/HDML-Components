@@ -44,6 +44,7 @@ import {
   forgetView,
   validateBindings,
   validateMeasured,
+  validateNodeBudget,
   validateStructure,
 } from "./validate";
 import {
@@ -445,6 +446,11 @@ export class HdmlViewElement extends HdvlElement {
     // `writeState` mid-phase would invalidate style in the middle
     // of the pass that is reading it.
     validateBindings(this, elements, this.events);
+    // R20's W4. The scene is already painted, deliberately: the
+    // rule is "warn and keep rendering", so the warning follows the
+    // paint it did not prevent, and the count is of what was
+    // actually drawn rather than of what was proposed.
+    validateNodeBudget(this, result.nodes);
     // W5 and W6 — MEASURE produced both flags and reported
     // neither, because §8's warnings are edge-triggered (R25).
     if (

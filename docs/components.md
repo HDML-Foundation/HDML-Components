@@ -196,8 +196,9 @@ Sort the frame by one or more fields. No attributes; per-field direction comes f
 
 The display half registers **21 tags**, in seven families
 ([`HDVL_FAMILIES`](../src/hdvl/vocabulary.ts)): `view`, `plane`, `scale`, `mark`,
-`container`, `guide`, `fallback`. Only the four structural elements below have bodies as of
-this commit — see [Registered but inert](#registered-but-inert) for the rest.
+`container`, `guide`, `fallback`. Nine of them have bodies as of this commit — the four structural elements, the three
+scales and the first two marks — see [Registered but inert](#registered-but-inert) for
+the twelve that do not.
 
 Two constructed UA stylesheets ([`src/hdvl/ua.ts`](../src/hdvl/ua.ts)) supply every box
 default. The **element sheet** is adopted by every HDVL shadow root as one shared instance and
@@ -248,8 +249,10 @@ multidimensional space is built by the scale chain inside it.
 
 `container-type: size` is what makes `@container` — not `@media` — the correct selector for
 responsive guides: a chart in a 300 px sidebar must respond to the *plane*, not the viewport.
-The `Projection` each plane supplies lands with the frame (cartesian) and with the polar
-slice (polar).
+Each plane **supplies its own `Projection`** — the seam every mark projects through,
+declared in [mark.ts](../src/hdvl/mark.ts) and read duck-typed, so a mark never names a
+channel. The cartesian one is here; the polar one lands with the polar slice, and adds no
+branch to any widget.
 
 ### `hdml-fallback` — [src/hdvl/fallback.ts](../src/hdvl/fallback.ts)
 
@@ -345,17 +348,45 @@ bar are the same computed gradient because both call the same `paint()`.
 Each scale dispatches **`hdml-scale-change`** `{channel, domain, range}` when its resolved
 pair changes — a new delivery, a modifier re-resolving, or **its box resizing**.
 
+### `hdml-line` · `hdml-rule` — [mark-line.ts](../src/hdvl/mark-line.ts) · [mark-rule.ts](../src/hdvl/mark-rule.ts)
+
+The first two marks. Both are row-wise pure — mark *i* = f(row *i*, scales) — and both
+project through their plane's `Projection` rather than through `x` and `y`, so the polar
+plane reaches them without either file changing.
+
+| | |
+|---|---|
+| **`hdml-line` attributes** | `x`, `y`, `angle`, `radius`, `color`, `closed`, `source` |
+| **`hdml-rule` attributes** | `x`, `y`, `source` — **no visual channel** |
+| **Parent** | a chain-tip scale (or, later, a container) |
+| **Children** | none |
+| **UA box** | `position: absolute; inset: 0; overflow: hidden` — the `overflow` *is* SPEC §6's clip-to-the-plot-area rule, so an author rule beats it |
+
+`hdml-line` emits **one** stroked `path` for the whole series, `fill: null`, curved by
+`--hdml-curve-type`. Its node's `i` is therefore `-1` — a node built from every row has no
+single source row — and row identity lives in its `vertices`, which is also what hit
+resolution reads. `hdml-rule` emits **one path per row**, each carrying a real `i` and
+spanning the *other* channel's `range()` end to end; a rule therefore needs an ancestor
+scale for the channel it did **not** bind, and V1 says so with its usual message.
+
+A `null`, a non-finite, or a value outside an ordinal domain means the row produces **no
+mark**. A path *breaks* — a new subpath, a visible gap, never bridged, because each run is
+curved independently — and a discrete mark is simply omitted. Missing renders as *absent*,
+never as zero. An out-of-domain ordinal value prints one console notice naming it; if
+*every* row drops, the **scale** errors.
+
+A continuous value outside the domain **projects truthfully** and is clipped by the box,
+never clamped into it. A bound `color` channel wins over the sheet.
+
 ### Registered but inert
 
-The other fourteen tags are **registered as of this commit and carry no behaviour yet** —
+The other twelve tags are **registered as of this commit and carry no behaviour yet** —
 each declares its tag, its family and its observed attributes, and nothing else. They are
 listed here so the tag surface is discoverable; do not read an entry as a description of
 working behaviour.
 
 | Tag | Family | Module | Body lands in |
 |---|---|---|---|
-| `hdml-line` | mark | [mark-line.ts](../src/hdvl/mark-line.ts) | Slice D |
-| `hdml-rule` | mark | [mark-rule.ts](../src/hdvl/mark-rule.ts) | Slice D |
 | `hdml-area` | mark | [mark-area.ts](../src/hdvl/mark-area.ts) | Slice D |
 | `hdml-bar` | mark | [mark-bar.ts](../src/hdvl/mark-bar.ts) | Slice D |
 | `hdml-point` | mark | [mark-point.ts](../src/hdvl/mark-point.ts) | Slice D |

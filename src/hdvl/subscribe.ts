@@ -479,6 +479,149 @@ export function adoptedOf(
 }
 
 /**
+ * One row's value on one binding site, in **data space** — the unit
+ * §4.7 quantifies over. `null` is *missing*, never zero.
+ */
+export type CellValue = number | string | null;
+
+/** A delivered column, read row-wise. */
+export interface AdoptedColumn {
+  /** The delivery's own `rows` — the guaranteed row count. */
+  readonly rows: number;
+  /**
+   * Row `i`'s value, or `null` when the row-null mask says the cell
+   * is null, when the index is out of range, or when the delivery
+   * carried a domain and no values.
+   */
+  at(row: number): CellValue;
+}
+
+/** A column of nothing — a slot whose delivery has no values. */
+const EMPTY_COLUMN: AdoptedColumn = {
+  rows: 0,
+  at: (): CellValue => null,
+};
+
+/**
+ * D9's row-null bitmask as a predicate: bit `i` set = row `i` is
+ * null, LSB-first within each byte.
+ */
+function nullsOf(d: Delivery): (row: number) => boolean {
+  const mask = d.kind === "data" ? d.nulls : undefined;
+  if (mask === undefined) {
+    return (): boolean => false;
+  }
+  const bits = view(
+    Uint8Array,
+    mask.buffer,
+    mask.byteOffset,
+    mask.byteLength,
+    1,
+  );
+  if (bits === null) {
+    return (): boolean => false;
+  }
+  return (row: number): boolean =>
+    (bits[row >> 3] & (1 << (row & 7))) !== 0;
+}
+
+/**
+ * A typed-array view over a delivered buffer, or `null`.
+ *
+ * A buffer that has been transferred is **detached**, and building a
+ * view over one throws `RangeError`. This is read from a widget's
+ * `scene()`, so a throw would take the whole COMPUTE phase down and
+ * the validator could never report anything at all — the same
+ * argument `scale.ts`'s `zoneOf` makes about an unknown IANA zone.
+ */
+function view<T>(
+  ctor: new (b: ArrayBuffer, o: number, n: number) => T,
+  buffer: ArrayBuffer,
+  byteOffset: number,
+  byteLength: number,
+  size: number,
+): T | null {
+  try {
+    return new ctor(
+      buffer,
+      byteOffset,
+      Math.floor(byteLength / size),
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The delivered column adopted on one slot, read row-wise (§7.3,
+ * §4.7, D9).
+ *
+ * **Duty 4 holds here**: the buffer is shared by reference with
+ * every sibling subscriber, so this builds a *view* over it and
+ * copies nothing. Nothing derived is written back.
+ *
+ * The `type` decides the view — `string` values ride the structured
+ * clone as a `string[]`, `bigint` arrives as a `BigInt64Array`, and
+ * every other kind (number, and all three temporal families,
+ * normalised to ms at the edge) as a `Float64Array`.
+ *
+ * @param el - The bound element.
+ * @param slot - The binding site.
+ * @returns The column, or `null` when nothing terminal is adopted.
+ */
+export function adoptedColumn(
+  el: HdvlElement,
+  slot: Slot,
+): AdoptedColumn | null {
+  const d = adoptedOf(el, slot);
+  if (d === null || d.kind !== "data") {
+    return null;
+  }
+  const rows = d.rows;
+  const values = d.values;
+  if (values === undefined) {
+    // A `raw: false` subscription — a domain and no values. A scale
+    // wants exactly that; a mark bound to the same column has its
+    // own `raw: true` site.
+    return EMPTY_COLUMN;
+  }
+  const isNull = nullsOf(d);
+  if (Array.isArray(values)) {
+    const list = <readonly (string | null)[]>values;
+    return {
+      rows,
+      at: (row: number): CellValue =>
+        row < 0 || row >= rows || isNull(row)
+          ? null
+          : list[row] ?? null,
+    };
+  }
+  const buffer = values.buffer;
+  const from = values.byteOffset;
+  const size = values.byteLength;
+  const cells =
+    d.type.kind === "bigint"
+      ? view(BigInt64Array, buffer, from, size, 8)
+      : view(Float64Array, buffer, from, size, 8);
+  if (cells === null) {
+    return EMPTY_COLUMN;
+  }
+  return {
+    rows,
+    at: (row: number): CellValue => {
+      if (row < 0 || row >= rows || row >= cells.length) {
+        return null;
+      }
+      if (isNull(row)) {
+        return null;
+      }
+      const n = Number(cells[row]);
+      return Number.isFinite(n) ? n : null;
+    },
+  };
+}
+
+/**
  * Whether this element must paint **nothing** right now (§3.4's
  * painting clause, §3.5).
  *

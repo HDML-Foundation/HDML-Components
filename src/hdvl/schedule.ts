@@ -141,6 +141,12 @@ export interface FrameResult {
    * rows.
    */
   marks: number;
+  /**
+   * Every node in the scene, marks and guides alike — R20's budget
+   * is a property of the **view**, not of one widget, so it can
+   * only be counted where every `scene()` has already returned.
+   */
+  nodes: number;
 }
 
 /**
@@ -174,12 +180,14 @@ export function runFrame(input: FrameInput): FrameResult {
   };
   const groups: SceneGroup[] = [];
   let marks = 0;
+  let nodes = 0;
   for (const el of input.elements) {
     const group = el.scene(ctx);
     if (group === null) {
       continue;
     }
     groups.push(group);
+    nodes += group.nodes.length;
     if (group.role === "mark") {
       marks += group.nodes.length;
     }
@@ -197,5 +205,5 @@ export function runFrame(input: FrameInput): FrameResult {
   input.render(scene);
 
   phase = null;
-  return { scene, measured: snapshot.measured, marks };
+  return { scene, measured: snapshot.measured, marks, nodes };
 }
