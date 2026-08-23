@@ -49,8 +49,9 @@ import {
  * not a default it could be talked out of; there is no attribute
  * with which to ask for anything narrower. `AXIS_ATTRS_LIST` has
  * one member, which is that sentence enforced by the vocabulary,
- * and V16 adds the diagnostic for an author who writes one anyway
- * at step 24.
+ * and **V16** — live since step 24 — adds the diagnostic for an
+ * author who writes one anyway. It reports; it does not blank, so
+ * this element's scene is unmoved by one (§8.3).
  *
  * @tagname hdml-axis
  *

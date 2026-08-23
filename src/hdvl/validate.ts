@@ -24,7 +24,8 @@
  *   change, over the whole view, off the resolution index the same
  *   walk just built. It re-derives nothing: `chain`, `tip`,
  *   `container` and `unit` are all read. V1, V3, V4 (local refs),
- *   V8, V9, V10, V13, V18, V19, W2.
+ *   V8, V9, V10, V13, V14 (the ordinal clause), V16, V18, V19, V20
+ *   (the positional clause), W2.
  * - **binding** — per widget in COMPUTE, on adopted data. V2, V4
  *   (the runtime `absent`), V5.
  *
@@ -60,7 +61,9 @@ import {
   AREA_ATTRS_LIST,
   AXIS_ATTRS_LIST,
   CONTINUOUS_SCALE_ATTRS_LIST,
+  GRID_ATTRS_LIST,
   HDVL_TAG_NAMES,
+  LABEL_ATTRS_LIST,
   POINT_ATTRS_LIST,
 } from "./vocabulary";
 
@@ -273,6 +276,40 @@ const CARTESIAN_TAG: string = HDVL_TAG_NAMES.CARTESIAN_PLANE;
 
 /** See {@link RULE_TAG}. */
 const POLAR_TAG: string = HDVL_TAG_NAMES.POLAR_PLANE;
+
+/** See {@link RULE_TAG}. */
+const AXIS_TAG: string = HDVL_TAG_NAMES.AXIS;
+
+/**
+ * §6.5's four **positional** guides — V16's and V20's scope in this
+ * step.
+ *
+ * `hdml-legend` is the fifth member of the `guide` family and is
+ * deliberately **absent**: its halves of both rules are conditioned
+ * on a *continuous resolved color scale* (SPEC §7, V20(b)) and land
+ * with the element itself at step 31. A legend added here would have
+ * to guess that condition against a tag that paints nothing yet.
+ */
+const POSITIONAL_GUIDES: readonly string[] = [
+  <string>HDVL_TAG_NAMES.AXIS,
+  <string>HDVL_TAG_NAMES.TICK,
+  <string>HDVL_TAG_NAMES.LABEL,
+  <string>HDVL_TAG_NAMES.GRID,
+];
+
+/**
+ * §6.5's `spec`, as attribute names — *"`count`, `step` or `values`,
+ * mutually exclusive"*.
+ *
+ * `hdml-grid`'s enum supplies all three because the names are one
+ * vocabulary across the four tags, which is the reading
+ * `guide-spec.ts` already takes of the same three attributes.
+ */
+const SPEC_ATTRS: readonly string[] = [
+  GRID_ATTRS_LIST.COUNT,
+  GRID_ATTRS_LIST.STEP,
+  GRID_ATTRS_LIST.VALUES,
+];
 
 /** SPEC §5's bindable-identifier form: a letter or `_`, then word. */
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -663,6 +700,58 @@ function logDomainMessage(lo: number, hi: number): string {
   );
 }
 
+/** `["count", "step", "values"]` → `"count, step and values"`. */
+function attrList(attrs: readonly string[]): string {
+  return attrs.length < 2
+    ? attrs.join("")
+    : `${attrs.slice(0, -1).join(", ")} and ${
+        attrs[attrs.length - 1]
+      }`;
+}
+
+function exclusiveSpecMessage(
+  attrs: readonly string[],
+  el: Element,
+): string {
+  return (
+    `${attrList(attrs)} are mutually exclusive — ` +
+    `keep one on <${markup(el)}>`
+  );
+}
+
+function axisSpecMessage(
+  tag: string,
+  attrs: readonly string[],
+): string {
+  return (
+    `${tag} takes no count, step or values — it spans the ` +
+    `whole range; remove ${attrList(attrs)}`
+  );
+}
+
+/**
+ * SPEC §7's own words for the `color` instance, verbatim:
+ * *"the color channel has no positions — use `hdml-legend`"*.
+ *
+ * `size` is the other non-positional channel and has no legend to be
+ * sent to — `hdml-legend` binds `channel="color"` in v1 — so it
+ * names the four channels a positional guide can address instead.
+ * One code, one rule, two fixes, because the fix really does differ.
+ */
+function guideChannelMessage(ch: Channel): string {
+  return ch === "color"
+    ? "the color channel has no positions — use hdml-legend"
+    : `the ${ch} channel has no positions — a guide binds ` +
+        "x, y, angle or radius";
+}
+
+function ordinalFormatMessage(): string {
+  return (
+    "format applies to a continuous or datetime channel — " +
+    "an ordinal channel renders its domain strings verbatim"
+  );
+}
+
 // ---------------------------------------------------------------
 // V1 · V13 · W2 — the structural rules
 // ---------------------------------------------------------------
@@ -798,7 +887,7 @@ function checkV13(el: HdvlElement, out: Finding[]): void {
  * says uses the same first-character grammar.
  *
  * A guide's `values` is a `TickSpec` literal governed by V16 and is
- * deliberately not scanned here — step 24 owns it.
+ * deliberately not scanned here — {@link checkV16} owns it.
  */
 function boundValues(el: HdvlElement): [string, string][] {
   const out: [string, string][] = [];
@@ -1192,6 +1281,185 @@ function checkV19(el: HdvlElement, out: Finding[]): void {
       ),
     );
   }
+}
+
+// ---------------------------------------------------------------
+// V20 · V16 · V14 — the guide's own structural rules
+//
+// ★ All three are STRUCTURAL and none of them could be anything
+// else. V16 reads attributes; V20 and V14 read the resolved scale's
+// **tag**, which SPEC §6 makes its kind — a static tree lookup, and
+// never a cascade lookup, which is the line SPEC §7 says finding
+// 11's modal-tick ban actually draws. None needs a frame.
+//
+// ★ THE ORDER IS THE CONTRACT, and `applyErrors` enforces it: a
+// unit carries the FIRST finding in `found`, so whichever check runs
+// first is the message an author sees.
+//
+//   1. V20 runs before EVERYTHING, V1 included. An
+//      `hdml-axis channel="color"` cannot address that channel at
+//      all, so "add a color scale" is a fix that leads nowhere and
+//      "use hdml-legend" is the one that works.
+//   2. V16 runs after V1/V19 and before V14. A page with no scale in
+//      scope paints nothing whatever its tick spec says, so the
+//      missing scale is the more fundamental report; a contradictory
+//      spec is in turn more fundamental than an inert `format`,
+//      because it decides which values there are to format.
+//
+// This is V9-before-V19's rule applied twice more: one unit, one
+// diagnostic, and the one that fixes the page.
+// ---------------------------------------------------------------
+
+/**
+ * V20(a) — **channel–guide fit**, positional half.
+ *
+ * SPEC §7: *"`hdml-axis`/`hdml-tick`/`hdml-label`/`hdml-grid`
+ * binding a non-positional channel is an error naming the fix"*. A
+ * visual channel's range is a palette or a size ramp, not a place,
+ * so there is nothing for a guide to repeat *along*.
+ *
+ * It is decided from the guide's own `channel` attribute and needs
+ * no scale in scope: `color` has no positions whether or not a color
+ * scale exists, which is exactly why this must beat V1.
+ *
+ * **V20(b) — the legend's continuous-scale requirement — is step
+ * 31's**, with the element it constrains. See
+ * {@link POSITIONAL_GUIDES}.
+ */
+function checkV20(el: HdvlElement, out: Finding[]): void {
+  if (
+    el.family !== "guide" ||
+    !POSITIONAL_GUIDES.includes(el.localName)
+  ) {
+    return;
+  }
+  const ch = channelOf(el.getAttribute(AXIS_ATTRS_LIST.CHANNEL));
+  if (ch === null || POSITIONAL.includes(ch)) {
+    return;
+  }
+  out.push(
+    error(
+      "V20",
+      "channel-guide-fit",
+      el,
+      guideChannelMessage(ch),
+      ch,
+    ),
+  );
+}
+
+/**
+ * V16 — **guide attributes**. Two clauses, one code.
+ *
+ * SPEC §7: *"the three are mutually exclusive"*, and *"`hdml-axis`
+ * takes no `count`/`step`/`values`: it spans the range rather than
+ * marking positions in it"*.
+ *
+ * **Presence is what counts, not effectiveness** — V18's reading of
+ * the same question. `count="abc"` is dropped by `tickSpecOf` and is
+ * still an author who wrote `count` beside `step`, having asked two
+ * questions at once; SPEC §7 makes the three *modes* rather than
+ * options, which is why the co-occurrence is the error rather than
+ * the resolution of it.
+ *
+ * **And it reports; it does not stop the paint** (§8.3). The
+ * precedence `Scale.ticks` and `thinOrdinal` publish still applies,
+ * so the page still says something — `guide-axis.test.ts`'s "a tick
+ * spec on this tag changes nothing" asserts exactly that and holds
+ * across this step.
+ *
+ * It reports **once per element**, naming every attribute involved:
+ * an author who wrote all three made one mistake.
+ */
+function checkV16(el: HdvlElement, out: Finding[]): void {
+  if (
+    el.family !== "guide" ||
+    !POSITIONAL_GUIDES.includes(el.localName)
+  ) {
+    return;
+  }
+  const written = SPEC_ATTRS.filter((attr) => declared(el, attr));
+  if (written.length === 0) {
+    return;
+  }
+  if (el.localName === AXIS_TAG) {
+    out.push(
+      error(
+        "V16",
+        "exclusive-guide-attrs",
+        el,
+        axisSpecMessage(el.localName, written),
+      ),
+    );
+    return;
+  }
+  if (written.length > 1) {
+    out.push(
+      error(
+        "V16",
+        "exclusive-guide-attrs",
+        el,
+        exclusiveSpecMessage(written, el),
+      ),
+    );
+  }
+}
+
+/**
+ * V14's **ordinal clause** — `format` where there is nothing to
+ * format.
+ *
+ * ★ **The plan's scheduled D1 escalation for step 24, decided with
+ * the user on 2026-08-23**, resolved to the recommended default.
+ *
+ * The gap: SPEC §7 files `count`/`step`/`values`/`format` over an
+ * **ordinal legend** under V20 and files nothing at all for the same
+ * `format` on an ordinal `hdml-label`, where `Scale.format` returns
+ * `String(v)` and ignores the skeleton entirely. So one authoring
+ * mistake was an error on one guide and silent on the other — §1.5's
+ * shape, if a weak one: the author is not shown a wrong chart, they
+ * are shown a chart that ignored them.
+ *
+ * It is filed as **V14** rather than V20 because V14 is *"format
+ * skeleton well-formed and matches the channel kind"* and SPEC's own
+ * words give it *"agreement with the channel's scale kind is then a
+ * separate check with its own message"* — this is that check, with a
+ * message symmetric to the *"date skeleton on a continuous channel"*
+ * one SPEC quotes. Filing it as V20 would cost `channel-guide-fit`
+ * its meaning, which is *this guide cannot address this channel at
+ * all*.
+ *
+ * **V14's other two clauses are still step 31's** — well-formedness
+ * and the disjoint token spaces, which `skeletonKind` already
+ * classifies — and so is the legend's half of this one.
+ */
+function checkV14(el: HdvlElement, out: Finding[]): void {
+  if (
+    el.family !== "guide" ||
+    el.localName !== <string>HDVL_TAG_NAMES.LABEL ||
+    !declared(el, LABEL_ATTRS_LIST.FORMAT)
+  ) {
+    return;
+  }
+  const ch = channelOf(el.getAttribute(AXIS_ATTRS_LIST.CHANNEL));
+  if (ch === null) {
+    return;
+  }
+  // SPEC §6: the tag IS the kind, so the resolved scale's tag
+  // answers this with no frame and no cascade.
+  const scale = resolutionOf(el)?.chain[ch] ?? null;
+  if (scale === null || scaleKindOf(scale) !== "ordinal") {
+    return;
+  }
+  out.push(
+    error(
+      "V14",
+      "bad-format-skeleton",
+      el,
+      ordinalFormatMessage(),
+      ch,
+    ),
+  );
 }
 
 // ---------------------------------------------------------------
@@ -1772,6 +2040,9 @@ export function validateStructure(
     );
   }
   for (const el of elements) {
+    // V20 before V1: a guide on a visual channel cannot address it
+    // at all, so "add a color scale" is a fix leading nowhere.
+    checkV20(el, found);
     checkV1(el, found);
     checkV13(el, found);
     // V3 and V10 before V8: a malformed `values` has a better
@@ -1783,6 +2054,10 @@ export function validateStructure(
     // plane's" is the message that fixes the page.
     checkV9(el, found);
     checkV19(el, found);
+    // V16 before V14: which values there are to format is decided
+    // before how they are formatted.
+    checkV16(el, found);
+    checkV14(el, found);
     checkV4(el, found);
     checkV18(el, found);
     checkV8(el, found);
@@ -1805,7 +2080,9 @@ export function validateStructure(
  * in the result set"*. **V5** counts *delivered* rows, which is what
  * §8.3's *"against `rows`"* means. V3, V8, V9, V10, V18 and V19 are
  * attribute-only and run in the structural pass beside V1 and V13,
- * V4's local-ref half included; V15 is a *behaviour* — `nice` moving
+ * V4's local-ref half included, as are V14's ordinal clause, V16 and
+ * V20's positional clause — all three are read off attributes and
+ * the resolved scale's **tag**; V15 is a *behaviour* — `nice` moving
  * derived endpoints only — and is asserted as one rather than
  * reported, because SPEC says it is *"a no-op, not an error"*.
  *

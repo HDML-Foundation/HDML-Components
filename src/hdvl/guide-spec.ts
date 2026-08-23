@@ -13,8 +13,10 @@
  * one line per tick, a tick one glyph per tick, a label one string
  * per tick. Everything before *what is repeated* — which channel,
  * which scale, which spec, which box, which edge — is the same
- * four times over, so it lives here and steps 24 and 31 import it
- * rather than writing it again (H6, the plan's Slice E ripple).
+ * four times over, so it lives here: step 24's tick and label
+ * import it rather than writing it again — needing no member it did
+ * not already have — and step 31's legend is the one consumer left
+ * (H6, the plan's Slice E ripple).
  *
  * **A guide is not a mark and this is not `mark.ts`.** It takes no
  * `source`, binds no columns, implements no `Binder` and has no
@@ -224,7 +226,7 @@ function extent(rect: Rect, horizontal: boolean): [number, number] {
  * box is exactly the scale's — `hdml-grid`'s `inset: 0` — resolves
  * to the low edge, deterministically; the grid does not ask.
  *
- * **Step 24 reuses this verbatim.** §6.5 derives `hdml-label`'s
+ * **`guide-label.ts` reuses this verbatim.** §6.5 derives its
  * anchor and baseline from the same fact, so a label under the plot
  * is `middle`/`top` and one to its left is `end`/`middle`: the edge
  * this returns is the side its text hangs off.
@@ -324,7 +326,7 @@ function literalValues(
  * makes the three *modes* rather than options — *"`step=` states
  * the interval exactly and invokes no tick algorithm"* — so an
  * author who writes two of them has asked two questions at once.
- * V16 reports that at step 24; the page still paints meanwhile, so
+ * V16 reports that (step 24); the page still paints meanwhile, so
  * *some* answer is given, and the honest one is the one §4.8's
  * implementation already publishes: `ticksFor` tests `values`, then
  * `step`, then `count`, and `thinOrdinal` does the same in the same

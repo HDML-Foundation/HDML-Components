@@ -409,8 +409,9 @@ delivery can never tear a frame: `deliver` stores a payload and sets a flag, and
 paint happens a whole frame later.
 
 **All six marks paint today** — `hdml-line`, `hdml-rule`, `hdml-area`, `hdml-bar`,
-`hdml-point` and `hdml-arc` — as do two of the five guides, `hdml-axis` and
-`hdml-grid`. The other twelve `scene()` implementations still return `null`, which is a
+`hdml-point` and `hdml-arc` — as do four of the five guides: `hdml-axis`,
+`hdml-grid`, `hdml-tick` and `hdml-label`. The other ten `scene()`
+implementations still return `null`, which is a
 **contract-complete answer** — "returns null to paint nothing (hidden, errored, or
 still loading)". Eight of those return it permanently: the view, both planes, the three
 scales and both containers emit no group at all. Widget bodies arrive per slice and
@@ -495,11 +496,23 @@ one. It runs two passes, both always on in dev and prod builds:
 
 | Pass | Runs in | Rules |
 |---|---|---|
-| **structural** | `view.reindex()`, once per structural change, over the walk that just ran | V1 (a bound channel resolves to exactly one ancestor scale), V3 + V10 (the channel-attribute grammar, and a varying `color` on a path widget), V4's local half (a bare identifier has an effective `source`, and names a field of an in-page one), V8 (no implicit scales), V9 (positional attribute names match the plane), V13 (a level is homogeneous), V18 (domain-modifier scoping), V19 (required bindings, naming the channel — never an implicit index), W2 (the view has an accessible name) |
+| **structural** | `view.reindex()`, once per structural change, over the walk that just ran | V1 (a bound channel resolves to exactly one ancestor scale), V3 + V10 (the channel-attribute grammar, and a varying `color` on a path widget), V4's local half (a bare identifier has an effective `source`, and names a field of an in-page one), V8 (no implicit scales), V9 (positional attribute names match the plane), V13 (a level is homogeneous), **V14's ordinal clause** (`format` where the resolved scale renders domain strings verbatim), **V16** (`count`/`step`/`values` mutually exclusive; `hdml-axis` takes none), V18 (domain-modifier scoping), V19 (required bindings, naming the channel — never an implicit index), **V20's positional clause** (a positional guide binds a positional channel), W2 (the view has an accessible name) |
 | **binding** | after the frame, on adopted data and the scales COMPUTE resolved | V2 (the binding's data kind is the scale's tag kind; a `log` domain may not cross or touch zero), V4's runtime half (an `absent` delivery — the generation arrived and the column was not in it), V5 (equal N across one widget's per-row bindings, against the delivery's `rows`), plus §4.7's **all-drop** — every row outside an ordinal domain errors on the scale |
 
 W5 and W6 are neither: both are flags MEASURE produced, reported from the same
 sink so they are edge-triggered like everything else.
+
+**V14, V16 and V20 are structural because they can be.** V16 reads attributes;
+V14 and V20 read the resolved scale's **tag**, which SPEC §6 makes its kind — a
+static tree lookup, never a cascade lookup, which is the line SPEC §7 says
+finding 11's modal-tick ban actually draws. None needs a frame.
+
+**Order inside the structural pass is a contract**, because `applyErrors` gives
+a unit the *first* finding in document order. Three orderings are stated: V9
+before V19 (step 22), **V20 before everything including V1** — a guide that
+cannot address its channel at all is not helped by "add a color scale" — and
+**V16 before V14**, since which values there are to format is settled before how
+they are formatted.
 
 **Edge-triggering is the reason the sink is centralised.** Validation runs on
 every structural change and every COMPUTE pass, so a resize drag would otherwise

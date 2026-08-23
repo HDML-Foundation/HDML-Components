@@ -1397,6 +1397,301 @@ suite("hdvl/validate — diagnostics", () => {
     assert.deepEqual(diagnosticsOf(view), []);
   });
 
+  // ---------------------------------------------------------------
+  // Step 24's rules — V20(a) · V16 · V14's ordinal clause. Every
+  // message is HARDCODED, for the reason §8.4 gives.
+  // ---------------------------------------------------------------
+
+  /** A guide beside a rendering probe, so "a sibling still renders"
+   *  is real on every fixture below. */
+  const GUIDES = (
+    widget: ReturnType<typeof html>,
+  ): ReturnType<typeof html> => html`
+    <hdml-cartesian-plane>
+      <hdml-ordinal-scale channel="x" values='["a","b"]'>
+        <hdml-continuous-scale channel="y" min="0" max="1">
+          ${widget}
+          <hdvl-probe id="ok"></hdvl-probe>
+        </hdml-continuous-scale>
+      </hdml-ordinal-scale>
+    </hdml-cartesian-plane>
+  `;
+
+  test("★ V16 — two of count, step and values", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v16a"
+        style="width: 400px; height: 200px"
+      >
+        ${GUIDES(html`
+          <hdml-tick
+            channel="y"
+            count="3"
+            values="[0, 1]"
+          ></hdml-tick>
+        `)}
+      </hdml-view>
+    `);
+    const bad = <Element>view.querySelector("hdml-tick");
+    assert.lengthOf(said("V16"), 1);
+    assert.strictEqual(
+      messageOf(said("V16")[0]),
+      "count and values are mutually exclusive — " +
+        'keep one on <hdml-tick channel="y">',
+    );
+    assert.isTrue(bad.matches(":state(error)"));
+    assert.isFalse(view.matches(":state(error)"));
+    assert.strictEqual(errs[0].detail.code, "exclusive-guide-attrs");
+    assert.strictEqual(errs[0].detail.rule, "V16");
+    // …and the sibling still renders.
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("V16 — all three names the three", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v16b"
+        style="width: 400px; height: 200px"
+      >
+        ${GUIDES(html`
+          <hdml-label
+            channel="y"
+            count="3"
+            step="0.5"
+            values="[0, 1]"
+          ></hdml-label>
+        `)}
+      </hdml-view>
+    `);
+    assert.strictEqual(
+      messageOf(said("V16")[0]),
+      "count, step and values are mutually exclusive — " +
+        'keep one on <hdml-label channel="y">',
+    );
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("V16 — one of the three is fine", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v16c"
+        style="width: 400px; height: 200px"
+      >
+        ${GUIDES(html`
+          <hdml-grid channel="y" count="3"></hdml-grid>
+          <hdml-tick channel="y" step="0.5"></hdml-tick>
+          <hdml-label channel="y" values="[0, 1]"></hdml-label>
+        `)}
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V16"), 0);
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V16 — hdml-axis takes none of them", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v16d"
+        style="width: 400px; height: 200px"
+      >
+        ${GUIDES(html`
+          <hdml-axis channel="y" count="3" step="0.5"></hdml-axis>
+        `)}
+      </hdml-view>
+    `);
+    const bad = <Element>view.querySelector("hdml-axis");
+    assert.lengthOf(said("V16"), 1);
+    assert.strictEqual(
+      messageOf(said("V16")[0]),
+      "hdml-axis takes no count, step or values — it spans the " +
+        "whole range; remove count and step",
+    );
+    assert.isTrue(bad.matches(":state(error)"));
+    assert.strictEqual(errs[0].detail.code, "exclusive-guide-attrs");
+    // ★ §8.3: a rule REPORTS, it does not stop the paint. The axis
+    // still paints its group beside the probe.
+    assert.isTrue(paints((<HdvlElement>(<unknown>bad)).uid));
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("V16 — an empty attribute reads as absent", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v16e"
+        style="width: 400px; height: 200px"
+      >
+        ${GUIDES(html`
+          <hdml-tick channel="y" count="3" step=""></hdml-tick>
+        `)}
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V16"), 0);
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V20 — a guide on the color channel", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v20a"
+        style="width: 400px; height: 200px"
+      >
+        ${GUIDES(html` <hdml-axis channel="color"></hdml-axis> `)}
+      </hdml-view>
+    `);
+    const bad = <Element>view.querySelector("hdml-axis");
+    assert.lengthOf(said("V20"), 1);
+    // SPEC §7's own words, verbatim.
+    assert.strictEqual(
+      messageOf(said("V20")[0]),
+      "the color channel has no positions — use hdml-legend",
+    );
+    assert.isTrue(bad.matches(":state(error)"));
+    assert.strictEqual(errs[0].detail.code, "channel-guide-fit");
+    assert.strictEqual(errs[0].detail.rule, "V20");
+    assert.strictEqual(errs[0].detail.channel, "color");
+    // ★ V20 beats V1: "add a color scale" is a fix leading
+    // nowhere, and there is no color scale in this chain.
+    assert.lengthOf(said("V1"), 0);
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("V20 — the size channel names the four instead", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v20b"
+        style="width: 400px; height: 200px"
+      >
+        ${GUIDES(html` <hdml-label channel="size"></hdml-label> `)}
+      </hdml-view>
+    `);
+    assert.strictEqual(
+      messageOf(said("V20")[0]),
+      "the size channel has no positions — a guide binds " +
+        "x, y, angle or radius",
+    );
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V20 beats V16 on an element doing both", async () => {
+    // Stated order: a guide that cannot address its channel at all
+    // gets the message that fixes it, not the one about its spec.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v20c"
+        style="width: 400px; height: 200px"
+      >
+        ${GUIDES(html`
+          <hdml-tick channel="color" count="3" step="0.5"></hdml-tick>
+        `)}
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V20"), 1);
+    assert.lengthOf(said("V16"), 0);
+    assert.strictEqual(errs[0].detail.code, "channel-guide-fit");
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V14 — format on an ordinal-resolved label", async () => {
+    // The plan's scheduled D1 escalation for step 24, decided with
+    // the user on 2026-08-23: `format` where SPEC §7 renders the
+    // domain strings verbatim is an error, symmetric with the one
+    // V20 already files on an ordinal legend.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v14a"
+        style="width: 400px; height: 200px"
+      >
+        ${GUIDES(html`
+          <hdml-label channel="x" format="MMM"></hdml-label>
+        `)}
+      </hdml-view>
+    `);
+    const bad = <Element>view.querySelector("hdml-label");
+    assert.lengthOf(said("V14"), 1);
+    assert.strictEqual(
+      messageOf(said("V14")[0]),
+      "format applies to a continuous or datetime channel — " +
+        "an ordinal channel renders its domain strings verbatim",
+    );
+    assert.isTrue(bad.matches(":state(error)"));
+    assert.strictEqual(errs[0].detail.code, "bad-format-skeleton");
+    assert.strictEqual(errs[0].detail.rule, "V14");
+    assert.strictEqual(errs[0].detail.channel, "x");
+    // §8.3 again: it reports, and the label still paints.
+    assert.isTrue(paints((<HdvlElement>(<unknown>bad)).uid));
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("V14 — format on a continuous channel is fine", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v14b"
+        style="width: 400px; height: 200px"
+      >
+        ${GUIDES(html`
+          <hdml-label channel="y" format="compact-short"></hdml-label>
+        `)}
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V14"), 0);
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V16 beats V14 on an element doing both", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v14c"
+        style="width: 400px; height: 200px"
+      >
+        ${GUIDES(html`
+          <hdml-label
+            channel="x"
+            count="3"
+            values='["a"]'
+            format="MMM"
+          ></hdml-label>
+        `)}
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V16"), 1);
+    assert.lengthOf(said("V14"), 0);
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ R25 — the guide rules are edge-triggered", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v16f"
+        style="width: 400px; height: 200px"
+      >
+        ${GUIDES(html`
+          <hdml-tick channel="y" count="3" step="0.5"></hdml-tick>
+        `)}
+      </hdml-view>
+    `);
+    const bad = <Element>view.querySelector("hdml-tick");
+    assert.lengthOf(said("V16"), 1);
+    assert.lengthOf(errs, 1);
+
+    // Re-validating the SAME violation reports nothing more — the
+    // identity is `(rule, code, channel, message)`, and the message
+    // names the attributes, not their values.
+    bad.setAttribute("count", "4");
+    view.markDirty();
+    await quiesce(view);
+    assert.lengthOf(said("V16"), 1);
+    assert.lengthOf(errs, 1);
+
+    // …and RECOVERY dispatches nothing at all (§10 defines no
+    // resolution event): the state goes and the queue stays put.
+    bad.removeAttribute("step");
+    view.markDirty();
+    await quiesce(view);
+    assert.isFalse(bad.matches(":state(error)"));
+    assert.lengthOf(said("V16"), 1);
+    assert.lengthOf(errs, 1);
+  });
+
   test("★ the code space is still twenty-two", () => {
     // A `Record<DiagnosticCode, …>` literal is exhaustive AND
     // closed, so a twenty-third code fails `compile_tst` — before

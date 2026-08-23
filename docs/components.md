@@ -196,9 +196,9 @@ Sort the frame by one or more fields. No attributes; per-field direction comes f
 
 The display half registers **21 tags**, in seven families
 ([`HDVL_FAMILIES`](../src/hdvl/vocabulary.ts)): `view`, `plane`, `scale`, `mark`,
-`container`, `guide`, `fallback`. Fifteen of them have bodies as of this commit — the four
-structural elements, the three scales, **all six marks** and two of the five guides — see
-[Registered but inert](#registered-but-inert) for the six that do not.
+`container`, `guide`, `fallback`. Seventeen of them have bodies as of this commit — the
+four structural elements, the three scales, **all six marks** and **four of the five
+guides** — see [Registered but inert](#registered-but-inert) for the four that do not.
 
 Two constructed UA stylesheets ([`src/hdvl/ua.ts`](../src/hdvl/ua.ts)) supply every box
 default. The **element sheet** is adopted by every HDVL shadow root as one shared instance and
@@ -506,7 +506,7 @@ have one implementation and `kernel/` owns it, so a grid and a label written wit
 three attributes are *modes*, not options — `step=` states the interval exactly and invokes
 no tick algorithm — and a guide **forwards** all three rather than resolving between them:
 `Scale.ticks` tests `values`, then `step`, then `count`, and that is the whole of the
-precedence. Writing two of them is V16's error, from step 24. An attribute present but empty
+precedence. Writing two of them is V16's error, live since step 24. An attribute present but empty
 reads as absent. On an **ordinal** scale a grid lands on band **centres**, never edges.
 
 A guide node carries `i: -1` and **no vertices**: `i` is a source row index and `vertices`
@@ -529,9 +529,93 @@ nothing, and reports no error. Every rule is `:host(<tag>[channel="…"])`, so i
 host-qualified per tag *and* per channel, and any author rule from the outer document beats
 it.
 
+### `hdml-tick` · `hdml-label` — [guide-tick.ts](../src/hdvl/guide-tick.ts) · [guide-label.ts](../src/hdvl/guide-label.ts)
+
+The other two positional guides, and everything the section above says about a guide holds
+here: no `source`, no columns, no `Binder`, `role: "guide"`, `i: -1` and no vertices, the
+same UA placement, and nothing painted under a polar plane until Slice F.
+
+| | |
+|---|---|
+| **`hdml-tick` attributes** | `channel`, `count`, `step`, `values` |
+| **`hdml-label` attributes** | `channel`, `count`, `step`, `values`, `format` |
+| **Parent** | a scale |
+| **Emits** | tick: one `rect` or `ellipse` per tick. label: one `text` per tick |
+
+**They are separate elements on purpose, and SPEC §7 says why.** The PoC made `text` a third
+`--hdml-tick-style` value beside `rect`/`ellipse`. Swapping `rect`→`ellipse` changes how a
+division *looks*; swapping →`text` changes *what the reader is told* — the data/style line —
+and text falls on the data side. Two consequences the implementation owes:
+
+- **Their densities are independent.** `hdml-tick count="12"` beside `hdml-label count="6"`
+  — mark every month, label every other — is the corpus idiom, and each element reads its
+  own spec with no coupling to the other.
+- **`format` is content, not presentation**, which is why it is an attribute rather than a
+  property, and why V14 exists.
+
+**A tick's extent is a DIAMETER in both forms.** `--hdml-tick-width` / `-height` size the
+glyph, `--hdml-tick-style` shapes it (registered initial `rect`, not `ellipse`), and an
+`ellipse` takes **half** of each — reading a width as a radius draws every glyph at twice
+its declared size and no scene assertion catches it, so the test asserts against the
+*computed property*. Both forms are centred on the same point, so switching the property
+moves nothing. It is **filled**, so `--hdml-fill-color` is its property; that initial is
+`currentColor`, so an unstyled tick paints in the inherited text colour.
+
+**Where a tick's `decorative: true` lives.** §6.5 calls a tick glyph decoration and §5.10
+gives decoration an `aria-hidden` floor — but §2.5 puts `decorative` on the `text` node
+**alone**, and a `rect` has no such field. That is not an omission: `decorative` exists on
+`text` because text is the one node kind that would otherwise be exposed *and* selectable, so
+the tick/label distinction has to be written down there and nowhere else. A tick's
+decorative-ness is carried by **the node kind it emits** — it emits no `text`, `hdml-view` is
+`role="img"` (which prunes the whole SVG subtree), and a bare SVG shape contributes nothing
+to the accessibility tree anyway. The invariant is asserted directly: nothing `hdml-tick`
+paints is a `text` node.
+
+**A label's anchor and baseline are DERIVED, never authored.** SPEC §7 gives the tag no
+`position` attribute, so §6.5's *"which edge of its own box the scale's axis runs along"* is
+computed from two measured boxes: `guideEdge` gives the near edge, the scale's content box
+gives the plot's centre, and **the sign of `edge − centre`** decides which way the text hangs.
+Along the guide's own axis the run is centred. The four rows fall out of that one predicate:
+
+| Guide | Sits | Edge | `anchor` | `baseline` |
+|---|---|---|---|---|
+| x-channel | below the plot | its top | `middle` | `top` |
+| x-channel | above the plot | its bottom | `middle` | `bottom` |
+| y-channel | left of the plot | its right | `end` | `middle` |
+| y-channel | right of the plot | its left | `start` | `middle` |
+
+**A label does not call `measureText`.** The `text` node carries `anchor` and `baseline` and
+the renderer does the placing, so a measured width buys it nothing. What needs the §5.3 seam
+is *flow* — `hdml-legend` lays a swatch and its name out sequentially — and collision or
+overflow handling on a dense axis, neither of which §6.5 asks for.
+
+#### Formatting a label set (§4.9, SPEC §7)
+
+`format` carries a **CLDR skeleton** ([UTS #35](https://unicode.org/reports/tr35/)) — a
+*number* skeleton on continuous channels, a *date-field* skeleton on datetime ones. It exists
+only on `hdml-label` and `hdml-legend`; nothing else has text to format. The **locale**
+resolves from the nearest `lang` — read at the **view**, so a label and the scale it labels
+always agree; there is no `locale` attribute and no implicit engine state.
+
+Three cases, and each has exactly one implementation:
+
+| Resolved scale | What is rendered |
+|---|---|
+| **ordinal** | the domain strings, **verbatim** — there is nothing to format, and a `format` here is **V14**'s error |
+| **datetime** | per value, **in the scale's `timeZone`** — a `MMM` label over a zone-sensitive instant is a different month in `UTC` than in `America/New_York` |
+| **continuous** | the whole set at once, through `formatCompactSet` |
+
+**The shared compact prefix is a property of the label *set*, not of the format string.** An
+axis reads `0.9M, 1.2M, 1.5M`, never `900K, 1.2M, 1.5M`: one compact part is derived from the
+largest-magnitude value and applied to every value, which is why `kernel/format-skeleton.ts`
+exposes a set function and **no per-value compact entry point**. That function is *total* — a
+skeleton with no compact stem formats value by value, and one that maps to no option bag
+(including the empty string a label with no `format` carries) falls through to the locale's
+default — so the continuous branch calls it unconditionally.
+
 ### Registered but inert
 
-The other six tags are **registered as of this commit and carry no behaviour yet** —
+The other four tags are **registered as of this commit and carry no behaviour yet** —
 each declares its tag, its family and its observed attributes, and nothing else. They are
 listed here so the tag surface is discoverable; do not read an entry as a description of
 working behaviour.
@@ -539,8 +623,6 @@ working behaviour.
 | Tag | Family | Module | Body lands in |
 |---|---|---|---|
 | `hdml-pie` | mark | [layout-pie.ts](../src/hdvl/layout-pie.ts) | Slice F |
-| `hdml-tick` | guide | [guide-tick.ts](../src/hdvl/guide-tick.ts) | Slice E |
-| `hdml-label` | guide | [guide-label.ts](../src/hdvl/guide-label.ts) | Slice E |
 | `hdml-legend` | guide | [guide-legend.ts](../src/hdvl/guide-legend.ts) | Slice H |
 | `hdml-stack` | container | [container-stack.ts](../src/hdvl/container-stack.ts) | Slice G |
 | `hdml-cluster` | container | [container-cluster.ts](../src/hdvl/container-cluster.ts) | Slice G |

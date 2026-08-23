@@ -421,10 +421,22 @@ keeps the cases that are genuinely per-value — a datum readout, a tooltip, one
 label — and an ordinal scale's `format()` returns the domain string verbatim, because
 SPEC says an ordinal channel renders its domain strings as written.
 
-*The locale, and where it is **not** resolved:* §4.9's nearest-`lang` walk is a DOM read
-and belongs to the guide. A `Scale` that captured a locale at construction would freeze
-it against a `lang` change, so the single-value path reads the **view's** locale per
-frame and the guide passes its own resolved locale to the kernel.
+*The locale, and where it is resolved — amended at step 24.* This section used to say
+§4.9's nearest-`lang` walk *"belongs to the guide"*, and step 24 chose the opposite. A
+`Scale` that captured a locale at construction would still freeze it against a `lang`
+change, so it is read **per frame**; but a *second* resolution in the label is the one
+construction under which a single axis can format in two locales, because `hdml-label`
+reaches `formatCompactSet` directly on a continuous channel and reaches `Scale.format`
+on a datetime one (only the scale knows its `timeZone`). So `localeOf` was **exported
+from `scale.ts`** — one line, additive, no contract change — and both paths call it.
+
+Resolving at the **view** rather than by an ancestor walk is what makes them agree by
+construction: a label and the scale it labels share a view, so they cannot disagree,
+which is a stronger guarantee than the walk would give. The narrowing it costs is that a
+`lang` on an element *between* the view and a guide does not take effect. Nothing in the
+corpus writes one, and widening it is a behaviour change to `Scale.format` as much as to
+the label — a decision to take deliberately, not a side effect of a guide slice. The
+`closest()` ban under `src/hdvl/` points the same way.
 
 ## The ramp is a `color-mix()` string, resolved by the page and not by us
 
@@ -485,6 +497,55 @@ the left gutter on its **right**. It is also why the derivation lives in
 [`guide-spec.ts`](../src/hdvl/guide-spec.ts) rather than in the axis — §6.5 derives
 `hdml-label`'s anchor and baseline from the identical fact, and two implementations of
 "which side faces the plot" could disagree about a guide the author moved.
+
+## A label's anchor and baseline are the sign of `edge − centre`
+
+Step 24 cashed that in. §6.5 derives the two `text` fields from *"which edge of its own
+box the scale's axis runs along"*, and the temptation is four cases keyed on the channel
+— which is the authored `position` SPEC §7 forbids, merely spelled in TypeScript, and
+which silently stops tracking a box that CSS moved.
+
+Both facts needed are already computed. `guideEdge` returns the near edge; the scale's
+content box gives the plot's centre; the text hangs off that edge *away* from the plot.
+So the whole answer is **the sign of `edge − centre`** on the perpendicular axis — high
+side means the run continues toward higher coordinates (`top` baseline on a horizontal
+guide, `start` anchor on a vertical one), low side toward lower (`bottom` / `end`) — and
+along the guide's own axis the run is centred, so the remaining field is `middle` either
+way. §6.5's four rows fall out of that one predicate rather than being tabulated, and
+the test proves it by moving the box and watching both fields change.
+
+## A tick's `decorative: true` lives in the node kind it emits
+
+§6.5 calls a tick glyph `decorative: true` and §5.10 gives decoration an `aria-hidden`
+floor — but §2.5 puts `decorative` on the `text` node **alone**, and Contract 3 has been
+whole since step 10. A `rect` has nowhere to carry it.
+
+That is not an omission to be patched. `decorative` exists on `text` precisely because
+text is the one node kind that would otherwise be exposed *and* selectable, so the
+tick/label distinction has to be written down there and nowhere else. Everything §5.10
+promises for a glyph is already true without a field: `hdml-view` is `role="img"`, which
+prunes the whole SVG subtree from the accessibility tree, and a bare SVG shape
+contributes nothing to it in the first place. A tick's decorative-ness is therefore
+carried by **the node kind it emits**, and the invariant is asserted directly —
+`guide-tick.test.ts` asserts that nothing `hdml-tick` paints is a `text` node. Adding a
+`decorative` field to `rect`/`ellipse` would widen a frozen contract to restate a fact
+the renderer can already read off `SceneGroup.role`.
+
+## V14's ordinal clause landed at step 24, not step 31
+
+The plan scheduled a D1 escalation here and it resolved, with the user on 2026-08-23, to
+the recommended default. SPEC §7 files `count`/`step`/`values`/`format` over an **ordinal
+legend** under V20 and files nothing for the same `format` on an ordinal `hdml-label`,
+where `Scale.format` returns `String(v)` and drops the skeleton on the floor. One
+authoring mistake was an error on one guide and silent on the other.
+
+It is **V14**, not V20: V14 is *"format skeleton well-formed and matches the channel
+kind"*, and SPEC's own words give it *"agreement with the channel's scale kind is then a
+separate check with its own message"* — this is that check, with a message symmetric to
+the *"date skeleton on a continuous channel"* one SPEC quotes. Filing it as V20 would
+cost `channel-guide-fit` its meaning, which is *this guide cannot address this channel at
+all*. V14's other two clauses — well-formedness, and the disjoint token spaces
+`skeletonKind` already classifies — are still Slice H's, as is the legend half.
 
 ## The guide placement rules reset the opposite offset, and state an extent
 

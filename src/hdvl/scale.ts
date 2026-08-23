@@ -736,15 +736,35 @@ function frameOf(el: HdvlElement): Frame {
 }
 
 /**
- * The locale a single-value {@link Scale.format} uses.
+ * SPEC §7's *"locale resolves from the nearest `lang`"*, resolved at
+ * the **view**.
  *
- * §4.9's full nearest-`lang` walk is a DOM read and belongs to the
- * **guide** (steps 23–24), which formats a label *set* through
- * `formatCompactSet` and passes its own resolved locale. This is
- * the view-level answer for the one-value path — read per frame, so
- * a `lang` change is picked up rather than frozen at construction.
+ * **★ Step 24 exported this rather than writing the guide's own.**
+ * The plan reserved §4.9's full ancestor walk for the guide, on the
+ * grounds that a label formats a *set* through `formatCompactSet`
+ * and so needs a locale of its own. It does — but a second
+ * resolution is the one construction under which a single axis can
+ * format in two locales: `hdml-label` reaches `formatCompactSet`
+ * directly on a continuous channel and reaches {@link Scale.format}
+ * on a datetime one (only the scale knows its `timeZone`), so the
+ * two paths **must** agree or one axis renders half its ticks in
+ * `en` and half in `de`. Resolving at the view makes them agree by
+ * construction, because a label and the scale it labels share one.
+ *
+ * The narrowing that buys it: a `lang` on an element *between* the
+ * view and a guide does not take effect. Nothing in the corpus
+ * writes one, and widening this to a `parentElement` walk is a
+ * behaviour change to `Scale.format` as much as to the label — so it
+ * is a decision to take deliberately, not a side effect of step 24.
+ * See `docs/decisions.md`.
+ *
+ * Read per frame, so a `lang` change is picked up rather than frozen
+ * at construction.
+ *
+ * @param el - Any display element in the view.
+ * @returns A BCP 47 tag.
  */
-function localeOf(el: HdvlElement): string {
+export function localeOf(el: HdvlElement): string {
   const view = resolutionOf(el)?.view ?? null;
   const own = (view?.getAttribute("lang") ?? "").trim();
   if (own !== "") {
