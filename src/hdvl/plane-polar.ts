@@ -12,12 +12,12 @@
 
 import { customElement, property } from "lit/decorators.js";
 import { HdvlElement } from "./base";
-import type { Point, SceneGroup } from "./scene";
+import type { Point, Rect, SceneGroup } from "./scene";
 import type { FrameContext } from "./measure";
 import type { Channel } from "./resolve";
 import type { Projection } from "./mark";
 import { createProjection } from "./mark";
-import { polarPoint } from "./kernel/project-polar";
+import { polarPoint, radialCeiling } from "./kernel/project-polar";
 import {
   HDVL_FAMILIES,
   HDVL_TAG_NAMES,
@@ -37,9 +37,16 @@ function num(v: number): number {
 }
 
 /**
- * §4.6's **pole**, verbatim: *"the centre of the radius-channel
- * scale's content box; where no radius scale exists (a pure pie
- * chain) the plane's content box serves."*
+ * ★ **The box the radial geometry is measured in** — §4.6 and §3's
+ * one sentence, resolved once.
+ *
+ * *"The pole is the box's center and the range is `[0, min(content-
+ * width, content-height) / 2]`; when no radius scale exists (a pure
+ * pie chain), the plane's content box serves."* The pole and the
+ * ceiling are **two readings of the same box**, which is why this
+ * returns the box rather than either of them: resolving the
+ * fallback twice is how step 22 came to implement it for the pole
+ * and not for the range (step 28's finding).
  *
  * It is read off the MEASURE snapshot's **content** box, never from
  * a `getBoundingClientRect()` in COMPUTE (R5), and it is resolved
@@ -49,19 +56,15 @@ function num(v: number): number {
  * @param ctx - The frame's snapshot.
  * @param plane - This plane.
  * @param el - The widget asking.
- * @returns The pole, in view coordinates.
+ * @returns The content box, in view coordinates.
  */
-function poleOf(
+function radialBoxOf(
   ctx: FrameContext,
   plane: HdvlElement,
   el: HdvlElement,
-): Point {
+): Rect {
   const scale = ctx.resolution(el)?.chain.radius ?? null;
-  const box = ctx.measured(scale ?? plane).content;
-  return {
-    x: num(box.x + box.w / 2),
-    y: num(box.y + box.h / 2),
-  };
+  return ctx.measured(scale ?? plane).content;
 }
 
 /**
@@ -84,10 +87,22 @@ function poleOf(
  * then added the arc's **ordinal-angle** equal-slices form and
  * `hdml-line`'s `closed`, and step 27 added `hdml-pie`, the four
  * polar **guides** and `--hdml-grid-shape` — and **this file did
- * not change for any of it**. That is what H7 predicted, now
- * measured three times: the guide half reached this plane by
- * deleting the channel pair it used to name, not by teaching this
- * one anything.
+ * not change for any of it**. That is what H7 predicted, measured
+ * three times: the guide half reached this plane by deleting the
+ * channel pair it used to name, not by teaching this one anything.
+ *
+ * **Step 28 did change it, and H7 still holds.** The corpus gate
+ * found that SPEC §3's *"when no radius scale exists (a pure pie
+ * chain), the plane's content box serves"* had been implemented for
+ * the pole and not for the range, so `08` and `12-B` painted
+ * nothing. The fix is a second thing **this plane** supplies —
+ * §3's radial default — through the same
+ * duck-typed argument `compose` goes through, and **no widget
+ * gained a branch**: the four readers of *"the other channel's
+ * range"* ask `Projection.span`, which is keyed by channel like
+ * every other member. H7 forbids a widget branching on plane kind;
+ * it does not forbid a plane knowing its own geometry, which is the
+ * whole reason it is the thing being asked.
  *
 
  * @tagname hdml-polar-plane
@@ -135,13 +150,25 @@ export class HdmlPolarPlaneElement extends HdvlElement {
     ctx: FrameContext,
     el: HdvlElement,
   ): Projection | null {
-    const pole = poleOf(ctx, this, el);
+    const box = radialBoxOf(ctx, this, el);
+    const pole = {
+      x: num(box.x + box.w / 2),
+      y: num(box.y + box.h / 2),
+    };
     return createProjection(
       ctx,
       el,
       CHANNELS,
       (angle: number, radius: number): Point =>
         polarPoint(pole, angle, radius),
+      // §3's radial default, for the chain that has no radius scale
+      // at all. The angle channel gets none: its range is
+      // `--hdml-angle-start`/`-end` on the angle scale, so with no
+      // scale there is nothing to read (step 28).
+      (channel: Channel): readonly [number, number] | null =>
+        channel === CHANNELS[1]
+          ? [0, radialCeiling(box.w, box.h)]
+          : null,
     );
   }
 

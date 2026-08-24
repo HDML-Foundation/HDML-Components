@@ -93,6 +93,19 @@ export interface Projection {
    */
   at(channel: Channel, value: CellValue): number | null;
   /**
+   * A channel's **range**, in that channel's own unit — the scale's
+   * `range()` where one serves, and otherwise whatever the plane
+   * supplies for a channel with no scale.
+   *
+   * SPEC §3 gives the polar radius exactly one such default: *"when
+   * no radius scale exists (a pure pie chain), the plane's content
+   * box serves"*. A cartesian plane supplies none, so a channel with
+   * no scale still answers `null` there — which is what every
+   * pre-existing caller asserted by spelling this
+   * `scale(c)?.range()` inline.
+   */
+  span(channel: Channel): readonly [number, number] | null;
+  /**
    * Whether a value is outside an **ordinal** domain — §4.7's
    * first clause, and the only drop that owes a notice.
    */
@@ -134,6 +147,9 @@ export interface ProjectionSource {
  * @param el - The widget whose chain is read (R35).
  * @param channels - The plane's two channels, in composition order.
  * @param compose - How the plane turns two positions into a point.
+ * @param unscaled - A channel's range where **no scale** serves it.
+ *   The default answers `null` for every channel, which is the
+ *   cartesian plane's answer and was every caller's before step 28.
  * @returns The projection.
  */
 export function createProjection(
@@ -141,6 +157,9 @@ export function createProjection(
   el: HdvlElement,
   channels: readonly [Channel, Channel],
   compose: (first: number, second: number) => Point,
+  unscaled: (
+    channel: Channel,
+  ) => readonly [number, number] | null = () => null,
 ): Projection {
   const scales = new Map<Channel, Scale | null>();
   const scaleOf = (channel: Channel): Scale | null => {
@@ -166,6 +185,10 @@ export function createProjection(
       }
       const at = scale.project(value);
       return at === null || !Number.isFinite(at) ? null : at;
+    },
+    span: (channel: Channel): readonly [number, number] | null => {
+      const scale = scaleOf(channel);
+      return scale === null ? unscaled(channel) : scale.range();
     },
     outOfDomain: (channel: Channel, value: CellValue): boolean => {
       if (value === null) {

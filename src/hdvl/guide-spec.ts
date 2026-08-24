@@ -348,8 +348,11 @@ export function guideEdge(guide: ResolvedGuide): number {
  *   even in principle. The one honest source left is that range's
  *   own **far end**: the rim for a guide repeating around it, the
  *   end of the turn for one repeating outward along a spoke. On the
- *   full turn every corpus polar page writes, `360deg` **is**
- *   `0deg`, so a radial guide lands on the twelve-o'clock spoke.
+ *   full turn every corpus polar page but one writes, `360deg`
+ *   **is** `0deg`, so a radial guide lands on the twelve-o'clock
+ *   spoke. `12-coverage` B is the exception — a gauge sweeping
+ *   `-120deg` to `120deg` — and its guide lands on the sweep's end,
+ *   which is the same rule and not a special case.
  *
  * @param guide - The resolved guide.
  * @returns The position across its channel.
@@ -358,7 +361,7 @@ export function guideAcross(guide: ResolvedGuide): number {
   if (guide.pole === null) {
     return guideEdge(guide);
   }
-  const span = guide.projection.scale(guide.other)?.range() ?? null;
+  const span = guide.projection.span(guide.other);
   return span === null ? 0 : px(span[1]);
 }
 

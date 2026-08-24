@@ -303,8 +303,10 @@ export function sectorScene(
   }
   const angleScale = projection.scale(first);
   // §4.3 gives the radial extent its ceiling, so a sector needs a
-  // radius scale even when it binds nothing radially.
-  const span = projection.scale(second)?.range() ?? null;
+  // radial range even when it binds nothing radially — and §3 says
+  // a chain with no radius scale at all takes the plane's box,
+  // which is the whole of 08 and 12-B (step 28).
+  const span = projection.span(second);
   if (angleScale === null || span === null) {
     return null;
   }

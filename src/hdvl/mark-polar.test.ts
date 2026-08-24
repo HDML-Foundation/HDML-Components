@@ -8,7 +8,12 @@ import { assert, fixture } from "@open-wc/testing";
 import { html } from "lit/static-html.js";
 import { LitElement } from "lit";
 import "./index";
+import "../testing/probe";
 import type { SceneGroup, SceneNode } from "./scene";
+import type { HdvlElement } from "./base";
+import type { Channel } from "./resolve";
+import type { ProjectionSource } from "./mark";
+import { HdvlProbeElement, PROBE_TAG } from "../testing/probe";
 import {
   installSceneRecorder,
   restoreRenderers,
@@ -409,6 +414,120 @@ suite("hdvl/mark-polar — H7 under a polar plane", () => {
       );
     });
     noMinusZero(sceneOf(view), "scene");
+  });
+
+  test("★ a pure pie chain resolves a radial range", async () => {
+    // ★ **Step 28's correction, at the unit.** SPEC §3 gives the
+    // radial range one fallback — *"when no radius scale exists (a
+    // pure pie chain), the plane's content box serves"* — and step
+    // 22 implemented it for the POLE and not for the RANGE, so a
+    // chain with only an angle scale resolved no ceiling and every
+    // sector bailed. It took the corpus to find, because every
+    // polar fixture until now carried a radius scale.
+    //
+    // The chain here has NO radius scale at all, so `r1` can only
+    // come from the plane's own box: 200 × 200 at `padding: 0`,
+    // §4.3's `min(w, h) / 2`.
+    const view = await mount(html`
+      <hdml-view aria-label="pie" style="width: 200px; height: 200px">
+        <hdml-polar-plane style="padding: 0">
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-arc a0="[0, 0.5]" a1="[0.5, 1]"></hdml-arc>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    const nodes = only(view).nodes;
+    assert.lengthOf(nodes, 2);
+    nodes.forEach((node) => {
+      assert.strictEqual(node.k, "arc");
+      const arc = <Extract<SceneNode, { k: "arc" }>>node;
+      assert.strictEqual(arc.cx, CX);
+      assert.strictEqual(arc.cy, CY);
+      assert.strictEqual(arc.r0, 0);
+      assert.strictEqual(arc.r1, CEILING);
+    });
+    noMinusZero(sceneOf(view), "scene");
+  });
+
+  test("★ the floor resolves against that fallback too", async () => {
+    // `--hdml-inner-radius`'s percentage resolves against the
+    // RANGE's ceiling (§3), so with no radius scale it resolves
+    // against the fallback — one number, read twice, which is why
+    // `plane-polar.ts` now hands out the box rather than the pole.
+    const view = await mount(html`
+      <hdml-view
+        aria-label="ring"
+        style="width: 200px; height: 200px"
+      >
+        <hdml-polar-plane
+          style="padding: 0; --hdml-inner-radius: 40%"
+        >
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-arc a0="[0]" a1="[1]"></hdml-arc>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    const node = only(view).nodes[0];
+    assert.strictEqual(node.k, "arc");
+    const arc = <Extract<SceneNode, { k: "arc" }>>node;
+    assert.strictEqual(arc.r0, 0.4 * CEILING);
+    assert.strictEqual(arc.r1, CEILING);
+  });
+
+  test("★ the fallback is the POLAR plane's alone", async () => {
+    // The scoping half, read straight off the seam rather than
+    // through a widget. `createProjection`'s default answers
+    // `null` for every channel, so a cartesian plane is exactly as
+    // it was and `hdml-rule`'s missing-scale case is untouched;
+    // the polar plane answers for its SECOND channel only, since
+    // an angular range is `--hdml-angle-start`/`-end` on the angle
+    // scale and there is nothing to read without one.
+    const spans = async (
+      markup: ReturnType<typeof html>,
+    ): Promise<Record<string, readonly number[] | null>> => {
+      const view = await mount(markup);
+      const probe = <HdvlProbeElement>view.querySelector(PROBE_TAG);
+      const call = probe.last;
+      assert.isNotNull(call, "the probe was never called");
+      const plane = <HdvlElement & ProjectionSource>(
+        view.querySelector("hdml-polar-plane, hdml-cartesian-plane")
+      );
+      const p = plane.projection(call.ctx, probe);
+      assert.isNotNull(p, "the plane declared no projection");
+      const out: Record<string, readonly number[] | null> = {};
+      for (const channel of ["x", "y", "angle", "radius"]) {
+        out[channel] = p.span(<Channel>channel);
+      }
+      return out;
+    };
+    const flatSpans = await spans(html`
+      <hdml-view
+        aria-label="flat"
+        style="width: 200px; height: 200px"
+      >
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-continuous-scale channel="x" min="0" max="1">
+            <hdvl-probe></hdvl-probe>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    assert.isNull(flatSpans.y);
+    assert.isNotNull(flatSpans.x);
+    const polarSpans = await spans(html`
+      <hdml-view aria-label="pie" style="width: 200px; height: 200px">
+        <hdml-polar-plane style="padding: 0">
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdvl-probe></hdvl-probe>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    assert.deepEqual(polarSpans.radius, [0, CEILING]);
+    assert.isNull(polarSpans.x);
+    assert.isNotNull(polarSpans.angle);
   });
 
   test("a polar scene survives structuredClone", async () => {

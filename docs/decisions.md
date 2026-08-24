@@ -808,8 +808,9 @@ against markup nobody ships. Fetching instead depends on the runner serving `roo
 statically — a dependency whose failure mode is a 404 that throws and names the URL, where a
 drifted inline copy is silent.
 
-**Removed.** Four of the six gated pages declare an `hdml-io` against a host that does not
-exist. Leaving it in place is not neutral in two independent ways: its `connectedCallback`
+**Removed.** Nine of the ten gated pages declare an `hdml-io` against a host that does not
+exist — `12-coverage` is the literal-only conformance class and declares none, which the
+gate asserts rather than assumes. Leaving it in place is not neutral in two independent ways: its `connectedCallback`
 creates an endpoint and immediately posts props + HTML, which means a network call, a Worker
 and `@hdml/parser` on every corpus test; and it is *also* a D8 provider, and
 [subscribe.ts](../src/hdvl/subscribe.ts) de-dupes requests by `id`, not by provider — so it
@@ -819,11 +820,56 @@ corpus. The harness asserts how many it removed *and* that none survives in the 
 page, so a page that gains or loses one is a failure rather than a silent change in what the
 gate proves.
 
-The layout viewport is pinned at 800 px for a related reason: five pages size their view
-`width: 100%`, so the runner's window would be baked into every number in every golden. 800
-is wider than every page's own `max-width` (760, 760, 760, 720, 780), so each page keeps the
+The layout viewport is pinned at 800 px for a related reason: nine of the ten pages size
+their view `width: 100%`, so the runner's window would be baked into every number in every
+golden. 800 is wider than every page's own `max-width` (760, 760, 760, 720, 780, 480, 480,
+520, 480), so each page keeps the
 dimensions its author gave it and none is capped by the harness — the opposite of retuning
 the corpus to suit the runner.
+
+## A channel's range is the plane's answer, not the scale's
+
+[mark.ts](../src/hdvl/mark.ts)'s `Projection` gained a member at step 28:
+`span(channel)` — a channel's range in its own unit, the scale's `range()` where one serves
+and **whatever the plane supplies** otherwise. Four call sites that each spelled
+`projection.scale(other)?.range() ?? null` inline now ask it.
+
+The reason is one sentence of SPEC §3: *"the pole is the box's center and the range is
+`[0, min(content-width, content-height) / 2]`; when no radius scale exists (a pure pie
+chain), the plane's content box serves."* Both halves of that sentence read **one box** —
+and the implementation resolved the fallback twice, once in `poleOf` and not at all for the
+range. `plane-polar.ts` therefore resolves the *box* now and derives the pole and the
+ceiling from it, so a future reader cannot repeat the split.
+
+*The road not taken* — teaching each of the four readers the fallback — was rejected on
+R12: it is four chances to disagree about what a chain with no radius scale means, and it
+would have put a polar concept inside `mark-rule.ts`, which is cartesian. *The other road
+not taken* — a `radialSpan` member — was rejected on H7: a member named for one plane's
+channel is a plane branch with extra steps. `span` is keyed by channel like every other
+member of the interface, the cartesian plane declines every channel, and the polar plane
+answers for its second one only, because an angular range is
+`--hdml-angle-start`/`-end` on the angle scale and there is nothing to read without one.
+
+It landed as a **correction to step 22**, not as new work: the fallback was already
+specified, already implemented for the pole, and already relied on by four corpus pages that
+had never been executed. Until step 28 executed them, all of `08-pie-doughnut` and
+`12-coverage` B painted an empty scene with no `:state(error)` and no diagnostic.
+
+## A corpus gate excludes a later slice's element by name
+
+C3: *"every slice gate is expressed as named scene-`deepEqual` assertions over the groups
+**that slice owns**; a double-gated page's whole-page render assertion belongs to the
+**later** slice."* Step 28 is the first gate that meets one, and
+[corpus.ts](../src/testing/corpus.ts) spells the exclusion as a constant plus a filter —
+`DEFERRED_TO_SLICE_H` and `withoutDeferred` — rather than as a golden that happens to have
+no legend groups in it.
+
+The distinction is not pedantic. `hdml-legend` is **registered and inert**: it emits no
+group at all today, so an unfiltered golden over `08-A` would be byte-identical to a
+filtered one. The difference is what happens at step 31, when the legend gains a body: the
+unfiltered golden silently becomes a whole-page assertion over whatever the legend first
+happened to emit, and freezes it. The filtered one fails loudly, which is the correct
+outcome, and step 32 widens it deliberately by emptying the constant.
 
 ## `transitionrun` replaces the document-wide `MutationObserver`
 
@@ -964,9 +1010,15 @@ in BDD style by accident the runner will silently ignore those blocks.
 Aggressive, but the JSDoc on these elements is long and 70 cols keeps it readable in
 TypeDoc's HTML. Match the existing wrap when editing or the lint will fail.
 
-## `docs/` collides with TypeDoc
+## `docs/` collided with TypeDoc — resolved
 
-[package.json:46](../package.json#L46): `typedoc --out ./docs`. [package.json:44](../package.json#L44): `npm run clear` does `rm -rf docs`. These agent docs live in `docs/*.md`. We work around it via [`.gitignore`](../.gitignore) (`!docs/*.md` keeps them tracked), but `npm run clear` will still delete them from disk. `TODO(confirm: move typedoc out-dir to ./docs/api/ and update both scripts so the tooling and these docs stop colliding.)`
+TypeDoc writes to **`./docs/api`** ([package.json:47](../package.json#L47)) and
+`npm run clear` removes **only `docs/api`** ([package.json:45](../package.json#L45)), so the
+hand-written agent docs in `docs/*.md` survive a `clear`/`build`.
+[`.gitignore`](../.gitignore) ignores `docs/*` and re-includes `!docs/*.md`, which keeps
+`docs/api/` untracked and the `.md` tracked. Previously both pointed at `./docs` and
+`clear` deleted the tracked `.md` from the working tree; the `TODO(confirm:)` that recorded
+it is answered and removed (step 28's audit).
 
 ## Vestigial toolchain in the dev image
 

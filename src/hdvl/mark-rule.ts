@@ -153,7 +153,7 @@ export class HdmlRuleElement extends HdvlElement {
     // The channel it did NOT bind must resolve a scale — the D1
     // escalation V1 now reports (see `validate.ts`). This is the
     // same condition, seen from the geometry's side.
-    const span = projection.scale(other)?.range() ?? null;
+    const span = projection.span(other);
     if (span === null || values === null) {
       return null;
     }

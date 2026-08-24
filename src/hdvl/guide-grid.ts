@@ -196,7 +196,7 @@ export class HdmlGridElement extends HdvlElement {
     // there is no extent to cross the plane with. Unlike a rule's,
     // this is not V1's error: a grid binds one channel and V1 asks
     // only for that one.
-    const span = guide.projection.scale(guide.other)?.range() ?? null;
+    const span = guide.projection.span(guide.other);
     if (span === null) {
       return null;
     }

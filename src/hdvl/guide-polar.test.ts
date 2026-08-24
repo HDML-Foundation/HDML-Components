@@ -460,6 +460,42 @@ suite("hdvl/guide-polar — §6.5 about a pole", () => {
     noMinusZero(sceneOf(view), "scene");
   });
 
+  test("★ an angular guide rims a pure pie chain too", async () => {
+    // ★ **Step 28's correction, on the guide side.**
+    // `guideAcross` takes the OTHER channel's range's far end, so
+    // an angular guide's radius is the radial ceiling — and with
+    // no radius scale in the chain that ceiling is SPEC §3's
+    // fallback, the plane's own content box. Before the
+    // correction this file's `?? 0` put every tick on the pole,
+    // which is what `12-coverage` B rendered.
+    const view = await mount(html`
+      <hdml-view
+        aria-label="gauge"
+        style="width: 200px; height: 200px"
+      >
+        <hdml-polar-plane style="padding: 0">
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-label channel="angle" count="4"></hdml-label>
+            <hdvl-probe></hdvl-probe>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    const nodes = groupFor(view, "hdml-label", "angle").nodes;
+    assert.isAbove(nodes.length, 0);
+    nodes.forEach((node, i) => {
+      assert.strictEqual(node.k, "text");
+      const text = <Extract<SceneNode, { k: "text" }>>node;
+      assert.closeTo(
+        Math.hypot(text.x - CX, text.y - CY),
+        CEILING,
+        1e-9,
+        `tick ${i} is on the rim`,
+      );
+    });
+    noMinusZero(sceneOf(view), "scene");
+  });
+
   test("a polar guide scene survives structuredClone", async () => {
     // R2/R26 over every node kind this step added: an `arc` ring,
     // a closed polygon `path`, and text hung off a normal.

@@ -22,8 +22,10 @@
  * here, naming the URL) where a drifted inline copy is silent.
  *
  * **2. The page's own provider element is removed before anything
- * mounts.** Four of the six pages declare an `hdml-io` against
- * `hdio.example.com`, a host that does not exist. Its
+ * mounts.** Nine of the ten gated pages declare an `hdml-io`
+ * against `hdio.example.com`, a host that does not exist.
+ * (`12-coverage` is the literal-only conformance class and declares
+ * none, which the gate asserts rather than assumes.) Its
  * `connectedCallback` creates an endpoint and immediately posts
  * props + HTML, which redeems the handoff token and uploads the
  * document — so leaving it in place is a network call, a Worker and
@@ -46,15 +48,16 @@
  * must reach the light-DOM elements exactly as they do on the served
  * page.
  *
- * **4. The layout viewport is pinned, not inherited.** Five of the
- * six pages size their view with `width: 100%` under a `figure` with
+ * **4. The layout viewport is pinned, not inherited.** Nine of the
+ * ten pages size their view with `width: 100%` under a `figure` with
  * its own `max-width`, so on the served page the geometry is the
  * window's. The test runner's window is **not** a corpus fact — it
  * is a Playwright default a runner upgrade may change, and every
  * number in every golden would move with it. {@link mountCorpus}
  * therefore lays each page out in a fixed {@link VIEWPORT}-wide box.
  * `800` is chosen so that **every** page's own `max-width` binds
- * (760, 760, 760, 720 and 780) and none is capped by the harness:
+ * (760, 760, 760, 720, 780, 480, 480, 520 and 480) and none is
+ * capped by the harness:
  * each page keeps the dimensions its author gave it, which is the
  * opposite of retuning them. The road not taken — inheriting the
  * runner's window — was measured at 800 px here, giving a 736 px
@@ -437,6 +440,86 @@ export function stripText(scene: Scene): Scene {
       ),
     })),
   };
+}
+
+/**
+ * ★ **The tags a corpus golden defers to a later slice** — C3, as a
+ * value rather than as an omission.
+ *
+ * Four of the thirteen pages are *double-gated*: they carry an
+ * element the slice that first renders them has not built. C3
+ * settles what such a gate may claim — *"every slice gate is
+ * expressed as named scene-`deepEqual` assertions over the groups
+ * **that slice owns**; a double-gated page's whole-page render
+ * assertion belongs to the **later** slice"* — so `08` A/B/D and
+ * `09` A are gated on their marks and non-legend guides at step 28,
+ * and **step 32 re-runs them whole**, where the legend must perturb
+ * nothing.
+ *
+ * It is a **filter and not a coincidence**, which matters because
+ * `hdml-legend` is registered and currently emits no group at all:
+ * a golden that simply lacked legend groups would be indistinguish-
+ * able from one that had been asserted over them, and would silently
+ * become a whole-page golden the moment Slice H landed — freezing
+ * whatever the legend first happened to emit. Filtering by name
+ * makes the exclusion survive that: at step 32 the constant is
+ * emptied and the goldens grow, deliberately.
+ *
+ * @see withoutDeferred
+ */
+export const DEFERRED_TO_SLICE_H: readonly string[] = ["hdml-legend"];
+
+/**
+ * A scene with every group a later slice owns removed (C3).
+ *
+ * @param scene - Any scene.
+ * @param tags - The deferred tags, e.g. {@link DEFERRED_TO_SLICE_H}.
+ * @returns The scene restricted to the groups this slice owns.
+ */
+export function withoutDeferred(
+  scene: Scene,
+  tags: readonly string[],
+): Scene {
+  return {
+    ...scene,
+    groups: scene.groups.filter((g) => !tags.includes(g.tag)),
+  };
+}
+
+/**
+ * Every path in a scene holding a **negative zero** (plan rule 9).
+ *
+ * `-0` is `===` zero and neither `Object.is`- nor `deepEqual`-equal
+ * to it, so one reaching a scene is a latent cross-engine failure
+ * rather than a visible one. Polar pages are where it becomes
+ * reachable — `cos(90deg)` is `6.1e-17` and `sin(180deg)` is
+ * `-1.2e-16`, and a coordinate multiplied by a zero radius carries
+ * the sign through — so the sweep is run over every polar golden
+ * rather than assumed.
+ *
+ * @param scene - Any scene.
+ * @returns The dotted paths, empty when the scene is clean.
+ */
+export function negativeZeros(scene: Scene): string[] {
+  const out: string[] = [];
+  const walk = (value: unknown, path: string): void => {
+    if (typeof value === "number") {
+      if (Object.is(value, -0)) {
+        out.push(path);
+      }
+    } else if (Array.isArray(value)) {
+      value.forEach((v, i) => walk(v, `${path}[${i}]`));
+    } else if (value !== null && typeof value === "object") {
+      for (const key of Object.keys(value)) {
+        walk(
+          (value as Record<string, unknown>)[key],
+          `${path}.${key}`,
+        );
+      }
+    }
+  };
+  walk(scene, "scene");
+  return out;
 }
 
 /**

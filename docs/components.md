@@ -262,6 +262,26 @@ the centre of the radius-channel scale's content box, or the plane's where no ra
 exists, read off the MEASURE snapshot and resolved per widget, because the widget's own
 chain says which radius scale serves it.
 
+**A pure pie chain has no radius scale, and still has a radial range.** SPEC §3 states the
+two together — *"the pole is the box's center and the range is `[0, min(content-width,
+content-height) / 2]`; when no radius scale exists (a pure pie chain), the plane's content
+box serves"* — so the pole and the ceiling are two readings of **one box**, which is why
+`plane-polar.ts` resolves the box and derives both rather than resolving the fallback twice.
+The seam is `Projection.span(channel)`: a channel's range in its own unit, the scale's
+`range()` where one serves and otherwise **whatever the plane supplies**. A cartesian plane
+supplies nothing, so `span("y")` with no y scale is `null` exactly as `scale("y")?.range()`
+was; the polar plane supplies the radial default for its **second** channel only, since an
+angular range is `--hdml-angle-start`/`-end` on the angle scale and there is nothing to read
+without one. Four readers of *"the other channel's range"* — `hdml-arc`'s ceiling,
+`hdml-rule`'s span, `hdml-grid`'s crossing extent and `guideAcross` — now ask the plane
+instead of the scale, so there is one answer and not four (R12).
+
+*Landed at step 28*, as a **correction**: step 22 implemented §3's fallback for the pole and
+not for the range, and no fixture caught it because every polar fixture and every gated
+corpus page until then carried a radius scale. The whole of `08-pie-doughnut` and
+`12-coverage` B — five figures — painted **nothing at all**: an empty scene, no
+`:state(error)`, no diagnostic. It is the failure mode §1.5 exists to name.
+
 ### `hdml-fallback` — [src/hdvl/fallback.ts](../src/hdvl/fallback.ts)
 
 Light-DOM flow content shown only while the view is **not upgraded** — "your browser can't
@@ -619,8 +639,10 @@ and y guides gutter boxes, so its own measured box *is* the author's statement (
 radius** and no box edge is a value in either — and a polar guide's box is the plane's
 (`inset: 0`) anyway, so there would be nothing to read. The one honest source left is that
 range's **far end**: the rim for a guide repeating around it, the end of the turn for one
-repeating outward. On the full turn every corpus polar page writes, `360deg` **is** `0deg`,
-so a radial guide lands on the twelve-o'clock spoke.
+repeating outward. On the full turn every corpus polar page **but one** writes, `360deg`
+**is** `0deg`, so a radial guide lands on the twelve-o'clock spoke. `12-coverage` B is the
+exception — a gauge sweeping `-120deg` to `120deg` — and its angular guide lands on the
+radial range's far end, the rim, which is the same rule read on the other channel.
 
 **UA placement (SPEC §3).** An x-channel `hdml-axis` / `hdml-tick` / `hdml-label` is placed
 just below the plot (`top: 100%`), a y-channel one just left of it (`right: 100%`), each
