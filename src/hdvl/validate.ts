@@ -62,6 +62,7 @@ import {
   AXIS_ATTRS_LIST,
   CONTINUOUS_SCALE_ATTRS_LIST,
   GRID_ATTRS_LIST,
+  HDQL_SORT_BY_TAG,
   HDVL_TAG_NAMES,
   LABEL_ATTRS_LIST,
   POINT_ATTRS_LIST,
@@ -118,7 +119,8 @@ export type WarningCode =
   | "colorless-series"
   | "node-budget"
   | "detection-disabled"
-  | "unsupported-url-reference";
+  | "unsupported-url-reference"
+  | "unpinned-row-order";
 
 /** A V-number or a W-number (SPEC §11's checklist). */
 export type RuleId =
@@ -620,6 +622,20 @@ function allDroppedMessage(ch: Channel): string {
   return (
     `every row is outside the "${ch}" domain — ` +
     "check the bound column"
+  );
+}
+
+function negativePieMessage(value: number): string {
+  return (
+    `a pie slice cannot be negative — ${value} in the ` +
+    "angle column"
+  );
+}
+
+function unpinnedOrderMessage(name: string): string {
+  return (
+    "row order is slice order — pin it with " +
+    `<${HDQL_SORT_BY_TAG}> in "${name}"`
   );
 }
 
@@ -1463,6 +1479,98 @@ function checkV14(el: HdvlElement, out: Finding[]): void {
 }
 
 // ---------------------------------------------------------------
+// V7 — the pie half: no negative values, and a frame that pins
+// row order
+// ---------------------------------------------------------------
+
+/**
+ * ★ V7's **locality clause**, and the clause is the design.
+ *
+ * SPEC §11: *"the duty attaches to the **frame** (the fix lives
+ * where the frame lives); the validator warns where it can see
+ * (local `?` refs — V4's locality)"*. So this asks the same
+ * question {@link localFieldsOf} asks and answers `null` in the
+ * same two cases: a ref carrying a path names **another document**,
+ * and a ref this page does not declare is unresolvable rather than
+ * unsorted. Warning on either would be a claim the page cannot
+ * support — *"add a sort to a frame I have never seen"* — and §1.5
+ * would rather say nothing than say something unfounded.
+ *
+ * A dev-time validator MAY resolve a static ref and apply the same
+ * check; SPEC says so in as many words, and the runtime is not it.
+ *
+ * @param el - The pie.
+ * @param ref - Its effective source.
+ * @returns The frame's name when the page declares it and it pins
+ * no order; `null` when it pins one or cannot be seen.
+ */
+function unpinnedFrameOf(
+  el: HdvlElement,
+  ref: string,
+): string | null {
+  const hit = LOCAL_REF.exec(ref.trim());
+  if (hit === null) {
+    return null;
+  }
+  const root = <Document | ShadowRoot>el.getRootNode();
+  let host: Element | null = null;
+  for (const cand of Array.from(root.querySelectorAll(hit[1]))) {
+    if (cand.getAttribute("name") === hit[2]) {
+      host = cand;
+      break;
+    }
+  }
+  if (host === null) {
+    return null;
+  }
+  for (const kid of Array.from(host.children)) {
+    if (kid.localName === HDQL_SORT_BY_TAG) {
+      return null;
+    }
+  }
+  return hit[2];
+}
+
+/**
+ * **V7's structural half — the order-pinning warning** (SPEC §11,
+ * §6.3).
+ *
+ * *"Row order is slice order"*, so a pie over an unordered query
+ * visibly rearranges between refreshes while staying, at every
+ * instant, a correct chart. That is why it **warns and does not
+ * blank**: nothing about the composition is wrong, and §8.3's
+ * warnings *"never blank anything and never set `:state(error)`"*.
+ *
+ * **Scoped to `hdml-pie` here.** SPEC's V7 row generalises the duty
+ * to *"order-consuming constructs"* — path widgets over bound
+ * columns, literal-with-bound zips, stacks, column-derived ordinal
+ * domains — and this step owes the pie half only; the stack half is
+ * the container slice's.
+ */
+function checkV7(el: HdvlElement, out: Finding[]): void {
+  if (el.tag !== HDVL_TAG_NAMES.PIE) {
+    return;
+  }
+  const ref = resolutionOf(el)?.source ?? null;
+  if (ref === null) {
+    // A pie over literal arrays has no frame to pin: the author
+    // wrote the order themselves, in the document.
+    return;
+  }
+  const name = unpinnedFrameOf(el, ref);
+  if (name !== null) {
+    out.push(
+      warning(
+        "V7",
+        "unpinned-row-order",
+        el,
+        unpinnedOrderMessage(name),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------
 // V4 — a bare identifier has a source, and names a field of it
 // ---------------------------------------------------------------
 
@@ -2059,6 +2167,7 @@ export function validateStructure(
     checkV16(el, found);
     checkV14(el, found);
     checkV4(el, found);
+    checkV7(el, found);
     checkV18(el, found);
     checkV8(el, found);
   }
@@ -2198,6 +2307,49 @@ export function reportAllRowsDropped(
   const identity = identityOf(finding);
   for (const seen of memo.computed) {
     if (seen.element === scale && identityOf(seen) === identity) {
+      return;
+    }
+  }
+  memo.computed.push(finding);
+}
+
+/**
+ * **V7's binding half — a negative pie value** (SPEC §7, §6.3).
+ *
+ * *"Negative values are an error"*, and the reason is that there is
+ * no honest picture of one: a slice's extent is a share of a whole,
+ * and a negative share would either wind backwards over its
+ * neighbour or silently vanish. §1.5 blanks the unit instead.
+ *
+ * Its route is {@link reportAllRowsDropped}'s, and for the same
+ * reason: the fact is only knowable from the rows, so it is decided
+ * in COMPUTE by the widget that met them and **drained** by the
+ * binding pass that runs immediately after the frame. Draining
+ * rather than accumulating is what makes recovery work — a frame in
+ * which the pie reports nothing leaves the bucket empty and
+ * `applyErrors` clears the state, with no event on recovery (R25).
+ *
+ * @param el - The pie.
+ * @param value - The first negative value, which the message names.
+ */
+export function reportNegativePieValue(
+  el: HdvlElement,
+  value: number,
+): void {
+  const view = resolutionOf(el)?.view;
+  if (view === undefined) {
+    return;
+  }
+  const memo = memoOf(view);
+  const finding = error(
+    "V7",
+    "negative-pie-value",
+    el,
+    negativePieMessage(value),
+  );
+  const identity = identityOf(finding);
+  for (const seen of memo.computed) {
+    if (seen.element === el && identityOf(seen) === identity) {
       return;
     }
   }

@@ -399,10 +399,18 @@ its kind: under a cartesian plane the attribute is **inert** and the emitted nod
 byte-identical to one written without it, because SPEC grants the loop to the polar form and
 a cartesian line is not a radar. It is not a diagnostic; no V-rule covers it.
 
-`hdml-area` also publishes `closed`, and there it is still **inert**: every region that
-element emits is already a closed outline. Under a polar plane that outline closes *through
-the pole* rather than around the loop, which `10-radar` will have to decide — closing a polar
-band correctly is two subpaths and a fill rule, not a flag. See [decisions.md](decisions.md).
+**`hdml-area`'s `closed` is the same predicate with a different consequence** (SPEC §7,
+amended 2026-08-24). Every region that element emits is *already* a closed outline, so on a
+cartesian plane the attribute is **inert** and the node is byte-identical without it. Under a
+polar plane it is not: that outline runs the upper edge from the first category to the last,
+cuts in to the lower edge and runs back, so it closes **through the pole** and leaves a
+wedge-shaped notch between the last category and the first. `closed` therefore makes the
+region **two subpaths** — an outer ring and an inner one — instead of one joined outline.
+They are already counter-wound, because the lower edge is emitted reversed, so the default
+`nonzero` fill rule fills the annulus and leaves the hole empty: **no fill rule is authored,
+none is added to the scene contract, and the renderer is untouched.** A band whose inner edge
+is `r0="0"` degenerates to a ring of coincident poles, encloses nothing, and fills to the
+centre. See [decisions.md](decisions.md).
 
 `hdml-line` emits **one** stroked `path` for the whole series, `fill: null`, curved by
 `--hdml-curve-type`. Its node's `i` is therefore `-1` — a node built from every row has no
@@ -442,7 +450,9 @@ nothing below the resolver can tell which form the author wrote. There is no
 
 `hdml-area` emits **one filled `path`** for the whole series, `i: -1`, with row identity in
 its per-vertex `i`. Each contiguous stretch of rows is one **closed** subpath: the upper edge
-forward, a line across, then the lower edge **reversed**. The lower edge is reversed *before*
+forward, a line across, then the lower edge **reversed** — or, under `closed` on a polar
+plane, **two** subpaths and no cap at all (above). What the attribute changes is how many
+subpaths a region has, never the node's `closed` flag, which is always `true`. The lower edge is reversed *before*
 it is curved, not after — a curve fitted to a reversed point list is not the reverse of the
 curve fitted to the forward one, because `natural`'s solve is global over its run and
 `bezier` picks its tangents per segment. A gap breaks **both** edges at the same row, and a
@@ -519,6 +529,13 @@ denominator is `n − 1 + b`. *(Decided 2026-08-24, with the user, at step 26 �
 Both marks are **filled** and neither strokes, and both carry a **per-row `color`** honestly,
 which is why the varying-`color` error is the two path widgets' alone.
 
+**`hdml-arc`'s geometry is a free function, and `hdml-pie` is its second caller.** `scene()`
+on both tags is one call to `sectorScene`, which owns everything from the pole down — §5's N,
+§4.7's drop and its notice, the three radial cases, `--hdml-inner-radius`, the node and
+§3.4.1's `empty`. The only thing the two tags differ in is the **angle form** each supplies:
+the arc's ranged pair or ordinal band, the pie's derived prefix sum. There is exactly one
+`k: "arc"` node literal in the project, and that is why.
+
 ### `hdml-axis` · `hdml-grid` — [guide-axis.ts](../src/hdvl/guide-axis.ts) · [guide-grid.ts](../src/hdvl/guide-grid.ts)
 
 The first two of the five guides. A guide takes **no `source`**, binds no columns and
@@ -563,9 +580,47 @@ A guide node carries `i: -1` and **no vertices**: `i` is a source row index and 
 are projected *data* vertices, and a guide has neither. Hit resolution therefore never
 resolves to a guide, which is correct — it implements no `datumAt` and could answer nothing.
 
-The `--hdml-grid-shape` `circle` / `polygon` forms, and every guide under a polar plane, land
-with `hdml-pie` in Slice F. Until then a guide resolved under a polar plane paints **nothing**
-rather than a straight segment through polar space.
+#### Under a polar plane (§6.5, SPEC §9)
+
+**All four guides paint under both planes, through one code path.** `guide-spec.ts` used to
+carry a `readonly [Channel, Channel]` naming `x`/`y` and refuse every other plane outright;
+step 27 **deleted it**. A guide now asks the plane's `Projection` what it composes, exactly
+as a mark does, and each element reads the answer back as two facts — *is my own channel this
+plane's first* and *is there a pole* — so no guide element names a channel at all.
+
+| Guide | On the plane's first (angular) channel | On its second (radial) channel |
+|---|---|---|
+| `hdml-axis` | a **ring**: one `arc` node at the radial ceiling, spanning the whole turn | a **spoke**: the same straight `path` a cartesian axis draws |
+| `hdml-grid` | a **spoke per tick** — the unchanged straight branch | `--hdml-grid-shape`: a **ring per tick** (`circle`) or a **closed polygon per tick** (`polygon`) |
+| `hdml-tick` | a glyph on the projected point — **no change to the element at all** | the same |
+| `hdml-label` | a run on the projected point, placement derived per tick | the same |
+
+**An angular axis is a ring because a turn's two ends are the same point** — the straight
+span every other case draws would degenerate to nothing. It is an `arc` node and not a
+`path`, for the reason arcs exist at all: `Segment` carries lines and cubics, so a circle
+spelled as a path would be an approximation of one. Its `r0 === r1` — a zero-thickness
+annulus, which is what a stroked ring is, and honest in a way `r0: 0` would not be (that
+spells *a filled disc* and merely happens to stroke the same outline over a full turn).
+`--hdml-grid-shape: circle` emits the identical node at each tick's radius, so a ring has one
+implementation and not two.
+
+**`--hdml-grid-shape: polygon` walks the ANGLE SCALE's positions**, and *the scale's* is
+load-bearing: `10-radar` writes `hdml-grid channel="radius" count="5"` over six categories,
+so a polygon built from the grid's own spec would have five sides. The vertices are
+`ticks({})` on the other channel — the whole ordinal domain, since §4.8's thinning returns it
+for an empty spec — which is why a radar's rings meet its spokes: one generator, not two that
+agree. The property is only ever consulted on a radial guide under a pole, so a cartesian
+`hdml-grid` cannot be talked into a circle.
+
+**Where a polar guide sits across its channel is the other channel's range, not its box.**
+Under a cartesian plane a guide's `across` is a **view coordinate**, and the UA sheet gives x
+and y guides gutter boxes, so its own measured box *is* the author's statement (see
+`guideEdge`, above). Under a polar plane the other channel's range is in **degrees or a
+radius** and no box edge is a value in either — and a polar guide's box is the plane's
+(`inset: 0`) anyway, so there would be nothing to read. The one honest source left is that
+range's **far end**: the rim for a guide repeating around it, the end of the turn for one
+repeating outward. On the full turn every corpus polar page writes, `360deg` **is** `0deg`,
+so a radial guide lands on the twelve-o'clock spoke.
 
 **UA placement (SPEC §3).** An x-channel `hdml-axis` / `hdml-tick` / `hdml-label` is placed
 just below the plot (`top: 100%`), a y-channel one just left of it (`right: 100%`), each
@@ -583,7 +638,7 @@ it.
 
 The other two positional guides, and everything the section above says about a guide holds
 here: no `source`, no columns, no `Binder`, `role: "guide"`, `i: -1` and no vertices, the
-same UA placement, and nothing painted under a polar plane until Slice F.
+same UA placement, and — since step 27 — the same behaviour under both planes.
 
 | | |
 |---|---|
@@ -623,16 +678,37 @@ paints is a `text` node.
 
 **A label's anchor and baseline are DERIVED, never authored.** SPEC §7 gives the tag no
 `position` attribute, so §6.5's *"which edge of its own box the scale's axis runs along"* is
-computed from two measured boxes: `guideEdge` gives the near edge, the scale's content box
-gives the plot's centre, and **the sign of `edge − centre`** decides which way the text hangs.
-Along the guide's own axis the run is centred. The four rows fall out of that one predicate:
+computed rather than declared. **One predicate covers both planes: the per-axis sign of the
+outward normal** — the direction the glyphs hang away from the plot. The plane supplies the
+normal and `guidePlacement` reads its two components; a component pointing at higher
+coordinates runs the text on (`start` across x, `top` down y), one pointing at lower
+coordinates runs it back (`end`, `bottom`), and a component pointing along neither leaves the
+run **centred** on its tick.
 
-| Guide | Sits | Edge | `anchor` | `baseline` |
+Under a plane composing in **view space** the normal is constant and axis-aligned — `(0, ±1)`
+for a guide on the plane's first channel, `(±1, 0)` for one on its second, its sign taken
+from `guideEdge`'s near edge against the scale box's centre. **That single zero component is
+why §6.5's four cartesian rows each carry a `middle`.** Under a plane composing **about a
+pole** the normal is radial — the point itself, less the pole — so it turns with the ring and
+the placement is resolved per tick rather than once for the set. That is the whole difference
+between the two.
+
+| Guide | Sits | Normal | `anchor` | `baseline` |
 |---|---|---|---|---|
-| x-channel | below the plot | its top | `middle` | `top` |
-| x-channel | above the plot | its bottom | `middle` | `bottom` |
-| y-channel | left of the plot | its right | `end` | `middle` |
-| y-channel | right of the plot | its left | `start` | `middle` |
+| x-channel | below the plot | `(0, +)` | `middle` | `top` |
+| x-channel | above the plot | `(0, −)` | `middle` | `bottom` |
+| y-channel | left of the plot | `(−, 0)` | `end` | `middle` |
+| y-channel | right of the plot | `(+, 0)` | `start` | `middle` |
+| polar, any channel | at 12 o'clock | `(0, −)` | `middle` | `bottom` |
+| polar, any channel | at 3 o'clock | `(+, 0)` | `start` | `middle` |
+| polar, any channel | at 4:30 | `(+, +)` | `start` | `top` |
+
+The deadband is **relative to the normal's own magnitude** (`1e-6` of it), because the polar
+normal is a radius long and the cartesian one is a unit vector: `cos(π / 2)` is `6.1e-17`, so
+a three-o'clock tick's vertical component is fifteen orders of magnitude under the threshold
+while the smallest angle an author can distinguish is nine orders over it. A tick **on** the
+pole has no direction at all and resolves to `middle`/`middle` — the truthful answer rather
+than a guarded one.
 
 **A label does not call `measureText`.** The `text` node carries `anchor` and `baseline` and
 the renderer does the placing, so a measured width buys it nothing. What needs the §5.3 seam
@@ -663,21 +739,62 @@ skeleton with no compact stem formats value by value, and one that maps to no op
 (including the empty string a label with no `format` carries) falls through to the locale's
 default — so the continuous branch calls it unconditionally.
 
+### `hdml-pie` — [layout-pie.ts](../src/hdvl/layout-pie.ts)
+
+The **one cross-row layout widget**, and a **mark**, not a container: a container "is not a
+painter", and a pie paints. §6.3 makes it *"the same, with one cross-row `derive()` in data
+space before projection"*, and the implementation is exactly that sentence — it hands its own
+angle form to `hdml-arc`'s `sectorScene` and inherits the pole, the three radial cases,
+`--hdml-inner-radius`, §4.7's drop and the `arc` node unchanged. **SPEC's claim that 08-A's
+pie and 08-C's `hdml-arc a0/a1` over the same numbers are interchangeable is therefore a
+property of the code, not a promise about it**, and the test asserts the two scenes agree
+node for node.
+
+| | |
+|---|---|
+| **Attributes** | `angle` (required, V19), `color` (optional), `source` |
+| **Parent** | a tip scale, inside a polar plane |
+| **Emits** | one `arc` per row, exactly as `hdml-arc` |
+| **Group role** | `mark` — its slices count for `:state(empty)` |
+
+Its derive, in full:
+
+```
+total = Σ non-null, non-negative values
+  any value < 0  → V7 error (unit: the pie)
+  null           → excluded from the total, no slice
+  total === 0    → :state(empty), no slices
+a0ₖ = (Σ_{j<k} vⱼ) / total       a1ₖ = a0ₖ + vₖ / total
+```
+
+- **It normalises to FRACTIONS**, so its angle scale is always `min="0" max="1"` — authored
+  by the page, never derived. That is what makes the pure `a0`/`a1` form take the same domain.
+- **`a1ₖ` is computed as `acc / total`, not `a0ₖ + vₖ / total`.** Algebraically identical, and
+  only the first closes the circle: `acc` after the last row is the same sum, accumulated in
+  the same order, that `total` is, so the final `a1` is **exactly** the angular range's end.
+  Summing the quotients instead leaves a hairline the renderer draws.
+- **A `null` costs nothing and takes nothing** — no slice and no term — so the slice after it
+  starts where the slice before it ended and the remaining slices still close the turn.
+- **Row order is slice order, and nothing sorts.** The duty to pin it attaches to the
+  **frame** (`hdml-sort-by`) and is **V7**'s, reported where the validator can see the frame.
+- **It publishes no radial attribute at all**, so its radial extent is always the arc's third
+  case: the full range, floored by `--hdml-inner-radius`. 08-B declares that on the widget and
+  08-D on the plane; the property inherits and the widget reads it, so the two are the same
+  geometry.
+- **§12 duty 4**: the prefix sum allocates its own array. A delivered column is a view over a
+  buffer the worker still owns, and it is read and never written.
+
 ### Registered but inert
 
-The other four tags are **registered as of this commit and carry no behaviour yet** —
-each declares its tag, its family and its observed attributes, and nothing else. They are
-listed here so the tag surface is discoverable; do not read an entry as a description of
-working behaviour.
+The other three tags are **registered and carry no behaviour yet** — each declares its tag,
+its family and its observed attributes, and nothing else. They are listed here so the tag
+surface is discoverable; do not read an entry as a description of working behaviour.
 
 | Tag | Family | Module | Body lands in |
 |---|---|---|---|
-| `hdml-pie` | mark | [layout-pie.ts](../src/hdvl/layout-pie.ts) | Slice F |
 | `hdml-legend` | guide | [guide-legend.ts](../src/hdvl/guide-legend.ts) | Slice H |
 | `hdml-stack` | container | [container-stack.ts](../src/hdvl/container-stack.ts) | Slice G |
 | `hdml-cluster` | container | [container-cluster.ts](../src/hdvl/container-cluster.ts) | Slice G |
-
-`hdml-pie` is a **mark**, not a container: a container "is not a painter", and a pie paints.
 
 The five guides take **no `source`** and bind no columns — a guide is a function of the
 resolved scale, its own box and its computed style.

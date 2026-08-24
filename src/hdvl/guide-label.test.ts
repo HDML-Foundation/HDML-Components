@@ -481,7 +481,11 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
     assert.deepEqual(structuredClone(<unknown>scene), <unknown>scene);
   });
 
-  test("★ a polar channel paints nothing here", async () => {
+  test("★ an angular channel paints a run per tick", async () => {
+    // Step 24's placeholder asserted the opposite. What changed at
+    // step 27 is `placementOf` moving up into `guide-spec.ts` as
+    // `guidePlacement`; the derivation this element used is the one
+    // both planes now share.
     const view = await mount(html`
       <hdml-view aria-label="pol" style="width: 400px; height: 200px">
         <hdml-polar-plane>
@@ -499,9 +503,11 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
     view.markDirty();
     await quiesce(view);
     const groups = sceneOf(view, P).groups;
-    assert.isFalse(
-      groups.some((g) => g.widget === labelOf(view, "angle").uid),
+    const group = groups.find(
+      (g) => g.widget === labelOf(view, "angle").uid,
     );
+    assert.isDefined(group);
+    assert.isAbove(group.nodes.length, 0);
     assert.isTrue(groups.some((g) => g.widget === probe.uid));
   });
 });

@@ -365,7 +365,11 @@ suite("hdvl/guide-tick — §6.5's repeated glyph", () => {
     assert.lengthOf(<SceneNode[]>labels.nodes, 2);
   });
 
-  test("★ a polar channel paints nothing here", async () => {
+  test("★ an angular channel paints a glyph per tick", async () => {
+    // Step 24's placeholder asserted the opposite. This element
+    // needed NO change at step 27: `guideAcross` and `guidePoint`
+    // own both halves of where a glyph sits, so it does not know
+    // which plane it is under.
     const view = await mount(html`
       <hdml-view aria-label="pol" style="width: 400px; height: 200px">
         <hdml-polar-plane>
@@ -384,7 +388,9 @@ suite("hdvl/guide-tick — §6.5's repeated glyph", () => {
     await quiesce(view);
     const groups = sceneOf(view, P).groups;
     const uid = tickOf(view, "angle").uid;
-    assert.isFalse(groups.some((g) => g.widget === uid));
+    const group = groups.find((g) => g.widget === uid);
+    assert.isDefined(group);
+    assert.isAbove(group.nodes.length, 0);
     assert.isTrue(groups.some((g) => g.widget === probe.uid));
   });
 });

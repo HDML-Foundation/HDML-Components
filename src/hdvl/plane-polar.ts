@@ -82,10 +82,12 @@ function poleOf(
  * The alternative was an arc whose only fixtures were cartesian
  * pages carrying `a0`/`a1` — pages **V9** calls invalid. Step 26
  * then added the arc's **ordinal-angle** equal-slices form and
- * `hdml-line`'s `closed`, and **this file did not change**: it is
- * what H7 predicted, measured twice. The polar **guides** and
- * `--hdml-grid-shape` are what remain, at step 27 — `resolveGuide`
- * refuses this plane outright until then.
+ * `hdml-line`'s `closed`, and step 27 added `hdml-pie`, the four
+ * polar **guides** and `--hdml-grid-shape` — and **this file did
+ * not change for any of it**. That is what H7 predicted, now
+ * measured three times: the guide half reached this plane by
+ * deleting the channel pair it used to name, not by teaching this
+ * one anything.
  *
 
  * @tagname hdml-polar-plane

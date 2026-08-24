@@ -28,9 +28,9 @@ import { chainScaleOf } from "./scale";
  * The load-bearing assertion is **R12**: every position is compared
  * against a real `scale.ticks(spec)` call made from the test, so a
  * grid that re-derived §4.8's ladder could not pass however close
- * it came. The `--hdml-grid-shape` forms are step 27's, with the
- * polar guides, and a grid on a polar channel paints nothing until
- * then.
+ * it came. The `--hdml-grid-shape` forms landed at step 27 and are
+ * asserted in `guide-polar.test.ts`, beside the other three guides
+ * under the plane they need.
  */
 
 const P = { precision: 6 };
@@ -257,10 +257,12 @@ suite("hdvl/guide-grid — §6.5's repeated line", () => {
     assert.notDeepEqual(at, starts);
   });
 
-  test("★ a polar channel paints nothing here", async () => {
-    // §6.5's `--hdml-grid-shape` circle/polygon forms are step 27's,
-    // with the polar guides. A straight segment through polar space
-    // would be §1.5's plausible wrong chart.
+  test("★ an angular channel paints a spoke per tick", async () => {
+    // Step 23 left a placeholder here asserting the opposite: a
+    // polar plane resolved to nothing. Step 27 lifted that, and a
+    // grid on the plane's FIRST channel needs no new geometry —
+    // `guidePoint` composes through the plane, so the same straight
+    // branch that draws a cartesian gridline draws a spoke.
     const view = await mount(html`
       <hdml-view aria-label="pol" style="width: 400px; height: 200px">
         <hdml-polar-plane style="padding: 0">
@@ -278,9 +280,15 @@ suite("hdvl/guide-grid — §6.5's repeated line", () => {
     view.markDirty();
     await quiesce(view);
     const groups = sceneOf(view, P).groups;
-    assert.isFalse(groups.some((g) => g.widget === gridOf(view).uid));
-    // The frame itself ran: the sibling still paints.
+    assert.isTrue(groups.some((g) => g.widget === gridOf(view).uid));
     assert.isTrue(groups.some((g) => g.widget === probe.uid));
+    // A spoke is still a `path`, and it runs from the pole out.
+    const lines = paths(view);
+    assert.isAbove(lines.length, 0);
+    for (const line of lines) {
+      assert.lengthOf(line.subpaths, 1);
+      assert.isFalse(line.closed);
+    }
   });
 
   test("its own box is the plot area", async () => {

@@ -19,7 +19,7 @@ import { elementsOf } from "./resolve";
 import { measureView } from "./measure";
 import { subscriptionsOf } from "./subscribe";
 import { diagnosticsOf } from "./validate";
-import type { DiagnosticCode } from "./validate";
+import type { DiagnosticCode, WarningCode } from "./validate";
 import type { HdvlElement } from "./base";
 
 /** The one source ref the V2 fixtures subscribe to. */
@@ -59,6 +59,28 @@ const CODES: Readonly<Record<DiagnosticCode, true>> = {
   "all-rows-dropped": true,
   "negative-pie-value": true,
   "varying-path-color": true,
+};
+
+/**
+ * §8.1's whole **warning**-code space, spelled the same way and for
+ * the same reason.
+ *
+ * Six of the seven are W-rules' — W1 through W6, one each. The
+ * seventh is **V7's**, added at step 27 as a §8 amendment: SPEC
+ * §11 makes the row-order clause a *warning* ("the validator warns
+ * where it can see"), and a warning carries a `WarningCode` by
+ * §8.1's own disjointness rule, so a V-rule that warns needs one.
+ * The 1:1 code↔rule mapping the six had was a property of there
+ * being no such rule yet, not a contract.
+ */
+const WARNINGS: Readonly<Record<WarningCode, true>> = {
+  "unknown-construct": true,
+  "missing-accessible-name": true,
+  "colorless-series": true,
+  "node-budget": true,
+  "detection-disabled": true,
+  "unsupported-url-reference": true,
+  "unpinned-row-order": true,
 };
 
 /**
@@ -1699,6 +1721,10 @@ suite("hdvl/validate — diagnostics", () => {
     // added four rules and no code: all four were already in the
     // union step 12 landed whole (H5).
     assert.lengthOf(Object.keys(CODES), 22);
+    // …and the warning space, whose seventh member is V7's rather
+    // than a W-rule's (step 27).
+    assert.lengthOf(Object.keys(WARNINGS), 7);
+    assert.property(WARNINGS, "unpinned-row-order");
     for (const code of [
       "unknown-field",
       "length-mismatch",
@@ -1707,6 +1733,124 @@ suite("hdvl/validate — diagnostics", () => {
     ]) {
       assert.property(CODES, code);
     }
+  });
+
+  test("V7 — a local frame pinning no row order warns", async () => {
+    // SPEC §11: "row order is slice order"; the duty attaches to
+    // the FRAME, and the fix lives where the frame lives. It is a
+    // WARNING — the page is not wrong, it is unstable between
+    // refreshes — so nothing blanks and the pie still paints.
+    const [host, view] = await mount(html`
+      <div>
+        <hdml-frame name="unpinned" source="/w/s.html?hdml-model=m">
+          <hdml-field name="v" type="float-64"></hdml-field>
+        </hdml-frame>
+        <hdml-view
+          aria-label="v7"
+          source="?hdml-frame=unpinned"
+          style="width: 200px; height: 200px"
+        >
+          <hdml-polar-plane>
+            <hdml-continuous-scale channel="angle" min="0" max="1">
+              <hdml-continuous-scale channel="radius" min="0" max="9">
+                <hdml-pie angle="v"></hdml-pie>
+              </hdml-continuous-scale>
+            </hdml-continuous-scale>
+          </hdml-polar-plane>
+        </hdml-view>
+      </div>
+    `);
+    const pie = <Element>host.querySelector("hdml-pie");
+    assert.lengthOf(said("V7"), 1);
+    assert.strictEqual(
+      messageOf(said("V7")[0]),
+      "row order is slice order — pin it with <hdml-sort-by> " +
+        'in "unpinned"',
+    );
+    // §8.3: a warning never blanks and never sets `:state(error)`.
+    assert.isFalse(pie.matches(":state(error)"));
+    assert.isFalse(view.matches(":state(error)"));
+    // Console-only — a warning dispatches no `hdml-error`.
+    assert.lengthOf(errs, 0);
+    const found = diagnosticsOf(view).filter((d) => d.rule === "V7");
+    assert.lengthOf(found, 1);
+    assert.strictEqual(found[0].severity, "warning");
+    assert.strictEqual(found[0].code, "unpinned-row-order");
+  });
+
+  test("V7 — a pinned local frame is silent", async () => {
+    const [, view] = await mount(html`
+      <div>
+        <hdml-frame name="pinned" source="/w/s.html?hdml-model=m">
+          <hdml-field name="v" type="float-64"></hdml-field>
+          <hdml-sort-by>
+            <hdml-field name="v" order="asc"></hdml-field>
+          </hdml-sort-by>
+        </hdml-frame>
+        <hdml-view
+          aria-label="v7b"
+          source="?hdml-frame=pinned"
+          style="width: 200px; height: 200px"
+        >
+          <hdml-polar-plane>
+            <hdml-continuous-scale channel="angle" min="0" max="1">
+              <hdml-continuous-scale channel="radius" min="0" max="9">
+                <hdml-pie angle="v"></hdml-pie>
+              </hdml-continuous-scale>
+            </hdml-continuous-scale>
+          </hdml-polar-plane>
+        </hdml-view>
+      </div>
+    `);
+    assert.lengthOf(said("V7"), 0);
+    assert.deepEqual(
+      diagnosticsOf(view).filter((d) => d.rule === "V7"),
+      [],
+    );
+  });
+
+  test("★ V7's LOCALITY — a static ref stays silent", async () => {
+    // SPEC §11 scopes the warning to "local `?` refs — V4's
+    // locality". A ref carrying a path names another document, so
+    // the page cannot know whether that frame pins order, and
+    // "add a sort to a frame I have never seen" is a claim §1.5
+    // would rather not make. The pie below has NO in-page frame at
+    // all and the validator says nothing about its order.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v7c"
+        source="/warehouse/sales.html?hdml-frame=remote"
+        style="width: 200px; height: 200px"
+      >
+        <hdml-polar-plane>
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-continuous-scale channel="radius" min="0" max="9">
+              <hdml-pie angle="v"></hdml-pie>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V7"), 0);
+    // …and a literal pie, which has no frame at all, likewise: the
+    // author wrote the order themselves, in the document.
+    const [, other] = await mount(html`
+      <hdml-view aria-label="v7d" style="width: 200px; height: 200px">
+        <hdml-polar-plane>
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-continuous-scale channel="radius" min="0" max="9">
+              <hdml-pie angle="[1, 2, 3]"></hdml-pie>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V7"), 0);
+    assert.deepEqual(
+      diagnosticsOf(other).filter((d) => d.rule === "V7"),
+      [],
+    );
+    void view;
   });
 
   test("a valid view produces zero diagnostics", async () => {

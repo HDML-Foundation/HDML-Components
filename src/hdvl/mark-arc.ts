@@ -93,10 +93,10 @@ function innerRadiusOf(m: Measured, ceiling: number): number {
 }
 
 /** One row's angular endpoints, in degrees (§4.6). */
-type Sector = readonly [number, number];
+export type Sector = readonly [number, number];
 
 /**
- * §6.1's **two** `angle` forms, resolved to one per-row reader.
+ * §6.1's `angle` forms, resolved to one per-row reader.
  *
  * SPEC §7 gives the arc *"(`a0`,`a1` — continuous angle scale) **or**
  * (`angle` — ordinal angle scale, equal slices)"*, and the two differ
@@ -104,11 +104,21 @@ type Sector = readonly [number, number];
  * this interface everything after it — §5's N, §4.7's drop, the
  * three radial cases, the node — is written once.
  *
- * The **scale's kind** is what picks between them, not a second
- * attribute and not a plane test: a continuous angle scale has bands
- * to give and an ordinal one has no continuous position to project.
+ * The **scale's kind** is what picks between the arc's two, not a
+ * second attribute and not a plane test: a continuous angle scale
+ * has bands to give and an ordinal one has no continuous position
+ * to project.
+ *
+ * **★ There is a third, and it is `hdml-pie`'s** (step 27). §6.3
+ * makes the pie *"the same, with one cross-row `derive()` in data
+ * space before projection"*, and this interface is precisely where
+ * that sentence lands: the pie supplies a form whose `at(k)` reads
+ * a prefix sum it computed, and inherits {@link sectorScene}
+ * unchanged. That is SPEC's own claim that 08-A and 08-C are
+ * interchangeable, made mechanical rather than restated — and the
+ * reason no second `k: "arc"` node literal exists in the project.
  */
-interface AngleForm {
+export interface AngleForm {
   /** The slots SPEC §5's N counts. */
   readonly slots: readonly SlotValues[];
   /** Row `k`'s endpoints, or `null` when the row drops (§4.7). */
@@ -149,7 +159,8 @@ function rangedForm(
     at: (k: number): Sector | null => {
       const a0 = projection.at(channel, pair.low.at(k));
       const a1 = projection.at(channel, pair.high.at(k));
-      return a0 === null || a1 === null ? null : [num(a0), num(a1)];
+      // `-0` is normalised once, in `sectorScene`'s node.
+      return a0 === null || a1 === null ? null : [a0, a1];
     },
   };
 }
@@ -197,27 +208,50 @@ function bandForm(
       const band = value === null ? null : scale.bandOf(`${value}`);
       return band === null
         ? null
-        : [num(band.start), num(band.start + band.width)];
+        : [band.start, band.start + band.width];
     },
   };
 }
 
 /**
- * One annular sector per row, in a polar plane. It consumes the
- * plane's `Projection` like every other mark and carries no polar
- * branch of its own (step-plan H7): what it asks is whether the
- * plane projects **its** channels, and a plane that answers `x`/`y`
- * is one this tag has no attribute for, so it paints nothing there.
+ * Which {@link AngleForm} a widget wants, asked once per frame.
+ *
+ * @param el - The widget.
+ * @param projection - Its projection.
+ * @param scale - The resolved angle scale.
+ * @param channel - The angle channel, from the plane.
+ * @returns The form, or `null` to paint nothing.
+ */
+export type AngleFormOf = (
+  el: HdvlElement,
+  projection: Projection,
+  scale: Scale,
+  channel: Channel,
+) => AngleForm | null;
+
+/**
+ * ★ **One annular sector per row** — the whole of §6.1's polar mark
+ * geometry, and the only implementation of it in the project.
+ *
+ * It is a free function rather than a method because §6.3 makes
+ * `hdml-pie` *"the same, with one cross-row `derive()` in data space
+ * before projection"*: everything from here down — §5's N, §4.7's
+ * drop and its notice, the three radial cases,
+ * `--hdml-inner-radius`, the pole, the node, §3.4.1's `empty` — is
+ * identical for the two tags, and the difference is entirely the
+ * {@link AngleFormOf} each passes (R12). A second `k: "arc"` node
+ * literal would be the second implementation of a formula that has
+ * one.
  *
  * **The node is parameterised, not pre-serialized** (§2.5): it
  * carries `{cx, cy, r0, r1, a0, a1}` and the SVG renderer owns the
  * annulus and the 360° two-command case. Angles are **degrees**,
- * `0` at 12 o'clock, increasing clockwise — so `a0`/`a1` are
- * `projection.at("angle", v)` **directly, with no conversion**; the
- * radians live inside `kernel/project-polar.ts` and the renderer.
+ * `0` at 12 o'clock, increasing clockwise — so `a0`/`a1` are the
+ * projection's own numbers with **no conversion**; the radians live
+ * inside `kernel/project-polar.ts` and the renderer.
  *
- * **Three radial cases, and the third is the arc's one real special
- * case** (§6.1, SPEC §7):
+ * **Three radial cases, and the third is the real special case**
+ * (§6.1, SPEC §7):
  *
  * | Bound | `r0` | `r1` |
  * |---|---|---|
@@ -226,8 +260,12 @@ function bandForm(
  * | nothing | the floor, else 0 | the range's ceiling |
  *
  * The third is what `rangedValuesOf` cannot express — it returns
- * `null` for an unbound channel — and it is what makes 08-C's pure
- * `a0`/`a1` form interchangeable with `hdml-pie`.
+ * `null` for an unbound channel — and it is both what makes 08-C's
+ * pure `a0`/`a1` form interchangeable with `hdml-pie` and, since
+ * step 27, **the only case a pie ever takes**: `PIE_ATTRS_LIST` has
+ * no radial member at all, so its radial extent is always the full
+ * range floored by `--hdml-inner-radius`, which is 08-B's
+ * widget-scoped doughnut and 08-D's plane-scoped ring alike.
  *
  * **`--hdml-inner-radius` supplies the SYNTHETIC `r0` only.** §4.6:
  * *"it supplies `r0` where the author bound none. A bound
@@ -237,6 +275,131 @@ function bandForm(
  * read**: not a geometry branch — the two branches compute the same
  * kind of number — but the question *did the author say anything
  * about the lower edge*, which is what the flag means.
+ *
+ * @param ctx - The frame's snapshot.
+ * @param el - The widget.
+ * @param formOf - Which angle form it wants.
+ * @returns Its group, or `null`.
+ */
+export function sectorScene(
+  ctx: FrameContext,
+  el: HdvlElement,
+  formOf: AngleFormOf,
+): SceneGroup | null {
+  if (paintSuppressed(el)) {
+    return null;
+  }
+  const projection = projectionOf(ctx, el);
+  if (projection === null) {
+    return null;
+  }
+  // Not a branch on plane KIND (H7) — a question about this
+  // plane's channels. A plane projecting x/y projects nothing
+  // these tags can bind, so there is no honest geometry and no
+  // pole to draw a sector about.
+  const [first, second] = projection.channels;
+  if (first !== CHANNELS[0] || second !== CHANNELS[1]) {
+    return null;
+  }
+  const angleScale = projection.scale(first);
+  // §4.3 gives the radial extent its ceiling, so a sector needs a
+  // radius scale even when it binds nothing radially.
+  const span = projection.scale(second)?.range() ?? null;
+  if (angleScale === null || span === null) {
+    return null;
+  }
+  const angles = formOf(el, projection, angleScale, first);
+  if (angles === null) {
+    return null;
+  }
+  const m = ctx.measured(el);
+  const ceiling = span[1];
+  const floor = innerRadiusOf(m, ceiling);
+  // §6.1's third radial case: fully unbound is the full radius
+  // range, floored — what `rangedValuesOf` cannot express, since
+  // an unbound channel is exactly what it returns `null` for.
+  const radial = rangedValuesOf(el, second);
+  const rows = rowCountOf([
+    ...angles.slots,
+    radial === null ? null : radial.low,
+    radial === null ? null : radial.high,
+  ]);
+  const pole = projection.point(0, 0);
+  if (pole === null) {
+    return null;
+  }
+  const tally = newTally();
+  const nodes: SceneNode[] = [];
+  for (let i = 0; i < rows; i++) {
+    const sector = angles.at(i);
+    // ★ THE ONE READ OF `sugar` IN THE PROJECT. §4.6's floor
+    // replaces the SYNTHETIC lower edge and never an authored
+    // one: "a bound r0/radius may legally paint inside the hole
+    // — authored data is sacred."
+    const r0 =
+      radial === null || radial.sugar
+        ? floor
+        : projection.at(second, radial.low.at(i));
+    const r1 =
+      radial === null
+        ? ceiling
+        : projection.at(second, radial.high.at(i));
+    if (sector === null || r0 === null || r1 === null) {
+      tally.dropped++;
+      for (const cell of angles.cells(i)) {
+        tallyDrop(tally, el, projection, first, cell);
+      }
+      continue;
+    }
+    nodes.push({
+      k: "arc",
+      // §2.5: a per-row node carries its own row index.
+      i,
+      cx: num(pole.x),
+      cy: num(pole.y),
+      r0: num(r0),
+      r1: num(r1),
+      a0: num(sector[0]),
+      a1: num(sector[1]),
+      ...fillPaint(m, channelColor(ctx, el, i)),
+    });
+  }
+  reportDrops(el, projection, tally, rows, nodes.length);
+  return markGroup(el, m, nodes);
+}
+
+/**
+ * `hdml-arc`'s own {@link AngleFormOf} — SPEC §7's two forms, with
+ * the **scale's kind** choosing between them.
+ *
+ * @param el - The widget.
+ * @param projection - Its projection.
+ * @param scale - The resolved angle scale.
+ * @param channel - The angle channel, from the plane.
+ * @returns The form, or `null`.
+ */
+function arcAngles(
+  el: HdvlElement,
+  projection: Projection,
+  scale: Scale,
+  channel: Channel,
+): AngleForm | null {
+  return scale.kind === "ordinal"
+    ? bandForm(el, scale, channel)
+    : rangedForm(el, projection, channel);
+}
+
+/**
+ * One annular sector per row, in a polar plane. It consumes the
+ * plane's `Projection` like every other mark and carries no polar
+ * branch of its own (step-plan H7): what it asks is whether the
+ * plane projects **its** channels, and a plane that answers `x`/`y`
+ * is one this tag has no attribute for, so it paints nothing there.
+ *
+ * **Its geometry is {@link sectorScene}'s**, which it shares with
+ * `hdml-pie` — the node, the three radial cases,
+ * `--hdml-inner-radius` and the pole all live there, and this
+ * element supplies only {@link arcAngles}.
  *
  * **Two angle forms, and the scale's kind picks between them**
  * (SPEC §7): a continuous scale takes the ranged `a0`/`a1` pair; an
@@ -350,94 +513,13 @@ export class HdmlArcElement extends HdvlElement {
   /**
    * @override
    *
-   * One parameterised `arc` per row.
+   * One parameterised `arc` per row, through the shared
+   * {@link sectorScene}.
    *
    * @param ctx - The frame's snapshot.
    * @returns Its group, or `null`.
    */
   public scene(ctx: FrameContext): SceneGroup | null {
-    if (paintSuppressed(this)) {
-      return null;
-    }
-    const projection = projectionOf(ctx, this);
-    if (projection === null) {
-      return null;
-    }
-    // Not a branch on plane KIND (H7) — a question about this
-    // plane's channels. A plane projecting x/y projects nothing
-    // this tag can bind, so there is no honest geometry and no
-    // pole to draw a sector about.
-    const [first, second] = projection.channels;
-    if (first !== CHANNELS[0] || second !== CHANNELS[1]) {
-      return null;
-    }
-    const angleScale = projection.scale(first);
-    // §4.3 gives the radial extent its ceiling, so an arc needs a
-    // radius scale even when it binds nothing radially.
-    const span = projection.scale(second)?.range() ?? null;
-    if (angleScale === null || span === null) {
-      return null;
-    }
-    const angles =
-      angleScale.kind === "ordinal"
-        ? bandForm(this, angleScale, first)
-        : rangedForm(this, projection, first);
-    if (angles === null) {
-      return null;
-    }
-    const m = ctx.measured(this);
-    const ceiling = span[1];
-    const floor = innerRadiusOf(m, ceiling);
-    // §6.1's third radial case: fully unbound is the full radius
-    // range, floored — what `rangedValuesOf` cannot express, since
-    // an unbound channel is exactly what it returns `null` for.
-    const radial = rangedValuesOf(this, second);
-    const rows = rowCountOf([
-      ...angles.slots,
-      radial === null ? null : radial.low,
-      radial === null ? null : radial.high,
-    ]);
-    const pole = projection.point(0, 0);
-    if (pole === null) {
-      return null;
-    }
-    const tally = newTally();
-    const nodes: SceneNode[] = [];
-    for (let i = 0; i < rows; i++) {
-      const sector = angles.at(i);
-      // ★ THE ONE READ OF `sugar` IN THE PROJECT. §4.6's floor
-      // replaces the SYNTHETIC lower edge and never an authored
-      // one: "a bound r0/radius may legally paint inside the hole
-      // — authored data is sacred."
-      const r0 =
-        radial === null || radial.sugar
-          ? floor
-          : projection.at(second, radial.low.at(i));
-      const r1 =
-        radial === null
-          ? ceiling
-          : projection.at(second, radial.high.at(i));
-      if (sector === null || r0 === null || r1 === null) {
-        tally.dropped++;
-        for (const cell of angles.cells(i)) {
-          tallyDrop(tally, this, projection, first, cell);
-        }
-        continue;
-      }
-      nodes.push({
-        k: "arc",
-        // §2.5: a per-row node carries its own row index.
-        i,
-        cx: num(pole.x),
-        cy: num(pole.y),
-        r0: num(r0),
-        r1: num(r1),
-        a0: sector[0],
-        a1: sector[1],
-        ...fillPaint(m, channelColor(ctx, this, i)),
-      });
-    }
-    reportDrops(this, projection, tally, rows, nodes.length);
-    return markGroup(this, m, nodes);
+    return sectorScene(ctx, this, arcAngles);
   }
 }

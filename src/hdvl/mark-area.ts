@@ -31,6 +31,7 @@ import {
   rowCountOf,
   tallyDrop,
 } from "./mark";
+import { closedOf } from "./mark-line";
 import { curve } from "./kernel/curves";
 import {
   AREA_ATTRS_LIST,
@@ -111,18 +112,32 @@ interface Region {
  * A *varying* `color` is an error here — see `validate.ts`'s
  * `varying-path-color`: one `path` node carries one `Paint`.
  *
- * **★ Its `closed` attribute is still inert, deliberately** (step
- * 26). Every region this element emits is already a closed outline,
- * so on a cartesian plane the attribute has nothing left to say. On
- * a **polar** plane it does: `10-radar`'s band should close *around*
- * the loop, and what this emits closes *through the pole* — the
- * outline runs the upper edge from the first category to the last,
- * then in to the lower edge and back, leaving a wedge between the
- * last category and the first. Closing it correctly is **two**
- * subpaths with a fill rule (an outer ring and an inner one), not a
- * flag on this node, so it is a SPEC question `10-radar`'s gate
- * decides and not something step 26 guessed at. `hdml-line closed`
- * — the polygon outline — is unaffected and landed at step 26.
+ * **★ `closed` splits the region into two counter-wound rings**
+ * (step 27, decided with the user; raised at step 26 and deferred
+ * to here). Every region above is *already* a closed outline, so on
+ * a plane composing in view space the attribute has nothing left to
+ * say and stays **inert** — a cartesian area written with `closed`
+ * emits a byte-identical node. On a plane composing **about a pole**
+ * it says the one thing the joined outline gets wrong: that band
+ * closes *through the pole*, running the upper edge from the first
+ * category to the last, then in to the lower edge and back, which
+ * leaves a wedge-shaped notch between the last category and the
+ * first — `10-radar`'s figure, visibly.
+ *
+ * Closing it is an **outer ring and an inner ring**, and the
+ * counter-winding the cap-joined form already has is what makes it
+ * free: the upper edge runs first → last and the lower edge is
+ * *already reversed*, last → first, so emitting them as two
+ * subpaths rather than one gives them opposite winding. Under
+ * SVG's default `nonzero` rule the annulus fills and the hole stays
+ * empty. **No fill rule is added to §2.5, and the renderer is not
+ * touched** — the node's `closed` flag was already a `Z` **per
+ * subpath** since step 10, so each ring closes on itself.
+ *
+ * A radar band whose lower edge is `r0="0"` degenerates to a ring
+ * of coincident poles, which encloses nothing and fills to the
+ * centre — the right answer, arrived at by the same arithmetic
+ * rather than by a case.
  *
  * @tagname hdml-area
  *
@@ -362,6 +377,9 @@ export class HdmlAreaElement extends HdvlElement {
     close();
     reportDrops(this, projection, tally, rows, kept);
     const measured = ctx.measured(this);
+    // SPEC §7's radar loop, shared with `hdml-line` — presence, on
+    // a plane composing angularly, and inert everywhere else.
+    const loop = closedOf(this, first, AREA_ATTRS_LIST.CLOSED);
     const type = curveTypeOf(measured);
     const options = curveOptionsOf(measured);
     const subpaths: Subpath[] = [];
@@ -381,15 +399,26 @@ export class HdmlAreaElement extends HdvlElement {
         // and a region with one vertex per edge has no area.
         continue;
       }
-      subpaths.push({
-        start: upper[0].start,
-        segments: [
-          ...upper[0].segments,
-          // The right-hand cap. The left-hand one is `closed`.
-          { k: "line", to: lower[0].start },
-          ...lower[0].segments,
-        ],
-      });
+      if (loop) {
+        // Two rings, counter-wound: the upper edge runs first →
+        // last and the lower is already reversed, so the node's
+        // `closed` flag closes each on itself and `nonzero` punches
+        // the hole. No cap, because there are no ends to cap.
+        subpaths.push(
+          { start: upper[0].start, segments: upper[0].segments },
+          { start: lower[0].start, segments: lower[0].segments },
+        );
+      } else {
+        subpaths.push({
+          start: upper[0].start,
+          segments: [
+            ...upper[0].segments,
+            // The right-hand cap. The left-hand one is `closed`.
+            { k: "line", to: lower[0].start },
+            ...lower[0].segments,
+          ],
+        });
+      }
       // The outline's own order, so a hit anywhere on it names the
       // row that vertex came from — the two edges of one row carry
       // the same `i`, exactly as `hdml-rule`'s two endpoints do.
@@ -410,14 +439,12 @@ export class HdmlAreaElement extends HdvlElement {
       // §2.5: a node built from every row has no single source row.
       i: -1,
       subpaths,
-      // Each region is a closed outline: upper forward, the cap,
-      // lower reversed, and the close back to the first vertex.
-      // `hdml-line`'s `closed` is its polar radar loop (landed at
-      // step 26); both readings are "this subpath closes", and they
-      // do not collide because they are different elements'
-      // geometry. THIS element's `closed` attribute stays inert —
-      // see the class JSDoc for the open question a polar band
-      // raises, which is 10-radar's and not this node's.
+      // ALWAYS true, and it is the same word in both readings:
+      // "this subpath closes". Without `closed` there is one
+      // subpath per region and it closes over the left-hand cap;
+      // with it there are two and each closes on itself. What the
+      // attribute changes is how many subpaths there are, never
+      // this flag.
       closed: true,
       vertices,
       // §6.1's paint resolution. A filled mark, so the fallback is

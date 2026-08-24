@@ -148,12 +148,29 @@ suite("hdvl/vocabulary", () => {
   });
 
   test("the module exports nothing else", () => {
+    // ★ `HDQL_SORT_BY_TAG` is the ONE data tag on this list, added
+    // at step 27 because SPEC §11's V7 names `hdml-sort-by` as the
+    // element that discharges the row-order duty — a check the
+    // validator cannot spell without it. It is here rather than in
+    // `validate.ts` so this fence keeps counting it: a second data
+    // tag leaking down would fail this assertion, which is the
+    // whole point of the list being exhaustive.
     const expected = ATTRS_ENUMS.concat([
       "HDVL_TAG_NAMES",
       "HDVL_FAMILIES",
+      "HDQL_SORT_BY_TAG",
       "familyOf",
     ]).sort();
     assert.deepEqual(Object.keys(vocab).sort(), expected);
+  });
+
+  test("★ the one data tag it names is hdml-sort-by", () => {
+    assert.strictEqual(
+      vocab.HDQL_SORT_BY_TAG,
+      allTags.SORT_BY,
+      "V7's element must come from the published enum (R8)",
+    );
+    assert.strictEqual(vocab.HDQL_SORT_BY_TAG, "hdml-sort-by");
   });
 
   test("HDVL_FAMILIES covers every tag, once", () => {

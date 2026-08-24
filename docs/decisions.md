@@ -498,21 +498,37 @@ the left gutter on its **right**. It is also why the derivation lives in
 `hdml-label`'s anchor and baseline from the identical fact, and two implementations of
 "which side faces the plot" could disagree about a guide the author moved.
 
-## A label's anchor and baseline are the sign of `edge − centre`
+## A label's anchor and baseline are the per-axis sign of the outward normal
 
-Step 24 cashed that in. §6.5 derives the two `text` fields from *"which edge of its own
-box the scale's axis runs along"*, and the temptation is four cases keyed on the channel
-— which is the authored `position` SPEC §7 forbids, merely spelled in TypeScript, and
-which silently stops tracking a box that CSS moved.
+Step 24 cashed that in and step 27 generalised it. §6.5 derives the two `text` fields
+from *"which edge of its own box the scale's axis runs along"*, and the temptation is
+four cases keyed on the channel — which is the authored `position` SPEC §7 forbids,
+merely spelled in TypeScript, and which silently stops tracking a box that CSS moved.
 
 Both facts needed are already computed. `guideEdge` returns the near edge; the scale's
 content box gives the plot's centre; the text hangs off that edge *away* from the plot.
-So the whole answer is **the sign of `edge − centre`** on the perpendicular axis — high
+Step 24's answer was **the sign of `edge − centre`** on the perpendicular axis — high
 side means the run continues toward higher coordinates (`top` baseline on a horizontal
 guide, `start` anchor on a vertical one), low side toward lower (`bottom` / `end`) — and
 along the guide's own axis the run is centred, so the remaining field is `middle` either
 way. §6.5's four rows fall out of that one predicate rather than being tabulated, and
 the test proves it by moving the box and watching both fields change.
+
+**Step 27 kept the predicate and replaced its input.** A ring has no near edge, and
+asking a polar guide for one would have produced four more cases keyed on the channel —
+exactly what the derivation exists to avoid. What generalises is the vector: the text
+hangs along the **outward normal**, the direction away from the plot, and the answer is
+that normal's **per-axis sign**. Under a plane composing in view space the normal is
+constant and axis-aligned, `(0, ±1)` or `(±1, 0)`, its sign the old `edge − centre`;
+**the zero component is why each of §6.5's four rows carries a `middle`**, which the
+tabulated form never explained. Under a plane composing about a pole it is radial — the
+point less the pole — so it turns with the ring and the placement resolves per tick.
+
+The deadband is relative to the normal's own magnitude, because the two normals differ
+in length by a radius. `cos(π / 2)` is `6.1e-17`, so a three-o'clock tick's vertical
+component sits fifteen orders of magnitude under a `1e-6` threshold while the smallest
+angle an author can distinguish sits nine orders over it. A tick **on** the pole has no
+direction and resolves to `middle`/`middle` — the truthful answer, not a guard.
 
 ## A tick's `decorative: true` lives in the node kind it emits
 
@@ -651,20 +667,134 @@ scoped by the plane's **channels** — the same question `hdml-arc` asks to deci
 has a pole at all — never by a plane kind. A branch on kind is what H7 forbids; asking a
 plane which channels it projects is what the seam is for.
 
-## `hdml-area`'s `closed` is still inert, and a polar band is an open question
+## `hdml-area`'s `closed` is two counter-wound rings, and the fill rule was unnecessary
 
-`hdml-area` publishes `closed` and does not read it: every region it emits is already a
-closed outline — upper edge forward, across, lower edge reversed, close — so on a cartesian
-plane the attribute has nothing left to say. Under a **polar** plane it does. That outline
-runs from the first category to the last and then closes *through the pole*, leaving a wedge
-between the last category and the first; a radar band should close *around* the loop.
+*(Raised at step 26, decided with the user and landed at step 27. SPEC §7 carries the
+dated amendment.)*
 
-Not fixed at step 26, deliberately. Closing a polar band correctly is not a flag on the
-node: it is an **outer ring and an inner ring as two subpaths with a fill rule**, which is a
-SPEC question about what `closed` means on a filled mark rather than a geometry bug. It
-belongs to `10-radar`'s corpus gate, which is the first page that renders one and the first
-place the answer can be checked against a real figure. `hdml-line closed` — the polygon
-outline the same page draws over the band — landed at step 26 and is unaffected.
+`hdml-area` publishes `closed` and, on a cartesian plane, does not read it: every region
+it emits is already a closed outline — upper edge forward, across, lower edge reversed,
+close — so the attribute has nothing left to say, and a cartesian area written with it
+emits a byte-identical node. Under a **polar** plane it does have something to say. That
+outline runs from the first category to the last and then closes *through the pole*,
+leaving a wedge-shaped notch between the last category and the first where a radar band
+should close *around* the loop — `10-radar`'s band, visibly wrong while the `hdml-line
+closed` outline drawn over it is right.
+
+Step 26 recorded the fix as *"an outer ring and an inner ring as two subpaths **with a
+fill rule**"* and deferred it as a SPEC question about what `closed` means on a filled
+mark. The SPEC question was real; the fill rule was not. **The two edges are already
+counter-wound** — the upper runs first → last and the lower is emitted reversed, last →
+first, which the cap-joined form needed anyway — so emitting them as two subpaths rather
+than one gives them opposite winding, and SVG's default `nonzero` rule fills the annulus
+and leaves the hole empty by itself. Nothing is added to §2.5's node, the renderer is not
+touched, and the node's `closed` flag was already a `Z` **per subpath** since step 10, so
+each ring closes on itself.
+
+What the attribute changes is therefore **how many subpaths a region has**, never the
+flag. A band whose inner edge is `r0="0"` degenerates to a ring of coincident poles,
+encloses nothing, and fills to the centre — the right answer by the same arithmetic
+rather than by a case. The predicate itself is shared with `hdml-line` (`closedOf`):
+presence, on a plane composing angularly, one implementation for both tags.
+
+## A guide asks its plane which channels it projects, exactly as a mark does
+
+`guide-spec.ts` carried a `readonly [Channel, Channel]` naming `x`/`y`, and `resolveGuide`
+refused any plane that did not answer it. That was correct while nothing composed
+`(along, across)` except a cartesian plane, and it was **H7 half-applied**: the mark half
+had asked the plane since step 22, the guide half had not. Step 27 deleted the constant.
+
+What replaced it is not a plane-kind test. `guidePoint` hands both positions to
+`Projection.point` in the plane's own channel order — and the cartesian output is
+*unchanged*, because that plane composes with the identity pair precisely so that "an `x`
+position already is a view x". `resolveGuide` then resolves one extra member, `pole`, as
+`projection.point(0, 0)`, the same read `hdml-arc` already made; the four guide elements
+read polar-ness back off `pole !== null` plus `first`, so **no guide element names a
+channel at all**. A ring is *"my own channel is this plane's first and there is a pole"*
+and `--hdml-grid-shape`'s home is *"my own channel is its second and there is a pole"*.
+
+One channel name survives, in `guide-spec.ts` and nowhere else: `ANGULAR`, asked once, to
+decide whether a plane composes about a pole. That is the identical question
+`mark-line.ts`'s `closedOf` asks and `mark-arc.ts` asks of its own channels — a fact about
+**channels**, which H7 permits, and not a branch on plane kind, which it forbids.
+
+## A polar guide sits at the other channel's range, not at its own box
+
+`guideEdge` derives *which edge of its own box faces the scale*, and SPEC §7 gives
+placement to CSS precisely so that derivation tracks an author rule. It returns a **view
+coordinate**, and that is a legal `across` exactly when the other channel's range is
+measured in one.
+
+Under a polar plane it is not: the other channel's range is degrees or a radius, and no
+box edge is a value in either. A polar guide's box is also the plane's — the UA sheet
+places gutters for `x` and `y` guides and a polar plane has none, so the generic
+`inset: 0` applies — which means there would be nothing to read even in principle. So
+`guideAcross` takes the other channel's range's **far end**: the rim for a guide repeating
+around it, the end of the turn for one repeating outward along a spoke. On the full turn
+every corpus polar page writes, `360deg` **is** `0deg`, so a radial guide lands on the
+twelve-o'clock spoke — which is where every charting library puts one, arrived at by
+derivation rather than by convention.
+
+## `hdml-pie` is `hdml-arc` with a derived angle form, and nothing else
+
+§6.3 calls the pie *"the same, with one cross-row `derive()` in data space before
+projection"*, and SPEC §7 claims 08-A and 08-C are interchangeable. Both sentences are
+easy to *state* and easy to falsify by writing a second `k: "arc"` node literal — at which
+point the claim becomes a coincidence between two implementations that can drift.
+
+Step 26 had already built the seam without knowing it. `mark-arc.ts`'s `AngleForm`
+resolves *how a row becomes a pair of degrees* before the row loop, so that the loop, the
+three radial cases and the node are written once for the arc's two forms. The pie is a
+**third** form behind the same interface. Step 27 therefore lifted the arc's `scene()`
+body into a free `sectorScene(ctx, el, formOf)` and both tags call it: the arc passes its
+scale-kind dispatcher, the pie passes its prefix sum. R12 is satisfied by construction and
+the interchangeability test compares two scenes that came out of one function.
+
+The pie publishes no radial attribute at all, so it always takes the arc's *third* radial
+case — the full range floored by `--hdml-inner-radius` — which is exactly 08-B's
+widget-scoped doughnut and 08-D's plane-scoped ring, differing only in where the
+declaration sits.
+
+## The pie's `a1` is a running quotient, so the last slice closes exactly
+
+RFC §6.3 writes `a1ₖ = a0ₖ + vₖ / total`. The implementation computes `acc / total` with
+`acc` the running sum. The two are algebraically identical and **only the second closes
+the circle**: `acc` after the last row is the same sum, accumulated in the same order,
+that `total` is, so the final quotient is exactly `1` and the last slice's high edge lands
+exactly on the angular range's end. Summing the quotients instead leaves a hairline gap
+whose width is a float's — invisible in a screenshot, present in the scene, and the sort of
+thing that shows up as a seam at one zoom level and not another.
+
+## V7 needed a seventh `WarningCode`, and no new `DiagnosticCode`
+
+V7 has two halves and they report differently. **Negative pie values** are an error, and
+the code was already there: `negative-pie-value` landed in the union at step 12 for H5's
+reason and had no caller until step 27 gave it one — the third step running (24, 25, 27)
+to find the code it wanted already in the enum. It is reported from COMPUTE by the widget
+that met the rows and drained by the binding pass, exactly as `all-rows-dropped` is,
+because draining rather than accumulating is what makes recovery work.
+
+**The row-order clause** is a *warning* — SPEC §11 says *"the validator warns where it can
+see"* — and §8.1 makes warnings carry a `WarningCode`. The six that existed are W1–W6, one
+per rule, and that 1:1 mapping had read as a contract; it was in fact a property of no
+V-rule having had a non-error clause yet. So `unpinned-row-order` is a seventh code
+carried by `rule: "V7"`, a §8 amendment with no SPEC change (§11's V7 row already states
+the rule). It warns without blanking and without `:state(error)`, as §8.3 requires.
+
+The **locality clause** is the whole design of that half: the check resolves the effective
+`source` as an in-page `?hdml-frame=` ref and reports only when the page declares that
+frame and the frame carries no `hdml-sort-by`. A ref with a path names another document
+and a ref this page does not declare is *unresolvable*, which is a different claim from
+*unsorted* — and "add a sort to a frame I have never seen" is a statement §1.5 would
+rather not make. It is the same split V4 takes, for the same reason.
+
+It is also why `vocabulary.ts` now exports one **data** tag, `HDQL_SORT_BY_TAG`. Everything
+else the validator knows about the data vocabulary it derives — the host tag out of the
+author's own ref, a frame's fields out of its children carrying a `name` — and neither
+derivation can reach a sibling block element. SPEC §11 names `hdml-sort-by` explicitly, so
+the check cannot be spelled without it; putting it in the one module that imports
+`@hdml/types` keeps the display half's whole vocabulary surface auditable in one place, and
+`vocabulary.test.ts`'s exhaustive export fence keeps counting it.
 
 ## A corpus page is fetched, not inlined — and its `hdml-io` is removed
 

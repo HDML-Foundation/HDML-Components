@@ -35,6 +35,15 @@ import { HdmlViewElement } from "./view";
  * rather than to its kind — a cartesian line's node is asserted
  * **byte-identical** with and without the attribute.
  *
+ * **`hdml-area`'s half of `closed` landed at step 27**, with the
+ * user, after step 26 raised it and deferred it: a polar band's
+ * joined outline closes *through the pole* and leaves a wedge, so
+ * `closed` splits the region into an outer and an inner ring. They
+ * are **counter-wound** — the upper edge runs first → last and the
+ * lower edge is already reversed — so SVG's default `nonzero` rule
+ * punches the hole with no fill-rule field added to §2.5 and no
+ * renderer change.
+ *
  * **Rule 2 binds hard here.** Every coordinate below is a
  * `Math.sin`/`Math.cos` away from its pole, so nothing is
  * `deepEqual` and everything is `closeTo(…, 1e-9)`. The four
@@ -310,6 +319,69 @@ suite("hdvl/mark-polar — H7 under a polar plane", () => {
     assert.isNotNull(node.fill);
     assert.strictEqual(node.stroke, null);
     noMinusZero(sceneOf(view), "scene");
+  });
+
+  test("★ area `closed` is two counter-wound rings", async () => {
+    // The notch step 26 found: without `closed` the band's outline
+    // runs the upper edge first → last, cuts IN to the lower edge
+    // and runs back, so the region closes through the pole. With
+    // it there are two subpaths and no cap at all.
+    const view = await mount(
+      polar(
+        html`<hdml-area
+          closed
+          angle="${QUARTERS}"
+          r0="[0.2, 0.2, 0.2, 0.2]"
+          r1="${OUTER}"
+        ></hdml-area>`,
+      ),
+    );
+    const node = pathOf(view);
+    assert.isTrue(node.closed);
+    assert.lengthOf(node.subpaths, 2);
+    // The outer ring: four vertices, so three segments and NO cap.
+    // The joined form has seven segments for the same four rows.
+    assert.lengthOf(node.subpaths[0].segments, 3);
+    assert.lengthOf(node.subpaths[1].segments, 3);
+    near(node.subpaths[0].start, 0, CEILING, "outer start");
+    // ★ COUNTER-WOUND: the inner ring starts where the outer ends,
+    // angularly — 270° against 0° — because the lower edge is
+    // already reversed. That opposite winding is what makes
+    // `nonzero` leave the hole empty.
+    near(node.subpaths[1].start, 270, 20, "inner start");
+    // Hit resolution is untouched: eight vertices, upper forward
+    // then lower reversed, exactly as the un-closed band.
+    assert.lengthOf(node.vertices, 8);
+    noMinusZero(sceneOf(view), "scene");
+  });
+
+  test("★ area `closed` is inert on a flat plane", async () => {
+    const bare = await mount(
+      flat(
+        html`<hdml-area
+          x="${QUARTERS}"
+          y0="[0.2, 0.2, 0.2, 0.2]"
+          y1="${OUTER}"
+        ></hdml-area>`,
+      ),
+    );
+    const marked = await mount(
+      flat(
+        html`<hdml-area
+          closed
+          x="${QUARTERS}"
+          y0="[0.2, 0.2, 0.2, 0.2]"
+          y1="${OUTER}"
+        ></hdml-area>`,
+      ),
+    );
+    // BYTE-IDENTICAL, not merely "one subpath": the attribute must
+    // not reach the geometry, the paint or the vertex list.
+    assert.lengthOf(pathOf(marked).subpaths, 1);
+    assert.deepEqual(
+      sceneOf(marked, P).groups[0].nodes,
+      sceneOf(bare, P).groups[0].nodes,
+    );
   });
 
   test("★ hdml-point paints under a polar plane", async () => {

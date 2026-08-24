@@ -72,6 +72,13 @@ const RADAR_CHANNEL: Channel = "angle";
 /**
  * §6.1's `closed`: whether this series' subpaths close.
  *
+ * **Shared with `hdml-area`** (step 27), which is why the attribute
+ * arrives as a parameter: both tags publish `closed` from their own
+ * `*_ATTRS_LIST` (R8), and the predicate — *presence, on a plane
+ * composing angularly* — is one rule with one implementation (R12).
+ * What the two tags then *do* with the answer differs, and that
+ * belongs in each of them.
+ *
  * **Presence, not value.** SPEC §7 writes it bare in `10-radar` —
  * `closed` with no value — which is the boolean-attribute convention
  * `hidden`, `nice` and `clamp` already use in this vocabulary.
@@ -91,13 +98,15 @@ const RADAR_CHANNEL: Channel = "angle";
  *
  * @param el - The widget.
  * @param channel - The plane's independent channel.
+ * @param attr - That widget's own `closed` attribute name.
  * @returns Whether the node closes.
  */
-function closedOf(el: HdvlElement, channel: Channel): boolean {
-  return (
-    channel === RADAR_CHANNEL &&
-    el.hasAttribute(LINE_ATTRS_LIST.CLOSED)
-  );
+export function closedOf(
+  el: HdvlElement,
+  channel: Channel,
+  attr: string,
+): boolean {
+  return channel === RADAR_CHANNEL && el.hasAttribute(attr);
 }
 
 /**
@@ -297,7 +306,7 @@ export class HdmlLineElement extends HdvlElement {
       subpaths,
       // §6.1's radar loop — polar-only, and a `Z` per subpath
       // rather than a repeated vertex. See `closedOf`.
-      closed: closedOf(this, first),
+      closed: closedOf(this, first, LINE_ATTRS_LIST.CLOSED),
       vertices,
       // §6.1's paint resolution. The row is the first SURVIVING
       // one, so a series whose row 0 is a gap still takes its own

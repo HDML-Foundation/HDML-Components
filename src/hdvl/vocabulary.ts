@@ -82,6 +82,25 @@ export const HDVL_TAG_NAMES = {
 } as const;
 
 /**
+ * ★ The **one data tag the display half names**, and V7 is why.
+ *
+ * SPEC §11's V7 attaches the row-order duty to the **frame** and
+ * names the element that discharges it — *"source frame pins row
+ * order (`hdml-sort-by`)"* — so the check cannot be spelled without
+ * it. Everything else `validate.ts` knows about the data vocabulary
+ * it derives from the author's own ref (`?hdml-frame=sales` names
+ * its host) or from structure (a frame's projected fields are its
+ * direct children carrying a `name`), and neither derivation can
+ * reach a sibling *block* element.
+ *
+ * It lives here rather than in `validate.ts` for the reason
+ * everything else in this file does: one module imports
+ * `@hdml/types` and the display half's whole vocabulary surface is
+ * auditable in one place (R8).
+ */
+export const HDQL_SORT_BY_TAG: string = HDML_TAG_NAMES.SORT_BY;
+
+/**
  * A display tag name — the value type of {@link HDVL_TAG_NAMES}.
  */
 export type HdvlTagName =

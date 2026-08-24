@@ -17,7 +17,7 @@ import type { Paint, SceneGroup, SceneNode } from "./scene";
 import { paintSuppressed } from "./subscribe";
 import { fillPaint } from "./mark";
 import {
-  guideEdge,
+  guideAcross,
   guideGroup,
   guidePoint,
   resolveGuide,
@@ -136,9 +136,13 @@ function glyph(
  * asserts the invariant that makes this true — no node this element
  * emits is a `text` node.
  *
- * **Cartesian only in this slice**, for the reason `guide-spec.ts`
- * gives: a polar plane resolves to nothing until step 27, rather
- * than to glyphs laid along a straight line through polar space.
+ * **It carries no plane branch at all** — the one thing that
+ * changed at step 27, when a polar plane began resolving. Its glyph
+ * is centred on the projected point, and `guide-spec.ts` owns both
+ * halves of that: `guideAcross` says where across its channel the
+ * glyph sits, and `guidePoint` composes through the plane. Under a
+ * polar plane the glyphs therefore lie along a spoke or around a
+ * ring without this file knowing which.
  *
  * @tagname hdml-tick
  *
@@ -201,7 +205,7 @@ export class HdmlTickElement extends HdvlElement {
       return null;
     }
     const m: Measured = guide.measured;
-    const across = guideEdge(guide);
+    const across = guideAcross(guide);
     // The property registers as `rect | ellipse`, so the UA has
     // already rejected anything else — this narrows a string, it
     // does not validate one.

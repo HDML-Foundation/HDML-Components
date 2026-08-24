@@ -17,10 +17,11 @@ import type { SceneGroup } from "./scene";
 import { paintSuppressed } from "./subscribe";
 import { strokePaint } from "./mark";
 import {
-  guideEdge,
+  guideAcross,
   guideGroup,
   guideLine,
   guidePoint,
+  guideRing,
   resolveGuide,
 } from "./guide-spec";
 import {
@@ -52,6 +53,16 @@ import {
  * and **V16** — live since step 24 — adds the diagnostic for an
  * author who writes one anyway. It reports; it does not blank, so
  * this element's scene is unmoved by one (§8.3).
+ *
+ * **★ "One line spanning the whole range" is a RING when the range
+ * is angular** (landed at step 27). The whole of the angular range
+ * is a turn, and its two ends are the *same point* — so the
+ * straight span this element draws everywhere else would degenerate
+ * to nothing. It reads that off the resolved guide rather than off
+ * a channel: its own channel is the plane's **first** and the plane
+ * has a **pole**. On the plane's second channel under the same
+ * pole, the straight span is exactly right and unchanged — that is
+ * a **spoke**, from the pole out to the rim.
  *
  * @tagname hdml-axis
  *
@@ -93,13 +104,16 @@ export class HdmlAxisElement extends HdvlElement {
     if (span === null) {
       return null;
     }
-    const at = guideEdge(guide);
+    const at = guideAcross(guide);
     const paint = strokePaint(guide.measured, null);
-    const node = guideLine(
-      guidePoint(guide, span[0], at),
-      guidePoint(guide, span[1], at),
-      paint,
-    );
+    const node =
+      guide.pole !== null && guide.first
+        ? guideRing(guide.pole, at, span[0], span[1], paint)
+        : guideLine(
+            guidePoint(guide, span[0], at),
+            guidePoint(guide, span[1], at),
+            paint,
+          );
     return guideGroup(this, guide.measured, [node]);
   }
 }
