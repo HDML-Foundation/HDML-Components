@@ -334,6 +334,24 @@ Resolution order is fixed at **domain → `zero` → `nice`**: `zero` may create
 authored domain it is a no-op rather than an error (V15) — and it is computed from the domain
 and its own count, never from pixels, so a resize cannot move the data.
 
+**`nice` rounds to the scale's own ladder**, not to the linear one. SPEC §6 names only the
+datetime case (*"the step comes from the calendar ladder"*); the same rule is applied to every
+kind, decided under D1 at step 25:
+
+| Scale | `nice` rounds to |
+|---|---|
+| ordinal | — (V18: `nice` is continuous/datetime only) |
+| continuous `linear`, `pow`, `sqrt` | the `{1, 2, 5} × 10ⁿ` ladder. §4.8's pow ladder **is** the numeric ladder in value space, so `sqrt` needs no rule of its own |
+| continuous `log` | the enclosing **power of the base** — `[12.5, 1250]` → `[10, 10000]` |
+| continuous `symlog` | per endpoint: the numeric ladder inside the linear region `abs(v) ≤ C`, the power of the base outside it |
+| datetime | the calendar ladder (month/year boundaries) |
+
+The log row is not cosmetic. Running the linear ladder on a log domain widens `[12.5, 1250]`
+to `[0, 1400]`, and a log domain that touches zero is a **V2 error** that projects nothing —
+so an opt-in `nice` could turn a legal page into a blank figure. `nice` never invents a legal
+domain either: a `log` endpoint that is already zero or negative is left exactly where it is,
+so V2 still reports it.
+
 **Ranges come from boxes** — each scale's own **content box**, so its padding insets only its
 own range:
 
@@ -508,6 +526,14 @@ no tick algorithm — and a guide **forwards** all three rather than resolving b
 `Scale.ticks` tests `values`, then `step`, then `count`, and that is the whole of the
 precedence. Writing two of them is V16's error, live since step 24. An attribute present but empty
 reads as absent. On an **ordinal** scale a grid lands on band **centres**, never edges.
+
+`step=`'s multiples are generated over an **integer index range**, and where the step has an
+integer reciprocal (`0.05`, `0.2`, `0.001` — nearly every one an author writes) as `i /
+divisor`, exactly as §4.8's own ladder is. That is not tidiness: `0.35 / 0.05` is
+`6.999999999999999`, so the obvious `ceil(lo / step) … floor(hi / step)` **drops a domain's
+last tick** — the top gridline and the top label, with no diagnostic. Found at step 25 on
+`05-scatter`, the first page in the project to run a `step=` guide over a domain it did not
+choose itself.
 
 A guide node carries `i: -1` and **no vertices**: `i` is a source row index and `vertices`
 are projected *data* vertices, and a guide has neither. Hit resolution therefore never

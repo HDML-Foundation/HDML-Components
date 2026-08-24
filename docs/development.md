@@ -305,6 +305,31 @@ as the acceptance suite.
 **No test can assert the two copies agree** — this repo cannot reach the project folder — so a
 corpus fix must land in **both** locations, by hand, in the same change.
 
+They are **executed**, not only served. [src/hdvl/corpus/](../src/hdvl/corpus/) is one
+`*.test.ts` per page; [src/testing/corpus.ts](../src/testing/corpus.ts) is the shared harness.
+Since step 25 the suite covers `00`, `01`, `02`, `03`, `05` and `07` — ten views — and the
+remaining seven pages arrive with the slices that build the elements they use.
+
+Per view the gate is: `assertRenders` (not `:state(error)`, not `:state(loading)`, at least
+one **mark** node, `diagnosticsOf` empty), one whole-`Scene` golden as a committed TS literal,
+a `structuredClone` round-trip, and the 20 000-node budget.
+
+Five decisions the harness takes once, because five gate steps inherit them:
+
+| | |
+|---|---|
+| **A page is fetched, never inlined** | `mountCorpus` `fetch`es `/html/hdvl/<name>.html` off the runner's own static serving. Inlining the markup into a test would be a **third** copy that no `cmp` covers |
+| **The page's `hdml-io` is removed first** | Four pages declare one against a host that does not exist, and it would both hit the network and register as a **second** D8 provider — `subscribe.ts` de-dupes by `id`, not by provider. `FakeIo` replaces it outright (RFC §10.3). The count removed is asserted, and so is the absence of any `hdml-io` in the mounted page |
+| **The page's `<style>` is adopted verbatim** | Injected into `document.head` before the fixture mounts, removed at teardown. The bare tag selectors are what SPEC §7 makes placement out of, so they must reach the light DOM exactly as on the served page |
+| **The layout viewport is pinned at 800 px** | Five pages size their view `width: 100%`. The runner's window is a Playwright default, not a corpus fact; 800 is wider than every page's own `max-width`, so each page keeps its author's dimensions and none is capped by the harness |
+| **Geometry is asserted everywhere, `text` on chromium only** | Cross-engine rule 4. `stripText` blanks every `text` field for the three-engine `deepEqual`; the strings are a second assertion behind an engine guard whose classification is itself asserted on all three, so an engine-detection change cannot make the scoped half silently pass |
+
+`FakeIo` is seeded **by ref string**, so an in-page `?hdml-frame=…` and a static
+`/warehouse/….html?hdml-frame=…` are answered the same way and no `/warehouse/*` document is
+ever invented. `00-minimal` and `02-area` mount with **no provider at all** — that is SPEC §4's
+literal-only conformance class, proved rather than asserted, since a page that needed one would
+sit in `:state(loading)` and fail `assertRenders`.
+
 ## Lint
 
 ```bash

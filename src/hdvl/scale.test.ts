@@ -869,3 +869,59 @@ suite("hdvl/scale — the two events", () => {
     assert.deepEqual(must(v, "y").domain()?.extent, [0, 87]);
   });
 });
+
+/**
+ * ★ SPEC §7's explicit `step=` — *"states the interval exactly and
+ * invokes no tick algorithm"*.
+ *
+ * The reduced fixture step 25 owed for the endpoint-drop it found
+ * on corpus page `05-scatter` A. The domain here is that page's own
+ * `nice`d margin extent, which is the shape that breaks the naive
+ * predicate: `0.35 / 0.05` is `6.999999999999999`, so `floor` loses
+ * the top tick — the top gridline and the top label — with no
+ * diagnostic anywhere.
+ */
+suite("hdvl/scale — an explicit step keeps its endpoint", () => {
+  async function fractional(): Promise<HdmlViewElement> {
+    return mount(html`
+      <hdml-view
+        aria-label="fractional"
+        style="width: 400px; height: 100px"
+      >
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-continuous-scale channel="x" min="0.1" max="0.35">
+            <hdvl-probe></hdvl-probe>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+  }
+
+  test("a domain ending on a multiple keeps it", async () => {
+    const view = await fractional();
+    const ticks = must(view, "x").ticks({ step: 0.05 });
+    assert.deepEqual(
+      ticks.map((t) => t.value),
+      [0.1, 0.15, 0.2, 0.25, 0.3, 0.35],
+    );
+  });
+
+  test("its endpoints are the domain's, exactly", async () => {
+    // Not `7 * 0.05`, which is 0.35000000000000003 and would place
+    // the last tick a hair outside the range.
+    const view = await fractional();
+    const ticks = must(view, "x").ticks({ step: 0.05 });
+    assert.strictEqual(ticks[0].value, 0.1);
+    assert.strictEqual(ticks[ticks.length - 1].value, 0.35);
+    assert.strictEqual(ticks[ticks.length - 1].at, 400);
+  });
+
+  test("it emits nothing outside the domain", async () => {
+    const view = await fractional();
+    for (const t of must(view, "x").ticks({ step: 0.07 })) {
+      assert.isNumber(t.value);
+      assert.isAtLeast(Number(t.value), 0.1);
+      assert.isAtMost(Number(t.value), 0.35);
+    }
+  });
+});

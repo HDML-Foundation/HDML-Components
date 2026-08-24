@@ -6,7 +6,9 @@
 
 import { assert } from "@open-wc/testing";
 import {
+  niceLog,
   niceNumeric,
+  niceSymlog,
   tickStep,
   ticksLog,
   ticksNumeric,
@@ -339,5 +341,106 @@ suite("hdvl/kernel/ticks-numeric — ticksSymlog", () => {
       ticksSymlog(-1, 1, 4, 1, 10),
       ticksNumeric(-1, 1, 4),
     );
+  });
+});
+
+/**
+ * ★ §4.2 step 5's `nice` **on the non-linear transforms** — the D1
+ * decision taken at step 25 with the user.
+ *
+ * The reduced fixture that would have caught it is the first test:
+ * before the fix, `nice` on a log scale ran the linear ladder and a
+ * perfectly ordinary two-decade domain came back **touching zero**,
+ * which V2 then errors on and which projects nothing. Corpus page
+ * `05-scatter` B was the first page in the project to run it.
+ */
+suite("hdvl/kernel/ticks-numeric — niceLog", () => {
+  test("never widens a positive domain onto zero", () => {
+    // The regression, stated as the property rather than as one
+    // number: whatever the domain, a log `nice` stays positive.
+    for (const [lo, hi] of [
+      [12.5, 1250],
+      [0.004, 7],
+      [3, 4],
+      [1, 1e6],
+      [7e-9, 2e-7],
+    ]) {
+      const [nLo, nHi] = niceLog(lo, hi, 10);
+      assert.isAbove(nLo, 0, `${lo}..${hi}`);
+      assert.isAbove(nHi, 0, `${lo}..${hi}`);
+    }
+  });
+
+  test("the linear ladder would have zeroed it", () => {
+    // Kept as a counter-example, not as an approval: this IS what
+    // step 18 did, and it is why the figure was blank.
+    assert.deepEqual(niceNumeric(12.5, 1250, 10), [0, 1400]);
+    assert.deepEqual(niceLog(12.5, 1250, 10), [10, 10000]);
+  });
+
+  test("moves each endpoint to an enclosing power", () => {
+    assert.deepEqual(niceLog(12.5, 1250, 10), [10, 10000]);
+    assert.deepEqual(niceLog(0.004, 7, 10), [0.001, 10]);
+  });
+
+  test("only ever widens", () => {
+    const [lo, hi] = niceLog(12.5, 1250, 10);
+    assert.isAtMost(lo, 12.5);
+    assert.isAtLeast(hi, 1250);
+  });
+
+  test("leaves a domain on exact powers alone", () => {
+    assert.deepEqual(niceLog(10, 1000, 10), [10, 1000]);
+    assert.deepEqual(niceLog(1, 1, 10), [1, 1]);
+  });
+
+  test("honours a base other than ten", () => {
+    assert.deepEqual(niceLog(3, 9, 2), [2, 16]);
+  });
+
+  test("preserves a descending orientation", () => {
+    assert.deepEqual(niceLog(1250, 12.5, 10), [10000, 10]);
+  });
+
+  test("leaves a non-positive endpoint exactly", () => {
+    // `nice` may widen a domain; it may never invent a legal one.
+    // A log domain reaching zero is V2's to report, and a silently
+    // positive endpoint here would suppress the diagnosis.
+    assert.deepEqual(niceLog(0, 1000, 10), [0, 1000]);
+    assert.deepEqual(niceLog(-5, 1000, 10), [-5, 1000]);
+  });
+});
+
+suite("hdvl/kernel/ticks-numeric — niceSymlog", () => {
+  test("uses the numeric ladder inside C", () => {
+    assert.deepEqual(
+      niceSymlog(-0.7, 0.9, 4, 1, 10),
+      niceNumeric(-0.7, 0.9, 4),
+    );
+  });
+
+  test("uses the log ladder outside C", () => {
+    assert.deepEqual(niceSymlog(3, 1250, 4, 1, 10), [1, 10000]);
+  });
+
+  test("moves a negative endpoint away from zero", () => {
+    const [lo] = niceSymlog(-1250, 0, 4, 1, 10);
+    assert.strictEqual(lo, -10000);
+  });
+
+  test("preserves a descending orientation", () => {
+    assert.deepEqual(niceSymlog(1250, 3, 4, 1, 10), [10000, 1]);
+  });
+});
+
+/**
+ * ★ `pow` / `sqrt` need no `nice` of their own, and the assertion
+ * says why: §4.8's pow ladder **is** the numeric ladder in value
+ * space, so {@link niceNumeric} already is their own ladder and a
+ * `nicePow` would be a second name for one function (R12).
+ */
+suite("hdvl/kernel/ticks-numeric — nice on pow", () => {
+  test("the pow ladder is the numeric ladder", () => {
+    assert.deepEqual(ticksPow(0, 880, 10), ticksNumeric(0, 880, 10));
   });
 });

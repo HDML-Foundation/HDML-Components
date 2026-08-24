@@ -377,3 +377,129 @@ export function niceNumeric(
   }
   return d0 <= d1 ? [nLo, nHi] : [nHi, nLo];
 }
+
+/** `base^floor(log_base(v))` — the log rung at or below `v > 0`. */
+function rungBelow(v: number, base: number): number {
+  return Math.pow(base, Math.floor(logBase(v, base)));
+}
+
+/** `base^ceil(log_base(v))` — the log rung at or above `v > 0`. */
+function rungAbove(v: number, base: number): number {
+  return Math.pow(base, Math.ceil(logBase(v, base)));
+}
+
+/**
+ * §4.2 step 5's `nice` **on a log scale**: each endpoint moves
+ * outward to the enclosing power of the base.
+ *
+ * ★ **Added 2026-08-24 at step 25, under D1, with the user.** SPEC
+ * §6 defines `nice` as *"the next multiple of the tick step for its
+ * own target count"* and names the calendar ladder for
+ * `hdml-datetime-scale`, but says nothing about the three
+ * **non-linear** continuous transforms, none of which has a uniform
+ * step. Applying {@link niceNumeric} to a log scale is not merely
+ * inelegant: measured on corpus page `05-scatter`, a delivered
+ * domain of `[12.5, 1250]` becomes **`[0, 1400]`**, which V2 then
+ * errors on (*"a log domain cannot cross or touch zero"*) and which
+ * projects nothing — a legal page turned into a blank figure by an
+ * opt-in modifier. The approved default is the one the datetime
+ * clause already sets: **a scale's `nice` uses that scale's own
+ * ladder.** Powers of the base rather than §4.8's decade
+ * subdivisions, exactly as the datetime clause rounds to
+ * month/year boundaries rather than to the finest rung it could.
+ *
+ * `count` is not a parameter, and that is not an omission: powers of
+ * the base are the ladder's coarse rungs whatever count is asked
+ * for, and taking a count here would make `nice="4"` and bare
+ * `nice` disagree about a domain, which §4.2's layout-independence
+ * exists to prevent.
+ *
+ * **`pow` / `sqrt` need no member here.** §4.8's pow ladder *is* the
+ * numeric ladder applied in value space — `ticksPow` returns
+ * {@link ticksNumeric} — so {@link niceNumeric} already **is** their
+ * own ladder, and adding a `nicePow` would be a second name for one
+ * function (R12).
+ *
+ * A non-positive endpoint is left exactly as given. `nice` may only
+ * widen a domain, never invent one that is legal: a log domain
+ * reaching zero is V2's to report, and a `nice` that quietly moved
+ * the endpoint to a positive power would suppress the diagnosis.
+ *
+ * @param d0 - One domain endpoint.
+ * @param d1 - The other domain endpoint.
+ * @param base - The log base.
+ * @returns The widened endpoints, in the input's orientation.
+ */
+export function niceLog(
+  d0: number,
+  d1: number,
+  base: number,
+): [number, number] {
+  const lo = Math.min(d0, d1);
+  const hi = Math.max(d0, d1);
+  if (!(lo > 0) || !Number.isFinite(hi) || !(base > 1)) {
+    return [num(d0), num(d1)];
+  }
+  const nLo = rungBelow(lo, base);
+  const nHi = rungAbove(hi, base);
+  if (!Number.isFinite(nLo) || !Number.isFinite(nHi)) {
+    return [num(d0), num(d1)];
+  }
+  return d0 <= d1 ? [nLo, nHi] : [nHi, nLo];
+}
+
+/**
+ * §4.2 step 5's `nice` **on a symlog scale** — the same D1 decision
+ * applied to §4.8's two-region ladder.
+ *
+ * An endpoint inside the linear region `|v| ≤ C` is the numeric
+ * ladder's; one outside it is the log ladder's. That is §4.8's
+ * symlog rule read per endpoint, which is the only reading
+ * available: the two regions are qualitatively different scales and
+ * an endpoint sits in exactly one of them.
+ *
+ * **Outward is a direction on the number line, not away from
+ * zero.** A low endpoint always moves *down* and a high endpoint
+ * always moves *up*, because `nice` may only widen — so a low
+ * endpoint of `3` at `C = 1` moves down to `1`, and a high endpoint
+ * of `−1250` moves up to `−1000`. Reading "outward" as *away from
+ * zero* would narrow a domain that lies entirely on one side of it.
+ *
+ * @param d0 - One domain endpoint.
+ * @param d1 - The other domain endpoint.
+ * @param count - The target tick count, for the linear region.
+ * @param constant - §4.5's `C`.
+ * @param base - The log base used outside the linear region.
+ * @returns The widened endpoints, in the input's orientation.
+ */
+export function niceSymlog(
+  d0: number,
+  d1: number,
+  count: number,
+  constant: number,
+  base: number,
+): [number, number] {
+  const c = Number.isFinite(constant) && constant > 0 ? constant : 1;
+  const lo = Math.min(d0, d1);
+  const hi = Math.max(d0, d1);
+  const linear = niceNumeric(lo, hi, count);
+  const log = base > 1;
+  const nLo = !log
+    ? linear[0]
+    : lo > c
+    ? rungBelow(lo, base)
+    : lo < -c
+    ? -rungAbove(-lo, base)
+    : linear[0];
+  const nHi = !log
+    ? linear[1]
+    : hi > c
+    ? rungAbove(hi, base)
+    : hi < -c
+    ? -rungBelow(-hi, base)
+    : linear[1];
+  if (!Number.isFinite(nLo) || !Number.isFinite(nHi)) {
+    return [num(d0), num(d1)];
+  }
+  return d0 <= d1 ? [num(nLo), num(nHi)] : [num(nHi), num(nLo)];
+}

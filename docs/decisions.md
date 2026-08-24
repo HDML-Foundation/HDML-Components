@@ -567,11 +567,68 @@ padding *"the gutter the guide defaults spill into"* and a gutter that disagreed
 what spills into it is invisible in a scene assertion.
 
 The corpus pages never hit any of this: they were written against no UA sheet at all and
-set three offsets each, which is why the trap survived until the sheet existed.
+set three offsets each, which is why the trap survived until the sheet existed. **That
+was a prediction when the sheet landed at step 23 and is a measurement since step 25** —
+all six gated pages mount and every guide box in all ten goldens has a non-zero extent.
 
 `hdml-grid` gets **no rule of its own**, deliberately. SPEC §3's grid row is `inset: 0`
 over the plot area, which the generic `:host` rule already *is*. A redundant rule would
 be harmless and would also be a thing a later reader trusts as load-bearing.
+
+## `nice` rounds to the scale's own ladder, not always the linear one
+
+SPEC §6 defines `nice` as *"the next multiple of the tick step for its own target count"*
+and names exactly one special case — *"on `hdml-datetime-scale` the step comes from the
+calendar ladder"*. It says nothing about the three **non-linear** continuous transforms,
+none of which has a uniform step at all, so step 18 read the silence as *linear*.
+
+On a `log` scale that is not a rounding difference. A delivered domain of `[12.5, 1250]`
+runs the `{1, 2, 5} × 10ⁿ` ladder to a step of `100` and comes back as **`[0, 1400]`** — and
+a log domain that touches zero is V2's error, projects nothing, and paints a blank figure.
+An opt-in modifier turned a legal page into no chart. It surfaced on corpus page
+`05-scatter` B at step 25, the first time a page ran it.
+
+Decided under D1 with the user: **whichever ladder a scale's ticks come from is the ladder
+its `nice` rounds to** — a generalisation of the datetime clause rather than a second
+special case. `log` rounds to the enclosing **power of the base** (`[12.5, 1250]` →
+`[10, 10000]`), symlog per endpoint by region, and `linear`/`pow`/`sqrt` are unchanged
+*because they were already right*: §4.8's pow ladder **is** the numeric ladder in value
+space (`ticksPow` returns `ticksNumeric`), so a `nicePow` would be a second name for one
+function. Powers rather than §4.8's decade subdivisions, for the same reason the datetime
+clause says *month/year boundaries* rather than the finest rung it could reach.
+
+The one place `nice` deliberately does nothing: a `log` endpoint that is **already** zero
+or negative is left exactly where it is. `nice` may widen a domain; it may never invent a
+legal one, or it would suppress the V2 diagnosis of the page that is actually broken.
+
+## A corpus page is fetched, not inlined — and its `hdml-io` is removed
+
+Two decisions in [src/testing/corpus.ts](../src/testing/corpus.ts) that five gate steps
+inherit, both of which have a plausible alternative that fails quietly.
+
+**Fetched.** `html/hdvl/*.html` are already byte copies of the project folder's originals,
+and a `cmp` at landing time is what keeps them so. Inlining a page's markup into a
+`.test.ts` would make a **third** copy that no `cmp` covers, and the gate would then assert
+against markup nobody ships. Fetching instead depends on the runner serving `rootDir: "."`
+statically — a dependency whose failure mode is a 404 that throws and names the URL, where a
+drifted inline copy is silent.
+
+**Removed.** Four of the six gated pages declare an `hdml-io` against a host that does not
+exist. Leaving it in place is not neutral in two independent ways: its `connectedCallback`
+creates an endpoint and immediately posts props + HTML, which means a network call, a Worker
+and `@hdml/parser` on every corpus test; and it is *also* a D8 provider, and
+[subscribe.ts](../src/hdvl/subscribe.ts) de-dupes requests by `id`, not by provider — so it
+and `FakeIo` would **both** receive every request and both call `deliver`, with a transport
+error racing canned data by generation stamp. RFC §10.3 already settles which one drives the
+corpus. The harness asserts how many it removed *and* that none survives in the mounted
+page, so a page that gains or loses one is a failure rather than a silent change in what the
+gate proves.
+
+The layout viewport is pinned at 800 px for a related reason: five pages size their view
+`width: 100%`, so the runner's window would be baked into every number in every golden. 800
+is wider than every page's own `max-width` (760, 760, 760, 720, 780), so each page keeps the
+dimensions its author gave it and none is capped by the harness — the opposite of retuning
+the corpus to suit the runner.
 
 ## `transitionrun` replaces the document-wide `MutationObserver`
 

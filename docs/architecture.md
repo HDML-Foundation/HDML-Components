@@ -323,6 +323,14 @@ That is what makes a **scene assertion** — not a DOM assertion — the primary
 mechanism for the display half: a widget test builds no page, reads back no attributes,
 and compares one plain object.
 
+It is also what makes the **acceptance suite** a text file rather than a screenshot
+corpus. [src/hdvl/corpus/](../src/hdvl/corpus/) mounts the committed pages from
+[html/hdvl/](../html/hdvl/) and compares each view's whole scene against a golden
+committed as a TS literal, so a regression *names the number that moved* instead of
+producing an image diff a reader has to interpret. The shared harness is
+[src/testing/corpus.ts](../src/testing/corpus.ts) — see
+[docs/development.md](development.md#the-hdvl-corpus-pages) for what it decides and why.
+
 A new `Subpath` is a **gap**, never a bridge: a missing value breaks a path rather than
 interpolating across it.
 

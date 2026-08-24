@@ -57,7 +57,9 @@ import {
   project as projectContinuous,
 } from "./kernel/scale-continuous";
 import {
+  niceLog,
   niceNumeric,
+  niceSymlog,
   ticksLog,
   ticksNumeric,
   ticksPow,
@@ -504,10 +506,7 @@ function resolveDomain(el: HdvlElement, kind: ScaleKind): Resolved {
   // would be changing the rule rather than implementing it.
   if (has(el, A_NICE)) {
     const count = niceCount(el);
-    const [nLo, nHi] =
-      kind === "datetime"
-        ? niceCalendar(lo, hi, count, zoneOf(el))
-        : niceNumeric(lo, hi, count);
+    const [nLo, nHi] = niceFor(el, kind, lo, hi, count);
     if (!lowAuthored && Number.isFinite(nLo)) {
       lo = nLo;
     }
@@ -581,6 +580,54 @@ function resolveOrdinal(
 function has(el: HdvlElement, attr: string): boolean {
   const raw = el.getAttribute(attr);
   return raw !== null && raw.trim().toLowerCase() !== "false";
+}
+
+/**
+ * §4.2 step 5's ladder choice — **the scale's own ladder**.
+ *
+ * ★ **Added 2026-08-24 at step 25, under D1, with the user.** SPEC
+ * §6's `nice` paragraph names exactly one special case — *"on
+ * `hdml-datetime-scale` the step comes from the calendar ladder"* —
+ * and step 18 read the silence about `log` / `pow` / `symlog` as
+ * *linear*. On a **log** scale that is not a rounding difference: a
+ * delivered `[12.5, 1250]` becomes `[0, 1400]`, V2 errors on the
+ * zero, and the figure paints nothing (corpus `05-scatter` B, the
+ * first page that ever ran it). The approved reading generalises the
+ * datetime clause instead of special-casing it: whichever ladder a
+ * scale's **ticks** come from is the ladder its `nice` rounds to.
+ *
+ * This dispatch has the same four arms `ticksFor` has, deliberately
+ * — the two are the same §4.8 choice asked at two moments, and a
+ * ladder that appeared in one and not the other is exactly the bug
+ * this fixes. `pow`/`sqrt` fall through to {@link niceNumeric}
+ * because §4.8's pow ladder **is** the numeric one (`ticksPow`
+ * returns `ticksNumeric`), so nothing about a `sqrt` scale changes.
+ *
+ * @param el - The scale element.
+ * @param kind - Its kind.
+ * @param lo - The low endpoint after `zero`.
+ * @param hi - The high endpoint after `zero`.
+ * @param count - `nice`'s own target count.
+ * @returns The widened endpoints.
+ */
+function niceFor(
+  el: HdvlElement,
+  kind: ScaleKind,
+  lo: number,
+  hi: number,
+  count: number,
+): [number, number] {
+  if (kind === "datetime") {
+    return niceCalendar(lo, hi, count, zoneOf(el));
+  }
+  const spec = specOf(el);
+  if (spec.type === "log") {
+    return niceLog(lo, hi, spec.base);
+  }
+  if (spec.type === "symlog") {
+    return niceSymlog(lo, hi, count, spec.constant, spec.base);
+  }
+  return niceNumeric(lo, hi, count);
 }
 
 /** `nice`'s own target count. Bare `nice` is 10 (SPEC §6). */
@@ -888,6 +935,66 @@ function rawToNumber(kind: ScaleKind, v: string): number {
 }
 
 /**
+ * SPEC §7's explicit `step=` — *"states the interval exactly and
+ * invokes no tick algorithm"*, so every multiple of the author's
+ * interval that lies inside the domain, and nothing else.
+ *
+ * ★ **Corrected 2026-08-24 at step 25.** The obvious spelling of
+ * that predicate is `ceil(lo / step) … floor(hi / step)`, and it is
+ * wrong at the one place it matters most: `0.35 / 0.05` is
+ * `6.999999999999999`, so a domain whose high endpoint **is** a
+ * multiple of the step silently loses its last tick — the top
+ * gridline and the top label, with no diagnostic. Measured on
+ * corpus page `05-scatter` A, whose `nice`d margin domain ends
+ * exactly at `0.35` and whose `step="0.05"` grid and label both
+ * stopped at `0.30`. §4.8's own ladder never had this bug because
+ * it generates `i / divisor` over an integer index range; an
+ * author's step is an arbitrary number with no divisor to reuse, so
+ * the bound is taken with a **relative** tolerance and the products
+ * are snapped back onto the endpoints they name. Landed at step 18,
+ * found at step 25 — the first step that ran a `step=` guide over a
+ * domain it did not choose.
+ *
+ * The tolerance is relative to the domain's own magnitude, because
+ * an absolute one is meaningless across a corpus carrying both
+ * `0.05` margins and `500 000` revenues.
+ *
+ * A sub-unit step whose reciprocal is an integer — `0.05`, `0.2`,
+ * `0.001`, which is nearly every one an author writes — gets the
+ * kernel's own treatment and is generated as `i / divisor`, so the
+ * **interior** ticks are exact too: `3 * 0.05` is
+ * `0.15000000000000002` where `3 / 20` is `0.15`. The endpoint
+ * tolerance stays as the backstop for the steps that have no
+ * divisor.
+ *
+ * @param lo - The domain's low endpoint.
+ * @param hi - The domain's high endpoint.
+ * @param step - The author's interval, already known positive.
+ * @returns The ticks, ascending.
+ */
+function stepTicks(lo: number, hi: number, step: number): number[] {
+  const guess = Math.round(1 / step);
+  const exact =
+    step < 1 && guess > 0 && Math.abs(guess * step - 1) < 1e-12;
+  const index = (v: number): number => (exact ? v * guess : v / step);
+  const value = (i: number): number => (exact ? i / guess : i * step);
+  const first = Math.ceil(index(lo) - 1e-9);
+  const last = Math.floor(index(hi) + 1e-9);
+  if (!Number.isFinite(first) || !Number.isFinite(last)) {
+    return [];
+  }
+  const tol = Math.max(Math.abs(lo), Math.abs(hi), step) * 1e-9;
+  const out: number[] = [];
+  for (let i = first; i <= last; i++) {
+    const v = value(i);
+    const snapped =
+      Math.abs(v - lo) <= tol ? lo : Math.abs(v - hi) <= tol ? hi : v;
+    out.push(snapped === 0 ? 0 : snapped);
+  }
+  return out;
+}
+
+/**
  * §4.8's ladders, chosen by kind and by which member of the spec
  * the guide supplied. Every one of them is `kernel/`'s (R12).
  */
@@ -943,13 +1050,7 @@ function tickValues(
     Math.max(extent[0], extent[1]),
   ];
   if (want.step !== undefined && want.step > 0) {
-    const out: number[] = [];
-    const first = Math.ceil(lo / want.step);
-    const last = Math.floor(hi / want.step);
-    for (let i = first; i <= last; i++) {
-      out.push(i * want.step);
-    }
-    return out;
+    return stepTicks(lo, hi, want.step);
   }
   const count =
     want.count !== undefined && want.count > 0 ? want.count : 10;
