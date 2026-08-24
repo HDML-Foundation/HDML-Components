@@ -14,10 +14,13 @@ import { customElement, property } from "lit/decorators.js";
 import { HdvlElement } from "./base";
 import type { FrameContext, Measured } from "./measure";
 import type { SceneGroup, SceneNode } from "./scene";
-import type { Binding, Slot } from "./subscribe";
+import type { Binding, CellValue, Slot } from "./subscribe";
 import type { Channel } from "./resolve";
+import type { Scale } from "./scale";
+import type { Projection, SlotValues } from "./mark";
 import { paintSuppressed } from "./subscribe";
 import {
+  CHANNEL_SLOTS,
   channelColor,
   datumOf,
   fillPaint,
@@ -28,6 +31,7 @@ import {
   rangedValuesOf,
   reportDrops,
   rowCountOf,
+  slotValuesOf,
   tallyDrop,
 } from "./mark";
 import {
@@ -88,6 +92,116 @@ function innerRadiusOf(m: Measured, ceiling: number): number {
   return num(raw.endsWith("%") ? (n / 100) * ceiling : n);
 }
 
+/** One row's angular endpoints, in degrees (§4.6). */
+type Sector = readonly [number, number];
+
+/**
+ * §6.1's **two** `angle` forms, resolved to one per-row reader.
+ *
+ * SPEC §7 gives the arc *"(`a0`,`a1` — continuous angle scale) **or**
+ * (`angle` — ordinal angle scale, equal slices)"*, and the two differ
+ * in exactly one thing: how a row becomes a pair of degrees. Behind
+ * this interface everything after it — §5's N, §4.7's drop, the
+ * three radial cases, the node — is written once.
+ *
+ * The **scale's kind** is what picks between them, not a second
+ * attribute and not a plane test: a continuous angle scale has bands
+ * to give and an ordinal one has no continuous position to project.
+ */
+interface AngleForm {
+  /** The slots SPEC §5's N counts. */
+  readonly slots: readonly SlotValues[];
+  /** Row `k`'s endpoints, or `null` when the row drops (§4.7). */
+  at(k: number): Sector | null;
+  /** The values row `k` named, for §4.7's notice. */
+  cells(k: number): readonly CellValue[];
+}
+
+/**
+ * The **continuous** angle form: the ranged `a0`/`a1` pair, each
+ * endpoint `projection.at(angle, v)` directly.
+ *
+ * It goes through {@link import("./mark").rangedValuesOf} rather than
+ * reading the two attributes, so `angle` on a continuous scale keeps
+ * desugaring to `a0="0"` exactly as `radius` desugars to `r0="0"`
+ * (H8) — the sugar is resolved before any geometry exists here too.
+ *
+ * @param el - The widget.
+ * @param projection - Its projection.
+ * @param channel - The angle channel, from the plane.
+ * @returns The form, or `null` when the channel is unbound.
+ */
+function rangedForm(
+  el: HdvlElement,
+  projection: Projection,
+  channel: Channel,
+): AngleForm | null {
+  const pair = rangedValuesOf(el, channel);
+  if (pair === null) {
+    return null;
+  }
+  return {
+    slots: [pair.low, pair.high],
+    cells: (k: number): readonly CellValue[] => [
+      pair.low.at(k),
+      pair.high.at(k),
+    ],
+    at: (k: number): Sector | null => {
+      const a0 = projection.at(channel, pair.low.at(k));
+      const a1 = projection.at(channel, pair.high.at(k));
+      return a0 === null || a1 === null ? null : [num(a0), num(a1)];
+    },
+  };
+}
+
+/**
+ * The **ordinal** angle form: the simple `angle` attribute, one
+ * §4.4 band per row — SPEC §7's *"equal slices"*.
+ *
+ * **★ A slice is `bandOf().width`, not a whole step.** §4.4 gives a
+ * *bar* `b · step` and gives every other lookup the `centre`, so
+ * SPEC §7's "equal slices" had two readings that differ by a 20 %
+ * gap at the initial `--hdml-bandwidth: 0.8`. *(Decided 2026-08-24,
+ * with the user, at step 26 — the plan's step-26 D1 escalation.)*
+ * The arc is therefore the **second** widget in the project that
+ * reads `bandOf().width`, alongside `hdml-bar`, and for the same
+ * reason: both fill their band rather than sitting at its centre. A
+ * solid rose is one `--hdml-bandwidth: 1` declaration — which is
+ * what corpus `09-polar-area` already writes on its angle scale, and
+ * what `10-radar`'s `--hdml-bandwidth: 0` deliberately does not.
+ *
+ * The band comes from `Scale.bandOf`, never from a `360 / n` of its
+ * own (R12): the angular range is `--hdml-angle-start`/`-end` and
+ * need be neither a full turn nor ascending, and §4.4's denominator
+ * is `n − 1 + b` rather than `n`.
+ *
+ * @param el - The widget.
+ * @param scale - The ordinal angle scale.
+ * @param channel - The angle channel, from the plane.
+ * @returns The form, or `null` when the channel is unbound.
+ */
+function bandForm(
+  el: HdvlElement,
+  scale: Scale,
+  channel: Channel,
+): AngleForm | null {
+  const cats = slotValuesOf(el, CHANNEL_SLOTS[channel].simple);
+  if (cats === null) {
+    return null;
+  }
+  return {
+    slots: [cats],
+    cells: (k: number): readonly CellValue[] => [cats.at(k)],
+    at: (k: number): Sector | null => {
+      const value = cats.at(k);
+      const band = value === null ? null : scale.bandOf(`${value}`);
+      return band === null
+        ? null
+        : [num(band.start), num(band.start + band.width)];
+    },
+  };
+}
+
 /**
  * One annular sector per row, in a polar plane. It consumes the
  * plane's `Projection` like every other mark and carries no polar
@@ -124,9 +238,12 @@ function innerRadiusOf(m: Measured, ceiling: number): number {
  * kind of number — but the question *did the author say anything
  * about the lower edge*, which is what the flag means.
  *
- * **The ordinal `angle` equal-slices form is step 26's**, with its
- * band-vs-step escalation; an arc under an ordinal angle scale
- * paints nothing meanwhile.
+ * **Two angle forms, and the scale's kind picks between them**
+ * (SPEC §7): a continuous scale takes the ranged `a0`/`a1` pair; an
+ * **ordinal** one takes the simple `angle` and gives each row §4.4's
+ * band — *"equal slices"*, spanning `bandOf().width` exactly as
+ * `hdml-bar` does. See {@link bandForm} for the decision and what
+ * `--hdml-bandwidth` therefore controls.
  *
  * @tagname hdml-arc
  *
@@ -249,22 +366,23 @@ export class HdmlArcElement extends HdvlElement {
     // Not a branch on plane KIND (H7) — a question about this
     // plane's channels. A plane projecting x/y projects nothing
     // this tag can bind, so there is no honest geometry and no
-    // pole; inventing one would be step 26's job done wrong.
+    // pole to draw a sector about.
     const [first, second] = projection.channels;
     if (first !== CHANNELS[0] || second !== CHANNELS[1]) {
       return null;
     }
-    const angles = rangedValuesOf(this, first);
     const angleScale = projection.scale(first);
     // §4.3 gives the radial extent its ceiling, so an arc needs a
     // radius scale even when it binds nothing radially.
     const span = projection.scale(second)?.range() ?? null;
-    if (angles === null || angleScale === null || span === null) {
+    if (angleScale === null || span === null) {
       return null;
     }
-    // §6.1's second angle form — `angle` on an ORDINAL scale, equal
-    // slices — is step 26's, with its band-vs-step escalation.
-    if (angleScale.kind === "ordinal") {
+    const angles =
+      angleScale.kind === "ordinal"
+        ? bandForm(this, angleScale, first)
+        : rangedForm(this, projection, first);
+    if (angles === null) {
       return null;
     }
     const m = ctx.measured(this);
@@ -275,8 +393,7 @@ export class HdmlArcElement extends HdvlElement {
     // an unbound channel is exactly what it returns `null` for.
     const radial = rangedValuesOf(this, second);
     const rows = rowCountOf([
-      angles.low,
-      angles.high,
+      ...angles.slots,
       radial === null ? null : radial.low,
       radial === null ? null : radial.high,
     ]);
@@ -287,10 +404,7 @@ export class HdmlArcElement extends HdvlElement {
     const tally = newTally();
     const nodes: SceneNode[] = [];
     for (let i = 0; i < rows; i++) {
-      const lo = angles.low.at(i);
-      const hi = angles.high.at(i);
-      const a0 = projection.at(first, lo);
-      const a1 = projection.at(first, hi);
+      const sector = angles.at(i);
       // ★ THE ONE READ OF `sugar` IN THE PROJECT. §4.6's floor
       // replaces the SYNTHETIC lower edge and never an authored
       // one: "a bound r0/radius may legally paint inside the hole
@@ -303,10 +417,11 @@ export class HdmlArcElement extends HdvlElement {
         radial === null
           ? ceiling
           : projection.at(second, radial.high.at(i));
-      if (a0 === null || a1 === null || r0 === null || r1 === null) {
+      if (sector === null || r0 === null || r1 === null) {
         tally.dropped++;
-        tallyDrop(tally, this, projection, first, lo);
-        tallyDrop(tally, this, projection, first, hi);
+        for (const cell of angles.cells(i)) {
+          tallyDrop(tally, this, projection, first, cell);
+        }
         continue;
       }
       nodes.push({
@@ -317,8 +432,8 @@ export class HdmlArcElement extends HdvlElement {
         cy: num(pole.y),
         r0: num(r0),
         r1: num(r1),
-        a0: num(a0),
-        a1: num(a1),
+        a0: sector[0],
+        a1: sector[1],
         ...fillPaint(m, channelColor(ctx, this, i)),
       });
     }

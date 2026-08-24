@@ -86,8 +86,8 @@ interface Region {
  * **★ It names no channel** (H7). The independent channel is
  * {@link import("./mark").Projection.channels}`[0]` and the ranged
  * dependent one is `[1]` — `x`/`y` under a cartesian plane and
- * `angle`/`radius` under a polar one — so step 26's polar plane
- * reaches this element without adding a branch to it.
+ * `angle`/`radius` under a polar one — so the polar plane reached
+ * this element with **no diff at all** (confirmed at step 26).
  *
  * **One `path` node for the whole series**, filled, with `i: -1`
  * per §2.5 and row identity in its per-vertex `i`, exactly as
@@ -110,6 +110,19 @@ interface Region {
  *
  * A *varying* `color` is an error here — see `validate.ts`'s
  * `varying-path-color`: one `path` node carries one `Paint`.
+ *
+ * **★ Its `closed` attribute is still inert, deliberately** (step
+ * 26). Every region this element emits is already a closed outline,
+ * so on a cartesian plane the attribute has nothing left to say. On
+ * a **polar** plane it does: `10-radar`'s band should close *around*
+ * the loop, and what this emits closes *through the pole* — the
+ * outline runs the upper edge from the first category to the last,
+ * then in to the lower edge and back, leaving a wedge between the
+ * last category and the first. Closing it correctly is **two**
+ * subpaths with a fill rule (an outer ring and an inner one), not a
+ * flag on this node, so it is a SPEC question `10-radar`'s gate
+ * decides and not something step 26 guessed at. `hdml-line closed`
+ * — the polygon outline — is unaffected and landed at step 26.
  *
  * @tagname hdml-area
  *
@@ -399,9 +412,12 @@ export class HdmlAreaElement extends HdvlElement {
       subpaths,
       // Each region is a closed outline: upper forward, the cap,
       // lower reversed, and the close back to the first vertex.
-      // `hdml-line`'s `closed` is its polar radar loop (step 26);
-      // both readings are "this subpath closes", and they do not
-      // collide because they are different elements' geometry.
+      // `hdml-line`'s `closed` is its polar radar loop (landed at
+      // step 26); both readings are "this subpath closes", and they
+      // do not collide because they are different elements'
+      // geometry. THIS element's `closed` attribute stays inert —
+      // see the class JSDoc for the open question a polar band
+      // raises, which is 10-radar's and not this node's.
       closed: true,
       vertices,
       // §6.1's paint resolution. A filled mark, so the fallback is

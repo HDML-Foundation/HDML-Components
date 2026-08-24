@@ -25,9 +25,11 @@
  * 2. **`centre` is what every non-band-filling lookup resolves
  *    to** — line vertices, points, rules, ranged endpoints naming a
  *    category, and tick / label / grid positions alike (§4.4).
- *    Nothing ever resolves to a band edge. At `b = 0` the centre
- *    *is* the boundary, which is why {@link Band} returns all three
- *    fields rather than the one a given caller needs.
+ *    Nothing ever resolves to a band edge. The band-**filling**
+ *    readers are exactly two: `hdml-bar`'s rect and `hdml-arc`'s
+ *    ordinal-angle slice, which take `start`/`width`. At `b = 0` the
+ *    centre *is* the boundary, which is why {@link Band} returns all
+ *    three fields rather than the one a given caller needs.
  * 3. **`b` is an ordinary parameter with no special case.** §6.4's
  *    cluster subdivides an outer band edge-to-edge at inner `b = 1`
  *    — "there is no authorable inner gap" (R19) — so the cluster is

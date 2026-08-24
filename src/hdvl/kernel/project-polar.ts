@@ -101,8 +101,8 @@ export function polarTheta(degrees: number): number {
  *
  * The pole is the centre of the radius-channel scale's content
  * box, or the plane's where no radius scale exists (§4.6);
- * resolving *which* box is step 26's, and this function takes the
- * answer.
+ * resolving *which* box is `plane-polar.ts`'s, and this function
+ * takes the answer.
  *
  * `radius = 0` lands on the pole **exactly** at every angle:
  * `0 · anything finite` is zero, so the result is the pole's own
@@ -135,7 +135,7 @@ export function polarPoint(
  * reference a percentage in any radial `<length-percentage>`
  * resolves against (§4.6). `--hdml-inner-radius` resolves against
  * it too, but is a *default-extent floor* read at the polar mark
- * widget and never remaps this range — that is step 26's.
+ * widget and never remaps this range — `mark-arc.ts` owns that.
  *
  * Total: a zero-width or zero-height box gives `0`, because an
  * unlaid-out plane is a normal frame-zero state and not an error.

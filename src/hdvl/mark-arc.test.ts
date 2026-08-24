@@ -134,6 +134,77 @@ function extents(
 }
 
 /**
+ * Every arc node **unquantized**.
+ *
+ * §4.4's band is asserted against its own formula rather than
+ * against a captured number, and rule 3's six decimals are coarser
+ * than that comparison wants: `360 / 3.8` is `94.73684210526316`,
+ * whose sixth decimal already sits 1e-7 away.
+ */
+function rawArcs(
+  view: HdmlViewElement,
+): Extract<SceneNode, { k: "arc" }>[] {
+  const groups = sceneOf(view).groups;
+  assert.lengthOf(groups, 1, "expected exactly one group");
+  const out: Extract<SceneNode, { k: "arc" }>[] = [];
+  for (const node of groups[0].nodes) {
+    assert.strictEqual(node.k, "arc");
+    out.push(<Extract<SceneNode, { k: "arc" }>>node);
+  }
+  return out;
+}
+
+/** The `--hdml-fill-color` a fixture's arc actually resolves. */
+function fillOf(arc: HdmlArcElement): string {
+  const fill = getComputedStyle(arc)
+    .getPropertyValue("--hdml-fill-color")
+    .trim();
+  return fill.toLowerCase() === "currentcolor"
+    ? getComputedStyle(arc).color
+    : fill;
+}
+
+/**
+ * The ordinal-angle fixture — SPEC §7's **second** angle form, on
+ * the same 200 × 200 polar plane.
+ *
+ * `--hdml-bandwidth` is read from the **scale**, not from the mark,
+ * so it is styled there; the angular range is
+ * `--hdml-angle-start`/`-end`, whose registered initials are already
+ * `0deg`/`360deg`, so a full turn needs no declaration.
+ */
+function rose(
+  cats: string,
+  radius = "",
+  r0 = "",
+  r1 = "",
+  band = "",
+  style = "",
+): ReturnType<typeof html> {
+  return html`
+    <hdml-view aria-label="rose" style="width: 200px; height: 200px">
+      <hdml-polar-plane style="padding: 0">
+        <hdml-ordinal-scale
+          channel="angle"
+          values="${cats}"
+          style="${band}"
+        >
+          <hdml-continuous-scale channel="radius" min="0" max="1">
+            <hdml-arc
+              angle="${cats}"
+              radius="${radius}"
+              r0="${r0}"
+              r1="${r1}"
+              style="${style}"
+            ></hdml-arc>
+          </hdml-continuous-scale>
+        </hdml-ordinal-scale>
+      </hdml-polar-plane>
+    </hdml-view>
+  `;
+}
+
+/**
  * The 200 × 200 polar fixture. Every attribute is always present,
  * empty where the test does not want it — an empty attribute reads
  * as unbound, which is how one helper spells all three radial cases.
@@ -203,9 +274,7 @@ suite("hdvl/mark-arc — §2.5's parameterised sector", () => {
       page("[0, 0.25, 0.5]", "[0.25, 0.5, 1]"),
     );
     const arc = arcOf(view);
-    const fill = getComputedStyle(arc)
-      .getPropertyValue("--hdml-fill-color")
-      .trim();
+    const fill = fillOf(arc);
     const expected: Scene = {
       width: 200,
       height: 200,
@@ -234,10 +303,7 @@ suite("hdvl/mark-arc — §2.5's parameterised sector", () => {
             r1: CEILING,
             a0: deg[0],
             a1: deg[1],
-            fill:
-              fill.toLowerCase() === "currentcolor"
-                ? getComputedStyle(arc).color
-                : fill,
+            fill,
             stroke: null,
             strokeWidth: 0,
             dash: null,
@@ -342,9 +408,9 @@ suite("hdvl/mark-arc — §2.5's parameterised sector", () => {
   });
 
   test("★ under a cartesian plane it paints nothing", async () => {
-    // There is no pole, and inventing one would be step 26's job
-    // done wrong. The widget asks whether the plane projects ITS
-    // channels — not what kind of plane it is (H7).
+    // There is no pole, and inventing one would be doing the polar
+    // plane's job wrong. The widget asks whether the plane projects
+    // ITS channels — not what kind of plane it is (H7).
     const view = await mount(html`
       <hdml-view
         aria-label="flat"
@@ -367,22 +433,221 @@ suite("hdvl/mark-arc — §2.5's parameterised sector", () => {
     );
   });
 
-  test("the ordinal angle form is step 26's", async () => {
-    // §6.1's "angle (ordinal, equal slices)" carries a band-vs-step
-    // escalation the polar slice owns; meanwhile it paints nothing
-    // rather than guessing which reading §4.4 gives it.
-    const view = await mount(html`
-      <hdml-view aria-label="ord" style="width: 200px; height: 200px">
-        <hdml-polar-plane style="padding: 0">
-          <hdml-ordinal-scale channel="angle" values='["a","b"]'>
-            <hdml-continuous-scale channel="radius" min="0" max="1">
-              <hdml-arc angle='["a","b"]'></hdml-arc>
-            </hdml-continuous-scale>
-          </hdml-ordinal-scale>
-        </hdml-polar-plane>
-      </hdml-view>
-    `);
-    assert.lengthOf(sceneOf(view, P).groups, 0);
+  test("★ an ordinal angle gives equal slices", async () => {
+    // §6.1's SECOND angle form. `--hdml-bandwidth: 1` makes the
+    // step and the width the same 90°, so every number here is
+    // exact and the whole scene can be asserted.
+    const view = await mount(
+      rose('["a","b","c","d"]', "", "", "", "--hdml-bandwidth: 1"),
+    );
+    const arc = arcOf(view);
+    const expected: Scene = {
+      width: 200,
+      height: 200,
+      groups: [
+        {
+          widget: arc.uid,
+          tag: "hdml-arc",
+          role: "mark",
+          box: { x: 0, y: 0, w: 200, h: 200 },
+          opacity: 1,
+          filter: "none",
+          visibility: "visible",
+          clip: true,
+          clipPath: null,
+          nodes: [
+            [0, 90],
+            [90, 180],
+            [180, 270],
+            [270, 360],
+          ].map((deg, i) => ({
+            k: "arc",
+            i,
+            cx: CX,
+            cy: CY,
+            // Radially unbound: the full range, as on a
+            // continuous angle. The forms share that code.
+            r0: 0,
+            r1: CEILING,
+            a0: deg[0],
+            a1: deg[1],
+            fill: fillOf(arc),
+            stroke: null,
+            strokeWidth: 0,
+            dash: null,
+          })),
+        },
+      ],
+    };
+    assert.deepEqual(sceneOf(view, P), expected);
+  });
+
+  test("★ a slice is §4.4's band, not a whole step", async () => {
+    // ★ The step-26 D1 decision, asserted against §4.4's FORMULA
+    // and never against a captured number. The denominator is
+    // `n − 1 + b` and not `n`, so at the initial bandwidth the
+    // slices are 75.79° wide on a 94.74° step — the 20 % gap the
+    // escalation was about — and the last slice's high edge still
+    // lands exactly on the range's own r1.
+    const view = await mount(rose('["a","b","c","d"]'));
+    const n = 4;
+    const b = 0.8;
+    const step = 360 / (n - 1 + b);
+    const width = b * step;
+    const got = rawArcs(view);
+    assert.lengthOf(got, n);
+    for (let k = 0; k < n; k++) {
+      assert.closeTo(got[k].a0, k * step, 1e-9, `a0 ${k}`);
+      assert.closeTo(got[k].a1, k * step + width, 1e-9, `a1 ${k}`);
+    }
+    assert.closeTo(got[n - 1].a1, 360, 1e-9, "last high edge");
+    // And the gap is real: consecutive slices do NOT touch.
+    assert.isAbove(got[1].a0 - got[0].a1, 18);
+  });
+
+  test("★ --hdml-bandwidth: 1 tiles the circle exactly", async () => {
+    // Rule 1's step-15 amendment — the seam identity is exact only
+    // where the arithmetic is, so this is FIXTURE-SCOPED: 360 / 4
+    // is 90 exactly and `k · 90` is exact for every k here.
+    // `scale-band.ts`'s JSDoc records the general bound (2.3e-13).
+    const view = await mount(
+      rose('["a","b","c","d"]', "", "", "", "--hdml-bandwidth: 1"),
+    );
+    const got = rawArcs(view);
+    for (let k = 0; k + 1 < got.length; k++) {
+      assert.strictEqual(got[k].a1, got[k + 1].a0, `seam ${k}`);
+    }
+    assert.strictEqual(got[0].a0, 0);
+    assert.strictEqual(got[got.length - 1].a1, 360);
+  });
+
+  test("an ordinal slice is degrees, 0 at noon, cw", async () => {
+    // §4.6's convention is CSS's: the first slice STARTS at 12
+    // o'clock and sweeps to 3 o'clock, with SVG's sweep flag 1.
+    // The scene cannot show it — the node is parameterised — so
+    // this reads it off the real renderer's own `d` (R36).
+    const view = await mount(
+      rose('["a","b","c","d"]', "", "", "", "--hdml-bandwidth: 1"),
+    );
+    const box = document.createElement("div");
+    box.style.cssText = "position:relative;width:200px;height:200px";
+    document.body.appendChild(box);
+    planted.push(box);
+    const root = box.attachShadow({ mode: "open" });
+    const renderer = createSvgRenderer();
+    renderer.mount(root);
+    renderer.resize(200, 200, 1);
+    live.push(renderer);
+    renderer.render(sceneOf(view));
+
+    const d = root.querySelector("path")?.getAttribute("d") ?? "";
+    const m = /^M (\S+) (\S+) /.exec(d);
+    assert.isNotNull(m, `no leading M in ${d}`);
+    // 12 o'clock: straight up from the pole. Rule 2 — the x is a
+    // `cos(-π/2)` residual and is never exactly the pole's own.
+    assert.closeTo(Number(m?.[1]), CX, 1e-9);
+    assert.closeTo(Number(m?.[2]), CY - CEILING, 1e-9);
+    // …sweeping CLOCKWISE (flag 1) to 3 o'clock, then back to the
+    // pole. Flip either half of §4.6 and this lands at 9 o'clock.
+    assert.include(d, `A ${CEILING} ${CEILING} 0 0 1 200 100`);
+    assert.include(d, `L ${CX} ${CY}`);
+  });
+
+  test("an out-of-domain category drops its row", async () => {
+    // §4.7 through the SAME clause the continuous form uses: the
+    // band lookup answers null and the row produces no mark, with
+    // the notice named per value.
+    const view = await mount(
+      rose('["a","zz","c"]', "", "", "", "--hdml-bandwidth: 1"),
+    );
+    // The scale's domain is the arc's own literal, so "zz" IS in
+    // it. Re-point the mark alone at a category the scale rejects.
+    arcOf(view).setAttribute("angle", '["a","nope","c"]');
+    await quiesce(view);
+    assert.deepEqual(
+      arcs(view).map((a) => a.i),
+      [0, 2],
+    );
+    assert.lengthOf(
+      lines.filter((l) => l.includes('"nope"')),
+      1,
+    );
+  });
+
+  test("ordinal + unbound radius is the full range", async () => {
+    // §6.1's third radial case, under the second angle form. The
+    // two forms share every line of it — that is the point of
+    // resolving the angle to a `(a0, a1)` pair first.
+    const view = await mount(
+      rose('["a","b"]', "", "", "", "--hdml-bandwidth: 1"),
+    );
+    assert.deepEqual(extents(view), [
+      [0, CEILING, 0, 180],
+      [0, CEILING, 180, 360],
+    ]);
+  });
+
+  test("ordinal + `radius` is still sugar for r1", async () => {
+    const view = await mount(
+      rose('["a","b"]', "[0.25, 0.5]", "", "", "--hdml-bandwidth: 1"),
+    );
+    assert.deepEqual(extents(view), [
+      [0, 25, 0, 180],
+      [0, 50, 180, 360],
+    ]);
+  });
+
+  test("ordinal + authored r0/r1 still beats the floor", async () => {
+    // §4.6's "authored data is sacred" — the floor replaces the
+    // SYNTHETIC lower edge only, on either angle form.
+    const view = await mount(
+      rose(
+        '["a","b"]',
+        "",
+        "[0.1, 0.2]",
+        "[0.6, 0.8]",
+        "--hdml-bandwidth: 1",
+        "--hdml-inner-radius: 60%",
+      ),
+    );
+    assert.deepEqual(extents(view), [
+      [10, 60, 0, 180],
+      [20, 80, 180, 360],
+    ]);
+  });
+
+  test("★ a 12-slice rose stays inside R20's budget", async () => {
+    const cats = JSON.stringify([
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ]);
+    const view = await mount(
+      rose(cats, "", "", "", "--hdml-bandwidth: 1"),
+    );
+    const scene = sceneOf(view);
+    const nodes = scene.groups.reduce(
+      (n, g) => n + g.nodes.length,
+      0,
+    );
+    // 12 nodes against a 20 000 budget: W4 must stay silent, and
+    // the count is reported rather than assumed (R20).
+    assert.strictEqual(nodes, 12);
+    assert.lengthOf(
+      lines.filter((l) => l.startsWith("hdml W4 ")),
+      0,
+    );
+    // R2/R26 — the ordinal form's scene is serializable too.
+    assert.deepEqual(structuredClone(scene), scene);
   });
 
   test("missing omits the sector, never draws a zero", async () => {

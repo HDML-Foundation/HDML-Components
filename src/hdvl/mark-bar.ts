@@ -130,11 +130,14 @@ function rectOf(
  * ordinal there is no band and therefore no bar, and the element
  * paints nothing rather than inventing a width.
  *
- * **★ It is the one widget that reads `bandOf().width`** (§4.4). A
- * bar *spans* `width_k`, centred by construction; every other lookup
- * in the project — line vertices, area vertices, points, rules,
- * ticks, labels, grids — resolves to `centre`, and *nothing ever
- * resolves to a band edge*.
+ * **★ It is one of the two widgets that read `bandOf().width`**
+ * (§4.4) — `hdml-arc`'s ordinal-angle slice is the other, and for
+ * the same reason: both *span* `width_k`, centred by construction.
+ * *(`hdml-arc` joined it at step 26, under D1, with the user; it was
+ * the only such reader for the five steps before that.)* Every other
+ * lookup in the project — line vertices, area vertices, points,
+ * rules, ticks, labels, grids — resolves to `centre`, and *nothing
+ * ever resolves to a band edge*.
  *
  * A per-row `color` is honest here, unlike on a path widget: this
  * emits one node per row and resolves each row's colour separately.

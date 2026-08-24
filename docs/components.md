@@ -378,7 +378,10 @@ pair changes — a new delivery, a modifier re-resolving, or **its box resizing*
 
 The first two marks. Both are row-wise pure — mark *i* = f(row *i*, scales) — and both
 project through their plane's `Projection` rather than through `x` and `y`, so the polar
-plane reaches them without either file changing.
+plane reaches them without either file changing. **Measured at step 26**: `hdml-line`,
+`hdml-area` and `hdml-point` all paint under a polar plane with a **zero-line** diff, which is
+H7 discharged rather than asserted — the fixtures are in
+[`mark-polar.test.ts`](../src/hdvl/mark-polar.test.ts).
 
 | | |
 |---|---|
@@ -387,6 +390,19 @@ plane reaches them without either file changing.
 | **Parent** | a chain-tip scale (or, later, a container) |
 | **Children** | none |
 | **UA box** | `position: absolute; inset: 0; overflow: hidden` — the `overflow` *is* SPEC §6's clip-to-the-plot-area rule, so an author rule beats it |
+
+**`closed` is `hdml-line`'s polar radar loop** (SPEC §7: *"+ `closed` for radar loops"*). It
+is a boolean attribute — presence, not value — and it sets the `path` node's `closed` flag,
+which the SVG renderer turns into a `Z` per subpath: the loop costs **no extra vertex**, so
+hit resolution still sees one vertex per row. It is scoped to the plane's **channels**, not
+its kind: under a cartesian plane the attribute is **inert** and the emitted node is
+byte-identical to one written without it, because SPEC grants the loop to the polar form and
+a cartesian line is not a radar. It is not a diagnostic; no V-rule covers it.
+
+`hdml-area` also publishes `closed`, and there it is still **inert**: every region that
+element emits is already a closed outline. Under a polar plane that outline closes *through
+the pole* rather than around the loop, which `10-radar` will have to decide — closing a polar
+band correctly is two subpaths and a fill rule, not a flag. See [decisions.md](decisions.md).
 
 `hdml-line` emits **one** stroked `path` for the whole series, `fill: null`, curved by
 `--hdml-curve-type`. Its node's `i` is therefore `-1` — a node built from every row has no
@@ -438,9 +454,10 @@ scale, so `x="cat" y="n"` stands the bars up and `x="n" y="cat"` lays them down 
 markup. There is no orientation attribute and there must not be one. With no ordinal scale in
 scope there is no band, and it paints nothing rather than inventing a width.
 
-**`hdml-bar` is the one widget in the project that reads `bandOf().width`.** It *spans* the
-band, centred by construction; every other lookup — an area's vertex included — resolves to
-`centre`, and nothing ever resolves to a band edge. A row whose two ends are equal is a real
+**`hdml-bar` is one of the two widgets that read `bandOf().width`** — `hdml-arc`'s
+ordinal-angle slice is the other (step 26). It *spans* the band, centred by construction;
+every other lookup — an area's vertex included — resolves to `centre`, and nothing ever
+resolves to a band edge. A row whose two ends are equal is a real
 datum and gets a **zero-extent** rect; missing is still *absent, never zero*.
 
 Both are **filled**, so a bound `color` wins over `--hdml-fill-color` and over its `_hover`
@@ -490,10 +507,17 @@ the **synthetic** `r0` only: an authored `r0` may legally paint inside the hole,
 authored data is sacred. A percentage in it resolves against the radial ceiling; a length is
 already px.
 
-Its second angle form — `angle` on an *ordinal* scale, equal slices — lands with the polar
-guides, and it paints nothing meanwhile. Both marks are **filled** and neither strokes, and
-both carry a **per-row `color`** honestly, which is why the varying-`color` error is the two
-path widgets' alone.
+**Its second angle form is `angle` on an *ordinal* scale** (SPEC §7), and a slice is §4.4's
+**band**: `a0 = bandOf().start`, `a1 = start + width`. So an arc fills its band exactly as a
+bar does, `--hdml-bandwidth` is what controls the gap between slices, and a solid Nightingale
+rose is one `--hdml-bandwidth: 1` declaration on the angle scale. The band comes from
+`Scale.bandOf` and never from a `360 / n` of the arc's own: the angular range is
+`--hdml-angle-start`/`-end` and need be neither a full turn nor ascending, and §4.4's
+denominator is `n − 1 + b`. *(Decided 2026-08-24, with the user, at step 26 — see
+[decisions.md](decisions.md).)* The three radial cases above are unchanged under it.
+
+Both marks are **filled** and neither strokes, and both carry a **per-row `color`** honestly,
+which is why the varying-`color` error is the two path widgets' alone.
 
 ### `hdml-axis` · `hdml-grid` — [guide-axis.ts](../src/hdvl/guide-axis.ts) · [guide-grid.ts](../src/hdvl/guide-grid.ts)
 

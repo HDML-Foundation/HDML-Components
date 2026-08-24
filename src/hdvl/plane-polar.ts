@@ -80,10 +80,12 @@ function poleOf(
  * *Landed at step 22 rather than 26, with the user*: `hdml-arc`'s
  * `arc` node needs a pole, and every honest source of one is polar.
  * The alternative was an arc whose only fixtures were cartesian
- * pages carrying `a0`/`a1` — pages **V9** calls invalid. What
- * remains step 26's is the arc's **ordinal-angle** equal-slices form
- * (with its band-vs-step escalation), the polar guides and
- * `--hdml-grid-shape`.
+ * pages carrying `a0`/`a1` — pages **V9** calls invalid. Step 26
+ * then added the arc's **ordinal-angle** equal-slices form and
+ * `hdml-line`'s `closed`, and **this file did not change**: it is
+ * what H7 predicted, measured twice. The polar **guides** and
+ * `--hdml-grid-shape` are what remain, at step 27 — `resolveGuide`
+ * refuses this plane outright until then.
  *
 
  * @tagname hdml-polar-plane

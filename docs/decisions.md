@@ -601,6 +601,71 @@ The one place `nice` deliberately does nothing: a `log` endpoint that is **alrea
 or negative is left exactly where it is. `nice` may widen a domain; it may never invent a
 legal one, or it would suppress the V2 diagnosis of the page that is actually broken.
 
+## An ordinal-angle slice is `bandOf().width`, not a whole step
+
+SPEC §7 grants `hdml-arc` a second angle form — *"`angle` — ordinal angle scale, **equal
+slices**"* — and §4.4 gives two readings of what "equal slices" means. §4.4 hands a **bar**
+`b · step` and hands *everything else* the `centre`, so an arc could either fill its band
+(`bandOf().width`) or span half a step either side of its centre. At the initial
+`--hdml-bandwidth: 0.8` those differ by a **20 % gap between every pair of slices** in a
+Nightingale rose — the difference between a solid rose and a spoked one, on the same markup.
+
+Decided under D1 with the user at step 26: **`bandOf().width`**. `a0` is `bandOf().start`
+and `a1` is `start + width`.
+
+Three things carried it. It is **consistent with `hdml-bar`**, the other widget that fills a
+band rather than sitting at its centre, and there is now a single sentence covering both:
+*a mark that spans a category takes the band; every other lookup takes the centre.* It keeps
+`--hdml-bandwidth` **live** on the tag — the rejected reading makes a registered property
+that authors will write silently inert, which is exactly the shape of §1.5's complaint that
+step 24 resolved the same way for an ordinal `format`. And the corpus had already voted:
+`09-polar-area` writes `--hdml-bandwidth: 1` on its angle scale and `10-radar` writes
+`--hdml-bandwidth: 0`, neither of which means anything under the other reading.
+
+The cost is one sentence that had to be corrected in three places — `hdml-bar` was *"the one
+widget in the project that reads `bandOf().width`"* and is now one of two. There is also a
+third spelling nobody argued, `centre ± b · step / 2`; it is algebraically identical to the
+one chosen and is not a separate option.
+
+The band comes from `Scale.bandOf` and never from a `360 / n` of the arc's own (R12): the
+angular range is `--hdml-angle-start`/`-end` and need be neither a full turn nor ascending,
+and §4.4's denominator is `n − 1 + b` rather than `n`, which is what puts the last slice's
+high edge exactly on the range's own end.
+
+## H7 held for every mark — the polar plane cost zero widget lines
+
+The step plan's H7 predicted that because a mark reads `Projection.channels` rather than
+naming `x` and `y`, a polar plane would reach every mark without any of them gaining a
+branch. It was measured twice and held both times: `plane-polar.ts` supplied the projection
+at step 22 and **no widget changed**, and at step 26 `hdml-line`, `hdml-area` and
+`hdml-point` were run under a polar plane for the first time — vertices, regions and glyph
+centres all landing on §4.6's own arithmetic — with a **zero-line** diff to all three files.
+
+That is worth recording because a prediction of this shape cannot be proved by the code that
+implements it. The evidence is [`mark-polar.test.ts`](../src/hdvl/mark-polar.test.ts): every
+geometry assertion in it runs against files that were not touched, and the fixtures would be
+the first thing to fail if a channel name had leaked into a widget.
+
+The one polar-scoped thing a shared mark does carry is `hdml-line`'s `closed`, and it is
+scoped by the plane's **channels** — the same question `hdml-arc` asks to decide whether it
+has a pole at all — never by a plane kind. A branch on kind is what H7 forbids; asking a
+plane which channels it projects is what the seam is for.
+
+## `hdml-area`'s `closed` is still inert, and a polar band is an open question
+
+`hdml-area` publishes `closed` and does not read it: every region it emits is already a
+closed outline — upper edge forward, across, lower edge reversed, close — so on a cartesian
+plane the attribute has nothing left to say. Under a **polar** plane it does. That outline
+runs from the first category to the last and then closes *through the pole*, leaving a wedge
+between the last category and the first; a radar band should close *around* the loop.
+
+Not fixed at step 26, deliberately. Closing a polar band correctly is not a flag on the
+node: it is an **outer ring and an inner ring as two subpaths with a fill rule**, which is a
+SPEC question about what `closed` means on a filled mark rather than a geometry bug. It
+belongs to `10-radar`'s corpus gate, which is the first page that renders one and the first
+place the answer can be checked against a real figure. `hdml-line closed` — the polygon
+outline the same page draws over the band — landed at step 26 and is unaffected.
+
 ## A corpus page is fetched, not inlined — and its `hdml-io` is removed
 
 Two decisions in [src/testing/corpus.ts](../src/testing/corpus.ts) that five gate steps

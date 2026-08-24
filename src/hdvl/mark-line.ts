@@ -14,6 +14,7 @@ import { customElement, property } from "lit/decorators.js";
 import { HdvlElement } from "./base";
 import type { FrameContext } from "./measure";
 import type { Point, SceneGroup, SceneNode } from "./scene";
+import type { Channel } from "./resolve";
 import type { Binding, Slot } from "./subscribe";
 import { paintSuppressed } from "./subscribe";
 import {
@@ -57,14 +58,61 @@ const SLOTS: readonly Slot[] = [
 ];
 
 /**
+ * The channel SPEC §7 scopes `closed` to.
+ *
+ * §7's line row reads *"`x`,`y` / `angle`,`radius` (**+ `closed` for
+ * radar loops**)"* — the parenthesis sits on the polar form, and a
+ * radar loop is the only shape §6.1 names for it. So this is a
+ * question about **which channels this plane projects**, decided the
+ * same way `hdml-arc` decides whether it has a pole at all, and not
+ * a branch on plane kind (H7).
+ */
+const RADAR_CHANNEL: Channel = "angle";
+
+/**
+ * §6.1's `closed`: whether this series' subpaths close.
+ *
+ * **Presence, not value.** SPEC §7 writes it bare in `10-radar` —
+ * `closed` with no value — which is the boolean-attribute convention
+ * `hidden`, `nice` and `clamp` already use in this vocabulary.
+ *
+ * **It closes the SUBPATH; it does not repeat a vertex.** §2.5's
+ * `path` node already carries a `closed` flag the SVG renderer turns
+ * into a `Z` per subpath, so the loop costs no extra point and hit
+ * resolution still sees one vertex per row. Appending a copy of row
+ * 0 would put a second `i: 0` in `vertices` and make §4.7's gap
+ * accounting disagree with N.
+ *
+ * **Inert on a cartesian plane.** A cartesian line is not a radar
+ * loop, and closing one would silently add a stroke from the last
+ * row back to the first that no author asked for and SPEC §7 does
+ * not grant. It is not a diagnostic either — no V-rule covers it,
+ * and none was added for it.
+ *
+ * @param el - The widget.
+ * @param channel - The plane's independent channel.
+ * @returns Whether the node closes.
+ */
+function closedOf(el: HdvlElement, channel: Channel): boolean {
+  return (
+    channel === RADAR_CHANNEL &&
+    el.hasAttribute(LINE_ATTRS_LIST.CLOSED)
+  );
+}
+
+/**
  * A stroked path through one vertex per row, curved by
  * `--hdml-curve-type`. Row-wise: vertex *i* = f(row *i*).
  *
  * **It names no channel.** The two it projects through are
  * {@link import("./mark").Projection.channels} — the plane's
  * answer, `x`/`y` under a cartesian plane and `angle`/`radius`
- * under a polar one — so step 26's polar planes reach this element
- * without adding a branch to it (H7).
+ * under a polar one — so the polar plane reached this element with
+ * **no diff at all** (H7, confirmed at step 26).
+ *
+ * **§6.1's `closed` is its one polar-scoped attribute**, and it is
+ * scoped by the plane's *channels*, not its kind — see
+ * {@link closedOf}.
  *
  * **One `path` node for the whole series**, per §6.1, which is why
  * its `i` is `-1`: §2.5 defines `i` as *"the source row index the
@@ -247,9 +295,9 @@ export class HdmlLineElement extends HdvlElement {
       // §2.5: a node built from every row has no single source row.
       i: -1,
       subpaths,
-      // §6.1 lists `closed` on this element for polar radar loops;
-      // step 26 owns it, and until then the attribute is inert.
-      closed: false,
+      // §6.1's radar loop — polar-only, and a `Z` per subpath
+      // rather than a repeated vertex. See `closedOf`.
+      closed: closedOf(this, first),
       vertices,
       // §6.1's paint resolution. The row is the first SURVIVING
       // one, so a series whose row 0 is a gap still takes its own

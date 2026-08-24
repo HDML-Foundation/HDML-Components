@@ -19,8 +19,8 @@
  * the *plane's* answer — `x`/`y` under a cartesian plane,
  * `angle`/`radius` under a polar one. The plane supplies its own
  * `Projection` through the duck-typed {@link ProjectionSource}, so
- * step 26 adds the polar implementation to `plane-polar.ts` and
- * **no widget gains a branch**. That is what H7 forbids being
+ * the polar implementation landed in `plane-polar.ts` alone and
+ * **no widget gained a branch**. That is what H7 forbids being
  * half-applied, and it is why {@link createProjection} takes the
  * composition as an argument rather than switching on a plane kind.
  *
@@ -125,8 +125,8 @@ export interface ProjectionSource {
  * Builds a `Projection` over one widget's scale chain.
  *
  * **The whole of the plane-kind difference is `compose`.** A
- * cartesian plane passes the identity pair; step 26's polar plane
- * passes `polarPoint(pole, degrees, radius)`. Everything else — the
+ * cartesian plane passes the identity pair; the polar plane passes
+ * `polarPoint(pole, degrees, radius)`. Everything else — the
  * chain lookup, §4.7's drop rule, the ordinal test — is shared, so
  * the two planes cannot disagree about when a row drops.
  *

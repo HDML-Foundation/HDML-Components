@@ -44,7 +44,7 @@ const CHANNELS: readonly [Channel, Channel] = ["x", "y"];
  * cartesian scale a range taken from its own content box, and
  * §2.7's view coordinates are the space that box was measured in —
  * so an `x` position already *is* a view x. The polar plane's
- * composition is `polarPoint`, and it lands at step 26 without any
+ * composition is `polarPoint`, and it landed at step 22 without any
  * mark widget changing.
  *
  * @tagname hdml-cartesian-plane
