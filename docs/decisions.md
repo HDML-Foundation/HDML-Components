@@ -1004,6 +1004,98 @@ logging, looser type guards, source-map-preserving builds.)`
 but the rest of the codebase uses an imperative style and the TDD globals match. If you mix
 in BDD style by accident the runner will silently ignore those blocks.
 
+## HDVL's `hidden` **is** the platform's
+
+*(Decided at step 29, the slice that first had to read it. The tag surface left the
+question open at step 09 and both `container-*.ts` said so in as many words.)*
+
+SPEC §7 gives every widget a `hidden` attribute meaning *"withheld from painting; its
+container re-derives without it"*, and the corpus writes it as a bare boolean
+(`12-coverage` C). Two readings were available: a HDVL-private attribute that happens to be
+spelled `hidden`, or the platform's own `HTMLElement.hidden`.
+
+It is the platform's, and the argument is that **two mechanisms could disagree**. A page
+that made a `hidden` element `display: block` again would get a series that paints and is
+excluded from the relation — a chart whose bands do not add up, with nothing anywhere
+saying so, which is exactly the silent wrong chart §1.5 exists to kill. Taking the
+platform's meaning also buys the layout and accessibility half for free, and the reading is
+what SPEC's own sentence describes.
+
+The consequence is that the implementation almost disappears: the predicate is `el.hidden`,
+read **once**, in [`subscribe.ts`](../src/hdvl/subscribe.ts)'s `paintSuppressed` — the one
+question every widget already asks first — and in
+[`container.ts`](../src/hdvl/container.ts)'s `renderedChildrenOf`. No widget spells it, and
+a future widget cannot forget it.
+
+The class field behind the observed attribute stays named **`hiddenAttr`**: a
+`null | string` field named `hidden` shadows the boolean IDL property and does not
+type-check. The observed attribute is still `hidden`, so `observedAttributes` and the
+invalidation funnel are exactly as SPEC specifies. The field exists to make the attribute
+*observed*; the platform property is what is *read*.
+
+## The curve source is the stack, and that cost `mark-area.ts` a line
+
+*(Step 29. Recorded because it is the one place H8's "the children do not change" claim
+does not reach, and the reason is worth being precise about.)*
+
+H8 says a container re-parameterises marks that know nothing about it, and step 29 measured
+it: `hdml-stack` supplies `y0ₖ` through `rangedValuesOf`'s override and
+[`mark-bar.ts`](../src/hdvl/mark-bar.ts) has a **zero-line** diff.
+[`mark-area.ts`](../src/hdvl/mark-area.ts) does not, and the line it gained is **not** H8's.
+
+SPEC §9's `--hdml-curve-*` rows name the reader outright — *"`hdml-line`, `hdml-area`; for
+a stacked area, **`hdml-stack`** (children's curve properties are inert inside a stack,
+§7)"* — and §7 gives the reason: band *k*'s top is band *k+1*'s baseline, so per-child
+curves would tear the shared edges. That is a second, independent re-parameterisation, and
+it is about *which element a property is read off*, which no value-level override can
+express.
+
+The road not taken was CSS: `hdml-stack > * { --hdml-curve-type: inherit !important }` in
+the document sheet would have kept the zero-line diff. It was rejected because it makes
+correctness depend on the cascade — a page rule with class-level specificity and its own
+`!important` beats it — and *"the edges must not tear"* is not a claim that may hold
+modulo specificity. `container.ts`'s `curveSourceOf` answers with one element instead, so
+the two edges cannot disagree by construction. A child's own declaration still **computes**
+— it is a registered inheriting property and CSS is not being lied to — and is simply never
+read, which is what SPEC means by *inert*.
+
+## V17 before V6, because a container is one error unit
+
+*(Step 29. The fourth stated ordering inside the structural pass; see
+[architecture.md](architecture.md).)*
+
+`applyErrors` gives a **unit** its first finding, and `resolve.ts` makes the outermost
+container the unit for its whole subtree. So a container reports exactly one diagnostic no
+matter how many things are wrong below it, and the ordering decides which.
+
+**V17 runs first**: *what the container is made of.* *"A `hdml-stack` holds `hdml-bar` or
+`hdml-area`"* is the message that fixes a stack of lines. **V6 runs second**: *who binds
+what.* *"The x channel belongs to `<hdml-stack>`"*, said about a line that may not belong
+in the stack at all, sends the author to the wrong edit. **V7's source clause** is third,
+because where the data comes from is only interesting once the shape is right.
+
+Two clauses need no code of their own and are stated rather than implemented:
+**stack-in-cluster being the only legal nesting** falls out of the two child lists (a
+container inside a stack is neither a bar nor an area; a cluster inside a cluster is
+neither a bar nor a stack), and **all-or-nothing** is already true, because every finding
+in the subtree carries the container as its `unit`.
+
+## A structural V-rule reads the DOM, not the index
+
+*(Step 29, found by corpus `12-C`.)*
+
+`displayKids` counts the children the resolution walk resolved — and a custom element that
+has not upgraded yet is not one. On the first `reindex()` of a freshly parsed page a
+perfectly full `hdml-stack` therefore read as **empty**, and V17's empty-container clause
+reported it: a spurious error line on a valid page, cleared one frame later.
+
+`checkV17` now reads `el.children`. Every clause it applies needs only `localName`, which
+an un-upgraded custom element already has, so the rule became independent of upgrade order
+— which is what *structural* was supposed to mean in the first place. It is the same move
+`checkV13` already makes for its `hdml-fallback` count. The finding is still reported *on*
+the offending child where the index knows it, and on the container where it does not; the
+state lands on the container either way (§3.5).
+
 ## 70-column line width
 
 [.eslintrc.js](../.eslintrc.js#L31-L36) sets `max-len: 70` and Prettier `printWidth: 70`.

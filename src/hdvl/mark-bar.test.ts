@@ -24,8 +24,11 @@ import { bandOf } from "./kernel/scale-band";
  * **The ranged form is the primitive and the simple form is sugar**
  * (§6.4). The sharpest assertion in the file is that `y="v"` and
  * `y0="0" y1="v"` produce the same scene: not two code paths that
- * agree, but one, which is what lets step 29's `hdml-stack` supply
- * `y0ₖ` without touching this widget.
+ * agree, but one — which is what let `hdml-stack` supply `y0ₖ` at
+ * step 29 with a **zero-line** diff to `mark-bar.ts`. The two
+ * "step 29" references in that file are deliberately not retired:
+ * retiring them would change the file whose not changing is the
+ * whole of what they predict.
  *
  * **Its orientation is derived**, so the same tag with `x`/`y`
  * swapped lays the bars down, from a fixture that names no

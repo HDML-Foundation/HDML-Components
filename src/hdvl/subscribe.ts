@@ -625,8 +625,17 @@ export function adoptedColumn(
  * Whether this element must paint **nothing** right now (§3.4's
  * painting clause, §3.5).
  *
- * Three causes, in order:
+ * Four causes. The first is SPEC §7's and the other three are
+ * §3.4's data lifecycle:
  *
+ * 0. **`hidden`** — *"withheld from painting; its container
+ *    re-derives without it"*. It lands here rather than in each
+ *    widget because it is true of **every** widget and because
+ *    every widget already asks this one question first (R12); a
+ *    second predicate spelled six times is six chances for a mark
+ *    to forget it. **HDVL's `hidden` is the platform's** (step 29's
+ *    decision — see `container-stack.ts`), so this is `el.hidden`
+ *    and no HDVL machinery at all.
  * 1. **First-resolution atomicity.** Until the view has resolved
  *    once, `loading` suppresses *all* painting in it — a chart that
  *    reveals its axes, then its bars, then its line is worse than one
@@ -641,6 +650,9 @@ export function adoptedColumn(
  * @returns Whether `scene()` must return `null`.
  */
 export function paintSuppressed(el: HdvlElement): boolean {
+  if (el.hidden) {
+    return true;
+  }
   const view = el.view;
   const state = view === null ? undefined : states.get(view);
   if (state === undefined || state.subs.size === 0) {

@@ -51,6 +51,7 @@ import type { Scale } from "./scale";
 import type { Binding, CellValue, Slot } from "./subscribe";
 import type { CurveOptions, CurveType } from "./kernel/curves";
 import { CURVE_TYPES } from "./kernel/curves";
+import { rangedOverrideOf } from "./container";
 import { chainScaleOf } from "./scale";
 import { adoptedColumn, sourceOf } from "./subscribe";
 import { noticeOutOfDomain, reportAllRowsDropped } from "./validate";
@@ -465,21 +466,27 @@ export function rowCountOf(
  * other **before any geometry exists**, so from the moment it
  * returns no code below it can tell which form the author wrote.
  * That is H8's mechanical test: a widget reads {@link low} and
- * {@link high} and never names the simple slot at all, and step 29's
+ * {@link high} and never names the simple slot at all, and
  * `hdml-stack` therefore changes nothing inside `hdml-bar` or
  * `hdml-area`.
  *
- * **★ How step 29 supplies `y0ₖ` through this.** A stack's lower
- * edge is neither a literal nor a column — it is a per-row array the
- * container derives from its siblings' values during COMPUTE. It
- * needs no new shape here, because {@link low} is an ordinary
- * {@link SlotValues}: a container builds
+ * **★ H8 was measured at step 29 and it held.** A stack's lower edge
+ * is neither a literal nor a column — it is a per-row array the
+ * container derives from its siblings' values during COMPUTE — and
+ * it needed no new shape here, because {@link low} is an ordinary
+ * {@link SlotValues}: `container-stack.ts` builds
  * `{slot, rows: N, scalar: false, at: (k) => baseline[k]}` over its
- * own allocated array (§12 duty 4 — never mutating a delivered
- * buffer) and hands it to the resolver, which consults a
- * per-frame, per-element override **before** it reads attributes.
- * The override is the only thing step 29 adds; both widgets already
- * read `.low`/`.high` and nothing else.
+ * **own** allocated array (§12 duty 4 — never mutating a delivered
+ * buffer) and publishes it through `container.ts`, which
+ * {@link rangedValuesOf} consults **before** it reads attributes.
+ * `mark-bar.ts` gained **not one line**, and the two "step 29"
+ * references still in that file are the prediction, left where it
+ * was written.
+ *
+ * The container hoists the **shared** channel through the same
+ * override: V6 forbids a child from binding it, so a stacked
+ * `hdml-bar` has no `x` attribute of its own to read and the
+ * container's own resolved pair is what it gets.
  */
 export interface RangedValues {
   /** The base channel both endpoints project through (§3.3). */
@@ -536,6 +543,14 @@ export function rangedValuesOf(
   el: HdvlElement,
   channel: Channel,
 ): RangedValues | null {
+  // ★ Step 29's container override, consulted BEFORE the
+  // attributes: a stacked child's `(y0ₖ, y1ₖ)` and a container's
+  // hoisted shared channel are derived, and a derived endpoint
+  // supersedes an authored one exactly here and nowhere below.
+  const derived = rangedOverrideOf(el, channel);
+  if (derived !== null) {
+    return derived;
+  }
   const pair = CHANNEL_SLOTS[channel].ranged;
   if (pair === null) {
     return null;

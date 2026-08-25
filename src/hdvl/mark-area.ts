@@ -32,6 +32,7 @@ import {
   tallyDrop,
 } from "./mark";
 import { closedOf } from "./mark-line";
+import { curveSourceOf } from "./container";
 import { curve } from "./kernel/curves";
 import {
   AREA_ATTRS_LIST,
@@ -80,9 +81,12 @@ interface Region {
  * before any geometry exists, and the simple form is sugar: `y` ≡
  * `y0="0"`, polar `radius` ≡ `r0="0"`. So `y="v"` and
  * `y0="0" y1="v"` produce byte-identical scenes, no branch below
- * the resolver can tell which the author wrote, and step 29's
- * `hdml-stack` supplies a per-row `y0ₖ` through the same seam
- * without changing a line in here.
+ * the resolver can tell which the author wrote, and `hdml-stack`
+ * supplies a per-row `y0ₖ` through the same seam — **which it did,
+ * at step 29, without changing a line of the geometry below**. The
+ * one line step 29 *did* change here is the CURVE source, and it
+ * belongs to §9's reader column rather than to H8: see
+ * {@link import("./container").curveSourceOf}.
  *
  * **★ It names no channel** (H7). The independent channel is
  * {@link import("./mark").Projection.channels}`[0]` and the ranged
@@ -380,8 +384,15 @@ export class HdmlAreaElement extends HdvlElement {
     // SPEC §7's radar loop, shared with `hdml-line` — presence, on
     // a plane composing angularly, and inert everywhere else.
     const loop = closedOf(this, first, AREA_ATTRS_LIST.CLOSED);
-    const type = curveTypeOf(measured);
-    const options = curveOptionsOf(measured);
+    // ★ SPEC §9's `--hdml-curve-*` rows name the reader, and for a
+    // stacked area it is the STACK, not this element — §7: "band
+    // k's top is band k+1's baseline, so per-child curves would
+    // tear the shared edges". One element answers for the whole
+    // stack, so the edges cannot disagree. Outside a stack it is
+    // this element, and `curveSourceOf` returns it unchanged.
+    const curveFrom = ctx.measured(curveSourceOf(this));
+    const type = curveTypeOf(curveFrom);
+    const options = curveOptionsOf(curveFrom);
     const subpaths: Subpath[] = [];
     const vertices: (Point & { i: number })[] = [];
     for (const region of regions) {

@@ -196,9 +196,10 @@ Sort the frame by one or more fields. No attributes; per-field direction comes f
 
 The display half registers **21 tags**, in seven families
 ([`HDVL_FAMILIES`](../src/hdvl/vocabulary.ts)): `view`, `plane`, `scale`, `mark`,
-`container`, `guide`, `fallback`. Seventeen of them have bodies as of this commit — the
-four structural elements, the three scales, **all six marks** and **four of the five
-guides** — see [Registered but inert](#registered-but-inert) for the four that do not.
+`container`, `guide`, `fallback`. **Twenty of them have bodies** as of this commit — the
+four structural elements, the three scales, **all six marks**, `hdml-pie`, **four of the
+five guides** and **both layout containers** — see
+[Registered but inert](#registered-but-inert) for the one that does not.
 
 Two constructed UA stylesheets ([`src/hdvl/ua.ts`](../src/hdvl/ua.ts)) supply every box
 default. The **element sheet** is adopted by every HDVL shadow root as one shared instance and
@@ -806,27 +807,118 @@ a0ₖ = (Σ_{j<k} vⱼ) / total       a1ₖ = a0ₖ + vₖ / total
 - **§12 duty 4**: the prefix sum allocates its own array. A delivered column is a view over a
   buffer the worker still owns, and it is read and never written.
 
+## Layout containers
+
+A layout container **relates an ordered set of sibling marks** (SPEC §7). It sits at a
+chain tip exactly as a widget does, occupies a real inspectable box, emits **no scene group
+of its own**, and is the **error unit** for everything below it — an invalid child
+invalidates the whole container (§1.5, §3.5), which is why `resolve.ts` gives every
+descendant the *outermost* container as its `unit`.
+
+The division of labour is fixed and is what makes the model hold: the **container** carries
+the relation, its parameters and the **shared independent channel**; the **child tag**
+carries the geometry kind; child **attributes** carry the series column and identity; CSS
+styles. Grouped ↔ stacked is the container's tag name, children untouched.
+
+**Both containers re-parameterise ordinary marks and neither changes one.** The two seams
+live in [`container.ts`](../src/hdvl/container.ts), which a container writes during COMPUTE
+and two readers consult:
+
+| Seam | Written by | Read by | What it changes |
+|---|---|---|---|
+| the **ranged override** | `hdml-stack` (and both containers' shared-channel hoist) | `mark.ts`'s `rangedValuesOf`, before it reads attributes | a child's `(low, high)` pair for one channel |
+| the **band slot** | `hdml-cluster` | `scale.ts`'s `chainScaleOf` | the *scale* a clustered widget resolves — §4.4's band taken inside the outer one |
+
+The ordering is the whole synchronisation mechanism and it is a property of the walk, not a
+new phase: `resolve.ts` lists a view's elements in document order and `schedule.ts` walks
+that list, so a container's `scene(ctx)` has always run before the children that read what
+it wrote. Entries are keyed by the **child** and fenced by `owner === child.parentElement`,
+so a child moved out of its container stops reading one on the next frame without anything
+having to clear it.
+
+**`hidden` is the platform's.** SPEC §7 gives every widget a `hidden` attribute meaning
+*"withheld from painting; its container re-derives without it"*. Since step 29 that is
+`HTMLElement.hidden` — the same attribute, with the platform's own layout and accessibility
+consequences — read once, in `subscribe.ts`'s `paintSuppressed`, so every widget honours it
+and no widget spells it. The class field behind the observed attribute is still named
+`hiddenAttr`, because a `null | string` field named `hidden` would shadow the boolean IDL
+property and not type-check. See [decisions.md](decisions.md).
+
+### `hdml-stack` — [src/hdvl/container-stack.ts](../src/hdvl/container-stack.ts)
+
+Supplies each child's **baseline**, so band *k*'s top **is** band *k+1*'s baseline.
+
+| | |
+|---|---|
+| **Attributes** | `x` / `y` — the shared independent channel (V6); `offset`; `hidden`; `source` |
+| **Children** | all-`hdml-bar` **or** all-`hdml-area` — one tag per stack (V17) |
+| **Scene group** | none — `scene(ctx)` derives and returns `null` |
+| **Requires** | a **continuous** dependent-channel scale and a **cartesian** plane (V17) |
+
+Its derive, in full, over the **rendered** children in DOM order:
+
+```
+y0ₖ[i] = Σ_{j<k} (yⱼ[i] ?? 0)        k = child index, bottom-up = DOM order
+y1ₖ[i] = yₖ[i] === null ? absent : y0ₖ[i] + yₖ[i]
+offset="normalize" → both ÷ Σ_all (yⱼ[i] ?? 0);  a zero total → no bands for row i
+```
+
+- **The children are ordinary ranged marks** (H8). §6.4 makes the ranged form the primitive
+  a container *compiles into*, so child *k* renders as a plain ranged mark from `y0ₖ` to
+  `y0ₖ + yₖ`. `mark-bar.ts` gained **not one line** at the step that landed this.
+- **A `null` contributes 0 and renders nothing** — child *k* drops row *i* while the
+  children above it stay anchored, *"rather than collapsing the column"* (§7).
+- **It hoists the shared channel too.** V6 forbids a child from binding it, so a stacked
+  `hdml-bar` has no `x` attribute to read; the container's own resolved pair is published
+  onto every rendered child through the same override. The stack's `x` is therefore the
+  **container's** subscription — it implements `Binder`.
+- **Curve properties are read from the STACK**, not its children (SPEC §9's reader column,
+  §7's tearing argument): band *k*'s top is band *k+1*'s baseline, so per-child curves would
+  tear the shared edges. A child's `--hdml-curve-*` still *computes* — it is a registered
+  inheriting property — and is never read. `mark-area.ts` asks
+  `container.ts`'s `curveSourceOf` for the element to read them off.
+- **`hidden` on a child rebases the rest and no scale domain follows** (§6: a domain is the
+  author's statement, never a live union). The axis ceiling stays put.
+- **§12 duty 4**: the derive allocates its own `Float64Array` per endpoint, with `NaN` as
+  the absent cell. A delivered column is a view over a buffer the worker still owns.
+
+### `hdml-cluster` — [src/hdvl/container-cluster.ts](../src/hdvl/container-cluster.ts)
+
+**Subdivides the band** among its rendered children — SPEC §7's *"anonymous inner band
+scale whose domain is the children in DOM order"*.
+
+| | |
+|---|---|
+| **Attributes** | `x` / `y` — the shared independent channel (V6); `source` |
+| **Children** | `hdml-bar` or `hdml-stack` — stack-in-cluster is V17's only legal nesting |
+| **Scene group** | none — `scene(ctx)` slots and returns `null` |
+| **Requires** | the shared channel's scale to be **ordinal** (V17) |
+
+- **★ The inner band is `kernel/scale-band.ts` at `b = 1`** (R19), not `outer.width / n`:
+  §6.4 gives the subdivision no authorable gap, and `b` is an ordinary parameter of the one
+  band formula. `--hdml-bandwidth` still opens the gap between *categories*, on the outer
+  band, where the scale reads it.
+- **Slot is the child index and slot count the rendered-child count** — both derived from
+  structure, *"as `<ol>` numbers its `<li>`s"*. This is what retired the
+  `--hdml-band-slot` / `--hdml-band-slots` pair: no validator can check a cascade, and
+  adding a series and forgetting the count silently overlapped bars.
+- **It declares no channel of its own** and is invisible to V1 and to channel resolution.
+  What changes is the *scale a clustered widget resolves*; the scale everything else
+  resolves is untouched, so a guide over it still addresses the category and never a slot.
+- **A `hidden` child re-derives the subdivision**; CSS order does not.
+
 ### Registered but inert
 
-The other three tags are **registered and carry no behaviour yet** — each declares its tag,
-its family and its observed attributes, and nothing else. They are listed here so the tag
-surface is discoverable; do not read an entry as a description of working behaviour.
+One tag is **registered and carries no behaviour yet** — it declares its tag, its family and
+its observed attributes, and nothing else. It is listed here so the tag surface is
+discoverable; do not read the entry as a description of working behaviour.
 
 | Tag | Family | Module | Body lands in |
 |---|---|---|---|
 | `hdml-legend` | guide | [guide-legend.ts](../src/hdvl/guide-legend.ts) | Slice H |
-| `hdml-stack` | container | [container-stack.ts](../src/hdvl/container-stack.ts) | Slice G |
-| `hdml-cluster` | container | [container-cluster.ts](../src/hdvl/container-cluster.ts) | Slice G |
 
 The five guides take **no `source`** and bind no columns — a guide is a function of the
 resolved scale, its own box and its computed style.
-
-`hdml-area`, `hdml-bar` and `hdml-stack` observe a `hidden` attribute. Because
-`HTMLElement.hidden` is a platform **boolean** IDL property, the class field behind it is
-named `hiddenAttr`; the observed attribute is still `hidden`, and the platform's own property
-is left alone. **Nothing reads it yet** — the two marks with bodies observe it and do not
-consult it, because whether HDVL's `hidden` *is* the platform's is a semantic question the
-container slice decides.
 
 ### The `--hdml-*` registry
 

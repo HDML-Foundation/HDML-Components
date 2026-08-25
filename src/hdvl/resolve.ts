@@ -181,8 +181,12 @@ interface Ctx {
  * wrong chart, not a degraded one. The table does not say what a
  * *nested* container does, and the same reasoning answers it — a
  * cluster whose inner stack failed is equally wrong — so the unit is
- * the **outermost** container ancestor. **Step 29 owns confirming
- * that**, when `hdml-stack` and `hdml-cluster` gain bodies.
+ * the **outermost** container ancestor. **Step 29 confirmed it**
+ * when the two containers gained bodies, and V6 then read the same
+ * field for a second purpose: SPEC §11 scopes the shared-channel
+ * ban to *"everything inside the OUTERMOST container"*, which is
+ * this answer exactly. Two rules wanting the same walk is the
+ * argument for it being computed once, here.
  */
 function unitOf(
   el: HdvlElement,

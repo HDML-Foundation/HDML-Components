@@ -45,6 +45,7 @@ import type { EventQueue } from "./events";
 import type { ScaleKind } from "./scale";
 import { HdvlElement, writeState } from "./base";
 import { channelOf, resolutionOf } from "./resolve";
+import { containerChainOf } from "./container";
 import { HDML_ERROR, outward } from "./events";
 import { adoptedOf } from "./subscribe";
 import {
@@ -281,6 +282,12 @@ const POLAR_TAG: string = HDVL_TAG_NAMES.POLAR_PLANE;
 
 /** See {@link RULE_TAG}. */
 const AXIS_TAG: string = HDVL_TAG_NAMES.AXIS;
+
+/** See {@link RULE_TAG}. */
+const STACK_TAG: string = HDVL_TAG_NAMES.STACK;
+
+/** See {@link RULE_TAG}. */
+const CLUSTER_TAG: string = HDVL_TAG_NAMES.CLUSTER;
 
 /**
  * §6.5's four **positional** guides — V16's and V20's scope in this
@@ -683,6 +690,18 @@ function lengthMismatchMessage(
   );
 }
 
+function stackLengthMessage(
+  a: string,
+  an: number,
+  b: string,
+  bn: number,
+): string {
+  return (
+    `${a} has ${an} rows and ${b} has ${bn} — a stack's ` +
+    "children must agree in length; scalars broadcast"
+  );
+}
+
 function wrongPlaneMessage(
   ch: Channel,
   channels: readonly Channel[],
@@ -768,6 +787,76 @@ function ordinalFormatMessage(): string {
   );
 }
 
+function emptyContainerMessage(tag: string): string {
+  return (
+    `${tag} has no children — an empty container is an error, ` +
+    "a single child is a legal no-op"
+  );
+}
+
+function wrongChildMessage(
+  container: string,
+  kid: Element,
+  allowed: readonly [string, string],
+): string {
+  return (
+    `a ${container} holds ${allowed[0]} or ${allowed[1]} — ` +
+    `<${kid.localName}> is neither`
+  );
+}
+
+function mixedStackMessage(kid: Element, first: string): string {
+  return (
+    `one tag per ${STACK_TAG} — ` +
+    `<${kid.localName}> does not match <${first}>`
+  );
+}
+
+function stackPlaneMessage(plane: string): string {
+  return (
+    `stacking needs a ${CARTESIAN_TAG} — ` +
+    `<${plane}> composes about a pole`
+  );
+}
+
+function stackScaleMessage(ch: Channel): string {
+  return (
+    `stacking needs a continuous ${ch} scale — ` +
+    "a baseline is a sum, and an ordinal domain has none"
+  );
+}
+
+function clusterScaleMessage(ch: Channel): string {
+  return (
+    `clustering needs an ordinal ${ch} scale — ` +
+    "there is no band to subdivide otherwise"
+  );
+}
+
+function hoistedChannelMessage(
+  ch: Channel,
+  container: string,
+): string {
+  return (
+    `the ${ch} channel belongs to <${container}> — ` +
+    "everything inside a container binds what varies per series"
+  );
+}
+
+function rangedInStackMessage(attr: string): string {
+  return (
+    `a ${STACK_TAG} child binds the simple form only — ` +
+    `remove ${attr}; the container owns the baseline`
+  );
+}
+
+function childSourceMessage(container: string): string {
+  return (
+    `a ${STACK_TAG} child takes <${container}>'s source — ` +
+    `only a ${CLUSTER_TAG} child may override it`
+  );
+}
+
 // ---------------------------------------------------------------
 // V1 · V13 · W2 — the structural rules
 // ---------------------------------------------------------------
@@ -809,8 +898,9 @@ function checkV1(el: HdvlElement, out: Finding[]): void {
  * V13 — a level is homogeneous.
  *
  * View → planes (plus at most one `hdml-fallback`); plane → scales;
- * scale → scales **xor** widgets. The **container** clause is V17's
- * and belongs to step 29; nothing is checked below a container here.
+ * scale → scales **xor** widgets. The **container** clause is
+ * {@link checkV17}'s, landed at step 29; nothing is checked below a
+ * container here.
  *
  * `hdml-fallback` is not an `HdvlElement` (H3) and so is not in the
  * index — its "at most one" is counted from the DOM, which is the
@@ -890,6 +980,273 @@ function checkV13(el: HdvlElement, out: Finding[]): void {
         ),
       );
     }
+  }
+}
+
+// ---------------------------------------------------------------
+// V17 · V6 — what a layout container is made of, and who binds what
+// ---------------------------------------------------------------
+
+/**
+ * The **ranged** spellings, and the base channel each resolves.
+ *
+ * V6's *"a stack child binds the simple form only"* clause is the
+ * one rule in this module that has to know which of the fourteen
+ * names are a pair. That knowledge lives in the published
+ * `*_ATTRS_LIST` enums, which this module already reads — it does
+ * **not** import `mark.ts`'s `CHANNEL_SLOTS`, because `mark.ts`
+ * imports this one.
+ */
+const RANGED_ATTRS: readonly (readonly [string, Channel])[] = [
+  [AREA_ATTRS_LIST.X0, "x"],
+  [AREA_ATTRS_LIST.X1, "x"],
+  [AREA_ATTRS_LIST.Y0, "y"],
+  [AREA_ATTRS_LIST.Y1, "y"],
+  [ARC_ATTRS_LIST.A0, "angle"],
+  [ARC_ATTRS_LIST.A1, "angle"],
+  [AREA_ATTRS_LIST.R0, "radius"],
+  [AREA_ATTRS_LIST.R1, "radius"],
+];
+
+/**
+ * The shared independent channel a container owns (SPEC §7, V6).
+ *
+ * Read from the container chain rather than from the element,
+ * because `04-grouped-stacked` E writes `x` on the `hdml-cluster`
+ * and nothing on the two `hdml-stack`s inside it.
+ *
+ * `container.ts` answers the same question at COMPUTE from the
+ * *resolved* pairs; this one is **structural** — attributes only —
+ * because a V-rule must answer before any frame has run.
+ */
+function hoistedChannelOf(el: HdvlElement): Channel | null {
+  for (const node of [el, ...containerChainOf(el)]) {
+    for (const channel of POSITIONAL) {
+      for (const [attr, owner] of CHANNEL_ATTRS) {
+        if (owner === channel && declared(node, attr)) {
+          return channel;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * V17 — **container composition**, and the two scale-kind clauses
+ * that come with it.
+ *
+ * ```
+ * hdml-stack   → all-hdml-bar XOR all-hdml-area (one tag per stack)
+ * hdml-cluster → hdml-bar or hdml-stack
+ * empty        → error;  one child → a legal no-op
+ * stacking     → a continuous dependent scale, cartesian plane
+ * clustering   → an ordinal shared scale
+ * ```
+ *
+ * **Stack-in-cluster being the only legal nesting needs no code of
+ * its own** — it falls out of the two child lists: a container
+ * inside a stack is neither a bar nor an area, and a cluster inside
+ * a cluster is neither a bar nor a stack. Stated rather than
+ * implemented, so a later reader does not add a third check that
+ * can only ever agree with these two.
+ *
+ * **All-or-nothing is already true and is not re-implemented
+ * here** (§1.5, §3.5): every finding's *unit* is the outermost
+ * container, because `resolve.ts` says so for the whole subtree —
+ * so one bad child blanks the container and its siblings with it,
+ * and a finding reported on the child still names the child.
+ *
+ * The two scale clauses are **structural**: they read the resolved
+ * scale's *tag*, exactly as V2's static half and V14's ordinal
+ * clause do, so a page that cannot stack is told before a frame
+ * runs.
+ *
+ * **★ The children are read from the DOM, not from the index.**
+ * `displayKids` counts elements the walk resolved, and a custom
+ * element that has not upgraded yet is not one — so on the first
+ * `reindex()` of a freshly parsed page a perfectly full
+ * `hdml-stack` reads as **empty** and reports it. Measured on
+ * corpus `12-C`. Every clause here needs only `localName`, which an
+ * un-upgraded element already has, so reading `children` makes the
+ * rule independent of upgrade order — which is what "structural"
+ * was supposed to mean. It is the same move `checkV13` makes for
+ * its `hdml-fallback` count, and for the same reason.
+ */
+function checkV17(el: HdvlElement, out: Finding[]): void {
+  if (el.family !== "container") {
+    return;
+  }
+  const res = resolutionOf(el);
+  const kids = Array.from(el.children);
+  if (kids.length === 0) {
+    out.push(
+      error(
+        "V17",
+        "container-composition",
+        el,
+        emptyContainerMessage(el.localName),
+      ),
+    );
+    return;
+  }
+  const stack = el.localName === STACK_TAG;
+  const allowed: readonly [string, string] = stack
+    ? [BAR_TAG, AREA_TAG]
+    : [BAR_TAG, STACK_TAG];
+  // A finding is reported ON the offending child where the index
+  // knows it, and on the container where it does not — the state
+  // lands on the container either way (§3.5), so this only decides
+  // which element the diagnostic names.
+  const at = (kid: Element): HdvlElement => {
+    const hit = <HdvlElement>(<unknown>kid);
+    return resolutionOf(hit) === undefined ? el : hit;
+  };
+  let first = "";
+  for (const kid of kids) {
+    if (!allowed.includes(kid.localName)) {
+      out.push(
+        error(
+          "V17",
+          "container-composition",
+          at(kid),
+          wrongChildMessage(el.localName, kid, allowed),
+        ),
+      );
+      continue;
+    }
+    if (first === "") {
+      first = kid.localName;
+    } else if (stack && kid.localName !== first) {
+      out.push(
+        error(
+          "V17",
+          "container-composition",
+          at(kid),
+          mixedStackMessage(kid, first),
+        ),
+      );
+    }
+  }
+  if (res === undefined || res.plane === null) {
+    return;
+  }
+  const shared = hoistedChannelOf(el);
+  const channels = planeChannelsOf(el);
+  if (shared === null || channels === null) {
+    return;
+  }
+  if (!stack) {
+    const scale = res.chain[shared];
+    if (scale !== undefined && scaleKindOf(scale) !== "ordinal") {
+      out.push(
+        error(
+          "V17",
+          "container-composition",
+          el,
+          clusterScaleMessage(shared),
+          shared,
+        ),
+      );
+    }
+    return;
+  }
+  if (res.plane.localName !== CARTESIAN_TAG) {
+    out.push(
+      error(
+        "V17",
+        "container-composition",
+        el,
+        stackPlaneMessage(res.plane.localName),
+      ),
+    );
+    return;
+  }
+  const dep = channels[0] === shared ? channels[1] : channels[0];
+  const scale = res.chain[dep];
+  if (scale !== undefined && scaleKindOf(scale) !== "continuous") {
+    out.push(
+      error(
+        "V17",
+        "container-composition",
+        el,
+        stackScaleMessage(dep),
+        dep,
+      ),
+    );
+  }
+}
+
+/**
+ * V6 — **container binding**: the container owns the shared
+ * independent channel, and *"everything inside the outermost
+ * container — nested containers and marks — is forbidden from
+ * binding it"*.
+ *
+ * Two clauses, one code:
+ *
+ * 1. **The hoisted channel is the container's.** The scope is the
+ *    **outermost** container, which `resolve.ts` already computes
+ *    as every descendant's error `unit` — so an inner stack inside
+ *    a cluster is as forbidden from writing `x` as a bar is.
+ * 2. **A stack child binds the dependent channel in SIMPLE form
+ *    only** — `y`, never `y0`/`y1` (SPEC §7): the container owns
+ *    the baseline, *superseding* `hdml-area`'s own `y` sugar. It is
+ *    the authored-vs-derived line V15 draws for domains, drawn once
+ *    more: a range whose endpoints are the author's data is what
+ *    the ranged form is *for*, and a stack's are not.
+ *
+ * Reported **once per channel** rather than once per attribute, for
+ * the reason V9 gives: an author who wrote `y0` and `y1` made one
+ * mistake.
+ */
+function checkV6(el: HdvlElement, out: Finding[]): void {
+  const res = resolutionOf(el);
+  if (res === undefined || res.container === null) {
+    return;
+  }
+  const outer = res.unit;
+  if (outer === el || outer.family !== "container") {
+    return;
+  }
+  const owned = hoistedChannelOf(outer);
+  const seen = new Set<Channel>();
+  if (owned !== null) {
+    for (const [attr, channel] of CHANNEL_ATTRS) {
+      if (channel !== owned || seen.has(channel)) {
+        continue;
+      }
+      if (declared(el, attr)) {
+        seen.add(channel);
+        out.push(
+          error(
+            "V6",
+            "container-binding",
+            el,
+            hoistedChannelMessage(channel, outer.localName),
+            channel,
+          ),
+        );
+      }
+    }
+  }
+  if (res.container.localName !== STACK_TAG) {
+    return;
+  }
+  for (const [attr, channel] of RANGED_ATTRS) {
+    if (seen.has(channel) || !declared(el, attr)) {
+      continue;
+    }
+    seen.add(channel);
+    out.push(
+      error(
+        "V6",
+        "container-binding",
+        el,
+        rangedInStackMessage(attr),
+        channel,
+      ),
+    );
   }
 }
 
@@ -1260,9 +1617,15 @@ const REQUIRED = new Map<
  * §8.3's *"a container-hoisted channel satisfies it for the
  * children"* is implemented rather than deferred: a container is an
  * ordinary channel binder to `boundChannels`, so a child under one
- * that binds the channel is satisfied. No container binds anything
- * until step 29 — the clause costs three lines and is here so that
- * step lands `hdml-stack` without also having to remember this.
+ * that binds the channel is satisfied.
+ *
+ * **Step 29 widened it from the nearest container to the whole
+ * container chain**, which is what `04-grouped-stacked` E needs:
+ * its two `hdml-stack`s bind nothing at all and the `x` their bars
+ * require is on the `hdml-cluster` above them. The nearest-only
+ * form would have made every bar on that page a missing-binding
+ * error — the clause was written at step 22 against a tree in
+ * which no container existed to nest.
  */
 function checkV19(el: HdvlElement, out: Finding[]): void {
   const res = resolutionOf(el);
@@ -1278,8 +1641,10 @@ function checkV19(el: HdvlElement, out: Finding[]): void {
   if (reqs === null) {
     return;
   }
-  const hoisted =
-    res.container === null ? [] : boundChannels(res.container);
+  const hoisted: Channel[] = [];
+  for (const node of containerChainOf(el)) {
+    hoisted.push(...boundChannels(node));
+  }
   for (const req of reqs) {
     if (
       hoisted.includes(req.channel) ||
@@ -1541,20 +1906,48 @@ function unpinnedFrameOf(
  * blank**: nothing about the composition is wrong, and §8.3's
  * warnings *"never blank anything and never set `:state(error)`"*.
  *
- * **Scoped to `hdml-pie` here.** SPEC's V7 row generalises the duty
- * to *"order-consuming constructs"* — path widgets over bound
+ * **`hdml-pie` and `hdml-stack`.** SPEC's V7 row generalises the
+ * duty to *"order-consuming constructs"* — path widgets over bound
  * columns, literal-with-bound zips, stacks, column-derived ordinal
- * domains — and this step owes the pie half only; the stack half is
- * the container slice's.
+ * domains. Step 27 landed the pie; **step 29 added the stack under
+ * the same code and the same locality**, which is the whole point
+ * of R12: a stack's rows are its categories in the frame's own
+ * order exactly as a pie's are its slices, so a second warning code
+ * for the same sentence would be two rules pretending to be one.
+ *
+ * **V7's `container-source` clause lands here too**, on the child
+ * rather than on the container: a `hdml-stack` child *"resolves to
+ * the container's one effective source"*, so its own `source` is an
+ * error — and a `hdml-cluster` child's is **not**, because §4.7
+ * lets a cluster dodge two different frames side by side. That
+ * asymmetry is SPEC's, and it is why the check reads the *nearest*
+ * container's tag and not the error unit's.
  */
 function checkV7(el: HdvlElement, out: Finding[]): void {
-  if (el.tag !== HDVL_TAG_NAMES.PIE) {
+  const res = resolutionOf(el);
+  const container = res?.container ?? null;
+  if (
+    container !== null &&
+    container !== el &&
+    container.localName === STACK_TAG &&
+    declared(el, AREA_ATTRS_LIST.SOURCE)
+  ) {
+    out.push(
+      error(
+        "V7",
+        "container-source",
+        el,
+        childSourceMessage(container.localName),
+      ),
+    );
+  }
+  if (el.tag !== HDVL_TAG_NAMES.PIE && el.localName !== STACK_TAG) {
     return;
   }
-  const ref = resolutionOf(el)?.source ?? null;
+  const ref = res?.source ?? null;
   if (ref === null) {
-    // A pie over literal arrays has no frame to pin: the author
-    // wrote the order themselves, in the document.
+    // A pie or stack over literal arrays has no frame to pin: the
+    // author wrote the order themselves, in the document.
     return;
   }
   const name = unpinnedFrameOf(el, ref);
@@ -1567,6 +1960,60 @@ function checkV7(el: HdvlElement, out: Finding[]): void {
         unpinnedOrderMessage(name),
       ),
     );
+  }
+}
+
+/**
+ * **V7's equal-N clause** — *"V5's equal-N applies **across** a
+ * stack's children; scalars broadcast across the stack (a constant
+ * series is legal)"*.
+ *
+ * V5 counts one widget's own slots against each other and cannot
+ * see this: three children of 12, 12 and 7 rows are each internally
+ * consistent, and the chart they make is a stack whose top band
+ * stops five categories early with nothing said. It is the
+ * *container's* finding, reported on the container, and it is in
+ * the **binding pass** because the counts are the delivery's.
+ *
+ * `rowsOfSlot` returns `null` for a scalar and for a column still
+ * in flight, which is exactly the broadcast clause: a child bound
+ * to one constant contributes no count and constrains nothing.
+ */
+function checkV7Rows(el: HdvlElement, out: Finding[]): void {
+  if (el.localName !== STACK_TAG) {
+    return;
+  }
+  let slot = "";
+  let rows = -1;
+  for (const kid of displayKids(el)) {
+    for (const [attr, raw] of boundValues(kid)) {
+      const n = rowsOfSlot(kid, attr, raw);
+      if (n === null) {
+        continue;
+      }
+      if (rows < 0) {
+        slot = `${kid.localName} ${attr}`;
+        rows = n;
+        continue;
+      }
+      if (n === rows) {
+        continue;
+      }
+      out.push(
+        error(
+          "V7",
+          "length-mismatch",
+          el,
+          stackLengthMessage(
+            slot,
+            rows,
+            `${kid.localName} ${attr}`,
+            n,
+          ),
+        ),
+      );
+      return;
+    }
   }
 }
 
@@ -2153,6 +2600,16 @@ export function validateStructure(
     checkV20(el, found);
     checkV1(el, found);
     checkV13(el, found);
+    // V17 before V6, and both before everything data-shaped: a
+    // container is the error unit for its whole subtree, so the
+    // one finding a unit reports had better be the outermost
+    // thing wrong with it. WHAT THE CONTAINER IS MADE OF (V17)
+    // is settled before WHO BINDS WHAT (V6) — "a hdml-stack holds
+    // hdml-bar or hdml-area" is the message that fixes a stack of
+    // lines, and "the x channel belongs to <hdml-stack>" said
+    // about a line that may not be there at all is not.
+    checkV17(el, found);
+    checkV6(el, found);
     // V3 and V10 before V8: a malformed `values` has a better
     // message than "no domain", and a unit reports one error.
     checkGrammar(el, found);
@@ -2210,6 +2667,7 @@ export function validateBindings(
     checkV2(el, found);
     checkV4Delivery(el, found);
     checkV5(el, found);
+    checkV7Rows(el, found);
   }
   // §4.7's all-drop is decided in COMPUTE, by the widget that met
   // the rows, and is drained here — the pass that runs immediately

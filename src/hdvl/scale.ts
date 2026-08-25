@@ -45,6 +45,7 @@ import type { ContinuousSpec } from "./kernel/scale-continuous";
 import type { Delivery } from "../hdio/delivery";
 import { HDML_SCALE_CHANGE, outward } from "./events";
 import { channelOf, resolutionOf } from "./resolve";
+import { bandSlotOf, subdivide } from "./container";
 import { adoptedOf, sourceOf } from "./subscribe";
 import {
   CONTINUOUS_SCALE_ATTRS_LIST,
@@ -1132,7 +1133,19 @@ export function scaleOf(el: HdvlElement): Scale | null {
 
 /**
  * The scale a widget's channel resolves to — a read of the
- * resolution index and nothing else (R35).
+ * resolution index, and of the one thing a container may change
+ * about it (R35, R19).
+ *
+ * **★ A clustered widget resolves the INNER band scale.** SPEC §7
+ * makes `hdml-cluster`'s subdivision *"an anonymous inner band
+ * scale whose domain is the children in DOM order"*, so it is the
+ * *scale* a clustered widget sees that differs and not the widget's
+ * arithmetic — which is why `hdml-bar` reads `bandOf().width`
+ * without knowing whether it is in a cluster. The subdivision
+ * itself is `kernel/scale-band.ts` at `b = 1` and lives in
+ * `container.ts`; nothing about the outer scale, its domain, its
+ * range or its ticks changes, so every guide over the same scale
+ * keeps addressing the category and not the slot.
  *
  * @param ctx - The frame's snapshot.
  * @param el - The widget.
@@ -1151,7 +1164,13 @@ export function chainScaleOf(
   // Scales precede their widgets in document order, so this is
   // normally a cache read; resolving here covers the one case it
   // is not — a widget asked out of order by a test.
-  return resolveScaleFrame(scale, ctx);
+  const resolved = resolveScaleFrame(scale, ctx);
+  const slot = bandSlotOf(el);
+  return resolved === null ||
+    slot === null ||
+    slot.channel !== channel
+    ? resolved
+    : subdivide(resolved, slot);
 }
 
 /**

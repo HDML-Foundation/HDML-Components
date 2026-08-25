@@ -1719,7 +1719,9 @@ suite("hdvl/validate — diagnostics", () => {
     // closed, so a twenty-third code fails `compile_tst` — before
     // any browser starts — and a deleted one fails here. Step 22
     // added four rules and no code: all four were already in the
-    // union step 12 landed whole (H5).
+    // union step 12 landed whole (H5). **Step 29 added three more
+    // rules and no code**, and reused step 27's warning code for
+    // V7's stack half rather than minting an eighth (R12).
     assert.lengthOf(Object.keys(CODES), 22);
     // …and the warning space, whose seventh member is V7's rather
     // than a W-rule's (step 27).
@@ -1730,6 +1732,10 @@ suite("hdvl/validate — diagnostics", () => {
       "length-mismatch",
       "wrong-plane-channel",
       "missing-binding",
+      // Step 29's three, all uncalled since step 12.
+      "container-composition",
+      "container-binding",
+      "container-source",
     ]) {
       assert.property(CODES, code);
     }
@@ -1878,6 +1884,376 @@ suite("hdvl/validate — diagnostics", () => {
       [],
     );
     assert.lengthOf(errs, 0);
+    assert.isFalse(view.matches(":state(error)"));
+  });
+  // -------------------------------------------------------------
+  // V17 · V6 · V7 — the layout containers (step 29)
+  // -------------------------------------------------------------
+
+  /**
+   * A cartesian page whose tip scale holds whatever is passed —
+   * an ordinal `x` of one category over a continuous `y`, which is
+   * the shape every container clause below needs and none of them
+   * is about.
+   */
+  const TIP = (
+    inner: ReturnType<typeof html>,
+    ordinalY = false,
+  ): ReturnType<typeof html> => html`
+    <hdml-view aria-label="ct" style="width: 400px; height: 200px">
+      <hdml-cartesian-plane>
+        <hdml-ordinal-scale values='["a"]' channel="x">
+          ${ordinalY
+            ? html`<hdml-ordinal-scale values='["p"]' channel="y">
+                ${inner}
+              </hdml-ordinal-scale>`
+            : html`<hdml-continuous-scale min="0" max="1" channel="y">
+                ${inner}
+              </hdml-continuous-scale>`}
+        </hdml-ordinal-scale>
+      </hdml-cartesian-plane>
+    </hdml-view>
+  `;
+
+  test("V17 — a stack holds bars or areas", async () => {
+    const [host, view] = await mount(
+      TIP(html`
+        <hdml-stack x='["a"]'>
+          <hdml-line y='["a"]'></hdml-line>
+        </hdml-stack>
+      `),
+    );
+    assert.deepEqual(said("V17").map(messageOf), [
+      "a hdml-stack holds hdml-bar or hdml-area — " +
+        "<hdml-line> is neither",
+    ]);
+    // §3.5 / §1.5's all-or-nothing: the finding is ON the child and
+    // the state is on the CONTAINER, so one bad layer blanks the
+    // stack and its siblings with it.
+    const stack = <Element>host.querySelector("hdml-stack");
+    const line = <Element>host.querySelector("hdml-line");
+    assert.isTrue(stack.matches(":state(error)"));
+    assert.isFalse(line.matches(":state(error)"));
+    assert.isFalse(view.matches(":state(error)"));
+    assert.strictEqual(errs[0].detail.code, "container-composition");
+  });
+
+  test("V17 — one tag per stack", async () => {
+    await mount(
+      TIP(html`
+        <hdml-stack x='["a"]'>
+          <hdml-bar y="[1]"></hdml-bar>
+          <hdml-area y="[1]"></hdml-area>
+        </hdml-stack>
+      `),
+    );
+    assert.deepEqual(said("V17").map(messageOf), [
+      "one tag per hdml-stack — <hdml-area> does not match " +
+        "<hdml-bar>",
+    ]);
+  });
+
+  test("V17 — a cluster holds bars or stacks", async () => {
+    await mount(
+      TIP(html`
+        <hdml-cluster x='["a"]'>
+          <hdml-area y="[1]"></hdml-area>
+        </hdml-cluster>
+      `),
+    );
+    assert.deepEqual(said("V17").map(messageOf), [
+      "a hdml-cluster holds hdml-bar or hdml-stack — " +
+        "<hdml-area> is neither",
+    ]);
+  });
+
+  test("★ V17 — stack-in-cluster is the only nesting", async () => {
+    // It needs no rule of its own: a cluster inside a cluster is
+    // neither a bar nor a stack, and a container inside a stack is
+    // neither a bar nor an area. Both fall out of the two child
+    // lists, which is why there is no third check to disagree.
+    const [, a] = await mount(
+      TIP(html`
+        <hdml-cluster x='["a"]'>
+          <hdml-cluster></hdml-cluster>
+        </hdml-cluster>
+      `),
+    );
+    assert.lengthOf(said("V17"), 1);
+    assert.include(said("V17")[0], "<hdml-cluster> is neither");
+    void a;
+    lines = [];
+    errs = [];
+    await mount(
+      TIP(html`
+        <hdml-stack x='["a"]'>
+          <hdml-cluster></hdml-cluster>
+        </hdml-stack>
+      `),
+    );
+    assert.lengthOf(said("V17"), 1);
+    assert.include(said("V17")[0], "<hdml-cluster> is neither");
+  });
+
+  test("V17 — stacking needs a cartesian plane", async () => {
+    await mount(html`
+      <hdml-view aria-label="ct2" style="width: 200px; height: 200px">
+        <hdml-polar-plane>
+          <hdml-ordinal-scale values='["a"]' channel="angle">
+            <hdml-stack angle='["a"]'>
+              <hdml-bar y="[1]"></hdml-bar>
+            </hdml-stack>
+          </hdml-ordinal-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    assert.deepEqual(said("V17").map(messageOf), [
+      "stacking needs a hdml-cartesian-plane — " +
+        "<hdml-polar-plane> composes about a pole",
+    ]);
+  });
+
+  test("V17 — stacking needs a continuous scale", async () => {
+    await mount(
+      TIP(
+        html`
+          <hdml-stack x='["a"]'>
+            <hdml-bar y='["p"]'></hdml-bar>
+          </hdml-stack>
+        `,
+        true,
+      ),
+    );
+    assert.deepEqual(said("V17").map(messageOf), [
+      "stacking needs a continuous y scale — a baseline is a sum," +
+        " and an ordinal domain has none",
+    ]);
+  });
+
+  test("V17 — clustering needs an ordinal scale", async () => {
+    await mount(html`
+      <hdml-view aria-label="ct3" style="width: 400px; height: 200px">
+        <hdml-cartesian-plane>
+          <hdml-continuous-scale min="0" max="1" channel="x">
+            <hdml-continuous-scale min="0" max="1" channel="y">
+              <hdml-cluster x="[0.5]">
+                <hdml-bar y="[1]"></hdml-bar>
+              </hdml-cluster>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    assert.deepEqual(said("V17").map(messageOf), [
+      "clustering needs an ordinal x scale — there is no band to " +
+        "subdivide otherwise",
+    ]);
+  });
+
+  test("★ V6 — the shared channel is the container's", async () => {
+    await mount(
+      TIP(html`
+        <hdml-stack x='["a"]'>
+          <hdml-bar x='["a"]' y="[1]"></hdml-bar>
+        </hdml-stack>
+      `),
+    );
+    assert.deepEqual(said("V6").map(messageOf), [
+      "the x channel belongs to <hdml-stack> — everything inside " +
+        "a container binds what varies per series",
+    ]);
+  });
+
+  test("★ V6 — a NESTED container is inside too", async () => {
+    // SPEC §11: "everything inside the OUTERMOST container —
+    // nested containers and marks — is forbidden from binding it".
+    // The scope is `resolve.ts`'s error unit, which is already the
+    // outermost container for the whole subtree.
+    await mount(
+      TIP(html`
+        <hdml-cluster x='["a"]'>
+          <hdml-stack x='["a"]'>
+            <hdml-bar y="[1]"></hdml-bar>
+          </hdml-stack>
+        </hdml-cluster>
+      `),
+    );
+    assert.deepEqual(said("V6").map(messageOf), [
+      "the x channel belongs to <hdml-cluster> — everything " +
+        "inside a container binds what varies per series",
+    ]);
+  });
+
+  test("★ V6 — a stack child binds the simple form", async () => {
+    await mount(
+      TIP(html`
+        <hdml-stack x='["a"]'>
+          <hdml-bar y0="[0]" y1="[1]"></hdml-bar>
+        </hdml-stack>
+      `),
+    );
+    assert.deepEqual(said("V6").map(messageOf), [
+      "a hdml-stack child binds the simple form only — remove " +
+        "y0; the container owns the baseline",
+    ]);
+  });
+
+  test("V6 — a CLUSTER child may write y0/y1", async () => {
+    // The clause is the stack's alone: a cluster carries no
+    // baseline, so a floating bar inside one is exactly the range
+    // whose endpoints are the author's own data (§7).
+    const [, view] = await mount(
+      TIP(html`
+        <hdml-cluster x='["a"]'>
+          <hdml-bar y0="[0.2]" y1="[0.8]"></hdml-bar>
+        </hdml-cluster>
+      `),
+    );
+    assert.lengthOf(said("V6"), 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+  });
+
+  test("★ V17 runs before V6 — a unit gets one finding", async () => {
+    // Both rules fire on the same subtree and the unit is the same
+    // container, so `applyErrors` reports exactly one. WHAT THE
+    // CONTAINER IS MADE OF is the message that fixes the page.
+    await mount(
+      TIP(html`
+        <hdml-stack x='["a"]'>
+          <hdml-line x='["a"]' y="[1]"></hdml-line>
+        </hdml-stack>
+      `),
+    );
+    assert.lengthOf(said("V17"), 1);
+    assert.lengthOf(said("V6"), 0);
+    assert.lengthOf(errs, 1);
+    assert.strictEqual(errs[0].detail.rule, "V17");
+  });
+
+  test("★ V7 — a stack child may not override source", async () => {
+    await mount(
+      TIP(html`
+        <hdml-stack x='["a"]'>
+          <hdml-bar y="[1]" source="?hdml-frame=other"></hdml-bar>
+        </hdml-stack>
+      `),
+    );
+    assert.deepEqual(said("V7").map(messageOf), [
+      "a hdml-stack child takes <hdml-stack>'s source — only a " +
+        "hdml-cluster child may override it",
+    ]);
+    assert.strictEqual(errs[0].detail.code, "container-source");
+  });
+
+  test("V7 — a CLUSTER child may override source", async () => {
+    // §4.7 lets a cluster dodge two different frames side by side,
+    // which is the asymmetry SPEC's V7 row states outright.
+    const [, view] = await mount(
+      TIP(html`
+        <hdml-cluster x='["a"]'>
+          <hdml-bar y="[1]" source="?hdml-frame=other"></hdml-bar>
+        </hdml-cluster>
+      `),
+    );
+    assert.lengthOf(said("V7"), 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+  });
+
+  test("★ V7 — equal N applies ACROSS the children", async () => {
+    // V5 counts one widget's slots against each other and cannot
+    // see this: 3 and 2 rows are each internally consistent, and
+    // the stack they make stops a category early with nothing said.
+    const [host] = await mount(
+      TIP(html`
+        <hdml-stack x='["a"]'>
+          <hdml-bar y="[1, 2, 3]"></hdml-bar>
+          <hdml-bar y="[1, 2]"></hdml-bar>
+        </hdml-stack>
+      `),
+    );
+    assert.deepEqual(said("V7").map(messageOf), [
+      "hdml-bar y has 3 rows and hdml-bar y has 2 — a stack's " +
+        "children must agree in length; scalars broadcast",
+    ]);
+    const stack = <Element>host.querySelector("hdml-stack");
+    assert.isTrue(stack.matches(":state(error)"));
+  });
+
+  test("V7 — a scalar broadcasts across the stack", async () => {
+    // "Scalars broadcast across the stack (a constant series is
+    // legal)" — the positive case, which is what says the rule is
+    // about arrays and not about children.
+    const [, view] = await mount(
+      TIP(html`
+        <hdml-stack x='["a", "b", "c"]'>
+          <hdml-bar y="[1, 2, 3]"></hdml-bar>
+          <hdml-bar y="0.5"></hdml-bar>
+        </hdml-stack>
+      `),
+    );
+    assert.lengthOf(said("V7"), 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+  });
+
+  test("★ V7 — a stack over an unpinned frame warns", async () => {
+    // The SAME code step 27 landed for the pie, with the same
+    // locality (V4's). SPEC's V7 row names "stacks" in its list of
+    // order-consuming constructs, and R12 says a rule has one
+    // implementation — an eighth `WarningCode` here would be two
+    // rules pretending to be one.
+    const [host, view] = await mount(html`
+      <div>
+        <hdml-frame name="loose" source="/w/s.html?hdml-model=m">
+          <hdml-field name="v" type="float-64"></hdml-field>
+        </hdml-frame>
+        <hdml-view
+          aria-label="ct4"
+          source="?hdml-frame=loose"
+          style="width: 400px; height: 200px"
+        >
+          <hdml-cartesian-plane>
+            <hdml-ordinal-scale values='["a"]' channel="x">
+              <hdml-continuous-scale min="0" max="1" channel="y">
+                <hdml-stack x='["a"]'>
+                  <hdml-bar y="[1]"></hdml-bar>
+                </hdml-stack>
+              </hdml-continuous-scale>
+            </hdml-ordinal-scale>
+          </hdml-cartesian-plane>
+        </hdml-view>
+      </div>
+    `);
+    const stack = <Element>host.querySelector("hdml-stack");
+    assert.deepEqual(said("V7").map(messageOf), [
+      "row order is slice order — pin it with <hdml-sort-by> " +
+        'in "loose"',
+    ]);
+    const found = diagnosticsOf(view).filter((d) => d.rule === "V7");
+    assert.lengthOf(found, 1);
+    assert.strictEqual(found[0].code, "unpinned-row-order");
+    assert.strictEqual(found[0].severity, "warning");
+    // §8.3: a warning never blanks and never sets `:state(error)`.
+    assert.isFalse(stack.matches(":state(error)"));
+    assert.lengthOf(errs, 0);
+  });
+
+  test("a valid container page has no diagnostics", async () => {
+    const [, view] = await mount(
+      TIP(html`
+        <hdml-cluster x='["a"]'>
+          <hdml-stack>
+            <hdml-bar y="[0.4]"></hdml-bar>
+            <hdml-bar y="[0.3]"></hdml-bar>
+          </hdml-stack>
+          <hdml-bar y="[0.9]"></hdml-bar>
+        </hdml-cluster>
+      `),
+    );
+    assert.deepEqual(diagnosticsOf(view), []);
+    assert.deepEqual(
+      lines.filter((l) => l.startsWith("hdml ")),
+      [],
+    );
     assert.isFalse(view.matches(":state(error)"));
   });
 });

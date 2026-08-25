@@ -318,7 +318,9 @@ and `09` A carry an `hdml-legend`, which is Slice H's, so their goldens are take
 `withoutDeferred(scene, DEFERRED_TO_SLICE_H)` and step 32 re-runs those pages whole. `12` has
 four views and step 28 gates **one** — B, the gauge; `12-A`'s legend and `12-C`'s
 `hdml-stack` belong to later slices, and the file asserts that scope from the document rather
-than leaving it to an index. The exclusion is a **filter by tag name**, deliberately, not an
+than leaving it to an index. `12-C`'s `hdml-stack` **has a body since step 29**, so the view
+is now gateable and is **step 30's** to gate: nothing under `html/hdvl/` runs a container
+yet, which is exactly the gap step 28's first trap describes. The exclusion is a **filter by tag name**, deliberately, not an
 omission that happens to hold while `hdml-legend` emits nothing: a golden that merely lacked
 legend groups would silently become a whole-page golden the moment Slice H landed.
 
