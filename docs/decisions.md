@@ -808,9 +808,9 @@ against markup nobody ships. Fetching instead depends on the runner serving `roo
 statically — a dependency whose failure mode is a 404 that throws and names the URL, where a
 drifted inline copy is silent.
 
-**Removed.** Nine of the ten gated pages declare an `hdml-io` against a host that does not
-exist — `12-coverage` is the literal-only conformance class and declares none, which the
-gate asserts rather than assumes. Leaving it in place is not neutral in two independent ways: its `connectedCallback`
+**Removed.** Eight of the eleven gated pages declare an `hdml-io` against a host that does
+not exist — `00-minimal`, `02-area` and `12-coverage` are the literal-only conformance class
+and declare none, which the gate asserts rather than assumes. Leaving it in place is not neutral in two independent ways: its `connectedCallback`
 creates an endpoint and immediately posts props + HTML, which means a network call, a Worker
 and `@hdml/parser` on every corpus test; and it is *also* a D8 provider, and
 [subscribe.ts](../src/hdvl/subscribe.ts) de-dupes requests by `id`, not by provider — so it
@@ -820,10 +820,10 @@ corpus. The harness asserts how many it removed *and* that none survives in the 
 page, so a page that gains or loses one is a failure rather than a silent change in what the
 gate proves.
 
-The layout viewport is pinned at 800 px for a related reason: nine of the ten pages size
+The layout viewport is pinned at 800 px for a related reason: ten of the eleven pages size
 their view `width: 100%`, so the runner's window would be baked into every number in every
-golden. 800 is wider than every page's own `max-width` (760, 760, 760, 720, 780, 480, 480,
-520, 480), so each page keeps the
+golden. 800 is wider than every page's own `max-width` (760, 760, 760, 760, 720, 780, 480,
+480, 520, 480), so each page keeps the
 dimensions its author gave it and none is capped by the harness — the opposite of retuning
 the corpus to suit the runner.
 
@@ -859,7 +859,8 @@ had never been executed. Until step 28 executed them, all of `08-pie-doughnut` a
 
 C3: *"every slice gate is expressed as named scene-`deepEqual` assertions over the groups
 **that slice owns**; a double-gated page's whole-page render assertion belongs to the
-**later** slice."* Step 28 is the first gate that meets one, and
+**later** slice."* Step 28 is the first gate that meets one — step 30 met the extreme case,
+`04-grouped-stacked`, where **every** view declares a legend — and
 [corpus.ts](../src/testing/corpus.ts) spells the exclusion as a constant plus a filter —
 `DEFERRED_TO_SLICE_H` and `withoutDeferred` — rather than as a golden that happens to have
 no legend groups in it.
@@ -870,6 +871,26 @@ filtered one. The difference is what happens at step 31, when the legend gains a
 unfiltered golden silently becomes a whole-page assertion over whatever the legend first
 happened to emit, and freezes it. The filtered one fails loudly, which is the correct
 outcome, and step 32 widens it deliberately by emptying the constant.
+
+## One corpus gate runs a second frame, because one caption is about an interaction
+
+Every other corpus assertion is a single render: mount, quiesce, compare. `12-C`'s caption
+is not — *"the stack rebases over rendered children; the y ceiling stays put (§7)"* is a
+claim about what happens **when something changes**, and a static golden cannot separate its
+two halves. A chart whose scale domains silently followed the toggle would produce exactly
+the same first frame.
+
+So [page-12.test.ts](../src/hdvl/corpus/page-12.test.ts) removes the third bar's `hidden`,
+re-runs the frame, and puts it back: two bands become three at the **derived** baseline
+(band 2's floor is band 1's top, `strictEqual`), the golden returns byte-for-byte, and every
+scale's `domain()` is identical across all three states. Nothing HDVL-specific is toggled —
+`hidden` **is** `HTMLElement.hidden`.
+
+*The road not taken* — leaving the interaction to `container-stack.test.ts`, which already
+toggles a `hidden` child — was rejected because that fixture builds its own markup. What the
+page adds is that the toggle is written by an **author**, on a stack that shares its scale
+chain with a legend and two axes, and that the thing which must not move is a domain the page
+declares as `min="0" max="100"` rather than one the fixture chose to be assertable.
 
 ## `transitionrun` replaces the document-wide `MutationObserver`
 

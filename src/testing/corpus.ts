@@ -9,7 +9,7 @@
  *
  * Steps 25, 28, 30, 32 and 33 all mount pages out of
  * [`html/hdvl/`](../../html/hdvl/) and assert scenes against them, so
- * the four decisions below are taken **once**, here, rather than five
+ * the five decisions below are taken **once**, here, rather than five
  * times in five suites.
  *
  * **1. A page is fetched, never inlined.** `html/hdvl/*.html` are
@@ -22,16 +22,17 @@
  * here, naming the URL) where a drifted inline copy is silent.
  *
  * **2. The page's own provider element is removed before anything
- * mounts.** Nine of the ten gated pages declare an `hdml-io`
+ * mounts.** Eight of the eleven gated pages declare an `hdml-io`
  * against `hdio.example.com`, a host that does not exist.
- * (`12-coverage` is the literal-only conformance class and declares
- * none, which the gate asserts rather than assumes.) Its
- * `connectedCallback` creates an endpoint and immediately posts
- * props + HTML, which redeems the handoff token and uploads the
- * document — so leaving it in place is a network call, a Worker and
- * `@hdml/parser` on every corpus test. Worse, it is *also* a D8
- * provider: `subscribe.ts` de-dupes requests by `id`, not by
- * provider, so it and {@link FakeIo} would **both** receive every
+ * (`00-minimal`, `02-area` and `12-coverage` are the literal-only
+ * conformance class and declare none, which the gate asserts rather
+ * than assumes.) Its `connectedCallback` creates an endpoint and
+ * immediately posts props + HTML, which redeems the handoff token
+ * and uploads the document — so leaving it in place is a network
+ * call, a Worker and `@hdml/parser` on every corpus test. Worse, a
+ * page's own provider is *also* a D8 provider: `subscribe.ts`
+ * de-dupes requests by `id`, not by provider, so it and
+ * {@link FakeIo} would **both** receive every
  * request and both call `deliver`, and a transport error racing
  * canned data by generation stamp would blank pages
  * non-deterministically. RFC §10.3 settles it — the pages are driven
@@ -48,18 +49,18 @@
  * must reach the light-DOM elements exactly as they do on the served
  * page.
  *
- * **4. The layout viewport is pinned, not inherited.** Nine of the
- * ten pages size their view with `width: 100%` under a `figure` with
- * its own `max-width`, so on the served page the geometry is the
+ * **4. The layout viewport is pinned, not inherited.** Ten of the
+ * eleven pages size their view with `width: 100%` under a `figure`
+ * with its own `max-width`, so on the served page the geometry is the
  * window's. The test runner's window is **not** a corpus fact — it
  * is a Playwright default a runner upgrade may change, and every
  * number in every golden would move with it. {@link mountCorpus}
  * therefore lays each page out in a fixed {@link VIEWPORT}-wide box.
  * `800` is chosen so that **every** page's own `max-width` binds
- * (760, 760, 760, 720, 780, 480, 480, 520 and 480) and none is
- * capped by the harness:
- * each page keeps the dimensions its author gave it, which is the
- * opposite of retuning them. The road not taken — inheriting the
+ * (760, 760, 760, 760, 720, 780, 480, 480, 520 and 480) and none is
+ * capped by the harness: each page keeps the dimensions its author
+ * gave it, which is the opposite of retuning them. The road not
+ * taken — inheriting the
  * runner's window — was measured at 800 px here, giving a 736 px
  * figure and silently overriding all five declared max-widths.
  *
@@ -453,8 +454,9 @@ export function stripText(scene: Scene): Scene {
  * **that slice owns**; a double-gated page's whole-page render
  * assertion belongs to the **later** slice"* — so `08` A/B/D and
  * `09` A are gated on their marks and non-legend guides at step 28,
- * and **step 32 re-runs them whole**, where the legend must perturb
- * nothing.
+ * **all five views of `04` and `12-C` at step 30** — `04` is the one
+ * page where *every* view declares a legend — and **step 32 re-runs
+ * them whole**, where the legend must perturb nothing.
  *
  * It is a **filter and not a coincidence**, which matters because
  * `hdml-legend` is registered and currently emits no group at all:

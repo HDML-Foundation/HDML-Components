@@ -307,22 +307,30 @@ corpus fix must land in **both** locations, by hand, in the same change.
 
 They are **executed**, not only served. [src/hdvl/corpus/](../src/hdvl/corpus/) is one
 `*.test.ts` per page; [src/testing/corpus.ts](../src/testing/corpus.ts) is the shared harness.
-Since step 28 the suite covers `00`, `01`, `02`, `03`, `05`, `07`, `08`, `09`, `10` and
-`12` — **eighteen views** — and the remaining three pages (`04`, `06`, `11`) arrive with the
-slices that build the elements they use.
+Since step 30 the suite covers `00`, `01`, `02`, `03`, `04`, `05`, `07`, `08`, `09`, `10` and
+`12` — **eleven pages, twenty-four views** — and the remaining two pages (`06`, `11`) arrive
+with the slices that build the elements they use.
 
-Three of the ten are **double-gated**, and C3 says what a slice gate may claim: *"every slice
+Four of the eleven are **double-gated**, and C3 says what a slice gate may claim: *"every slice
 gate is expressed as named scene-`deepEqual` assertions over the groups **that slice owns**;
 a double-gated page's whole-page render assertion belongs to the **later** slice."* `08` A/B/D
 and `09` A carry an `hdml-legend`, which is Slice H's, so their goldens are taken over
-`withoutDeferred(scene, DEFERRED_TO_SLICE_H)` and step 32 re-runs those pages whole. `12` has
-four views and step 28 gates **one** — B, the gauge; `12-A`'s legend and `12-C`'s
-`hdml-stack` belong to later slices, and the file asserts that scope from the document rather
-than leaving it to an index. `12-C`'s `hdml-stack` **has a body since step 29**, so the view
-is now gateable and is **step 30's** to gate: nothing under `html/hdvl/` runs a container
-yet, which is exactly the gap step 28's first trap describes. The exclusion is a **filter by tag name**, deliberately, not an
-omission that happens to hold while `hdml-legend` emits nothing: a golden that merely lacked
-legend groups would silently become a whole-page golden the moment Slice H landed.
+`withoutDeferred(scene, DEFERRED_TO_SLICE_H)` and step 32 re-runs those pages whole. **All
+five views of `04` declare one**, so the whole page is scoped that way — and each view asserts
+*both* halves of the exclusion, that it declares a legend and that the compared scene has no
+legend group, because either half alone is satisfied by a page carrying none. `12` has
+four views and is gated **per view**: step 28 took B, the gauge, and step 30 takes C, the
+`hdml-stack`; `12-A`'s legend is Slice H's, and the file asserts that scope from the document
+rather than leaving it to an index. The exclusion is a **filter by tag name**, deliberately,
+not an omission that happens to hold while `hdml-legend` emits nothing: a golden that merely
+lacked legend groups would silently become a whole-page golden the moment Slice H landed.
+
+**`12-C` is the one corpus assertion that runs a second frame.** Its caption is a claim about
+a live interaction — *"the stack rebases over rendered children; the y ceiling stays put"* —
+which a static golden cannot make, so the gate removes the third bar's `hidden`, re-runs the
+frame, and restores it: two bands become three at the derived baseline, the golden returns
+byte-for-byte, and every scale's `domain()` is identical in all three states. `hidden` is
+`HTMLElement.hidden`, so nothing HDVL-specific is toggled.
 
 Per view the gate is: `assertRenders` (not `:state(error)`, not `:state(loading)`, at least
 one **mark** node, `diagnosticsOf` empty), one whole-`Scene` golden as a committed TS literal,
@@ -333,18 +341,21 @@ Seven decisions the harness takes once, because five gate steps inherit them:
 | | |
 |---|---|
 | **A page is fetched, never inlined** | `mountCorpus` `fetch`es `/html/hdvl/<name>.html` off the runner's own static serving. Inlining the markup into a test would be a **third** copy that no `cmp` covers |
-| **The page's `hdml-io` is removed first** | Four pages declare one against a host that does not exist, and it would both hit the network and register as a **second** D8 provider — `subscribe.ts` de-dupes by `id`, not by provider. `FakeIo` replaces it outright (RFC §10.3). The count removed is asserted, and so is the absence of any `hdml-io` in the mounted page |
+| **The page's `hdml-io` is removed first** | **Eight of the eleven** gated pages declare one against a host that does not exist, and it would both hit the network and register as a **second** D8 provider — `subscribe.ts` de-dupes by `id`, not by provider. `FakeIo` replaces it outright (RFC §10.3). The count removed is asserted, and so is the absence of any `hdml-io` in the mounted page |
 | **The page's `<style>` is adopted verbatim** | Injected into `document.head` before the fixture mounts, removed at teardown. The bare tag selectors are what SPEC §7 makes placement out of, so they must reach the light DOM exactly as on the served page |
-| **The layout viewport is pinned at 800 px** | Nine of the ten gated pages size their view `width: 100%`. The runner's window is a Playwright default, not a corpus fact; 800 is wider than every page's own `max-width` (760, 760, 760, 720, 780, 480, 480, 520, 480), so each page keeps its author's dimensions and none is capped by the harness |
+| **The layout viewport is pinned at 800 px** | Ten of the eleven gated pages size their view `width: 100%`. The runner's window is a Playwright default, not a corpus fact; 800 is wider than every page's own `max-width` (760, 760, 760, **760**, 720, 780, 480, 480, 520, 480), so each page keeps its author's dimensions and none is capped by the harness |
 | **Geometry is asserted everywhere, `text` on chromium only** | Cross-engine rule 4. `stripText` blanks every `text` field for the three-engine `deepEqual`; the strings are a second assertion behind an engine guard whose classification is itself asserted on all three, so an engine-detection change cannot make the scoped half silently pass |
 | **A deferred element is excluded by name** | C3, as `DEFERRED_TO_SLICE_H` + `withoutDeferred` rather than as an omission. Added at step 28, the first gate to meet a double-gated page; emptying the constant at step 32 is what widens those goldens |
 | **`-0` is swept, not assumed** | `negativeZeros` returns the dotted paths of every signed zero in a scene. Added at step 28 because polar pages are where one becomes reachable — `sin(180deg)` is `-1.2e-16` and a coordinate times a zero radius carries the sign |
 
 `FakeIo` is seeded **by ref string**, so an in-page `?hdml-frame=…` and a static
 `/warehouse/….html?hdml-frame=…` are answered the same way and no `/warehouse/*` document is
-ever invented. `00-minimal` and `02-area` mount with **no provider at all** — that is SPEC §4's
-literal-only conformance class, proved rather than asserted, since a page that needed one would
-sit in `:state(loading)` and fail `assertRenders`.
+ever invented. `00-minimal`, `02-area` and `12-coverage` mount with **no provider at all** —
+that is SPEC §4's literal-only conformance class, proved rather than asserted, since a page
+that needed one would sit in `:state(loading)` and fail `assertRenders`. It is also why V7's
+order-pinning clause is silent on `12-C`: with no effective `source` there is no frame to
+resolve. `04-grouped-stacked` reaches the same silence from the other side, by declaring an
+`hdml-sort-by` — and the gate confirms both from the document rather than assuming them.
 
 ## Lint
 

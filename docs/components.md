@@ -491,6 +491,15 @@ every other lookup — an area's vertex included — resolves to `centre`, and n
 resolves to a band edge. A row whose two ends are equal is a real
 datum and gets a **zero-extent** rect; missing is still *absent, never zero*.
 
+**A rect's `w` is not a copy of `bandOf().width`.** It projects the band's two edges —
+`start` and `start + width` — through `Projection.point` and takes their difference, which
+is what lets one implementation serve both planes and both orientations. The consequence is
+arithmetic, and step 30's corpus gate is where it first mattered: on a band whose edges are
+not dyadic rationals, `(start + width) − start` differs from `width` in the last ulps, so a
+test may assert the **low** edge with `strictEqual` and must assert the far one within rule
+3's tolerance. `04-grouped-stacked` — `W = 544`, twelve categories, `--hdml-bandwidth: 0.75`
+— has no exact edge but `start`.
+
 Both are **filled**, so a bound `color` wins over `--hdml-fill-color` and over its `_hover`
 variant, and neither also strokes: `strokeWidth` is `0` and `stroke` is `null`. A **varying**
 `color` — a column or a literal array — is an **error** on `hdml-area` and `hdml-line`, whose

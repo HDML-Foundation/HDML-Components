@@ -6,16 +6,22 @@
 
 import { assert } from "@open-wc/testing";
 import "../index";
-import type { Scene } from "../scene";
+import type { Scene, SceneNode } from "../scene";
+import type { HdvlElement } from "../base";
+import type { HdmlViewElement } from "../view";
 import {
+  DEFERRED_TO_SLICE_H,
   ENGINE,
   assertRenders,
   goldenOf,
   mountCorpus,
   negativeZeros,
   nodeCount,
+  quiesce,
   stripText,
+  withoutDeferred,
 } from "../../testing/corpus";
+import { scaleOf } from "../scale";
 import {
   installSceneRecorder,
   restoreRenderers,
@@ -43,11 +49,12 @@ import {
  *   the corpus where §4.4's guides-first convention is used the
  *   other way on purpose, because the ring would occlude the text.
  *
- * ★ **This page has four views and this step gates one.** `12-A`
- * carries an `hdml-legend` (Slice H), `12-C` an `hdml-stack` (Slice
- * G, step 29) and `12-D` a `symlog` datetime cartesian chart — none
- * is Slice F's, and the scope is asserted rather than left to the
- * index `1`.
+ * ★ **This page has four views and this file gates two, one slice
+ * apart.** The gauge is Slice F's; **C is Slice G's** and is gated
+ * in the second suite below. `12-A` carries an `hdml-legend` (Slice
+ * H) and `12-D` a `symlog` datetime cartesian chart, and neither is
+ * gated yet — the scope is asserted from the document rather than
+ * left to the indices `1` and `2`.
  *
  * ★ **The gauge is a pure polar chain with no radius scale**, so it
  * is the second thing step 28's `Projection.span` correction
@@ -72,6 +79,19 @@ const DOMAIN: readonly [number, number] = [0, 100];
  */
 const GAUGE = 1;
 
+/** A `rect` node, narrowed. */
+type Rect = Extract<SceneNode, { k: "rect" }>;
+
+/** Every console line the validator wrote during a test. */
+let lines: string[] = [];
+let realWarn: typeof console.warn;
+let realError: typeof console.error;
+
+/** The captured lines starting with a rule's prefix. */
+function said(prefix: string): string[] {
+  return lines.filter((l) => l.startsWith(prefix));
+}
+
 suite("corpus 12-coverage (B, the gauge)", () => {
   setup(() => {
     installSceneRecorder();
@@ -83,8 +103,8 @@ suite("corpus 12-coverage (B, the gauge)", () => {
 
   test("★ four views, and this gate owns one", async () => {
     // Slice F's scope, asserted from the document. `12-C`'s
-    // `hdml-stack` is step 29's and `12-A`'s legend is step 31's;
-    // this file must not grow to cover either by accident.
+    // `hdml-stack` is the second suite's and `12-A`'s legend is
+    // Slice H's; this suite must not grow to cover either.
     const page = await mountCorpus("12-coverage");
     assert.lengthOf(page.views, 4);
     // Deliberately server-free — the literal-only conformance
@@ -207,6 +227,229 @@ suite("corpus 12-coverage (B, the gauge)", () => {
     const scene = goldenOf(view);
     assert.deepEqual(structuredClone(scene), scene);
     assert.deepEqual(negativeZeros(sceneOf(view)), []);
+    assert.isBelow(nodeCount(scene), 20000);
+  });
+});
+
+/**
+ * ★ **`12-coverage` C — the `hidden` toggle, and the only corpus
+ * assertion that runs a second frame** (RFC §10.1 G, SPEC §7).
+ *
+ * The view's caption is a claim about a **live interaction**, not
+ * about a static render: *"the stack rebases over rendered children;
+ * the y ceiling stays put (§7)"*. A golden alone cannot make it —
+ * the two halves of that sentence are only distinguishable once
+ * something toggles. So this suite mounts the page, removes the
+ * attribute, re-runs the frame, and puts it back.
+ *
+ * ★ **`hidden` IS `HTMLElement.hidden`.** Nothing here reads an HDVL
+ * mechanism: the third bar carries the platform's attribute, and
+ * `subscribe.ts`'s `paintSuppressed` and `container.ts`'s
+ * `renderedChildrenOf` are the two places that ask.
+ *
+ * ★ **The view is literal-only.** Every binding is an inline array
+ * or a scalar constant, so the page declares no `hdml-io`, no
+ * `hdml-frame` and no `source` — which is what makes V7's
+ * order-pinning clause silent here by **locality** rather than by a
+ * sort key, exactly as `04-grouped-stacked` is silent by carrying
+ * one.
+ *
+ * **C3 — the legend is Slice H's.** This view declares one of the
+ * page's two, so the golden is taken over {@link withoutDeferred}'s
+ * restriction and step 32 re-runs the view whole.
+ */
+
+/** C's index in the page's four views. */
+const STACK = 2;
+
+/** The three series the view writes as literal arrays. */
+const ALPHA = [20, 25, 22, 28];
+const BETA = [15, 18, 21, 17];
+const GAMMA = [30, 27, 24, 33];
+
+/** The scene this gate owns — C3's restriction, quantized. */
+function ownedC(view: HdmlViewElement): Scene {
+  return withoutDeferred(goldenOf(view), DEFERRED_TO_SLICE_H);
+}
+
+/** Re-runs the frame after a declarative change. */
+async function reflow(view: HdmlViewElement): Promise<void> {
+  await new Promise((r) => requestAnimationFrame(() => r(null)));
+  view.markDirty();
+  await quiesce([view]);
+}
+
+/** Every mark group's rects, in document order. */
+function bands(view: HdmlViewElement): Rect[][] {
+  return sceneOf(view)
+    .groups.filter((g) => g.role === "mark")
+    .map((g) =>
+      g.nodes.map((n) => {
+        assert.strictEqual(n.k, "rect");
+        return <Rect>n;
+      }),
+    );
+}
+
+/** A scale element's domain, as the string a byte compare uses. */
+function domainOf(view: HdmlViewElement, sel: string): string {
+  const hit = view.querySelector(sel);
+  assert.isNotNull(hit);
+  return JSON.stringify(
+    scaleOf(<HdvlElement>(<unknown>hit))?.domain() ?? null,
+  );
+}
+
+suite("corpus 12-coverage (C, the hidden stack)", () => {
+  setup(() => {
+    installSceneRecorder();
+    lines = [];
+    realWarn = console.warn;
+    realError = console.error;
+    console.warn = (...args: unknown[]): void => {
+      lines.push(String(args[0]));
+    };
+    console.error = (...args: unknown[]): void => {
+      lines.push(String(args[0]));
+    };
+  });
+
+  teardown(() => {
+    console.warn = realWarn;
+    console.error = realError;
+    restoreRenderers();
+  });
+
+  test("★ C renders, and its legend is deferred", async () => {
+    const page = await mountCorpus("12-coverage");
+    const view = page.views[STACK];
+    assert.lengthOf(view.querySelectorAll("hdml-stack"), 1);
+    assert.lengthOf(view.querySelectorAll("hdml-bar"), 3);
+    // Both halves of C3.
+    assert.lengthOf(view.querySelectorAll("hdml-legend"), 1);
+    assert.lengthOf(
+      ownedC(view).groups.filter((g) => g.tag === "hdml-legend"),
+      0,
+    );
+    assertRenders(view);
+  });
+
+  test("★ the rendered children are two, not three", async () => {
+    // A `hidden` child emits no group AT ALL — not an empty one,
+    // not a zero-extent one. The two that remain rebase over each
+    // other, so the second's baseline is the first's top.
+    const page = await mountCorpus("12-coverage");
+    const view = page.views[STACK];
+    const hidden = view.querySelectorAll("hdml-bar")[2];
+    assert.isTrue((<HTMLElement>hidden).hidden);
+    const all = bands(view);
+    assert.lengthOf(all, 2);
+    for (let i = 0; i < 4; i++) {
+      assert.strictEqual(all[1][i].y + all[1][i].h, all[0][i].y);
+      // …and the column stops at Alpha + Beta, never at the total.
+      const unit = all[0][i].h / ALPHA[i];
+      assert.closeTo(all[1][i].h / unit, BETA[i], 1e-9);
+    }
+  });
+
+  test("★ the toggle rebases, and the scene returns", async () => {
+    // The one corpus assertion in the project that runs a second
+    // frame. Step 24's trap is why the attribute is really removed
+    // and really restored: setting one to the value it already has
+    // fires no callback and would test nothing.
+    const page = await mountCorpus("12-coverage");
+    const view = page.views[STACK];
+    const before = ownedC(view);
+    const bar = <HTMLElement>view.querySelectorAll("hdml-bar")[2];
+
+    bar.removeAttribute("hidden");
+    await reflow(view);
+    const all = bands(view);
+    assert.lengthOf(all, 3);
+    for (let i = 0; i < 4; i++) {
+      // The third band appears at its DERIVED baseline — band 1's
+      // top — and the two below it have not moved.
+      assert.strictEqual(all[2][i].y + all[2][i].h, all[1][i].y);
+      assert.strictEqual(all[1][i].y + all[1][i].h, all[0][i].y);
+      const unit = all[0][i].h / ALPHA[i];
+      assert.closeTo(all[2][i].h / unit, GAMMA[i], 1e-9);
+    }
+
+    bar.setAttribute("hidden", "");
+    await reflow(view);
+    assert.lengthOf(bands(view), 2);
+    // Exactly the scene it started from, and exactly the golden.
+    assert.deepEqual(ownedC(view), before);
+    assert.deepEqual(stripText(ownedC(view)), stripText(GOLDEN_C));
+  });
+
+  test("★ no scale domain follows the toggle", async () => {
+    // §6, and the view's own caption: *"scale domains never follow a
+    // toggle — the ceiling is the author's statement"*. Byte
+    // identity across all three states, on every scale in the chain.
+    const page = await mountCorpus("12-coverage");
+    const view = page.views[STACK];
+    const sels = [
+      'hdml-ordinal-scale[channel="x"]',
+      'hdml-continuous-scale[channel="y"]',
+      'hdml-ordinal-scale[channel="color"]',
+    ];
+    const first = sels.map((s) => domainOf(view, s));
+    const bar = <HTMLElement>view.querySelectorAll("hdml-bar")[2];
+    bar.removeAttribute("hidden");
+    await reflow(view);
+    assert.deepEqual(
+      sels.map((s) => domainOf(view, s)),
+      first,
+    );
+    bar.setAttribute("hidden", "");
+    await reflow(view);
+    assert.deepEqual(
+      sels.map((s) => domainOf(view, s)),
+      first,
+    );
+  });
+
+  test("★ literal-only: no io, and V7 is silent", async () => {
+    // V4's locality: a widget with no effective `source` names no
+    // frame, so V7's order clause has nothing to resolve and does
+    // not fire. `04-grouped-stacked` reaches the same silence the
+    // other way, by declaring `hdml-sort-by`.
+    const page = await mountCorpus("12-coverage");
+    assert.strictEqual(page.removedIo, 0);
+    assert.lengthOf(page.root.querySelectorAll("hdml-frame"), 0);
+    const view = page.views[STACK];
+    assert.isNull(view.querySelector("[source]"));
+    assert.lengthOf(said("hdml V7"), 0);
+    assert.lengthOf(said("hdml V6"), 0);
+    assert.lengthOf(said("hdml V17"), 0);
+    assert.lengthOf(said("hdml W4"), 0);
+  });
+
+  test("the golden holds on every engine", async () => {
+    const page = await mountCorpus("12-coverage");
+    assert.deepEqual(
+      stripText(ownedC(page.views[STACK])),
+      stripText(GOLDEN_C),
+    );
+  });
+
+  test("the text holds on chromium", async () => {
+    assert.notStrictEqual(ENGINE, "unclassified");
+    if (ENGINE !== "chromium") {
+      return;
+    }
+    const page = await mountCorpus("12-coverage");
+    assert.deepEqual(ownedC(page.views[STACK]), GOLDEN_C);
+  });
+
+  test("it round-trips, is -0 free and fits the budget", async () => {
+    const page = await mountCorpus("12-coverage");
+    const view = page.views[STACK];
+    const scene = ownedC(view);
+    assert.deepEqual(structuredClone(scene), scene);
+    assert.deepEqual(negativeZeros(sceneOf(view)), []);
+    assert.strictEqual(nodeCount(scene), 20);
     assert.isBelow(nodeCount(scene), 20000);
   });
 });
@@ -411,6 +654,471 @@ const GOLDEN_B: Scene = {
           },
           decorative: false,
           fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+      ],
+    },
+  ],
+};
+
+const GOLDEN_C: Scene = {
+  width: 480,
+  height: 320,
+  groups: [
+    {
+      widget: "",
+      tag: "hdml-axis",
+      role: "guide",
+      box: {
+        x: 64,
+        y: 280,
+        w: 392,
+        h: 24,
+      },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: {
+                x: 64,
+                y: 280,
+              },
+              segments: [
+                {
+                  k: "line",
+                  to: {
+                    x: 456,
+                    y: 280,
+                  },
+                },
+              ],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(0, 0, 0)",
+          strokeWidth: 1.5,
+          dash: null,
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-label",
+      role: "guide",
+      box: {
+        x: 64,
+        y: 280,
+        w: 392,
+        h: 24,
+      },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "text",
+          i: -1,
+          x: 105.263158,
+          y: 280,
+          text: "Jan",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 208.421053,
+          y: 280,
+          text: "Feb",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 311.578947,
+          y: 280,
+          text: "Mar",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 414.736842,
+          y: 280,
+          text: "Apr",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-axis",
+      role: "guide",
+      box: {
+        x: 24,
+        y: 16,
+        w: 40,
+        h: 264,
+      },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: {
+                x: 64,
+                y: 280,
+              },
+              segments: [
+                {
+                  k: "line",
+                  to: {
+                    x: 64,
+                    y: 16,
+                  },
+                },
+              ],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(0, 0, 0)",
+          strokeWidth: 1.5,
+          dash: null,
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-label",
+      role: "guide",
+      box: {
+        x: 24,
+        y: 16,
+        w: 40,
+        h: 264,
+      },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 280,
+          text: "0",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 227.2,
+          text: "20",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 174.4,
+          text: "40",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 121.6,
+          text: "60",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 68.8,
+          text: "80",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 16,
+          text: "100",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-bar",
+      role: "mark",
+      box: {
+        x: 64,
+        y: 16,
+        w: 392,
+        h: 264,
+      },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: true,
+      clipPath: null,
+      nodes: [
+        {
+          k: "rect",
+          i: 0,
+          x: 64,
+          y: 227.2,
+          w: 82.526316,
+          h: 52.8,
+          fill: "rgb(28, 140, 244)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: 1,
+          x: 167.157895,
+          y: 214,
+          w: 82.526316,
+          h: 66,
+          fill: "rgb(28, 140, 244)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: 2,
+          x: 270.315789,
+          y: 221.92,
+          w: 82.526316,
+          h: 58.08,
+          fill: "rgb(28, 140, 244)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: 3,
+          x: 373.473684,
+          y: 206.08,
+          w: 82.526316,
+          h: 73.92,
+          fill: "rgb(28, 140, 244)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-bar",
+      role: "mark",
+      box: {
+        x: 64,
+        y: 16,
+        w: 392,
+        h: 264,
+      },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: true,
+      clipPath: null,
+      nodes: [
+        {
+          k: "rect",
+          i: 0,
+          x: 64,
+          y: 187.6,
+          w: 82.526316,
+          h: 39.6,
+          fill: "rgb(245, 158, 11)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: 1,
+          x: 167.157895,
+          y: 166.48,
+          w: 82.526316,
+          h: 47.52,
+          fill: "rgb(245, 158, 11)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: 2,
+          x: 270.315789,
+          y: 166.48,
+          w: 82.526316,
+          h: 55.44,
+          fill: "rgb(245, 158, 11)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: 3,
+          x: 373.473684,
+          y: 161.2,
+          w: 82.526316,
+          h: 44.88,
+          fill: "rgb(245, 158, 11)",
           stroke: null,
           strokeWidth: 0,
           dash: null,
