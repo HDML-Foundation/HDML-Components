@@ -17,11 +17,14 @@ import {
   mountCorpus,
   negativeZeros,
   nodeCount,
+  pageSource,
   quiesce,
   stripText,
   withoutDeferred,
 } from "../../testing/corpus";
-import { scaleOf } from "../scale";
+import { formatCompactSet } from "../kernel/format-skeleton";
+import { localeOf, scaleOf } from "../scale";
+import { tickSpecOf } from "../guide-spec";
 import {
   installSceneRecorder,
   restoreRenderers,
@@ -49,12 +52,12 @@ import {
  *   the corpus where §4.4's guides-first convention is used the
  *   other way on purpose, because the ring would occlude the text.
  *
- * ★ **This page has four views and this file gates two, one slice
- * apart.** The gauge is Slice F's; **C is Slice G's** and is gated
- * in the second suite below. `12-A` carries an `hdml-legend` (Slice
- * H) and `12-D` a `symlog` datetime cartesian chart, and neither is
- * gated yet — the scope is asserted from the document rather than
- * left to the indices `1` and `2`.
+ * ★ **This page has four views and this file gates three, one slice
+ * apart each.** The gauge is Slice F's; **C is Slice G's** and is
+ * gated in the second suite below; **A is Slice H's** and is gated
+ * in the third. `12-D`'s `symlog` datetime cartesian chart is Slice
+ * I's and is not gated yet — the scope is asserted from the document
+ * rather than left to the indices `1`, `2` and `0`.
  *
  * ★ **The gauge is a pure polar chain with no radius scale**, so it
  * is the second thing step 28's `Projection.span` correction
@@ -103,8 +106,8 @@ suite("corpus 12-coverage (B, the gauge)", () => {
 
   test("★ four views, and this gate owns one", async () => {
     // Slice F's scope, asserted from the document. `12-C`'s
-    // `hdml-stack` is the second suite's and `12-A`'s legend is
-    // Slice H's; this suite must not grow to cover either.
+    // `hdml-stack` is the second suite's and `12-A`'s ramp legend
+    // is the third's; this suite must not grow to cover either.
     const page = await mountCorpus("12-coverage");
     assert.lengthOf(page.views, 4);
     // Deliberately server-free — the literal-only conformance
@@ -254,13 +257,21 @@ suite("corpus 12-coverage (B, the gauge)", () => {
  * sort key, exactly as `04-grouped-stacked` is silent by carrying
  * one.
  *
- * **C3 — the legend is Slice H's.** This view declares one of the
- * page's two, so the golden is taken over {@link withoutDeferred}'s
- * restriction and step 32 re-runs the view whole.
+ * ★ **C3 is discharged here** (step 32). This view declares one of
+ * the page's two legends, and its golden now carries the key's six
+ * nodes. It is also **the one gated view where the key and the
+ * marks can disagree**, which is why the domain claim is asserted
+ * here and not on `04`: the third series is `hidden`, so two
+ * colours are painted and **three** entries are keyed. §6 makes a
+ * domain the author's statement, and a key that followed the marks
+ * would silently drop a category the chart still reserves room for.
  */
 
 /** C's index in the page's four views. */
 const STACK = 2;
+
+/** The colour scale's literal domain — and so the key's entries. */
+const SERIES = ["Alpha", "Beta", "Gamma"];
 
 /** The three series the view writes as literal arrays. */
 const ALPHA = [20, 25, 22, 28];
@@ -320,18 +331,84 @@ suite("corpus 12-coverage (C, the hidden stack)", () => {
     restoreRenderers();
   });
 
-  test("★ C renders, and its legend is deferred", async () => {
+  test("★ C renders, and its key is painted", async () => {
     const page = await mountCorpus("12-coverage");
     const view = page.views[STACK];
     assert.lengthOf(view.querySelectorAll("hdml-stack"), 1);
     assert.lengthOf(view.querySelectorAll("hdml-bar"), 3);
-    // Both halves of C3.
+    // C3, discharged.
+    assert.isEmpty(DEFERRED_TO_SLICE_H);
     assert.lengthOf(view.querySelectorAll("hdml-legend"), 1);
     assert.lengthOf(
       ownedC(view).groups.filter((g) => g.tag === "hdml-legend"),
-      0,
+      1,
     );
     assertRenders(view);
+  });
+
+  test("★ the key is the domain, not the rendered set", async () => {
+    // The one gated view where the two can differ. Two bands paint
+    // and three entries are keyed, because the key reads
+    // `Scale.domain()` and the marks are not consulted (§6). The
+    // colours are compared byte for byte against `paint()`, so the
+    // hidden series' swatch is the colour it WOULD have.
+    const page = await mountCorpus("12-coverage");
+    const view = page.views[STACK];
+    const hit = view.querySelector(
+      'hdml-ordinal-scale[channel="color"]',
+    );
+    assert.isNotNull(hit);
+    const color = scaleOf(<HdvlElement>(<unknown>hit));
+    assert.deepEqual(color?.domain()?.values, SERIES);
+    const scene = ownedC(view);
+    // Two mark groups, three key entries — the whole claim.
+    assert.lengthOf(
+      scene.groups.filter((g) => g.role === "mark"),
+      2,
+    );
+    const key = scene.groups.filter(
+      (g) => g.tag === "hdml-legend",
+    )[0];
+    assert.lengthOf(key.nodes, 2 * SERIES.length);
+    SERIES.forEach((name, k) => {
+      const swatch = key.nodes[2 * k];
+      const label = key.nodes[2 * k + 1];
+      assert.strictEqual(swatch.k, "rect");
+      assert.strictEqual(label.k === "text" ? label.text : "", name);
+      assert.strictEqual(swatch.fill, color?.paint(name));
+    });
+    // …and the two rendered bands really do wear the first two.
+    const painted = scene.groups.filter((g) => g.role === "mark");
+    assert.strictEqual(painted[0].nodes[0].fill, key.nodes[0].fill);
+    assert.strictEqual(painted[1].nodes[0].fill, key.nodes[2].fill);
+  });
+
+  test("★ the UA default, on a page (finding 24)", async () => {
+    // ★ The corpus DOES cover the UA placement default, and step
+    // 31's landed note said it did not. This page writes no
+    // `hdml-legend` rule at all — deliberately, per its own header
+    // — so §3's row applies whole, and `width: max-content` over a
+    // shadow tree with no entries in it resolves to **0**. The row
+    // therefore anchors the key at the plot's top-right corner and
+    // the entries flow rightwards out of the box.
+    const src = await pageSource("12-coverage");
+    assert.notMatch(src, /^\s*hdml-legend \{/m);
+    const page = await mountCorpus("12-coverage");
+    const scene = ownedC(page.views[STACK]);
+    const key = scene.groups.filter(
+      (g) => g.tag === "hdml-legend",
+    )[0];
+    assert.strictEqual(key.box.w, 0);
+    // A zero cross-extent is harmless: the flow axis is `column`,
+    // so `--hdml-legend-direction`'s initial makes the entries
+    // advance along the box's HEIGHT, which `top: 8px` + the
+    // generic `inset: 0`'s `bottom: 0` leave non-zero.
+    assert.isAbove(key.box.h, 0);
+    assert.isAbove(key.nodes[1].k === "text" ? key.nodes[1].x : 0, 0);
+    // …and the anchor sits inside the plot's right edge by the
+    // row's own 8px, which is what "overlay" means.
+    const axis = scene.groups.filter((g) => g.tag === "hdml-axis")[0];
+    assert.strictEqual(key.box.x, axis.box.x + axis.box.w - 8);
   });
 
   test("★ the rendered children are two, not three", async () => {
@@ -449,10 +526,1398 @@ suite("corpus 12-coverage (C, the hidden stack)", () => {
     const scene = ownedC(view);
     assert.deepEqual(structuredClone(scene), scene);
     assert.deepEqual(negativeZeros(sceneOf(view)), []);
-    assert.strictEqual(nodeCount(scene), 20);
+    // 20 before step 32, plus the key's three entries.
+    assert.strictEqual(nodeCount(scene), 26);
     assert.isBelow(nodeCount(scene), 20000);
   });
 });
+
+/**
+ * ★ **`12-coverage` A — the continuous ramp, and the last new page
+ * this gate opens on an existing file** (RFC §10.1 H, SPEC §6.6).
+ *
+ * The view is the reason SPEC §2's *"no separate legend element"*
+ * was reversed. A ramp is not a key: it has no entries to align, it
+ * needs `count` to say how many graduations and `format` to say how
+ * they read, and finding 17's own sentence is that **an unlabeled
+ * gradient is not a legend**. `hdml-axis channel="color"` would have
+ * had to publish a modal attribute set to express it.
+ *
+ * ★ **Its mode is derived, and nothing on the page picks it.** The
+ * markup is `<hdml-legend channel="color" count="5">` — the same
+ * five characters `12-C` writes — and it renders a bar because the
+ * scale it resolves is `hdml-continuous-scale`. The two views on one
+ * page are the cleanest statement of §6.6's derivation the corpus
+ * has.
+ *
+ * ★ **It takes §3's UA placement default**, like `12-C` and unlike
+ * every other legend-carrying page — the page's own header says so
+ * (*"no legend gutter"*). See the third suite's finding-24 test.
+ *
+ * ★ **`hdml-fallback` is on this view**, so its scene is also the
+ * corpus's statement that fallback content is *alternative content*
+ * and never a scene group.
+ */
+
+/** A's index in the page's four views. */
+const RAMP = 0;
+
+/** How many `rect` samples the bar carries — see `page-09`. */
+const RAMP_SAMPLES = 32;
+
+/** A's colour domain, authored: `min="0" max="40"`. */
+const COST: readonly [number, number] = [0, 40];
+
+/** The eight unit costs the point binds, verbatim from the page. */
+const COSTS = [31, 26, 38, 18, 12, 22, 8, 5];
+
+suite("corpus 12-coverage (A, the ramp legend)", () => {
+  setup(() => {
+    installSceneRecorder();
+  });
+
+  teardown(() => {
+    restoreRenderers();
+  });
+
+  test("★ A renders a bar, not a key", async () => {
+    // §6.6's derivation on a page: one markup, two modes, and the
+    // resolved scale's TAG is the whole of the difference.
+    const page = await mountCorpus("12-coverage");
+    const view = page.views[RAMP];
+    assert.isEmpty(DEFERRED_TO_SLICE_H);
+    assert.lengthOf(view.querySelectorAll("hdml-legend"), 1);
+    assert.lengthOf(view.querySelectorAll("hdml-fallback"), 1);
+    assertRenders(view);
+    const scene = goldenOf(view);
+    const key = scene.groups.filter(
+      (g) => g.tag === "hdml-legend",
+    )[0];
+    assert.strictEqual(key.role, "guide");
+    // A bar is 32 samples then one text per graduation — never an
+    // alternating swatch/name pair, which is what the ordinal mode
+    // emits and what `12-C` asserts.
+    const rects = key.nodes.filter((n) => n.k === "rect");
+    const texts = key.nodes.filter((n) => n.k === "text");
+    assert.lengthOf(rects, RAMP_SAMPLES);
+    assert.lengthOf(texts, 5);
+    assert.lengthOf(key.nodes, RAMP_SAMPLES + texts.length);
+    key.nodes.forEach((n) => assert.strictEqual(n.i, -1));
+    // No `hdml-fallback` group: alternative content is not a scene.
+    assert.deepEqual(
+      scene.groups.map((g) => g.tag),
+      [
+        "hdml-axis",
+        "hdml-tick",
+        "hdml-label",
+        "hdml-axis",
+        "hdml-label",
+        "hdml-point",
+        "hdml-legend",
+      ],
+    );
+  });
+
+  test("★ the bar and the dots are one paint()", async () => {
+    // R18 on a page, the continuous half. The dots are painted at
+    // the eight delivered costs and the bar at 32 sample
+    // midpoints, and BOTH strings are compared byte for byte
+    // against `Scale.paint` — the same function, two callers. No
+    // cost lands on a midpoint, so a collision between the two
+    // lists is not available and is not what R18 claims.
+    const page = await mountCorpus("12-coverage");
+    const view = page.views[RAMP];
+    const hit = view.querySelector(
+      'hdml-continuous-scale[channel="color"]',
+    );
+    assert.isNotNull(hit);
+    const color = scaleOf(<HdvlElement>(<unknown>hit));
+    assert.isNotNull(color);
+    assert.deepEqual(color?.domain()?.extent, [COST[0], COST[1]]);
+    const scene = goldenOf(view);
+    const dots = scene.groups.filter(
+      (g) => g.tag === "hdml-point",
+    )[0];
+    assert.lengthOf(dots.nodes, COSTS.length);
+    dots.nodes.forEach((n, i) => {
+      assert.strictEqual(n.fill, color?.paint(COSTS[i]));
+    });
+    const key = scene.groups.filter(
+      (g) => g.tag === "hdml-legend",
+    )[0];
+    key.nodes
+      .filter((n) => n.k === "rect")
+      .forEach((n, i) => {
+        const t = (i + 0.5) / RAMP_SAMPLES;
+        assert.strictEqual(
+          n.fill,
+          color?.paint(COST[0] + t * (COST[1] - COST[0])),
+        );
+      });
+  });
+
+  test("★ the graduations sit on the bar's own axis", async () => {
+    // Step 31 made a continuous colour `project(v)` the RAMP
+    // FRACTION, which is what lets the bar and its values share one
+    // axis. Asserted as geometry: every graduation's y is the
+    // fraction its tick reports, run through the same span the
+    // samples were laid out over.
+    const page = await mountCorpus("12-coverage");
+    const view = page.views[RAMP];
+    const legend = view.querySelector("hdml-legend");
+    assert.isNotNull(legend);
+    const el = <HdvlElement>(<unknown>legend);
+    const hit = view.querySelector(
+      'hdml-continuous-scale[channel="color"]',
+    );
+    const color = scaleOf(<HdvlElement>(<unknown>hit));
+    const ticks = color?.ticks(tickSpecOf(el)) ?? [];
+    assert.lengthOf(ticks, 5);
+    const key = goldenOf(view).groups.filter(
+      (g) => g.tag === "hdml-legend",
+    )[0];
+    const texts = key.nodes.filter((n) => n.k === "text");
+    texts.forEach((n, i) => {
+      assert.strictEqual(
+        n.k === "text" ? n.y : NaN,
+        key.box.y + ticks[i].at * key.box.h,
+      );
+    });
+    // The bar runs the same span: sample 0 starts at the box's own
+    // origin and the last one ends at its far edge.
+    const rects = key.nodes.filter((n) => n.k === "rect");
+    const first = rects[0];
+    const last = rects[rects.length - 1];
+    assert.strictEqual(first.k === "rect" ? first.y : NaN, key.box.y);
+    assert.closeTo(
+      last.k === "rect" ? last.y + last.h : NaN,
+      key.box.y + key.box.h,
+      1e-6,
+    );
+  });
+
+  test("★ the ramp reads, and it reads as one set", async () => {
+    // Rule 4 scopes the strings to chromium. `12-A` writes no
+    // `format`, so `formatCompactSet` falls through to the
+    // locale's default formatting — still over the whole SET, and
+    // still `hdml-label`'s one implementation.
+    assert.notStrictEqual(ENGINE, "unclassified");
+    if (ENGINE !== "chromium") {
+      return;
+    }
+    const page = await mountCorpus("12-coverage");
+    const view = page.views[RAMP];
+    const legend = view.querySelector("hdml-legend");
+    const el = <HdvlElement>(<unknown>legend);
+    const hit = view.querySelector(
+      'hdml-continuous-scale[channel="color"]',
+    );
+    const color = scaleOf(<HdvlElement>(<unknown>hit));
+    assert.isNotNull(color);
+    const ticks = color?.ticks(tickSpecOf(el)) ?? [];
+    const want = formatCompactSet(
+      ticks.map((t) => Number(t.value)),
+      "",
+      localeOf(el),
+    );
+    const got = goldenOf(view)
+      .groups.filter((g) => g.tag === "hdml-legend")[0]
+      .nodes.filter((n) => n.k === "text")
+      .map((n) => (n.k === "text" ? n.text : ""));
+    assert.deepEqual(got, want);
+    assert.deepEqual(got, ["0", "10", "20", "30", "40"]);
+  });
+
+  test("the golden holds on every engine", async () => {
+    const page = await mountCorpus("12-coverage");
+    assert.deepEqual(
+      stripText(goldenOf(page.views[RAMP])),
+      stripText(GOLDEN_A),
+    );
+  });
+
+  test("the text holds on chromium", async () => {
+    assert.notStrictEqual(ENGINE, "unclassified");
+    if (ENGINE !== "chromium") {
+      return;
+    }
+    const page = await mountCorpus("12-coverage");
+    assert.deepEqual(goldenOf(page.views[RAMP]), GOLDEN_A);
+  });
+
+  test("it round-trips, is -0 free and fits the budget", async () => {
+    const page = await mountCorpus("12-coverage");
+    const view = page.views[RAMP];
+    const scene = goldenOf(view);
+    assert.deepEqual(structuredClone(scene), scene);
+    assert.deepEqual(negativeZeros(sceneOf(view)), []);
+    assert.strictEqual(nodeCount(scene), 65);
+    assert.isBelow(nodeCount(scene), 20000);
+  });
+});
+
+const GOLDEN_A: Scene = {
+  width: 480,
+  height: 320,
+  groups: [
+    {
+      widget: "",
+      tag: "hdml-axis",
+      role: "guide",
+      box: {
+        x: 64,
+        y: 280,
+        w: 392,
+        h: 24,
+      },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: {
+                x: 64,
+                y: 280,
+              },
+              segments: [
+                {
+                  k: "line",
+                  to: {
+                    x: 456,
+                    y: 280,
+                  },
+                },
+              ],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(0, 0, 0)",
+          strokeWidth: 1.5,
+          dash: null,
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-tick",
+      role: "guide",
+      box: {
+        x: 64,
+        y: 280,
+        w: 392,
+        h: 24,
+      },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "rect",
+          i: -1,
+          x: 63.5,
+          y: 277,
+          w: 1,
+          h: 6,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 141.9,
+          y: 277,
+          w: 1,
+          h: 6,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 220.3,
+          y: 277,
+          w: 1,
+          h: 6,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 298.7,
+          y: 277,
+          w: 1,
+          h: 6,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 377.1,
+          y: 277,
+          w: 1,
+          h: 6,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 455.5,
+          y: 277,
+          w: 1,
+          h: 6,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-label",
+      role: "guide",
+      box: {
+        x: 64,
+        y: 280,
+        w: 392,
+        h: 24,
+      },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 280,
+          text: "0",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 142.4,
+          y: 280,
+          text: "20",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 220.8,
+          y: 280,
+          text: "40",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 299.2,
+          y: 280,
+          text: "60",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 377.6,
+          y: 280,
+          text: "80",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 456,
+          y: 280,
+          text: "100",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-axis",
+      role: "guide",
+      box: {
+        x: 24,
+        y: 16,
+        w: 40,
+        h: 264,
+      },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: {
+                x: 64,
+                y: 280,
+              },
+              segments: [
+                {
+                  k: "line",
+                  to: {
+                    x: 64,
+                    y: 16,
+                  },
+                },
+              ],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(0, 0, 0)",
+          strokeWidth: 1.5,
+          dash: null,
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-label",
+      role: "guide",
+      box: {
+        x: 24,
+        y: 16,
+        w: 40,
+        h: 264,
+      },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 280,
+          text: "0",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 227.2,
+          text: "1",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 174.4,
+          text: "2",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 121.6,
+          text: "3",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 68.8,
+          text: "4",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 16,
+          text: "5",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-point",
+      role: "mark",
+      box: {
+        x: 64,
+        y: 16,
+        w: 392,
+        h: 264,
+      },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: true,
+      clipPath: null,
+      nodes: [
+        {
+          k: "ellipse",
+          i: 0,
+          cx: 111.04,
+          cy: 63.52,
+          rx: 0.5,
+          ry: 3,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 55.00000000000001%, rgb(28, " +
+            "140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "ellipse",
+          i: 1,
+          cx: 173.76,
+          cy: 111.04,
+          rx: 0.5,
+          ry: 3,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 30.000000000000004%, rgb(28, " +
+            "140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "ellipse",
+          i: 2,
+          cx: 201.2,
+          cy: 89.92,
+          rx: 0.5,
+          ry: 3,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 89.99999999999999%, rgb(28, " +
+            "140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "ellipse",
+          i: 3,
+          cx: 248.24,
+          cy: 153.28,
+          rx: 0.5,
+          ry: 3,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 90%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "ellipse",
+          i: 4,
+          cx: 291.36,
+          cy: 179.68,
+          rx: 0.5,
+          ry: 3,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 60%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "ellipse",
+          i: 5,
+          cx: 322.72,
+          cy: 163.84,
+          rx: 0.5,
+          ry: 3,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 10.000000000000009%, rgb(28, " +
+            "140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "ellipse",
+          i: 6,
+          cx: 373.68,
+          cy: 221.92,
+          rx: 0.5,
+          ry: 3,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 40%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "ellipse",
+          i: 7,
+          cx: 420.72,
+          cy: 237.76,
+          rx: 0.5,
+          ry: 3,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 25%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-legend",
+      role: "guide",
+      box: {
+        x: 448,
+        y: 24,
+        w: 0,
+        h: 256,
+      },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 24,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 3.125%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 32,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 9.375%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 40,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 15.625%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 48,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 21.875%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 56,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 28.125%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 64,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 34.375%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 72,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 40.625%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 80,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 46.875%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 88,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 53.125%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 96,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 59.375%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 104,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 65.625%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 112,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 71.875%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 120,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 78.125%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 128,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 84.375%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 136,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 90.625%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 144,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(28, 140, " +
+            "244) 96.875%, rgb(219, 234, 254))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 152,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 3.125%, rgb(28, 140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 160,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 9.375%, rgb(28, 140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 168,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 15.625%, rgb(28, 140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 176,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 21.875%, rgb(28, 140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 184,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 28.125%, rgb(28, 140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 192,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 34.375%, rgb(28, 140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 200,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 40.625%, rgb(28, 140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 208,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 46.875%, rgb(28, 140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 216,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 53.125%, rgb(28, 140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 224,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 59.375%, rgb(28, 140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 232,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 65.625%, rgb(28, 140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 240,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 71.875%, rgb(28, 140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 248,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 78.125%, rgb(28, 140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 256,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 84.375%, rgb(28, 140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 264,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 90.625%, rgb(28, 140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 272,
+          w: 10,
+          h: 8,
+          fill:
+            "color-mix(in oklch, rgb(30, 58, " +
+            "138) 96.875%, rgb(28, 140, 244))",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 462,
+          y: 24,
+          text: "0",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 462,
+          y: 88,
+          text: "10",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 462,
+          y: 152,
+          text: "20",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 462,
+          y: 216,
+          text: "30",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 462,
+          y: 280,
+          text: "40",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+      ],
+    },
+  ],
+};
 
 const GOLDEN_B: Scene = {
   width: 480,
@@ -1119,6 +2584,120 @@ const GOLDEN_C: Scene = {
           w: 82.526316,
           h: 44.88,
           fill: "rgb(245, 158, 11)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-legend",
+      role: "guide",
+      box: {
+        x: 448,
+        y: 24,
+        w: 0,
+        h: 256,
+      },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 24,
+          w: 10,
+          h: 10,
+          fill: "rgb(28, 140, 244)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 462,
+          y: 29,
+          text: "Alpha",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 38,
+          w: 10,
+          h: 10,
+          fill: "rgb(245, 158, 11)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 462,
+          y: 43,
+          text: "Beta",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 448,
+          y: 52,
+          w: 10,
+          h: 10,
+          fill: "rgb(16, 185, 129)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 462,
+          y: 57,
+          text: "Gamma",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
           stroke: null,
           strokeWidth: 0,
           dash: null,

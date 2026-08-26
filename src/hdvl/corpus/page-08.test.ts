@@ -55,10 +55,18 @@ import {
  * chain resolved no ceiling and every sector bailed. See
  * `Projection.span` in [`../mark.ts`](../mark.ts).
  *
- * **C3 — this gate does not own the legends.** Three of the four
- * views declare an `hdml-legend`, which is Slice H's; the goldens
- * are taken over {@link withoutDeferred}'s restriction and step 32
- * re-runs the page whole.
+ * ★ **C3 is discharged here** (step 32). **All four** views declare
+ * an `hdml-legend` — the *"three of the four"* this header carried
+ * until step 31 was a stale claim — and the four goldens now carry
+ * their group. `DEFERRED_TO_SLICE_H` is empty.
+ *
+ * ★ **D is where a legend's group is not last.** Its view holds two
+ * sibling planes and the legend sits inside the **first** one, so
+ * document order puts its group **between the two rings** — the only
+ * gated view where the position claim is distinguishable from
+ * *"appended"*. One key serves both rings, which is the page's own
+ * comment, and this gate asserts it: exactly one legend group, over
+ * a domain both rings paint from.
  */
 
 /** Row order is slice order and nothing sorts — V7's own rule. */
@@ -149,23 +157,51 @@ suite("corpus 08-pie-doughnut", () => {
     assert.isAbove(io.subscriptions.length, 0);
   });
 
-  test("★ C3: the legends belong to Slice H", async () => {
-    // The exclusion is a filter by name, not an omission that
-    // happens to hold while `hdml-legend` emits nothing — so it
-    // still means the same thing after step 31 gives it a body,
-    // and step 32 is what widens these goldens.
+  test("★ C3: four views, four keys, nothing deferred", async () => {
+    // The exclusion was a filter by name, not an omission that
+    // happened to hold while `hdml-legend` emitted nothing — which
+    // is why emptying it at step 32 grew the goldens deliberately
+    // instead of freezing whatever the element first produced.
     const page = await mountCorpus("08-pie-doughnut");
-    assert.lengthOf(
-      page.root.querySelectorAll(DEFERRED_TO_SLICE_H[0]),
-      4,
-    );
+    assert.isEmpty(DEFERRED_TO_SLICE_H);
+    assert.lengthOf(page.root.querySelectorAll("hdml-legend"), 4);
     page.views.forEach((v) => {
       const owned = withoutDeferred(goldenOf(v), DEFERRED_TO_SLICE_H);
-      assert.isEmpty(
-        owned.groups.filter((g) =>
-          DEFERRED_TO_SLICE_H.includes(g.tag),
-        ),
+      assert.lengthOf(
+        owned.groups.filter((g) => g.tag === "hdml-legend"),
+        1,
       );
+    });
+  });
+
+  test("★ D's one key serves both rings", async () => {
+    // The page says so in a comment; here it is a property of the
+    // scene. Two `hdml-pie`s under two SIBLING plane subtrees, each
+    // with its own `hdml-ordinal-scale[channel="color"]`, and one
+    // legend — whose group lands at index 1 because that is where
+    // document order puts the element, not because anything sorts.
+    const page = await mountCorpus("08-pie-doughnut");
+    const view = page.views[3];
+    assert.lengthOf(view.querySelectorAll("hdml-polar-plane"), 2);
+    assert.lengthOf(view.querySelectorAll("hdml-pie"), 2);
+    assert.lengthOf(view.querySelectorAll("hdml-legend"), 1);
+    const scene = goldenOf(view);
+    assert.deepEqual(
+      scene.groups.map((g) => g.tag),
+      ["hdml-pie", "hdml-legend", "hdml-pie"],
+    );
+    // The key's entries are the domain BOTH rings paint from: the
+    // two scales are separate elements over the same `values`, so
+    // the swatch beside "Central" is the colour of Central's slice
+    // in each ring.
+    const key = scene.groups[1];
+    assert.lengthOf(key.nodes, 2 * REGIONS.length);
+    REGIONS.forEach((name, k) => {
+      const swatch = key.nodes[2 * k];
+      const label = key.nodes[2 * k + 1];
+      assert.strictEqual(label.k === "text" ? label.text : "", name);
+      assert.strictEqual(swatch.fill, scene.groups[0].nodes[k].fill);
+      assert.strictEqual(swatch.fill, scene.groups[2].nodes[k].fill);
     });
   });
 
@@ -385,6 +421,152 @@ const GOLDEN_A: Scene = {
         },
       ],
     },
+    {
+      widget: "",
+      tag: "hdml-legend",
+      role: "guide",
+      box: {
+        x: 360,
+        y: 20,
+        w: 110,
+        h: 288,
+      },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "rect",
+          i: -1,
+          x: 360,
+          y: 20,
+          w: 10,
+          h: 10,
+          fill: "rgb(28, 140, 244)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 374,
+          y: 25,
+          text: "Central",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 360,
+          y: 34,
+          w: 10,
+          h: 10,
+          fill: "rgb(245, 158, 11)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 374,
+          y: 39,
+          text: "East",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 360,
+          y: 48,
+          w: 10,
+          h: 10,
+          fill: "rgb(16, 185, 129)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 374,
+          y: 53,
+          text: "North",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 360,
+          y: 62,
+          w: 10,
+          h: 10,
+          fill: "rgb(139, 92, 246)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 374,
+          y: 67,
+          text: "West",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+      ],
+    },
   ],
 };
 
@@ -460,6 +642,152 @@ const GOLDEN_B: Scene = {
           a0: 329.485714,
           a1: 360,
           fill: "rgb(139, 92, 246)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-legend",
+      role: "guide",
+      box: {
+        x: 360,
+        y: 20,
+        w: 110,
+        h: 288,
+      },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "rect",
+          i: -1,
+          x: 360,
+          y: 20,
+          w: 10,
+          h: 10,
+          fill: "rgb(28, 140, 244)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 374,
+          y: 25,
+          text: "Direct",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 360,
+          y: 34,
+          w: 10,
+          h: 10,
+          fill: "rgb(245, 158, 11)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 374,
+          y: 39,
+          text: "Organic",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 360,
+          y: 48,
+          w: 10,
+          h: 10,
+          fill: "rgb(16, 185, 129)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 374,
+          y: 53,
+          text: "Referral",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 360,
+          y: 62,
+          w: 10,
+          h: 10,
+          fill: "rgb(139, 92, 246)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 374,
+          y: 67,
+          text: "Social",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
           stroke: null,
           strokeWidth: 0,
           dash: null,
@@ -547,6 +875,152 @@ const GOLDEN_C: Scene = {
         },
       ],
     },
+    {
+      widget: "",
+      tag: "hdml-legend",
+      role: "guide",
+      box: {
+        x: 360,
+        y: 20,
+        w: 110,
+        h: 288,
+      },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "rect",
+          i: -1,
+          x: 360,
+          y: 20,
+          w: 10,
+          h: 10,
+          fill: "rgb(28, 140, 244)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 374,
+          y: 25,
+          text: "Central",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 360,
+          y: 34,
+          w: 10,
+          h: 10,
+          fill: "rgb(245, 158, 11)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 374,
+          y: 39,
+          text: "East",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 360,
+          y: 48,
+          w: 10,
+          h: 10,
+          fill: "rgb(16, 185, 129)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 374,
+          y: 53,
+          text: "North",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 360,
+          y: 62,
+          w: 10,
+          h: 10,
+          fill: "rgb(139, 92, 246)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 374,
+          y: 67,
+          text: "West",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+      ],
+    },
   ],
 };
 
@@ -622,6 +1096,152 @@ const GOLDEN_D: Scene = {
           a0: 304.615385,
           a1: 360,
           fill: "rgb(139, 92, 246)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-legend",
+      role: "guide",
+      box: {
+        x: 360,
+        y: 20,
+        w: 110,
+        h: 288,
+      },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "rect",
+          i: -1,
+          x: 360,
+          y: 20,
+          w: 10,
+          h: 10,
+          fill: "rgb(28, 140, 244)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 374,
+          y: 25,
+          text: "Central",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 360,
+          y: 34,
+          w: 10,
+          h: 10,
+          fill: "rgb(245, 158, 11)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 374,
+          y: 39,
+          text: "East",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 360,
+          y: 48,
+          w: 10,
+          h: 10,
+          fill: "rgb(16, 185, 129)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 374,
+          y: 53,
+          text: "North",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "rect",
+          i: -1,
+          x: 360,
+          y: 62,
+          w: 10,
+          h: 10,
+          fill: "rgb(139, 92, 246)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 374,
+          y: 67,
+          text: "West",
+          anchor: "start",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
           stroke: null,
           strokeWidth: 0,
           dash: null,

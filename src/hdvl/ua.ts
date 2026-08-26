@@ -125,9 +125,15 @@ const PLACED = [
  * rightwards out of it. SPEC's row is shipped verbatim because the
  * alternative is inventing a width, but the intent it states cannot
  * be met by a box the platform sizes from content that is not
- * there. Recorded as a **finding** at step 31; every corpus page
- * gives the legend an explicit width, which is the authored case the
- * gate covers.
+ * there. Recorded as a **finding** at step 31, whose *"every corpus
+ * page gives the legend an explicit width"* was **wrong and step 32
+ * measured it**: four of the five do, and `12-coverage`
+ * deliberately writes no `hdml-legend` rule at all. Both its views
+ * carry `box.w === 0` and still render, because the flow axis is
+ * `--hdml-legend-direction`'s `column` default — the box's
+ * **height**, which `bottom: 0` above keeps non-zero — and
+ * `keyNodes`' wrap guard is written for exactly this case. So the
+ * default and the authored gutter idiom are each pinned by a page.
  */
 const LEGEND_CSS = [
   `:host(${HDVL_TAG_NAMES.LEGEND}) {`,

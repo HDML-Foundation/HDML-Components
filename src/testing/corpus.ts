@@ -10,7 +10,8 @@
  * Steps 25, 28, 30, 32 and 33 all mount pages out of
  * [`html/hdvl/`](../../html/hdvl/) and assert scenes against them, so
  * the five decisions below are taken **once**, here, rather than five
- * times in five suites.
+ * times in five suites. **Twelve of the thirteen pages are gated**
+ * since step 32; only `11-multi-plane` is not.
  *
  * **1. A page is fetched, never inlined.** `html/hdvl/*.html` are
  * byte copies of the project folder's originals — `cmp` proves it,
@@ -22,7 +23,7 @@
  * here, naming the URL) where a drifted inline copy is silent.
  *
  * **2. The page's own provider element is removed before anything
- * mounts.** Eight of the eleven gated pages declare an `hdml-io`
+ * mounts.** Nine of the twelve gated pages declare an `hdml-io`
  * against `hdio.example.com`, a host that does not exist.
  * (`00-minimal`, `02-area` and `12-coverage` are the literal-only
  * conformance class and declare none, which the gate asserts rather
@@ -49,20 +50,20 @@
  * must reach the light-DOM elements exactly as they do on the served
  * page.
  *
- * **4. The layout viewport is pinned, not inherited.** Ten of the
- * eleven pages size their view with `width: 100%` under a `figure`
+ * **4. The layout viewport is pinned, not inherited.** Eleven of the
+ * twelve pages size their view with `width: 100%` under a `figure`
  * with its own `max-width`, so on the served page the geometry is the
  * window's. The test runner's window is **not** a corpus fact — it
  * is a Playwright default a runner upgrade may change, and every
  * number in every golden would move with it. {@link mountCorpus}
  * therefore lays each page out in a fixed {@link VIEWPORT}-wide box.
  * `800` is chosen so that **every** page's own `max-width` binds
- * (760, 760, 760, 760, 720, 780, 480, 480, 520 and 480) and none is
- * capped by the harness: each page keeps the dimensions its author
- * gave it, which is the opposite of retuning them. The road not
- * taken — inheriting the
- * runner's window — was measured at 800 px here, giving a 736 px
- * figure and silently overriding all five declared max-widths.
+ * (760, 760, 760, 760, 720, 760, 780, 480, 480, 520 and 480) and
+ * none is capped by the harness: each page keeps the dimensions its
+ * author gave it, which is the opposite of retuning them. The road
+ * not taken — inheriting the runner's window — was measured at
+ * 800 px here, giving a 736 px figure and silently overriding every
+ * declared max-width.
  *
  * **5. `text` is scoped, geometry is not.** A rendered `Intl` string
  * is ICU data and differs by engine (plan rule 4), so a whole-scene
@@ -445,31 +446,44 @@ export function stripText(scene: Scene): Scene {
 
 /**
  * ★ **The tags a corpus golden defers to a later slice** — C3, as a
- * value rather than as an omission.
+ * value rather than as an omission. **It is now empty, and that is
+ * the record of a mechanism that worked.**
  *
- * Four of the thirteen pages are *double-gated*: they carry an
- * element the slice that first renders them has not built. C3
+ * Four of the thirteen pages were *double-gated*: they carried an
+ * element the slice that first rendered them had not built. C3
  * settles what such a gate may claim — *"every slice gate is
  * expressed as named scene-`deepEqual` assertions over the groups
  * **that slice owns**; a double-gated page's whole-page render
  * assertion belongs to the **later** slice"* — so **all four `08`
- * views** and `09` A are gated on marks and non-legend guides at 28,
- * **all five views of `04` and `12-C` at step 30** — `04` is the one
- * page where *every* view declares a legend — and **step 32 re-runs
- * them whole**, where the legend must perturb nothing.
+ * views** and `09` A were gated on marks and non-legend guides at
+ * 28, **all five views of `04` and `12-C` at step 30** — `04` is the
+ * one page where *every* view declares a legend — and **step 32
+ * re-ran them whole**.
  *
- * It is a **filter and not a coincidence**, which matters because
- * `hdml-legend` is registered and currently emits no group at all:
- * a golden that simply lacked legend groups would be indistinguish-
- * able from one that had been asserted over them, and would silently
- * become a whole-page golden the moment Slice H landed — freezing
- * whatever the legend first happened to emit. Filtering by name
- * makes the exclusion survive that: at step 32 the constant is
- * emptied and the goldens grow, deliberately.
+ * It was a **filter and not a coincidence**, which is what made the
+ * emptying safe. A golden that simply *lacked* legend groups would
+ * have been indistinguishable from one asserted over them, and would
+ * have become a whole-page golden the moment Slice H landed —
+ * freezing whatever the legend first happened to emit. Filtering by
+ * name survived that: at step 32 the constant was emptied and the
+ * eleven scoped goldens **grew by exactly one `hdml-legend` group
+ * each and by nothing else**, which `git diff` shows as insertions
+ * with no deletion anywhere. Two of them (`04` E, `08` D) also
+ * proved the *position* claim — a legend's group sits where document
+ * order puts it, which in `08` D is **between** the two rings rather
+ * than last.
+ *
+ * **It is kept, empty, rather than deleted.** `withoutDeferred` is
+ * the mechanism and this is only its current argument: step 33 gates
+ * `11-multi-plane`, and any later page carrying an element its own
+ * slice has not built needs the same value with a different tag in
+ * it. An empty list is also an assertion — *nothing is deferred* —
+ * and the corpus suites still take their goldens through it, so a
+ * tag added here scopes every gate at once.
  *
  * @see withoutDeferred
  */
-export const DEFERRED_TO_SLICE_H: readonly string[] = ["hdml-legend"];
+export const DEFERRED_TO_SLICE_H: readonly string[] = [];
 
 /**
  * A scene with every group a later slice owns removed (C3).

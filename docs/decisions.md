@@ -874,7 +874,7 @@ against markup nobody ships. Fetching instead depends on the runner serving `roo
 statically — a dependency whose failure mode is a 404 that throws and names the URL, where a
 drifted inline copy is silent.
 
-**Removed.** Eight of the eleven gated pages declare an `hdml-io` against a host that does
+**Removed.** Nine of the twelve gated pages declare an `hdml-io` against a host that does
 not exist — `00-minimal`, `02-area` and `12-coverage` are the literal-only conformance class
 and declare none, which the gate asserts rather than assumes. Leaving it in place is not neutral in two independent ways: its `connectedCallback`
 creates an endpoint and immediately posts props + HTML, which means a network call, a Worker
@@ -886,10 +886,10 @@ corpus. The harness asserts how many it removed *and* that none survives in the 
 page, so a page that gains or loses one is a failure rather than a silent change in what the
 gate proves.
 
-The layout viewport is pinned at 800 px for a related reason: ten of the eleven pages size
-their view `width: 100%`, so the runner's window would be baked into every number in every
-golden. 800 is wider than every page's own `max-width` (760, 760, 760, 760, 720, 780, 480,
-480, 520, 480), so each page keeps the
+The layout viewport is pinned at 800 px for a related reason: eleven of the twelve pages
+size their view `width: 100%`, so the runner's window would be baked into every number in
+every golden. 800 is wider than every page's own `max-width` (760, 760, 760, 760, 720, 760,
+780, 480, 480, 520, 480), so each page keeps the
 dimensions its author gave it and none is capped by the harness — the opposite of retuning
 the corpus to suit the runner.
 
@@ -937,13 +937,56 @@ golden over `08-A` would have been byte-identical to a filtered one. Then the le
 gained a body. An unfiltered golden would at that moment have silently become a
 whole-page assertion over whatever the legend first happened to emit, and frozen it;
 the filtered ones instead kept asserting exactly what their own slices own, and **not
-one golden literal moved**. Step 32 widens them deliberately, by emptying the constant.
+one golden literal moved**.
 
 What the filter does *not* cover is a hand-written assertion that reads an unfiltered
 scene, and step 31 found the one there is: `page-08.test.ts`'s *"A's pie and C's arcs are
 one geometry"* compares two views' **group tag lists**, which grew a `hdml-legend` entry.
-It was widened to name the legend rather than to filter it out, so it survives step 32
+It was widened to name the legend rather than to filter it out, so it survived step 32
 unchanged too.
+
+### What emptying the constant proved (step 32)
+
+`DEFERRED_TO_SLICE_H` is now `[]`. The eleven scoped goldens were regenerated against a
+legend that paints, and the result is the strongest form the claim could take: **1 794
+inserted lines and zero deleted lines**, across all eleven, with the inserted text carrying
+exactly one `tag: "hdml-legend"` and no other `tag:` line per golden. **No mark coordinate,
+no guide position and no group box moved for any reason other than the legend** — there was
+nothing to move, because nothing was removed. The two goldens on those pages whose views
+declare no legend (`09` B, `12` B) are byte-identical to their step-28 form.
+
+Two of the eleven also settle a claim that "appended" would have hidden: a legend's group
+sits **where document order puts it**. In `04` E that is index 10 of 11 and in `08` D it is
+index **1 of 3** — between the two rings, because the element is written inside the *first*
+of two sibling planes. `08` D is the only gated view where the position is distinguishable
+from a rule that put guides last.
+
+**The constant and `withoutDeferred` are kept, empty.** The mechanism outlives its first
+argument: step 33 gates `11-multi-plane`, and any later page carrying an element its own
+slice has not built needs the same value with a different tag in it. An empty list is also
+an assertion — *nothing is deferred* — and every corpus suite still takes its goldens
+through the filter, so one tag added here scopes every gate at once.
+
+### The UA placement default **is** corpus-covered, and step 31 said it was not
+
+Step 31 recorded finding 24 — a legend's entries paint on the *view's* surface, so its own
+shadow tree is empty, `width: max-content` resolves to **0**, and SPEC §3's row anchors the
+key at the plot's top-right corner rather than hugging it — and stated that *"no corpus page
+is affected, and that is not luck: all five that declare a legend give it an explicit width
+and the gutter idiom (`left: 100%`)"*. **Four of the five do.** `12-coverage` writes **no
+`hdml-legend` rule at all**, deliberately, and says so in its own header (*"no legend gutter:
+the UA default overlays the legend on the plot's top-right corner (§3)"*).
+
+Measured at step 32: both `12` legend groups carry `box.w === 0` and `box.x === plotRight −
+8px`. The figures still render — `--hdml-legend-direction`'s initial is `column`, so the flow
+axis is the box's **height**, which `top: 8px` plus the generic `inset: 0`'s `bottom: 0` leave
+non-zero, and `keyNodes`' wrap guard (`limit > 0`) is written for exactly this case. The
+entries flow rightwards out of a zero-width anchor. Nothing was changed for it: the finding
+ships verbatim because a default width is a magic number and an element writing its own
+`style` is a widget fighting the cascade it reads. What changed is that the corpus now
+**asserts** it (`page-12.test.ts`, *"the UA default, on a page (finding 24)"*), so the
+default and the gutter idiom are each pinned by a page rather than one of them by a fixture
+alone.
 
 ## One corpus gate runs a second frame, because one caption is about an interaction
 

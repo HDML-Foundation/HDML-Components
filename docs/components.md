@@ -840,12 +840,15 @@ scrollport"*.)
 
 **Placement.** The UA default is SPEC §3's — `top: 8px; right: 8px` against its scale
 box, `width: max-content` — the overlay every charting library ships, and the only home
-correct at *any* plane padding. **Every corpus page overrides it** with the one-rule
-gutter idiom (`left: 100%`), which is the authored case. One caveat, recorded rather
-than worked around: a legend's entries are not DOM, so its shadow tree is empty and
-`max-content` resolves to **0** — the UA row anchors the key at the plot's top-right
-corner rather than hugging it, and the entries paint rightwards out of that anchor.
-Give the legend a width.
+correct at *any* plane padding. **Four of the five corpus pages that declare a legend
+override it** with the one-rule gutter idiom (`left: 100%`) plus an explicit width, which
+is the authored case; `12-coverage` deliberately takes the default, so both cases are
+pinned by a page. One caveat, recorded rather than worked around: a legend's entries are
+not DOM, so its shadow tree is empty and `max-content` resolves to **0** — the UA row
+anchors the key at the plot's top-right corner rather than hugging it, and the entries
+paint rightwards out of that anchor. The key still renders, because the flow axis under
+the initial `--hdml-legend-direction: column` is the box's *height* and the row leaves
+`bottom: 0` in force. **Give the legend a width.**
 
 **Palette exhaustion is the *scale's* error, not the legend's.** A domain larger than
 `--hdml-palette` is an error on the scale (`palette-exhausted`, filed under **V2**, the
