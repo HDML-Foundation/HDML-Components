@@ -105,7 +105,11 @@ export interface TickSpec {
 /** One tick (§2.4). */
 export interface Tick {
   value: number | string;
-  /** In the channel's range unit (see {@link Scale.project}). */
+  /**
+   * In the channel's range unit (see {@link Scale.project}) — CSS
+   * px, degrees, or, on a continuous `color` channel, the ramp
+   * fraction in `[0, 1]`.
+   */
   at: number;
 }
 
@@ -131,8 +135,13 @@ export interface Scale {
    *  from --hdml-size-min/-max for `size`. */
   range(): [number, number] | null;
   /** Domain value → range unit: CSS px (x, y, radius,
-   *  size), degrees (angle). null = the value is outside
-   *  an ordinal domain, so the row produces no mark. */
+   *  size), degrees (angle), and on a CONTINUOUS `color`
+   *  channel the ramp fraction in [0, 1] — the number
+   *  `paint()` maps through, since a colour has no
+   *  `range()` but does have a position along its ramp
+   *  (step 31, the legend's bar). null = the value is
+   *  outside an ordinal domain, so the row produces no
+   *  mark. */
   project(v: number | string): number | null;
   /** Ordinal only. The band the value occupies, in range
    *  units. `centre` is what every non-band-filling lookup
@@ -854,9 +863,35 @@ function buildScale(
       ? null
       : bandOfValue(v, values, range, bandwidth);
 
+  const fraction = (v: number | string): number | null => {
+    if (extent === null) {
+      return null;
+    }
+    const n = typeof v === "number" ? v : rawToNumber(kind, v);
+    if (!Number.isFinite(n)) {
+      return null;
+    }
+    return projectContinuous(spec, extent, [0, 1], n, {
+      clamp: true,
+    });
+  };
+
   const at = (v: number | string): number | null => {
     if (range === null) {
-      return null;
+      // ★ A colour channel has no `range()` and never gains one
+      // (§2.4) — but a CONTINUOUS one does have a position unit,
+      // and it is the **ramp fraction** `paint()` already maps
+      // through. Returning `null` here made `ticksFor` drop every
+      // tick it generated (its §4.7 filter is `at(value) !==
+      // null`), so `ticks()` on a colour scale answered `[]` and a
+      // continuous legend would have had no graduations at all —
+      // silently, since an empty tick list is a legal answer.
+      // Landed at step 31, with the first caller. The ORDINAL
+      // colour case stays `null`: a palette slot is not a position
+      // and a key renders the domain, never a tick list.
+      return channel === "color" && kind !== "ordinal"
+        ? fraction(v)
+        : null;
     }
     if (kind === "ordinal") {
       return bandAt(String(v))?.centre ?? null;
@@ -869,19 +904,6 @@ function buildScale(
       return null;
     }
     return projectContinuous(spec, extent, range, n, { clamp });
-  };
-
-  const fraction = (v: number | string): number | null => {
-    if (extent === null) {
-      return null;
-    }
-    const n = typeof v === "number" ? v : rawToNumber(kind, v);
-    if (!Number.isFinite(n)) {
-      return null;
-    }
-    return projectContinuous(spec, extent, [0, 1], n, {
-      clamp: true,
-    });
   };
 
   return {
@@ -1129,6 +1151,63 @@ function signatureOf(scale: Scale | null): string {
  */
 export function scaleOf(el: HdvlElement): Scale | null {
   return frames.get(el)?.scale ?? null;
+}
+
+/** A resolved ordinal colour domain that outruns its palette. */
+export interface PaletteGap {
+  /** How many domain values there are. */
+  domain: number;
+  /** How many colours `--hdml-palette` supplies. */
+  palette: number;
+}
+
+/**
+ * ★ SPEC §9's palette assignment, as a **question**: did this
+ * scale's resolved domain outrun `--hdml-palette`?
+ *
+ * *"A domain larger than the palette is an **error**"* — and the two
+ * facts it needs live on opposite sides of a module boundary. The
+ * resolved domain and the computed palette are both **here**, on the
+ * frame this scale last resolved in; the diagnostic, the edge
+ * triggering and `:state(error)` are all `validate.ts`'s. So this
+ * module answers and that one reports, rather than this one
+ * importing the validator — which would close a cycle, since
+ * `validate.ts` already imports {@link scaleKindOf} from here.
+ *
+ * **Ordinal only, and that is the rule and not a shortcut.** §5.5
+ * assigns a palette *by domain index*; a continuous colour channel
+ * interpolates a ramp and has no index to run out of.
+ *
+ * The split is the same one {@link paletteColor} takes: it returns
+ * `null` on an exhausted slot rather than wrapping, so the mark
+ * falls back to `--hdml-fill-color` **visibly**, and the count of
+ * how far past the end the domain went is answered once, here.
+ *
+ * @param el - A scale element.
+ * @returns Both counts when the domain outruns the palette, else
+ *   `null` — including before the scale's first frame, when there
+ *   is no resolved domain to compare.
+ */
+export function paletteGapOf(el: HdvlElement): PaletteGap | null {
+  const state = frames.get(el);
+  const ctx = state?.ctx ?? null;
+  const scale = state?.scale ?? null;
+  if (ctx === null || scale === null) {
+    return null;
+  }
+  if (scale.channel !== "color" || scale.kind !== "ordinal") {
+    return null;
+  }
+  const values = scale.domain()?.values ?? [];
+  if (values.length === 0) {
+    return null;
+  }
+  const palette = splitColorList(
+    ctx.measured(el).props.get("--hdml-palette") ?? "",
+  );
+  return values.length > palette.length
+    ? { domain: values.length, palette: palette.length }
+    : null;
 }
 
 /**

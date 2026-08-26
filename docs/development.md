@@ -308,13 +308,15 @@ corpus fix must land in **both** locations, by hand, in the same change.
 They are **executed**, not only served. [src/hdvl/corpus/](../src/hdvl/corpus/) is one
 `*.test.ts` per page; [src/testing/corpus.ts](../src/testing/corpus.ts) is the shared harness.
 Since step 30 the suite covers `00`, `01`, `02`, `03`, `04`, `05`, `07`, `08`, `09`, `10` and
-`12` — **eleven pages, twenty-four views** — and the remaining two pages (`06`, `11`) arrive
-with the slices that build the elements they use.
+`12` — **eleven pages, twenty-four views** — and the remaining two pages arrive with the
+slices that build the elements they use: **`06-bubble` with Slice H** (it declares an
+`hdml-legend`, and its subject is the `size` + `color` pair) and **`11-multi-plane` with
+Slice I**.
 
 Four of the eleven are **double-gated**, and C3 says what a slice gate may claim: *"every slice
 gate is expressed as named scene-`deepEqual` assertions over the groups **that slice owns**;
-a double-gated page's whole-page render assertion belongs to the **later** slice."* `08` A/B/D
-and `09` A carry an `hdml-legend`, which is Slice H's, so their goldens are taken over
+a double-gated page's whole-page render assertion belongs to the **later** slice."* **All four
+`08` views** and `09` A carry an `hdml-legend`, which is Slice H's, so their goldens are taken over
 `withoutDeferred(scene, DEFERRED_TO_SLICE_H)` and step 32 re-runs those pages whole. **All
 five views of `04` declare one**, so the whole page is scoped that way — and each view asserts
 *both* halves of the exclusion, that it declares a legend and that the compared scene has no
@@ -322,8 +324,13 @@ legend group, because either half alone is satisfied by a page carrying none. `1
 four views and is gated **per view**: step 28 took B, the gauge, and step 30 takes C, the
 `hdml-stack`; `12-A`'s legend is Slice H's, and the file asserts that scope from the document
 rather than leaving it to an index. The exclusion is a **filter by tag name**, deliberately,
-not an omission that happens to hold while `hdml-legend` emits nothing: a golden that merely
-lacked legend groups would silently become a whole-page golden the moment Slice H landed.
+not an omission that happened to hold while `hdml-legend` emitted nothing: a golden that
+merely lacked legend groups would have become a whole-page golden the moment the legend
+gained a body. **It did at step 31, and not one golden literal moved** — which is the
+mechanism working. What the filter does not cover is a hand-written assertion over an
+unfiltered scene, and there was exactly one: `page-08.test.ts`'s pie↔arc **group tag
+list**, widened to name the legend rather than to filter it out, so it survives step 32
+too.
 
 **`12-C` is the one corpus assertion that runs a second frame.** Its caption is a claim about
 a live interaction — *"the stack rebases over rendered children; the y ceiling stays put"* —

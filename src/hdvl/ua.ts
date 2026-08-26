@@ -78,13 +78,65 @@ const CLIPPED = [
  * ticks and its labels all sit in the same gutter, which is the
  * whole point of a gutter. `hdml-grid` is not among them: it runs
  * *across* the plane and is covered already (see
- * {@link GUIDE_PLACEMENT}); `hdml-legend` sits inside the plot and
- * lands at step 31.
+ * {@link GUIDE_PLACEMENT}); `hdml-legend` is not either, because it
+ * is placed **once**, not per channel — see {@link LEGEND_CSS}.
  */
 const PLACED = [
   HDVL_TAG_NAMES.AXIS,
   HDVL_TAG_NAMES.TICK,
   HDVL_TAG_NAMES.LABEL,
+];
+
+/**
+ * ★ SPEC §3's `hdml-legend` row — *"top-right **inside the plot
+ * area** (`top: 8px; right: 8px` against its scale box);
+ * `width: max-content`"*.
+ *
+ * It is not a gutter guide, and §3 says why: it is *"the overlay
+ * default every charting library ships, and the only home correct at
+ * **any** plane padding — the 8px default gutter could not hold
+ * it"*. Overlap with marks is visible, never silent. Gutter
+ * placement is **one author rule** (`left: 100%`), which is what all
+ * five corpus pages that declare a legend write.
+ *
+ * **★ `left: auto` is required and is not tidying.** The generic
+ * `:host` rule declares `inset: 0` as four longhands, so `right:
+ * 8px` alone leaves `left: 0` in force — and an absolutely
+ * positioned box with `left`, `width` and `right` all non-`auto` is
+ * over-constrained, which CSS resolves in a left-to-right document
+ * by **ignoring `right`**. The legend would then be anchored to the
+ * plot's *left* edge, which is the opposite of what this row says,
+ * and nothing about the rendered scene would say so. Step 23's
+ * guide rows carry the same hazard and the same fix.
+ *
+ * **★ `bottom: 0` is deliberately LEFT in force**, which is where
+ * this row parts company with those. A guide with `height: auto`
+ * and both offsets set is over-constrained to a zero extent — the
+ * trap step 23 documents — but a legend *wants* the height that
+ * `top: 8px` + `bottom: 0` computes: it is the extent its entries
+ * flow along, and an `auto` height would shrink-to-fit an empty
+ * shadow tree and give the key nowhere to go.
+ *
+ * **★ And that is exactly what `width: max-content` does to the
+ * cross axis.** A legend's entries paint on the **view's** surface,
+ * so its own shadow tree is empty and `max-content` resolves to
+ * **0** — the box is a zero-width anchor at the plot's top-right
+ * corner rather than a box hugging the key, and the entries paint
+ * rightwards out of it. SPEC's row is shipped verbatim because the
+ * alternative is inventing a width, but the intent it states cannot
+ * be met by a box the platform sizes from content that is not
+ * there. Recorded as a **finding** at step 31; every corpus page
+ * gives the legend an explicit width, which is the authored case the
+ * gate covers.
+ */
+const LEGEND_CSS = [
+  `:host(${HDVL_TAG_NAMES.LEGEND}) {`,
+  `  top: ${GUTTER.top}px;`,
+  `  right: ${GUTTER.right}px;`,
+  "  left: auto;",
+  "  width: max-content;",
+  "}",
+  "",
 ];
 
 /**
@@ -260,6 +312,7 @@ const ELEMENT_CSS = [
   // unchanged. Stated rather than omitted, so a later reader does
   // not add a rule that changes nothing and then trust it.
   ...guideRules(),
+  ...LEGEND_CSS,
   ".plot { position: relative; width: 100%; height: 100% }",
   "",
   `:host(${VIEW}) > slot { visibility: collapse }`,

@@ -172,17 +172,24 @@ suite("corpus 08-pie-doughnut", () => {
   test("★ A's pie and C's arcs are one geometry", async () => {
     // SPEC's claim, met on a page rather than in a fixture: the
     // widget derive and the window clause reach the same numbers
-    // by different routes. Only the group TAG differs.
+    // by different routes. Only the mark group's TAG differs.
+    //
+    // ★ The `hdml-legend` entries appeared at step 31 and are read
+    // UNFILTERED on purpose: `withoutDeferred` scopes the *golden*
+    // (C3), and this assertion is a hand-written tag list rather
+    // than a golden. Naming the legend here rather than filtering
+    // it out is what makes the list survive step 32, which empties
+    // that constant.
     const page = await mountCorpus("08-pie-doughnut");
     const a = goldenOf(page.views[0]);
     const c = goldenOf(page.views[2]);
     assert.deepEqual(
       a.groups.map((g) => g.tag),
-      ["hdml-pie"],
+      ["hdml-pie", "hdml-legend"],
     );
     assert.deepEqual(
       c.groups.map((g) => g.tag),
-      ["hdml-arc"],
+      ["hdml-arc", "hdml-legend"],
     );
     assert.deepEqual(marksOf(a), marksOf(c));
   });

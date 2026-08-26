@@ -53,10 +53,12 @@ import {
   VALUES_SLOT,
   kindOfColumn,
   looksLikeRef,
+  paletteGapOf,
   scaleKindOf,
   scaleOf,
   valuesSpecOf,
 } from "./scale";
+import { skeletonKind } from "./kernel/format-skeleton";
 import {
   ARC_ATTRS_LIST,
   AREA_ATTRS_LIST,
@@ -284,6 +286,12 @@ const POLAR_TAG: string = HDVL_TAG_NAMES.POLAR_PLANE;
 const AXIS_TAG: string = HDVL_TAG_NAMES.AXIS;
 
 /** See {@link RULE_TAG}. */
+const LEGEND_TAG: string = HDVL_TAG_NAMES.LEGEND;
+
+/** See {@link RULE_TAG}. */
+const LABEL_TAG: string = HDVL_TAG_NAMES.LABEL;
+
+/** See {@link RULE_TAG}. */
 const STACK_TAG: string = HDVL_TAG_NAMES.STACK;
 
 /** See {@link RULE_TAG}. */
@@ -293,11 +301,14 @@ const CLUSTER_TAG: string = HDVL_TAG_NAMES.CLUSTER;
  * §6.5's four **positional** guides — V16's and V20's scope in this
  * step.
  *
- * `hdml-legend` is the fifth member of the `guide` family and is
- * deliberately **absent**: its halves of both rules are conditioned
- * on a *continuous resolved color scale* (SPEC §7, V20(b)) and land
- * with the element itself at step 31. A legend added here would have
- * to guess that condition against a tag that paints nothing yet.
+ * `hdml-legend` is the fifth member of the `guide` family and stays
+ * **out of this list** now that step 31 has landed its halves —
+ * because what the two rules say about it is genuinely different and
+ * not merely later. V20 sends a positional guide *away* from a
+ * visual channel and sends the legend's density attributes away from
+ * an **ordinal** one; V16's *"`hdml-axis` takes none of them"* is
+ * about one tag in this list. See {@link checkV20} and
+ * {@link checkV16}, both of which name the legend explicitly.
  */
 const POSITIONAL_GUIDES: readonly string[] = [
   <string>HDVL_TAG_NAMES.AXIS,
@@ -318,6 +329,20 @@ const SPEC_ATTRS: readonly string[] = [
   GRID_ATTRS_LIST.COUNT,
   GRID_ATTRS_LIST.STEP,
   GRID_ATTRS_LIST.VALUES,
+];
+
+/**
+ * V20(b)'s set — *"on `hdml-legend`, `count`/`step`/`values`/
+ * `format` require a continuous resolved scale"*.
+ *
+ * It is {@link SPEC_ATTRS} plus `format` and not a fourth list of
+ * the same names, for the reason that one gives: the four attribute
+ * names are one vocabulary across the five guide tags, and the enum
+ * a name is read from says nothing about which tag publishes it.
+ */
+const LEGEND_DENSITY: readonly string[] = [
+  ...SPEC_ATTRS,
+  LABEL_ATTRS_LIST.FORMAT,
 ];
 
 /** SPEC §5's bindable-identifier form: a letter or `_`, then word. */
@@ -784,6 +809,78 @@ function ordinalFormatMessage(): string {
   return (
     "format applies to a continuous or datetime channel — " +
     "an ordinal channel renders its domain strings verbatim"
+  );
+}
+
+/**
+ * SPEC §11's own instance of V14's kind check, verbatim: *"date
+ * skeleton on a continuous channel"*, plus the fix.
+ */
+function dateOnContinuousMessage(): string {
+  return (
+    "date skeleton on a continuous channel — use a number " +
+    "skeleton such as compact-short"
+  );
+}
+
+/** {@link dateOnContinuousMessage}'s mirror. */
+function numberOnDatetimeMessage(): string {
+  return (
+    "number skeleton on a datetime channel — use a date " +
+    "skeleton such as MMM"
+  );
+}
+
+function mixedSkeletonMessage(skeleton: string): string {
+  return (
+    `format="${skeleton}" mixes number stems and date letters — ` +
+    "a CLDR skeleton is one token space or the other"
+  );
+}
+
+function unknownSkeletonMessage(skeleton: string): string {
+  return (
+    `format="${skeleton}" is not a CLDR skeleton — write number ` +
+    "stems (compact-short) or date letters (MMM)"
+  );
+}
+
+/**
+ * **V20(b)** — SPEC §7's *"the key always renders the full domain"*,
+ * as the reason the attributes are refused rather than ignored.
+ *
+ * It names the kind the scale actually resolved to, because
+ * *ordinal* and *datetime* are different mistakes with the same fix
+ * and the author cannot see the chain from the legend's own tag.
+ *
+ * Unlike {@link exclusiveSpecMessage}, this one can fire on a
+ * **single** attribute, so the verb agrees with the list.
+ */
+function legendDensityMessage(
+  attrs: readonly string[],
+  kind: ScaleKind,
+): string {
+  const verb = attrs.length === 1 ? "needs" : "need";
+  return (
+    `${attrList(attrs)} ${verb} a continuous color scale — this ` +
+    `legend's scale is ${kind}, and a key always renders the ` +
+    "full domain"
+  );
+}
+
+/**
+ * SPEC §9's palette assignment: *"a domain larger than the palette
+ * is an error… the message naming both counts"*.
+ *
+ * Both counts, because the fix is a subtraction the author should
+ * not have to do — and because R25 makes the message part of a
+ * finding's identity, so *9 of 8* and *10 of 8* are genuinely
+ * different reports of a domain that grew.
+ */
+function paletteMessage(domain: number, palette: number): string {
+  return (
+    `${domain} color domain values but ${palette} palette ` +
+    "colors — add colors to --hdml-palette or shorten the domain"
   );
 }
 
@@ -1702,16 +1799,16 @@ function checkV19(el: HdvlElement, out: Finding[]): void {
  * It is decided from the guide's own `channel` attribute and needs
  * no scale in scope: `color` has no positions whether or not a color
  * scale exists, which is exactly why this must beat V1.
- *
- * **V20(b) — the legend's continuous-scale requirement — is step
- * 31's**, with the element it constrains. See
- * {@link POSITIONAL_GUIDES}.
  */
 function checkV20(el: HdvlElement, out: Finding[]): void {
-  if (
-    el.family !== "guide" ||
-    !POSITIONAL_GUIDES.includes(el.localName)
-  ) {
+  if (el.family !== "guide") {
+    return;
+  }
+  if (el.localName === LEGEND_TAG) {
+    checkV20Legend(el, out);
+    return;
+  }
+  if (!POSITIONAL_GUIDES.includes(el.localName)) {
     return;
   }
   const ch = channelOf(el.getAttribute(AXIS_ATTRS_LIST.CHANNEL));
@@ -1724,6 +1821,61 @@ function checkV20(el: HdvlElement, out: Finding[]): void {
       "channel-guide-fit",
       el,
       guideChannelMessage(ch),
+      ch,
+    ),
+  );
+}
+
+/**
+ * ★ **V20(b)** — the legend's density set requires a **continuous**
+ * resolved scale (SPEC §7, §11; landed at step 31 with the element).
+ *
+ * *"On `hdml-legend`, `count`/`step`/`values`/`format` require a
+ * continuous resolved scale; on an ordinal scale each is an error —
+ * the key always renders the full domain."* SPEC's reason is one
+ * sentence and it is the whole rule: **a thinned key lies.** An
+ * author who asks for four of nine categories is asking for a
+ * picture that misreports the mapping, and quietly rendering all
+ * nine — or quietly rendering four — are both §1.5's silent wrong
+ * chart. `format` is in the same set because an ordinal channel
+ * renders its domain strings verbatim, so a skeleton there is
+ * addressing values that do not exist.
+ *
+ * **It is checked against the resolved scale's TAG** — the static
+ * ancestor lookup V2 makes, never a cascade lookup, which SPEC §7
+ * says is the line finding 11's modal-tick ban actually draws. That
+ * also means it needs no frame: this runs in the structural pass.
+ *
+ * **It declines when there is no scale in scope**, and V1 reports
+ * that instead. V20 runs first, so an unconditional report here
+ * would replace *"no scale for channel color in scope"* — the
+ * message that fixes the page — with a claim about a scale that is
+ * not there.
+ *
+ * It reports **once per element, naming every attribute written**,
+ * which is {@link checkV16}'s rule for the same reason: an author
+ * who wrote `count` beside `format` made one mistake.
+ */
+function checkV20Legend(el: HdvlElement, out: Finding[]): void {
+  const written = LEGEND_DENSITY.filter((attr) => declared(el, attr));
+  if (written.length === 0) {
+    return;
+  }
+  const ch = channelOf(el.getAttribute(AXIS_ATTRS_LIST.CHANNEL));
+  if (ch === null) {
+    return;
+  }
+  const scale = resolutionOf(el)?.chain[ch] ?? null;
+  const kind = scale === null ? null : scaleKindOf(scale);
+  if (kind === null || kind === "continuous") {
+    return;
+  }
+  out.push(
+    error(
+      "V20",
+      "channel-guide-fit",
+      el,
+      legendDensityMessage(written, kind),
       ch,
     ),
   );
@@ -1751,11 +1903,25 @@ function checkV20(el: HdvlElement, out: Finding[]): void {
  *
  * It reports **once per element**, naming every attribute involved:
  * an author who wrote all three made one mistake.
+ *
+ * **★ The legend joined at step 31, and only the first clause
+ * applies to it.** SPEC §11 says *"`count`, `step` and `values` on a
+ * **guide widget** are mutually exclusive"* — five tags, not four —
+ * while *"`hdml-axis` takes none of them"* is about one. The
+ * legend's own extra condition, that the three need a continuous
+ * resolved scale, is **V20(b)**'s and is reported there: it is a
+ * claim about the scale and not about the attributes, and V20 runs
+ * first, so a legend that wrote two of them over an ordinal scale
+ * hears *"they need a continuous color scale"* — the report that
+ * fixes the page — rather than *"keep one"*.
  */
 function checkV16(el: HdvlElement, out: Finding[]): void {
   if (
     el.family !== "guide" ||
-    !POSITIONAL_GUIDES.includes(el.localName)
+    !(
+      POSITIONAL_GUIDES.includes(el.localName) ||
+      el.localName === LEGEND_TAG
+    )
   ) {
     return;
   }
@@ -1810,37 +1976,91 @@ function checkV16(el: HdvlElement, out: Finding[]): void {
  * its meaning, which is *this guide cannot address this channel at
  * all*.
  *
- * **V14's other two clauses are still step 31's** — well-formedness
- * and the disjoint token spaces, which `skeletonKind` already
- * classifies — and so is the legend's half of this one.
+ * **★ Its other two clauses landed at step 31, whole** — the rule's
+ * own words, *"parses as a CLDR skeleton — number stems **or** date
+ * pattern letters, never both"*, and the second half of the kind
+ * agreement. There is no later step that adds a validator rule, and
+ * `format` reaches its last tag here, so V14 is finished in one
+ * place rather than left half-applied:
+ *
+ * 1. **Well-formedness** — `skeletonKind` returns `"unknown"` for a
+ *    string in neither token space and `"mixed"` for one in both.
+ *    Both are errors, and they carry **different messages**, because
+ *    they are different mistakes: `"MMM compact-short"` is two
+ *    intelligible halves that cannot combine, and `"qqq"` is not a
+ *    skeleton at all. Neither needs the scale chain, which is
+ *    precisely what SPEC means by *"classifiable **without**
+ *    resolving the scale chain"*.
+ * 2. **Kind agreement**, both directions — a *date* skeleton on a
+ *    continuous channel is the instance SPEC quotes; a *number*
+ *    skeleton on a datetime channel is its mirror, and is the case
+ *    that would otherwise print an epoch millisecond as `1.7T`.
+ * 3. **The ordinal clause**, above, which is step 24's.
+ *
+ * All three apply to **both** tags SPEC gives `format` to. The
+ * legend's half needs no condition of its own: over an ordinal or
+ * datetime resolved scale a legend's `format` is already
+ * **V20(b)**'s error and V20 runs first, so what is left here is the
+ * continuous case — which is exactly where a date skeleton is the
+ * mistake this rule is named for.
+ *
+ * An **empty** `format` reads as absent, the same reading
+ * `tickSpecOf` gives an empty `count`: `format=""` states no
+ * skeleton, and reporting it as *"not a CLDR skeleton"* would be a
+ * report about a string the author did not write.
  */
 function checkV14(el: HdvlElement, out: Finding[]): void {
   if (
     el.family !== "guide" ||
-    el.localName !== <string>HDVL_TAG_NAMES.LABEL ||
+    !(el.localName === LABEL_TAG || el.localName === LEGEND_TAG) ||
     !declared(el, LABEL_ATTRS_LIST.FORMAT)
   ) {
+    return;
+  }
+  const skeleton = (
+    el.getAttribute(LABEL_ATTRS_LIST.FORMAT) ?? ""
+  ).trim();
+  if (skeleton === "") {
     return;
   }
   const ch = channelOf(el.getAttribute(AXIS_ATTRS_LIST.CHANNEL));
   if (ch === null) {
     return;
   }
+  const written = skeletonKind(skeleton);
+  if (written === "mixed" || written === "unknown") {
+    out.push(
+      error(
+        "V14",
+        "bad-format-skeleton",
+        el,
+        written === "mixed"
+          ? mixedSkeletonMessage(skeleton)
+          : unknownSkeletonMessage(skeleton),
+        ch,
+      ),
+    );
+    return;
+  }
   // SPEC §6: the tag IS the kind, so the resolved scale's tag
   // answers this with no frame and no cascade.
   const scale = resolutionOf(el)?.chain[ch] ?? null;
-  if (scale === null || scaleKindOf(scale) !== "ordinal") {
+  const kind = scale === null ? null : scaleKindOf(scale);
+  if (kind === null) {
     return;
   }
-  out.push(
-    error(
-      "V14",
-      "bad-format-skeleton",
-      el,
-      ordinalFormatMessage(),
-      ch,
-    ),
-  );
+  const message =
+    kind === "ordinal"
+      ? ordinalFormatMessage()
+      : kind === "continuous" && written === "date"
+      ? dateOnContinuousMessage()
+      : kind === "datetime" && written === "number"
+      ? numberOnDatetimeMessage()
+      : null;
+  if (message === null) {
+    return;
+  }
+  out.push(error("V14", "bad-format-skeleton", el, message, ch));
 }
 
 // ---------------------------------------------------------------
@@ -2424,6 +2644,61 @@ function checkV2(el: HdvlElement, out: Finding[]): void {
   }
 }
 
+/**
+ * ★ **Palette exhaustion** — SPEC §9's *"a domain larger than the
+ * palette is an **error** (`:state(error)` on the scale, the message
+ * naming both counts)"*, landed at step 31 with the legend.
+ *
+ * **★ The error unit is the SCALE, and the legend is not involved at
+ * all.** `kernel/color.ts` has carried the sentence *"the diagnostic
+ * itself is the legend's, Slice H"* since step 18, and that is true
+ * of the **step** and not of the **unit**: the fact is a property of
+ * the resolved domain and `--hdml-palette`, both of which exist
+ * whether or not any legend was written. A page with nine categories
+ * over an eight-colour palette paints two series the same colour —
+ * §1.5's silent wrong chart, and the reason `paletteColor` returns
+ * `null` rather than wrapping — and it does so with or without a
+ * key. Reporting it from the legend would make the diagnostic
+ * conditional on the one element whose absence makes it *harder* to
+ * notice.
+ *
+ * **It is filed under V2**, which is {@link reportAllRowsDropped}'s
+ * choice and for the identical reason: §8.3's V2 row is the binding
+ * pass's *"does the delivered data fit this scale"* question, and a
+ * resolved domain the scale cannot paint is an answer of no. SPEC
+ * §11 gives palette exhaustion no V-number of its own —
+ * `palette-exhausted` is its own `DiagnosticCode` and has been in
+ * the union since step 12.
+ *
+ * **In the binding pass rather than in COMPUTE**, which is where the
+ * RFC's *"raised in COMPUTE once the domain resolves"* lands in this
+ * implementation: a column-derived domain is only known once the
+ * frame ran, so this reads {@link paletteGapOf} — the scale's own
+ * answer, off the frame it last resolved in — one pass later, in the
+ * place every other data-dependent finding already lives. It
+ * therefore edge-triggers, blanks the scale and dispatches
+ * `hdml-error` through exactly the same path, and recovers when the
+ * author adds the ninth colour.
+ */
+function checkPalette(el: HdvlElement, out: Finding[]): void {
+  if (el.family !== "scale") {
+    return;
+  }
+  const gap = paletteGapOf(el);
+  if (gap === null) {
+    return;
+  }
+  out.push(
+    error(
+      "V2",
+      "palette-exhausted",
+      el,
+      paletteMessage(gap.domain, gap.palette),
+      "color",
+    ),
+  );
+}
+
 /** Whether the view has a resolvable accessible name (§5.10). */
 function hasAccessibleName(view: HdmlViewElement): boolean {
   const label = view.getAttribute("aria-label");
@@ -2638,7 +2913,8 @@ export function validateStructure(
  * The **binding pass** (§8.2) — on adopted data and the resolved
  * scales, run once per frame.
  *
- * **Three rules, and each is here by necessity.** Both halves of
+ * **Three rules and one clause, each here by necessity.** Both
+ * halves of
  * **V2** need what the frame produced: the delivered kind is
  * `Delivery.type`, and §4.5's `log`-domain clause is checked *after*
  * domain resolution. **V4**'s runtime half needs a `kind:"absent"`
@@ -2646,9 +2922,12 @@ export function validateStructure(
  * in the result set"*. **V5** counts *delivered* rows, which is what
  * §8.3's *"against `rows`"* means. V3, V8, V9, V10, V18 and V19 are
  * attribute-only and run in the structural pass beside V1 and V13,
- * V4's local-ref half included, as are V14's ordinal clause, V16 and
- * V20's positional clause — all three are read off attributes and
- * the resolved scale's **tag**; V15 is a *behaviour* — `nice` moving
+ * V4's local-ref half included, as are all of V14, V16 and V20 —
+ * every one of them read off attributes and the resolved scale's
+ * **tag**. The **clause** is SPEC §9's palette exhaustion
+ * ({@link checkPalette}), which is here because a column-derived
+ * domain has no size until the frame ran; V15 is a *behaviour* —
+ * `nice` moving
  * derived endpoints only — and is asserted as one rather than
  * reported, because SPEC says it is *"a no-op, not an error"*.
  *
@@ -2665,6 +2944,7 @@ export function validateBindings(
   const found: Finding[] = [];
   for (const el of elements) {
     checkV2(el, found);
+    checkPalette(el, found);
     checkV4Delivery(el, found);
     checkV5(el, found);
     checkV7Rows(el, found);

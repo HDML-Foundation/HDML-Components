@@ -196,10 +196,10 @@ Sort the frame by one or more fields. No attributes; per-field direction comes f
 
 The display half registers **21 tags**, in seven families
 ([`HDVL_FAMILIES`](../src/hdvl/vocabulary.ts)): `view`, `plane`, `scale`, `mark`,
-`container`, `guide`, `fallback`. **Twenty of them have bodies** as of this commit — the
-four structural elements, the three scales, **all six marks**, `hdml-pie`, **four of the
-five guides** and **both layout containers** — see
-[Registered but inert](#registered-but-inert) for the one that does not.
+`container`, `guide`, `fallback`. **All twenty-one have bodies** as of this commit — the
+four structural elements, the three scales, **all six marks**, `hdml-pie`, **all five
+guides** and **both layout containers**. Nothing is
+[registered but inert](#every-tag-has-a-body) any longer.
 
 Two constructed UA stylesheets ([`src/hdvl/ua.ts`](../src/hdvl/ua.ts)) supply every box
 default. The **element sheet** is adopted by every HDVL shadow root as one shared instance and
@@ -771,6 +771,90 @@ skeleton with no compact stem formats value by value, and one that maps to no op
 (including the empty string a label with no `format` carries) falls through to the locale's
 default — so the continuous branch calls it unconditionally.
 
+### `hdml-legend` — [guide-legend.ts](../src/hdvl/guide-legend.ts)
+
+The **visual-channel** guide, and the last element in the vocabulary. It renders the
+**color scale's key**: positions are the one thing a visual channel does not have, so
+its entries lay out in its own CSS box instead of at scale positions. It **binds no
+columns and takes no `source`** — it is the *scale's* key, not the marks': a domain
+value no row uses still gets an entry (§6: a scale is never fed by widgets), and a page
+with no data provider at all still renders one. It declares no `bindings()`, so the
+subscription bus never sees it.
+
+| Attribute | Value |
+|---|---|
+| `channel` | `color` (v1). Resolves per **V1**, exactly as every other guide's channel does |
+| `count` \| `step` \| `values` | **Only over a continuous resolved scale** (V20). Mutually exclusive (V16) |
+| `format` | A CLDR skeleton for the ramp's values. Continuous only (V20); well-formed and kind-matching (V14) |
+
+**★ The two modes are derived, never authored.** The mode is the resolved scale's
+**tag** — a static ancestor lookup, the same one V2 makes, never a cascade lookup.
+There is no `mode` attribute and there must not be one; re-keying the same markup from
+an ordinal scale to a continuous one changes the picture and nothing else.
+
+| Resolved scale | What it renders |
+|---|---|
+| **ordinal** | one entry per domain value — **always the whole domain**, because a thinned key lies. Each entry is a swatch (`rect` or `ellipse` per `--hdml-tick-style`) plus the domain string as real `text` |
+| **continuous** | a **ramp bar** sampled into 32 rects, plus formatted values at `scale.ticks(spec)` — honouring `count`/`step`/`values`/`format` and §4.9's shared compact prefix |
+
+**★ One entry is one datum of a mapping, and that is why this element exists.** The
+swatch and the name are generated **together**, from one value, in one loop: entry *k*'s
+colour is `paint(domain[k])` and its text is `domain[k]` by construction. The two
+candidates this reversed both fail structurally — `hdml-axis channel="color"` needs
+**modal attribute sets** (`format`/`count` legal on one channel only), and
+`hdml-tick` + `hdml-label` on the color channel makes swatch↔name alignment
+**cascade-determined geometry no validator can check**. Inside one element the
+tick/label contract holds as an implementation invariant where it cannot be
+mis-authored: the swatch is decoration and the name is real text. §2.5 gives
+`decorative` to the `text` node **alone**, so the swatch's decorative-ness is carried by
+**the node kind it emits** — exactly as `hdml-tick`'s is.
+
+**★ The ramp bar is the marks' gradient, not a second one** (R18). Every sample's colour
+is a `Scale.paint(v)` call at a real domain value, so a `hdml-point` bound to the same
+scale returns the same string, byte for byte. Nothing here interpolates a colour:
+`kernel/color.ts` does no colour-space maths on purpose, because `color-mix(in <space>,
+…)` is the platform's interpolator and a second one can disagree with the page's own CSS.
+The bar's **axis is the ramp fraction** — sample *i* spans `project(vᵢ)` to
+`project(vᵢ₊₁)`, and `Tick.at` on a colour channel **is** that fraction, so the bar and
+its graduations share one axis. The samples themselves are taken uniformly in the
+*domain*, because Contract 2 publishes no inverse and a second one here is what R12
+forbids.
+
+| Property | What it does |
+|---|---|
+| `--hdml-legend-direction` | `column` (initial) or `row` — the entry flow axis, **and** the ramp bar's orientation |
+| `--hdml-legend-swatch-size` | a swatch's extent, and the ramp bar's thickness. **Not `--hdml-tick-width`**, which SPEC §9 gives to `hdml-tick` and `hdml-point` alone |
+| `--hdml-legend-gap` | between swatch and name, **and** between entries — one property for both, deliberately |
+
+Entries wrap when the box's extent along the flow axis runs out; a box with **no** extent
+wraps nothing, which is the default case rather than a degenerate one (see below).
+
+**Overflow clips, and v1 builds no scrollport.** The group carries `Measured.clip` —
+computed `overflow` is not `visible` — and the renderer clips it to the box, which is
+§5.4's reach rule applied to every widget alike. So `hidden`, `clip`, `auto` and `scroll`
+all clip and the initial `visible` lets entries spill and stay legible; `auto` and
+`scroll` clip **without** a scrollbar. That is structural, not an omission: the entries
+paint on the **view's** surface, so this element's own box has no scrollable content of
+its own for the platform to move. (This supersedes SPEC §7's *"one box, one
+scrollport"*.)
+
+**Placement.** The UA default is SPEC §3's — `top: 8px; right: 8px` against its scale
+box, `width: max-content` — the overlay every charting library ships, and the only home
+correct at *any* plane padding. **Every corpus page overrides it** with the one-rule
+gutter idiom (`left: 100%`), which is the authored case. One caveat, recorded rather
+than worked around: a legend's entries are not DOM, so its shadow tree is empty and
+`max-content` resolves to **0** — the UA row anchors the key at the plot's top-right
+corner rather than hugging it, and the entries paint rightwards out of that anchor.
+Give the legend a width.
+
+**Palette exhaustion is the *scale's* error, not the legend's.** A domain larger than
+`--hdml-palette` is an error on the scale (`palette-exhausted`, filed under **V2**, the
+message naming both counts), raised whether or not any legend was written — the wrong
+chart is two series sharing a colour, and a key makes that *easier* to notice, not
+truer. `paletteColor` returns `null` past the end rather than wrapping, so the entry is
+still rendered, in `--hdml-fill-color` — visibly and uniformly, exactly as the marks
+fall back.
+
 ### `hdml-pie` — [layout-pie.ts](../src/hdvl/layout-pie.ts)
 
 The **one cross-row layout widget**, and a **mark**, not a container: a container "is not a
@@ -916,15 +1000,11 @@ scale whose domain is the children in DOM order"*.
   resolves is untouched, so a guide over it still addresses the category and never a slot.
 - **A `hidden` child re-derives the subdivision**; CSS order does not.
 
-### Registered but inert
+### Every tag has a body
 
-One tag is **registered and carries no behaviour yet** — it declares its tag, its family and
-its observed attributes, and nothing else. It is listed here so the tag surface is
-discoverable; do not read the entry as a description of working behaviour.
-
-| Tag | Family | Module | Body lands in |
-|---|---|---|---|
-| `hdml-legend` | guide | [guide-legend.ts](../src/hdvl/guide-legend.ts) | Slice H |
+**No display tag is registered-but-inert.** `hdml-legend` was the last one, and its body
+landed with Slice H; Contract 1 is not merely complete but implemented, in all
+twenty-one tags.
 
 The five guides take **no `source`** and bind no columns — a guide is a function of the
 resolved scale, its own box and its computed style.

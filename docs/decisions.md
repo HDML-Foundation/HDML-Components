@@ -561,7 +561,73 @@ separate check with its own message"* — this is that check, with a message sym
 the *"date skeleton on a continuous channel"* one SPEC quotes. Filing it as V20 would
 cost `channel-guide-fit` its meaning, which is *this guide cannot address this channel at
 all*. V14's other two clauses — well-formedness, and the disjoint token spaces
-`skeletonKind` already classifies — are still Slice H's, as is the legend half.
+`skeletonKind` already classifies — landed **whole** at step 31, together with the legend
+half, because `format` reaches its last tag there and no later step adds a validator rule.
+A string in **neither** token space and one in **both** carry different messages, because
+they are different mistakes: `"MMM compact-short"` is two intelligible halves that cannot
+combine and `"qqq"` is not a skeleton at all. An empty `format` reads as *absent*, the
+same reading `tickSpecOf` gives an empty `count`.
+
+## Why `hdml-legend` is one element, and not an axis or a tick+label pair
+
+SPEC §2 once said *"no separate legend element"*, and finding 17 reversed it with cause.
+Both losing candidates were steelmanned, and each breaks a deeper rule than the one it
+fixes:
+
+- **`hdml-axis channel="color"`** terminates in **modal attribute sets** — `format` and
+  `count` legal on one channel and not another, on the same tag. That is the disease the
+  three-scale collapse and the `hdml-pie`/`hdml-arc` split were both designed out of, and
+  the runtime cost is a validator whose rules depend on which channel an attribute sits
+  beside rather than on what the tag *is*.
+- **`hdml-tick` + `hdml-label` on the color channel** makes swatch↔name row alignment
+  **cascade-determined geometry no validator can check** — which is finding 15's own
+  killer argument, aimed at its mechanism. Two elements, two boxes, two independent
+  `count`s: nothing in the document says the third swatch and the third name are the same
+  entry, and nothing can be made to say it.
+
+The dedicated element dissolves both **structurally**, and that is the whole verdict: one
+element generates each entry whole, from one domain value, in one loop. Alignment is by
+construction, and the tick/label contract survives *inside* the element as an
+implementation invariant — swatch decorative, name real text — where it cannot be
+mis-authored. The fence is narrow and stated: an element may fuse glyph and text exactly
+when the pair is **one datum of a mapping**. `hdml-axis` on a non-positional channel is
+now V20's error, which is the same decision seen from the other side.
+
+## Palette exhaustion errors on the scale, and the legend is not involved
+
+[kernel/color.ts](../src/hdvl/kernel/color.ts) has said since step 18 that *"the
+diagnostic itself is the legend's, Slice H"*. That is true of the **step** and not of the
+**unit**, and step 31 settled which: the error is reported **on the scale**, by
+`validate.ts`'s binding pass, whether or not any legend was written.
+
+The fact is a property of the resolved domain and `--hdml-palette`, both of which exist
+with or without a key. A page with nine categories over an eight-colour palette paints two
+series the same colour — §1.5's silent wrong chart, and the reason `paletteColor` returns
+`null` rather than wrapping — and reporting it from the legend would make the diagnostic
+conditional on the one element whose *absence* makes the problem harder to notice, not
+less real. It is filed under **V2** for `all-rows-dropped`'s reason: §8.3's V2 row is the
+binding pass's *"does the delivered data fit this scale"* question, and a resolved domain
+the scale cannot paint is an answer of no. SPEC §11 gives it no V-number of its own;
+`palette-exhausted` has been its own `DiagnosticCode` since step 12.
+
+`scale.ts` answers the question (`paletteGapOf`) and `validate.ts` reports it, rather than
+`scale.ts` importing the validator — which would close an import cycle, since `validate.ts`
+already imports `scaleKindOf` and evaluates `MODIFIERS` at module top level.
+
+## A colour channel has no range, but a continuous one has a position
+
+Contract 2 says `range()` is `null` for `color` — *"a colour's range is a palette"* — and
+that stands. What step 31 found is that `project()` returning `null` alongside it made
+`Scale.ticks()` answer `[]` on **every** colour scale, because `ticksFor` drops a tick
+whose `at` is `null` (§4.7's per-value rule). A continuous legend would have had no
+graduations at all, silently, since an empty tick list is a legal answer everywhere else.
+
+So on a **continuous** colour channel `project(v)` is the **ramp fraction** in `[0, 1]` —
+the number `paint()` already maps through, not a new one — and `Tick.at` is that fraction.
+The legend's bar and its graduations then share one axis, and it is the scale's own
+transform: a `log` colour scale's colours sit where its values sit. The **ordinal** colour
+case stays `null`, because a palette slot is not a position and a key renders the domain
+rather than a tick list.
 
 ## The guide placement rules reset the opposite offset, and state an extent
 
@@ -865,12 +931,19 @@ C3: *"every slice gate is expressed as named scene-`deepEqual` assertions over t
 `DEFERRED_TO_SLICE_H` and `withoutDeferred` — rather than as a golden that happens to have
 no legend groups in it.
 
-The distinction is not pedantic. `hdml-legend` is **registered and inert**: it emits no
-group at all today, so an unfiltered golden over `08-A` would be byte-identical to a
-filtered one. The difference is what happens at step 31, when the legend gains a body: the
-unfiltered golden silently becomes a whole-page assertion over whatever the legend first
-happened to emit, and freezes it. The filtered one fails loudly, which is the correct
-outcome, and step 32 widens it deliberately by emptying the constant.
+The distinction is not pedantic, and step 31 settled it. When those gates were written
+`hdml-legend` was **registered and inert** — it emitted no group at all, so an unfiltered
+golden over `08-A` would have been byte-identical to a filtered one. Then the legend
+gained a body. An unfiltered golden would at that moment have silently become a
+whole-page assertion over whatever the legend first happened to emit, and frozen it;
+the filtered ones instead kept asserting exactly what their own slices own, and **not
+one golden literal moved**. Step 32 widens them deliberately, by emptying the constant.
+
+What the filter does *not* cover is a hand-written assertion that reads an unfiltered
+scene, and step 31 found the one there is: `page-08.test.ts`'s *"A's pie and C's arcs are
+one geometry"* compares two views' **group tag lists**, which grew a `hdml-legend` entry.
+It was widened to name the legend rather than to filter it out, so it survives step 32
+unchanged too.
 
 ## One corpus gate runs a second frame, because one caption is about an interaction
 

@@ -428,15 +428,15 @@ nothing new was added to the phase model, and the entries are fenced on
 untouched: a container reads no box that COMPUTE could have changed, because COMPUTE
 changes none.
 
-**All six marks paint today** — `hdml-line`, `hdml-rule`, `hdml-area`, `hdml-bar`,
-`hdml-point` and `hdml-arc` — as do `hdml-pie` (step 27), four of the five guides
-(`hdml-axis`, `hdml-grid`, `hdml-tick`, `hdml-label`) and both layout containers
-(step 29, which paint nothing but derive). The other **nine** `scene()`
-implementations still return `null`, which is a
+**Every painting element paints today** — all six marks (`hdml-line`, `hdml-rule`,
+`hdml-area`, `hdml-bar`, `hdml-point`, `hdml-arc`), `hdml-pie` (step 27), **all five
+guides** (`hdml-axis`, `hdml-grid`, `hdml-tick`, `hdml-label`, and `hdml-legend` since
+step 31) and both layout containers (step 29, which paint nothing but derive). The other
+**eight** `scene()` implementations return `null`, which is a
 **contract-complete answer** — "returns null to paint nothing (hidden, errored, or
-still loading)". Eight of those return it permanently: the view, both planes, the three
-scales and both containers emit no group at all. Widget bodies arrive per slice and
-replace nothing around them.
+still loading)". All eight return it permanently: the view, both planes, the three
+scales and both containers emit no group at all. **Contract 1 is now implemented and not
+merely complete** — no tag is registered-but-inert.
 
 A mark reaches its scales through the chain and its geometry through the **`Projection`**
 its plane supplies ([src/hdvl/mark.ts](../src/hdvl/mark.ts)). That indirection is the

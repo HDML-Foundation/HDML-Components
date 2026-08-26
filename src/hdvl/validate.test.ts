@@ -1714,6 +1714,366 @@ suite("hdvl/validate — diagnostics", () => {
     assert.lengthOf(errs, 1);
   });
 
+  // ---------------------------------------------------------------
+  // Step 31's rules — V20(b) · V16's and V14's legend halves, and
+  // SPEC §9's palette exhaustion. Every message is HARDCODED.
+  // ---------------------------------------------------------------
+
+  /** A legend under an **ordinal** colour scale, beside a probe. */
+  const KEY = (
+    widget: ReturnType<typeof html>,
+  ): ReturnType<typeof html> => html`
+    <hdml-cartesian-plane>
+      <hdml-continuous-scale channel="y" min="0" max="1">
+        <hdml-ordinal-scale channel="color" values='["a","b"]'>
+          ${widget}
+          <hdvl-probe id="ok"></hdvl-probe>
+        </hdml-ordinal-scale>
+      </hdml-continuous-scale>
+    </hdml-cartesian-plane>
+  `;
+
+  /** The same, under a **continuous** colour scale. */
+  const RAMP = (
+    widget: ReturnType<typeof html>,
+  ): ReturnType<typeof html> => html`
+    <hdml-cartesian-plane>
+      <hdml-continuous-scale channel="y" min="0" max="1">
+        <hdml-continuous-scale channel="color" min="0" max="40">
+          ${widget}
+          <hdvl-probe id="ok"></hdvl-probe>
+        </hdml-continuous-scale>
+      </hdml-continuous-scale>
+    </hdml-cartesian-plane>
+  `;
+
+  test("★ V20(b) — count on an ordinal legend", async () => {
+    // SPEC §7: the key always renders the full domain, so a
+    // thinned key lies — the attribute is refused, never ignored.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v20d"
+        style="width: 400px; height: 200px"
+      >
+        ${KEY(html`
+          <hdml-legend channel="color" count="4"></hdml-legend>
+        `)}
+      </hdml-view>
+    `);
+    const bad = <Element>view.querySelector("hdml-legend");
+    assert.lengthOf(said("V20"), 1);
+    assert.strictEqual(
+      messageOf(said("V20")[0]),
+      "count needs a continuous color scale — this legend's " +
+        "scale is ordinal, and a key always renders the full domain",
+    );
+    assert.isTrue(bad.matches(":state(error)"));
+    assert.strictEqual(errs[0].detail.code, "channel-guide-fit");
+    assert.strictEqual(errs[0].detail.rule, "V20");
+    assert.strictEqual(errs[0].detail.channel, "color");
+    // §8.3: it reports, and the key still paints its full domain.
+    assert.isTrue(paints((<HdvlElement>(<unknown>bad)).uid));
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V20(b) — one error names all four", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v20e"
+        style="width: 400px; height: 200px"
+      >
+        ${KEY(html`
+          <hdml-legend
+            channel="color"
+            count="4"
+            step="1"
+            values='["a"]'
+            format="compact-short"
+          ></hdml-legend>
+        `)}
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V20"), 1);
+    assert.strictEqual(
+      messageOf(said("V20")[0]),
+      "count, step, values and format need a continuous color " +
+        "scale — this legend's scale is ordinal, and a key always " +
+        "renders the full domain",
+    );
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("V20(b) — the same four on a ramp are fine", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v20f"
+        style="width: 400px; height: 200px"
+      >
+        ${RAMP(html`
+          <hdml-legend
+            channel="color"
+            count="4"
+            format="compact-short"
+          ></hdml-legend>
+        `)}
+      </hdml-view>
+    `);
+    // V16 still applies — `count` and `format` are not two of the
+    // three — so a clean page is clean on both rules.
+    assert.lengthOf(said("V20"), 0);
+    assert.lengthOf(said("V16"), 0);
+    assert.lengthOf(said("V14"), 0);
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V20(b) declines, and V1 reports instead", async () => {
+    // V20 runs before V1, so an unconditional report here would
+    // replace the message that fixes the page with a claim about a
+    // scale that is not there.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v20g"
+        style="width: 400px; height: 200px"
+      >
+        <hdml-cartesian-plane>
+          <hdml-continuous-scale channel="y" min="0" max="1">
+            <hdml-legend channel="color" count="4"></hdml-legend>
+            <hdvl-probe id="ok"></hdvl-probe>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V20"), 0);
+    assert.lengthOf(said("V1"), 1);
+    assert.strictEqual(
+      messageOf(said("V1")[0]),
+      'no scale for channel "color" in scope',
+    );
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V16 — two of the three on a legend", async () => {
+    // SPEC §11 scopes mutual exclusivity to "a guide widget",
+    // which is five tags and not four.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v16g"
+        style="width: 400px; height: 200px"
+      >
+        ${RAMP(html`
+          <hdml-legend
+            channel="color"
+            count="4"
+            step="10"
+          ></hdml-legend>
+        `)}
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V16"), 1);
+    assert.strictEqual(
+      messageOf(said("V16")[0]),
+      "count and step are mutually exclusive — keep one on " +
+        '<hdml-legend channel="color">',
+    );
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V20 beats V16 on an ordinal legend", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v16h"
+        style="width: 400px; height: 200px"
+      >
+        ${KEY(html`
+          <hdml-legend
+            channel="color"
+            count="4"
+            step="10"
+          ></hdml-legend>
+        `)}
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V20"), 1);
+    assert.lengthOf(said("V16"), 0);
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V14 — a date skeleton on a ramp", async () => {
+    // SPEC §11's own instance of the kind check, on the tag that
+    // arrived last.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v14d"
+        style="width: 400px; height: 200px"
+      >
+        ${RAMP(html`
+          <hdml-legend channel="color" format="MMM"></hdml-legend>
+        `)}
+      </hdml-view>
+    `);
+    const bad = <Element>view.querySelector("hdml-legend");
+    assert.lengthOf(said("V14"), 1);
+    assert.strictEqual(
+      messageOf(said("V14")[0]),
+      "date skeleton on a continuous channel — use a number " +
+        "skeleton such as compact-short",
+    );
+    assert.isTrue(bad.matches(":state(error)"));
+    assert.strictEqual(errs[0].detail.code, "bad-format-skeleton");
+    assert.strictEqual(errs[0].detail.rule, "V14");
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V14 — a number skeleton on a datetime axis", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v14e"
+        style="width: 400px; height: 200px"
+      >
+        <hdml-cartesian-plane>
+          <hdml-datetime-scale
+            channel="x"
+            min="2025-01-01"
+            max="2025-06-01"
+          >
+            <hdml-label
+              channel="x"
+              format="compact-short"
+            ></hdml-label>
+            <hdvl-probe id="ok"></hdvl-probe>
+          </hdml-datetime-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V14"), 1);
+    assert.strictEqual(
+      messageOf(said("V14")[0]),
+      "number skeleton on a datetime channel — use a date " +
+        "skeleton such as MMM",
+    );
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ V14 — a skeleton in both token spaces", async () => {
+    // Classifiable WITHOUT the scale chain, which is what SPEC
+    // means by the two spaces being disjoint — so this fires on a
+    // legend whose scale is perfectly continuous.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v14f"
+        style="width: 400px; height: 200px"
+      >
+        ${RAMP(html`
+          <hdml-legend
+            channel="color"
+            format="MMM compact-short"
+          ></hdml-legend>
+        `)}
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V14"), 1);
+    assert.strictEqual(
+      messageOf(said("V14")[0]),
+      'format="MMM compact-short" mixes number stems and date ' +
+        "letters — a CLDR skeleton is one token space or the other",
+    );
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("V14 — a string that is no skeleton at all", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v14g"
+        style="width: 400px; height: 200px"
+      >
+        ${RAMP(html`
+          <hdml-legend channel="color" format="qqq"></hdml-legend>
+        `)}
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V14"), 1);
+    assert.strictEqual(
+      messageOf(said("V14")[0]),
+      'format="qqq" is not a CLDR skeleton — write number stems ' +
+        "(compact-short) or date letters (MMM)",
+    );
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("V14 — an empty format reads as absent", async () => {
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v14h"
+        style="width: 400px; height: 200px"
+      >
+        ${RAMP(html`
+          <hdml-legend channel="color" format=""></hdml-legend>
+        `)}
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V14"), 0);
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ palette exhaustion errors on the SCALE", async () => {
+    // SPEC §9: ":state(error) on the scale, the message naming
+    // both counts". The unit is the scale whether or not any
+    // legend was written — this page has none.
+    const [, view] = await mount(html`
+      <hdml-view aria-label="v9p" style="width: 400px; height: 200px">
+        <hdml-cartesian-plane>
+          <hdml-continuous-scale channel="y" min="0" max="1">
+            <hdml-ordinal-scale
+              channel="color"
+              values='["a","b","c"]'
+              style="--hdml-palette: #ff0000 #00ff00"
+            >
+              <hdvl-probe id="ok"></hdvl-probe>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    const scale = <Element>view.querySelector("hdml-ordinal-scale");
+    assert.lengthOf(said("V2"), 1);
+    assert.strictEqual(
+      messageOf(said("V2")[0]),
+      "3 color domain values but 2 palette colors — add colors " +
+        "to --hdml-palette or shorten the domain",
+    );
+    assert.isTrue(scale.matches(":state(error)"));
+    assert.strictEqual(errs[0].detail.code, "palette-exhausted");
+    assert.strictEqual(errs[0].detail.rule, "V2");
+    assert.strictEqual(errs[0].detail.channel, "color");
+
+    // …and adding the third colour recovers, dispatching nothing.
+    lines.length = 0;
+    errs.length = 0;
+    scale.setAttribute(
+      "style",
+      "--hdml-palette: #ff0000 #00ff00 #0000ff",
+    );
+    view.markDirty();
+    await quiesce(view);
+    assert.isFalse(scale.matches(":state(error)"));
+    assert.lengthOf(errs, 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+  });
+
+  test("palette — a domain inside the palette is clean", async () => {
+    const [, view] = await mount(html`
+      <hdml-view aria-label="v9q" style="width: 400px; height: 200px">
+        ${KEY(html` <hdml-legend channel="color"></hdml-legend> `)}
+      </hdml-view>
+    `);
+    // The registered initial supplies eight colours, so a domain
+    // of two says nothing — that is §9's "unstyled charts get 8
+    // distinguishable categories" as an assertion.
+    assert.lengthOf(said("V2"), 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
   test("★ the code space is still twenty-two", () => {
     // A `Record<DiagnosticCode, …>` literal is exhaustive AND
     // closed, so a twenty-third code fails `compile_tst` — before
@@ -1722,6 +2082,16 @@ suite("hdvl/validate — diagnostics", () => {
     // union step 12 landed whole (H5). **Step 29 added three more
     // rules and no code**, and reused step 27's warning code for
     // V7's stack half rather than minting an eighth (R12).
+    // **Step 31 — the last step that adds a rule at all — added
+    // four clauses and no code either**: V20(b), V16's and V14's
+    // legend halves and V14's two well-formedness clauses all
+    // reuse codes the union already had, and SPEC §9's palette
+    // exhaustion finally calls `palette-exhausted`, which had sat
+    // in the union with no caller since step 12. One code is still
+    // uncalled — `colorless-series`, which is **W3's** (*"a
+    // colourless container child or pie: legal, legend-less"*) and
+    // therefore a claim about a MARK, not about the legend. It is
+    // asserted present here and nowhere raised.
     assert.lengthOf(Object.keys(CODES), 22);
     // …and the warning space, whose seventh member is V7's rather
     // than a W-rule's (step 27).

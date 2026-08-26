@@ -452,8 +452,8 @@ export function stripText(scene: Scene): Scene {
  * settles what such a gate may claim — *"every slice gate is
  * expressed as named scene-`deepEqual` assertions over the groups
  * **that slice owns**; a double-gated page's whole-page render
- * assertion belongs to the **later** slice"* — so `08` A/B/D and
- * `09` A are gated on their marks and non-legend guides at step 28,
+ * assertion belongs to the **later** slice"* — so **all four `08`
+ * views** and `09` A are gated on marks and non-legend guides at 28,
  * **all five views of `04` and `12-C` at step 30** — `04` is the one
  * page where *every* view declares a legend — and **step 32 re-runs
  * them whole**, where the legend must perturb nothing.

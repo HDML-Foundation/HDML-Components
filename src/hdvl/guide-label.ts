@@ -66,12 +66,20 @@ import {
  * resolves through — so a datetime label and a continuous one under
  * one view can never disagree about it.
  *
- * @param el - The label.
+ * **★ Exported at step 31, for its second caller.** SPEC §7: *"the
+ * shared compact prefix applies to a continuous legend's value set
+ * exactly as to a label set"* — the same sentence, about the same
+ * three cases, so `hdml-legend`'s ramp calls this rather than
+ * carrying a fourth copy of §4.9's dispatch (R12/R18). It reads the
+ * `format` attribute by name, and the legend publishes the same
+ * name, so nothing about it is label-specific.
+ *
+ * @param el - The label, or the legend.
  * @param scale - The scale it labels.
  * @param ticks - The positions it will paint.
  * @returns One string per tick, in the same order.
  */
-function textsOf(
+export function textsOf(
   el: HdvlElement,
   scale: Scale,
   ticks: readonly Tick[],
