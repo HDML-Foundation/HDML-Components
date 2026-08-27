@@ -10,8 +10,8 @@
  * Steps 25, 28, 30, 32 and 33 all mount pages out of
  * [`html/hdvl/`](../../html/hdvl/) and assert scenes against them, so
  * the five decisions below are taken **once**, here, rather than five
- * times in five suites. **Twelve of the thirteen pages are gated**
- * since step 32; only `11-multi-plane` is not.
+ * times in five suites. **All thirteen pages are gated** since step
+ * 33, and `page-11.test.ts` asserts that mapping mechanically.
  *
  * **1. A page is fetched, never inlined.** `html/hdvl/*.html` are
  * byte copies of the project folder's originals — `cmp` proves it,
@@ -23,7 +23,7 @@
  * here, naming the URL) where a drifted inline copy is silent.
  *
  * **2. The page's own provider element is removed before anything
- * mounts.** Nine of the twelve gated pages declare an `hdml-io`
+ * mounts.** Ten of the thirteen gated pages declare an `hdml-io`
  * against `hdio.example.com`, a host that does not exist.
  * (`00-minimal`, `02-area` and `12-coverage` are the literal-only
  * conformance class and declare none, which the gate asserts rather
@@ -50,17 +50,22 @@
  * must reach the light-DOM elements exactly as they do on the served
  * page.
  *
- * **4. The layout viewport is pinned, not inherited.** Eleven of the
- * twelve pages size their view with `width: 100%` under a `figure`
+ * **4. The layout viewport is pinned, not inherited.** Twelve of
+ * the thirteen pages size their view with `width: 100%` under a
+ * `figure`
  * with its own `max-width`, so on the served page the geometry is the
  * window's. The test runner's window is **not** a corpus fact — it
  * is a Playwright default a runner upgrade may change, and every
  * number in every golden would move with it. {@link mountCorpus}
  * therefore lays each page out in a fixed {@link VIEWPORT}-wide box.
  * `800` is chosen so that **every** page's own `max-width` binds
- * (760, 760, 760, 760, 720, 760, 780, 480, 480, 520 and 480) and
- * none is capped by the harness: each page keeps the dimensions its
- * author gave it, which is the opposite of retuning them. The road
+ * (760, 760, 760, 760, 720, 760, 780, 480, 480, 520, 780 and 480)
+ * and none is capped by the harness: each page keeps the dimensions
+ * its author gave it, which is the opposite of retuning them. It is
+ * also what makes `11-multi-plane`'s panel thirds a **fractional**
+ * number of pixels, which is why that one view's golden is
+ * quantized to two decimals rather than rule 3's six — see
+ * `page-11.test.ts`. The road
  * not taken — inheriting the runner's window — was measured at
  * 800 px here, giving a 736 px figure and silently overriding every
  * declared max-width.

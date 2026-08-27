@@ -284,11 +284,39 @@ export const SENTINEL_MARKER: string = SENTINEL_PROPERTIES[0];
  * block, and R1's "every element owns a true CSS box" false two
  * levels down. `inset: 0` is what §4.3 already describes; the view
  * resets it because the view is the one element in normal flow.
+ *
+ * ── `box-sizing: border-box`, added at step 33 ──
+ *
+ * It is a **no-op for every element that takes its size from the
+ * insets**, which until step 33 was every element on every corpus
+ * page: with `width: auto` and both offsets set, the used width is
+ * whatever fills the containing block and box-sizing cannot change
+ * it. It binds in exactly one place — an element that authors a
+ * **size** *and* carries **padding** — and the only one in the
+ * corpus is `11-multi-plane` A's three panels, which write
+ * `width: 33.333%` on a plane whose UA padding is the §3 gutter.
+ *
+ * Under the platform default (`content-box`) that width sizes the
+ * **plot area**, so each panel's border box is a third of the view
+ * *plus 56 px of gutter*: the three panels do not tile, and the
+ * third is pushed off the right edge of the view and clipped by
+ * the `<svg>`. The page's own host-HTML titles — three `span`s at
+ * `width: 33.333%` — are laid out at the true thirds, so the page
+ * contains its own consistency check and fails it. Nothing about
+ * this is expressible by the author: §3 makes the gutter the
+ * **UA's** number, so `calc(33.333% - 56px)` would hard-code a
+ * value the UA sheet owns and re-break on any padding override.
+ *
+ * The corpus is the proof that it changes nothing else: the twelve
+ * pages gated before step 33 have byte-identical goldens with and
+ * without this line. Found by the step-33 gate — see
+ * `docs/decisions.md` and the corpus README's finding 25.
  */
 const ELEMENT_CSS = [
   ":host {",
   "  position: absolute;",
   "  inset: 0;",
+  "  box-sizing: border-box;",
   `  transition-property: ${SENTINEL_PROPERTIES.join(", ")};`,
   "  transition-duration: 1ms;",
   "}",

@@ -208,7 +208,8 @@ is host-qualified throughout, so a rule written for the view can never reach a m
 that must work on light DOM *before* upgrade. Every default is a `:host` rule, which any
 author rule from the outer document beats.
 
-Every display element except the view is `position: absolute; inset: 0` and renders
+Every display element except the view is `position: absolute; inset: 0; box-sizing:
+border-box` and renders
 `<div class="plot"><slot></slot></div>` in its shadow. `.plot` **is** the host's content box,
 so a slotted child resolves against its parent's *content* box — which is what makes a
 plane's `8px 8px 24px 40px` gutter inset everything below it, and what SPEC §3 means by "a
@@ -659,7 +660,17 @@ just below the plot (`top: 100%`), a y-channel one just left of it (`right: 100%
 spilling into the plane's gutter — which is what the gutter is for, and why the two take
 their extent (`24px` high, `40px` wide) from the very numbers that set the plane's padding.
 `hdml-grid` needs **no rule of its own**: the generic `:host` box rule is already `inset: 0`,
-which is SPEC §3's grid row verbatim. Each placement rule **resets the opposite offset
+which is SPEC §3's grid row verbatim.
+
+**`box-sizing: border-box` is in that generic rule, and it binds in exactly one place** — an
+element that authors a **size** *and* carries padding. Under `inset: 0` with `width: auto`
+the used width is whatever fills the containing block and the property cannot matter, which
+is why it went undeclared until step 33 and why adding it left every committed golden
+byte-identical. The one page that authors a plane width is `11-multi-plane` A (three panels
+at `width: 33.333%`), and under the platform's `content-box` default that width sized the
+**plot area**, so each panel's border box was a third of the view plus 56 px of gutter and
+the third panel ran off the edge. An author cannot fix that — §3 makes the gutter the UA's
+number, so `calc(33.333% - 56px)` hard-codes a value the sheet owns. Each placement rule **resets the opposite offset
 explicitly** (`bottom: auto`, `left: auto`); without that, `inset: 0` would leave the far
 offset in force and over-constrain the box to zero extent — a guide that renders, measures
 nothing, and reports no error. Every rule is `:host(<tag>[channel="…"])`, so it is

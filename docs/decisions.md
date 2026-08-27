@@ -874,7 +874,7 @@ against markup nobody ships. Fetching instead depends on the runner serving `roo
 statically — a dependency whose failure mode is a 404 that throws and names the URL, where a
 drifted inline copy is silent.
 
-**Removed.** Nine of the twelve gated pages declare an `hdml-io` against a host that does
+**Removed.** Ten of the thirteen gated pages declare an `hdml-io` against a host that does
 not exist — `00-minimal`, `02-area` and `12-coverage` are the literal-only conformance class
 and declare none, which the gate asserts rather than assumes. Leaving it in place is not neutral in two independent ways: its `connectedCallback`
 creates an endpoint and immediately posts props + HTML, which means a network call, a Worker
@@ -886,12 +886,14 @@ corpus. The harness asserts how many it removed *and* that none survives in the 
 page, so a page that gains or loses one is a failure rather than a silent change in what the
 gate proves.
 
-The layout viewport is pinned at 800 px for a related reason: eleven of the twelve pages
+The layout viewport is pinned at 800 px for a related reason: twelve of the thirteen pages
 size their view `width: 100%`, so the runner's window would be baked into every number in
 every golden. 800 is wider than every page's own `max-width` (760, 760, 760, 760, 720, 760,
-780, 480, 480, 520, 480), so each page keeps the
+780, 480, 480, 520, 780, 480), so each page keeps the
 dimensions its author gave it and none is capped by the harness — the opposite of retuning
-the corpus to suit the runner.
+the corpus to suit the runner. It is also what fixes `11-multi-plane`'s panel thirds at
+33.333 % of **780** px, a fractional number of pixels and so the corpus's one
+engine-dependent used width.
 
 ## A channel's range is the plane's answer, not the scale's
 
@@ -1007,6 +1009,77 @@ toggles a `hidden` child — was rejected because that fixture builds its own ma
 page adds is that the toggle is written by an **author**, on a stack that shares its scale
 chain with a legend and two axes, and that the thing which must not move is a domain the page
 declares as `min="0" max="100"` rather than one the fixture chose to be assertable.
+
+## A display element is `border-box`, so an authored width is the element, not its plot
+
+*(Step 33, found by the `11-multi-plane` gate — the corpus's finding 25.)*
+
+SPEC §3 gives a plane `position: absolute; inset: 0` and a **padding** gutter, and until
+step 33 no corpus page had ever authored a `width` or a `height` on one. Under
+`inset: 0` with `width: auto` the used width is whatever fills the containing block, and
+`box-sizing` cannot change it — so the property had never mattered, and the UA sheet did not
+declare one.
+
+`11-multi-plane` A is the first page to author one: three panels at `width: 33.333%` on a
+plane whose padding is the §3 gutter (`16px 12px 32px 44px` here). Under the platform default
+(`content-box`) that width sizes the **plot area**, so each panel's border box is a third of
+the view *plus 56 px*, the three panels do not tile, and the third runs off the right edge of
+the view and is clipped by the `<svg>`. The page carries its own consistency check and failed
+it: the panel titles are host HTML — three `span`s at `width: 33.333%` — which sit at the true
+thirds while the plots do not.
+
+[ua.ts](../src/hdvl/ua.ts)'s generic `:host` rule now declares `box-sizing: border-box`.
+
+- **It cannot be the author's fix.** §3 makes the gutter the **UA's** number, so
+  `calc(33.333% - 56px)` hard-codes a value the sheet owns and re-breaks the moment a page
+  overrides the padding.
+- **It is a no-op everywhere else, and the corpus proves it rather than arguing it.** The
+  twelve pages gated before step 33 have byte-identical goldens with and without the line,
+  and the whole suite passed unchanged on all three engines the first time it ran.
+- *The road not taken* — editing the page to `box-sizing: border-box` — was rejected because
+  the corpus pages are the acceptance contract, and a page that has to restate a UA default to
+  get the layout SPEC §3 describes is a defect in the sheet, not in the page.
+
+## One corpus view is quantized to two decimals, not rule 3's six
+
+*(Step 33.)*
+
+Cross-engine rule 3 quantizes every scene assertion to **six** decimals, which is what makes a
+`deepEqual` safe against the last-ulp differences of `Math.log/pow/sin/cos`. It is not enough
+for `11-multi-plane` A, and the reason is not arithmetic: a **used width** is snapped to the
+engine's own layout unit — 1/64 px in Blink and WebKit, 1/60 px in Gecko — so `33.333%` of
+780 px (`259.9974`) resolves to `259.984375` on two engines and `259.983337` on the third, and
+every position derived from it inherits the difference.
+
+Measured over the whole scene the worst disagreement is **2.1 × 10⁻³ px**, and all three
+engines agree exactly at **two** decimals — 1/100 of a CSS px, finer than a device pixel at
+any device-pixel ratio. `page-11.test.ts` therefore takes A's golden through
+`sceneOf(view, {precision: 2})`; everything else in the corpus, `11` B included, stays at six.
+
+*The road not taken* — asserting A's golden on chromium alone, as the `text` half is — was
+rejected because it would drop the geometry of three planes on two engines to buy a precision
+nothing reads. This is a property of a **fractional percentage**, not of multiple planes.
+
+## A view-level `source` coalesces refs, not subscriptions
+
+*(Step 33.)*
+
+`11-multi-plane` is the corpus's one page where a `source` on the **`hdml-view`** feeds more
+than one plane, and its header claims *"one view-level source, one query (identical refs
+coalesce)"*. The gate asserts the claim in the two numbers it actually decomposes into, so
+neither can be mistaken for the other:
+
+- **twelve subscriptions** for view A — `subscribe.ts` keys a subscription by the binding
+  **site** (`uid:slot`), so three panels × four bound slots is twelve registry entries, and
+  that number is a fact about the *consumer* side;
+- **one ref**, over six distinct `(column, raw)` reads — which is what "one query" names, and
+  where the coalescing happens: the query engine batches by ref and column, and `<hdml-io>`
+  de-dupes by `id`.
+
+A gate that asserted only the first would read as *"no coalescing"*; one that asserted only
+the second would pass on a page with one plane. Both are asserted, and the effective-`source`
+inheritance is asserted from the document beside them: `source` is on the view and no plane
+repeats it.
 
 ## `transitionrun` replaces the document-wide `MutationObserver`
 

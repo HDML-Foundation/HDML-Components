@@ -307,9 +307,25 @@ corpus fix must land in **both** locations, by hand, in the same change.
 
 They are **executed**, not only served. [src/hdvl/corpus/](../src/hdvl/corpus/) is one
 `*.test.ts` per page; [src/testing/corpus.ts](../src/testing/corpus.ts) is the shared harness.
-Since step 32 the suite covers `00`, `01`, `02`, `03`, `04`, `05`, **`06`**, `07`, `08`, `09`,
-`10` and `12` — **twelve pages, twenty-six views** — and the one remaining page,
-**`11-multi-plane`, arrives with Slice I**. `06-bubble` is Slice H's own page: it is the only
+**Since step 33 the corpus is complete**: all thirteen pages are mounted and gated —
+**thirteen pages, twenty-nine views** — and `page-11.test.ts` asserts the completeness
+mechanically, fetching each page and each suite's own **source** and matching the
+`mountCorpus` call that names it. (What it cannot do is discover a *fourteenth* page: the
+runner serves no directory index, measured, so the list of thirteen is a literal there
+exactly as it is a count here.)
+
+**`11-multi-plane` is the only page whose subject is the view rather than a widget.** Every
+other page has one plane per view; this one has **three** side by side in A and **two
+overlapping** in B, which is the only way SPEC §4.8 — *"scales never cross a plane boundary;
+data and domains do"* — becomes observable. It is also the corpus's **one query-coalescing
+page**: both views declare `source` on the `hdml-view` and no plane repeats it, so A's twelve
+binding sites name **one** ref. Two things are true only here — the three panels share a
+**domain** (`values="series_max"`) and not a range, and B's two planes are two **plot
+regions** rather than `07-mixed`'s two coordinate systems on one, so the same month projects
+to two different x positions. **A is the corpus's one view quantized to two decimals rather
+than rule 3's six**: `width: 33.333%` is snapped to the engine's own layout unit (1/64 px in
+Blink and WebKit, 1/60 px in Gecko), so the whole scene disagrees by at most
+**2.1 × 10⁻³ px** across engines and agrees exactly at two. `06-bubble` is Slice H's own page: it is the only
 page in the corpus that runs the **`size` channel** (`--hdml-size-min`/`-max` on a `sqrt`
 scale with `nice`, the combination step 25's ladder correction was made for and which nothing
 under `html/hdvl/` had ever executed), and its ordinal colour domain is **derived from a
@@ -322,9 +338,16 @@ a double-gated page's whole-page render assertion belongs to the **later** slice
 `08` views** and `09` A carry an `hdml-legend`, which is Slice H's, so their goldens were taken
 over `withoutDeferred(scene, DEFERRED_TO_SLICE_H)` until step 32 re-ran those pages whole.
 **All five views of `04` declare one**, so the whole page was scoped that way; `12` has four
-views and is gated **per view** — step 28 took B (the gauge), step 30 C (the `hdml-stack`) and
-step 32 **A** (the ramp legend), with `12-D` left to Slice I and the scope asserted from the
-document rather than left to an index.
+views and is gated **per view**, and **four slices took one page** — step 28 took B (the
+gauge), step 30 C (the `hdml-stack`), step 32 **A** (the ramp legend) and step 33 **D** (the
+`symlog` day), each asserting its own scope from the document rather than trusting an index,
+which is what kept the four gates independent while three slices landed between them. `12-D`
+is where `type="symlog"` with a `constant`, an `hdml-datetime-scale` with an IANA `zone` and
+literal ISO strings first meet markup an author wrote: the zone is load-bearing for the
+**ticks** and not for the domain (a date-only ISO string is UTC by specification, so the
+domain is the same either way, while every tick boundary is computed in the scale's zone and
+the New York and UTC ladders share no instant at all), and it is the first *golden* whose
+numbers come through `temporal-polyfill` on all three engines.
 
 **`DEFERRED_TO_SLICE_H` is now empty**, and the constant and `withoutDeferred` are both kept:
 the mechanism outlives its first argument, and step 33's `11-multi-plane` may need it again.
@@ -356,9 +379,9 @@ Seven decisions the harness takes once, because five gate steps inherit them:
 | | |
 |---|---|
 | **A page is fetched, never inlined** | `mountCorpus` `fetch`es `/html/hdvl/<name>.html` off the runner's own static serving. Inlining the markup into a test would be a **third** copy that no `cmp` covers |
-| **The page's `hdml-io` is removed first** | **Nine of the twelve** gated pages declare one against a host that does not exist, and it would both hit the network and register as a **second** D8 provider — `subscribe.ts` de-dupes by `id`, not by provider. `FakeIo` replaces it outright (RFC §10.3). The count removed is asserted, and so is the absence of any `hdml-io` in the mounted page |
+| **The page's `hdml-io` is removed first** | **Ten of the thirteen** gated pages declare one against a host that does not exist, and it would both hit the network and register as a **second** D8 provider — `subscribe.ts` de-dupes by `id`, not by provider. `FakeIo` replaces it outright (RFC §10.3). The count removed is asserted, and so is the absence of any `hdml-io` in the mounted page |
 | **The page's `<style>` is adopted verbatim** | Injected into `document.head` before the fixture mounts, removed at teardown. The bare tag selectors are what SPEC §7 makes placement out of, so they must reach the light DOM exactly as on the served page |
-| **The layout viewport is pinned at 800 px** | Eleven of the twelve gated pages size their view `width: 100%`. The runner's window is a Playwright default, not a corpus fact; 800 is wider than every page's own `max-width` (760, 760, 760, **760**, 720, **760**, 780, 480, 480, 520, 480), so each page keeps its author's dimensions and none is capped by the harness |
+| **The layout viewport is pinned at 800 px** | Twelve of the thirteen gated pages size their view `width: 100%`. The runner's window is a Playwright default, not a corpus fact; 800 is wider than every page's own `max-width` (760, 760, 760, **760**, 720, **760**, 780, 480, 480, 520, **780**, 480), so each page keeps its author's dimensions and none is capped by the harness. It is also what makes `11`'s thirds a *fractional* number of pixels — 33.333 % of 780 — and so the one place a used width is engine-dependent |
 | **Geometry is asserted everywhere, `text` on chromium only** | Cross-engine rule 4. `stripText` blanks every `text` field for the three-engine `deepEqual`; the strings are a second assertion behind an engine guard whose classification is itself asserted on all three, so an engine-detection change cannot make the scoped half silently pass |
 | **A deferred element is excluded by name** | C3, as `DEFERRED_TO_SLICE_H` + `withoutDeferred` rather than as an omission. Added at step 28, the first gate to meet a double-gated page; **emptied at step 32**, which is what widened those goldens. Both are kept — an empty list is also an assertion, and a later page may need a different tag in it |
 | **`-0` is swept, not assumed** | `negativeZeros` returns the dotted paths of every signed zero in a scene. Added at step 28 because polar pages are where one becomes reachable — `sin(180deg)` is `-1.2e-16` and a coordinate times a zero radius carries the sign |

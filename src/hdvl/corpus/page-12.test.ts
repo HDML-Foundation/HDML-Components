@@ -22,8 +22,16 @@ import {
   stripText,
   withoutDeferred,
 } from "../../testing/corpus";
-import { formatCompactSet } from "../kernel/format-skeleton";
+import {
+  dateOptions,
+  formatCompactSet,
+} from "../kernel/format-skeleton";
 import { localeOf, scaleOf } from "../scale";
+import {
+  calendarRung,
+  ticksCalendar,
+} from "../kernel/ticks-calendar";
+import { fieldsOf } from "../kernel/zone";
 import { tickSpecOf } from "../guide-spec";
 import {
   installSceneRecorder,
@@ -52,12 +60,15 @@ import {
  *   the corpus where §4.4's guides-first convention is used the
  *   other way on purpose, because the ring would occlude the text.
  *
- * ★ **This page has four views and this file gates three, one slice
- * apart each.** The gauge is Slice F's; **C is Slice G's** and is
- * gated in the second suite below; **A is Slice H's** and is gated
- * in the third. `12-D`'s `symlog` datetime cartesian chart is Slice
- * I's and is not gated yet — the scope is asserted from the document
- * rather than left to the indices `1`, `2` and `0`.
+ * ★ **This page has four views and this file gates all four, one
+ * slice apart each — four slices took one page.** The gauge is
+ * Slice F's (step 28); **C is Slice G's** (step 30) and is gated in
+ * the second suite below; **A is Slice H's** (step 32) and is gated
+ * in the third; **D is Slice I's** (step 33) and is gated in the
+ * fourth. Every suite asserts its own scope from the **document**
+ * rather than trusting the indices `1`, `2`, `0` and `3`, which is
+ * what kept the four gates independent while three slices landed
+ * between them.
  *
  * ★ **The gauge is a pure polar chain with no radius scale**, so it
  * is the second thing step 28's `Projection.span` correction
@@ -752,6 +763,263 @@ suite("corpus 12-coverage (A, the ramp legend)", () => {
     assert.deepEqual(structuredClone(scene), scene);
     assert.deepEqual(negativeZeros(sceneOf(view)), []);
     assert.strictEqual(nodeCount(scene), 65);
+    assert.isBelow(nodeCount(scene), 20000);
+  });
+});
+
+/**
+ * ★ **`12-coverage` D — the last un-gated view in the project, and
+ * the only place three firsts meet on a page** (RFC §10.1 I,
+ * SPEC §6).
+ *
+ * `type="symlog"` with a `constant`, an `hdml-datetime-scale` with
+ * an IANA `zone`, and literal ISO strings. Steps 14, 16 and 17
+ * built all three as kernel tables and fixtures; **none had ever
+ * run against markup an author wrote**, which is exactly the gap
+ * this page was authored to close.
+ *
+ * ★ **The zone is load-bearing for the ticks, not for the domain.**
+ * A bare `YYYY-MM-DD` is parsed as an instant at **UTC** midnight
+ * — `scale.ts`'s `instantOf` only appends a `Z` to a *dated* string
+ * that carries a time, and `Date.parse` reads the date-only form as
+ * UTC by specification — so the domain is the same with or without
+ * `zone="America/New_York"`. What the zone moves is
+ * `ticks-calendar.ts`'s ladder: every boundary is computed **in the
+ * scale's zone**, so the ticks land on New York wall-clock
+ * boundaries and share no instant at all with the UTC ones. The
+ * page's own comment says exactly that (*"the IANA zone places tick
+ * boundaries in exchange-local time"*), and the gate asserts both
+ * halves.
+ *
+ * ★ **Rule 5 on a golden for the first time.** `kernel/zone.ts` is
+ * the calendar seam and the only `temporal-polyfill` importer, and
+ * the native binding is absent on webkit — so this is the first
+ * committed *scene* whose numbers come through the ponyfill on all
+ * three engines. They agree byte for byte; only the rendered
+ * strings differ (rule 4), which `stripText` scopes.
+ *
+ * ★ **Two observations the page makes and nothing fixes**, both
+ * normative: `count="5"` over a four-day domain descends past the
+ * `1d` rung (four boundaries, one short) to `12h`, so eight ticks
+ * are labelled with a **day** skeleton and read as four repeated
+ * pairs; and `format="compact-short"` over a symlog domain
+ * reaching ±0.5 gives one prefix to the whole **set** (§4.9), so
+ * `-1` and `-0.5` both read `-0.001K`. Both are the author's
+ * spelling meeting a normative rule, not a defect, and the gate
+ * pins them rather than hiding them.
+ */
+
+/** D's index in the page's four views. */
+const SYMLOG = 3;
+
+/** The five literal ISO days the view binds, verbatim. */
+const DAYS = [
+  "2026-08-03",
+  "2026-08-04",
+  "2026-08-05",
+  "2026-08-06",
+  "2026-08-07",
+];
+
+/** The five net-cash-flow values, verbatim from the page. */
+const FLOW = [-8200, -140, 6, 950, 7400];
+
+/** The scale's zone, and the one it would take without it. */
+const ZONE = "America/New_York";
+const UTC = "UTC";
+
+suite("corpus 12-coverage (D, the symlog day)", () => {
+  setup(() => {
+    installSceneRecorder();
+  });
+
+  teardown(() => {
+    restoreRenderers();
+  });
+
+  test("★ D renders, and 12 is now gated whole", async () => {
+    // Slice I's scope, asserted from the document. With this suite
+    // the page's four views are gated across four slices, and the
+    // corpus's thirteenth page (`11-multi-plane`) is gated too.
+    const page = await mountCorpus("12-coverage");
+    assert.lengthOf(page.views, 4);
+    assert.strictEqual(page.removedIo, 0);
+    const view = page.views[SYMLOG];
+    assert.lengthOf(view.querySelectorAll("hdml-datetime-scale"), 1);
+    assert.lengthOf(view.querySelectorAll("hdml-legend"), 0);
+    assert.isEmpty(DEFERRED_TO_SLICE_H);
+    const y = view.querySelector(
+      'hdml-continuous-scale[channel="y"]',
+    );
+    assert.strictEqual(y?.getAttribute("type"), "symlog");
+    assert.strictEqual(y?.getAttribute("constant"), "1");
+    assertRenders(view);
+  });
+
+  test("★ symlog, with its constant, on a page", async () => {
+    // The transform's SHAPE, not five captured pixels: every
+    // vertex is compared against `scale.project(v)` for the value
+    // the row carries — including `6`, which is inside the linear
+    // region the `constant` defines, and `-8200`, which is not.
+    // Rule 2's tolerance applies: the transform runs through
+    // `Math.log`.
+    const page = await mountCorpus("12-coverage");
+    const view = page.views[SYMLOG];
+    const hit = view.querySelector(
+      'hdml-continuous-scale[channel="y"]',
+    );
+    const y = scaleOf(<HdvlElement>(<unknown>hit));
+    assert.deepEqual(y?.domain()?.extent, [-10000, 10000]);
+    const line = goldenOf(view).groups.filter(
+      (g) => g.tag === "hdml-line",
+    )[0].nodes[0];
+    assert.strictEqual(line.k, "path");
+    const vertices = line.k === "path" ? line.vertices : [];
+    assert.lengthOf(vertices, FLOW.length);
+    vertices.forEach((v, i) => {
+      assert.closeTo(v.y, y?.project(FLOW[i]) ?? NaN, 1e-6);
+    });
+    // The linear region is what a `log` scale cannot express: the
+    // three small magnitudes are ORDERED and none of them is at an
+    // endpoint, and zero is representable at all.
+    assert.isBelow(vertices[2].y, vertices[1].y);
+    assert.isBelow(vertices[3].y, vertices[2].y);
+    assert.isNumber(y?.project(0));
+  });
+
+  test("★ the ticks are local, never UTC", async () => {
+    // §4.8's ladder, computed in the SCALE's zone. Asserted
+    // against `ticksCalendar` itself (R12/R18) and, decisively,
+    // against the same call in UTC: the two lists share no
+    // instant, so a zone-less implementation could not have
+    // produced this axis by accident.
+    const page = await mountCorpus("12-coverage");
+    const view = page.views[SYMLOG];
+    const el = <HdvlElement>(
+      (<unknown>view.querySelector("hdml-datetime-scale"))
+    );
+    const x = scaleOf(el);
+    const label = <HdvlElement>(
+      (<unknown>view.querySelector('hdml-label[channel="x"]'))
+    );
+    const spec = tickSpecOf(label);
+    assert.strictEqual(spec.count, 5);
+    const [lo, hi] = x?.domain()?.extent ?? [NaN, NaN];
+    const got = (x?.ticks(spec) ?? []).map((t) => Number(t.value));
+    assert.deepEqual(got, ticksCalendar(lo, hi, 5, ZONE));
+    const utc = ticksCalendar(lo, hi, 5, UTC);
+    assert.lengthOf(
+      got.filter((v) => utc.includes(v)),
+      0,
+    );
+    // Every boundary is a New York wall-clock one — the `1d` rung
+    // offers four over a four-day domain, one short of the five
+    // asked for, so §4.8 descends to `12h` and midnight and noon
+    // both qualify. In UTC the same instants are at 04:00/16:00.
+    assert.strictEqual(calendarRung(lo, hi, 5, ZONE)?.unit, "hour");
+    got.forEach((v) => {
+      const local = fieldsOf(v, ZONE);
+      assert.strictEqual(local.minute, 0);
+      assert.oneOf(local.hour, [0, 12]);
+      assert.oneOf(fieldsOf(v, UTC).hour, [4, 16]);
+    });
+  });
+
+  test("★ MMMd is an option bag, not a string", async () => {
+    // §4.9's contract is the BAG — this repo's own CLDR mapping —
+    // which is asserted exactly on all three engines. The rendered
+    // strings are ICU data and are chromium-scoped (rule 4).
+    assert.deepEqual(dateOptions("MMMd"), {
+      month: "short",
+      day: "numeric",
+    });
+    const page = await mountCorpus("12-coverage");
+    const view = page.views[SYMLOG];
+    const labels = goldenOf(view).groups.filter(
+      (g) => g.tag === "hdml-label",
+    )[0];
+    assert.lengthOf(labels.nodes, 8);
+    assert.notStrictEqual(ENGINE, "unclassified");
+    if (ENGINE !== "chromium") {
+      return;
+    }
+    const texts = labels.nodes.map((n) =>
+      n.k === "text" ? n.text : "",
+    );
+    assert.deepEqual(texts, [
+      "Aug 3",
+      "Aug 3",
+      "Aug 4",
+      "Aug 4",
+      "Aug 5",
+      "Aug 5",
+      "Aug 6",
+      "Aug 6",
+    ]);
+    // Eight ticks, four distinct strings: a DAY skeleton over a
+    // 12-hour rung. The skeleton is the author's and §4.9 formats
+    // what the ladder gives it.
+    assert.strictEqual(new Set(texts).size, 4);
+  });
+
+  test("★ literal ISO days parse as instants", async () => {
+    // §6's explicit parse, and the page's own comment. The domain
+    // is the two UTC midnights the strings name — the `zone` does
+    // NOT move it, because a date-only ISO form is UTC by
+    // specification — so the value the zone changes is the tick
+    // ladder above, never the data.
+    const page = await mountCorpus("12-coverage");
+    const view = page.views[SYMLOG];
+    const el = <HdvlElement>(
+      (<unknown>view.querySelector("hdml-datetime-scale"))
+    );
+    assert.strictEqual(el.getAttribute("zone"), ZONE);
+    const x = scaleOf(el);
+    assert.strictEqual(x?.kind, "datetime");
+    assert.deepEqual(x?.domain()?.extent, [
+      Date.parse(DAYS[0]),
+      Date.parse(DAYS[4]),
+    ]);
+    assert.deepEqual(x?.domain()?.extent, [
+      Date.UTC(2026, 7, 3),
+      Date.UTC(2026, 7, 7),
+    ]);
+    // …and each vertex sits where its own instant projects.
+    const line = goldenOf(view).groups.filter(
+      (g) => g.tag === "hdml-line",
+    )[0].nodes[0];
+    const vertices = line.k === "path" ? line.vertices : [];
+    vertices.forEach((v, i) => {
+      assert.closeTo(v.x, x?.project(DAYS[i]) ?? NaN, 1e-6);
+    });
+  });
+
+  test("the golden holds on every engine", async () => {
+    const page = await mountCorpus("12-coverage");
+    assert.deepEqual(
+      stripText(goldenOf(page.views[SYMLOG])),
+      stripText(GOLDEN_D),
+    );
+  });
+
+  test("the text holds on chromium", async () => {
+    assert.notStrictEqual(ENGINE, "unclassified");
+    if (ENGINE !== "chromium") {
+      return;
+    }
+    const page = await mountCorpus("12-coverage");
+    assert.deepEqual(goldenOf(page.views[SYMLOG]), GOLDEN_D);
+  });
+
+  test("it round-trips, is -0 free and fits", async () => {
+    const page = await mountCorpus("12-coverage");
+    const view = page.views[SYMLOG];
+    const scene = goldenOf(view);
+    assert.deepEqual(structuredClone(scene), scene);
+    assert.deepEqual(negativeZeros(sceneOf(view)), []);
+    // Thirteen grid lines, thirteen y labels, eight x labels, two
+    // axes and one path.
+    assert.strictEqual(nodeCount(scene), 37);
     assert.isBelow(nodeCount(scene), 20000);
   });
 });
@@ -2700,6 +2968,792 @@ const GOLDEN_C: Scene = {
           fill: "rgb(0, 0, 0)",
           stroke: null,
           strokeWidth: 0,
+          dash: null,
+        },
+      ],
+    },
+  ],
+};
+
+const GOLDEN_D: Scene = {
+  width: 480,
+  height: 320,
+  groups: [
+    {
+      widget: "",
+      tag: "hdml-grid",
+      role: "guide",
+      box: { x: 64, y: 16, w: 392, h: 264 },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: { x: 64, y: 280 },
+              segments: [{ k: "line", to: { x: 456, y: 280 } }],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(203, 213, 225)",
+          strokeWidth: 1,
+          dash: [1, 2],
+        },
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: { x: 64, y: 247.01325 },
+              segments: [{ k: "line", to: { x: 456, y: 247.01325 } }],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(203, 213, 225)",
+          strokeWidth: 1,
+          dash: [1, 2],
+        },
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: { x: 64, y: 214.141887 },
+              segments: [
+                { k: "line", to: { x: 456, y: 214.141887 } },
+              ],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(203, 213, 225)",
+          strokeWidth: 1,
+          dash: [1, 2],
+        },
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: { x: 64, y: 182.365586 },
+              segments: [
+                { k: "line", to: { x: 456, y: 182.365586 } },
+              ],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(203, 213, 225)",
+          strokeWidth: 1,
+          dash: [1, 2],
+        },
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: { x: 64, y: 157.933882 },
+              segments: [
+                { k: "line", to: { x: 456, y: 157.933882 } },
+              ],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(203, 213, 225)",
+          strokeWidth: 1,
+          dash: [1, 2],
+        },
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: { x: 64, y: 153.810948 },
+              segments: [
+                { k: "line", to: { x: 456, y: 153.810948 } },
+              ],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(203, 213, 225)",
+          strokeWidth: 1,
+          dash: [1, 2],
+        },
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: { x: 64, y: 148 },
+              segments: [{ k: "line", to: { x: 456, y: 148 } }],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(203, 213, 225)",
+          strokeWidth: 1,
+          dash: [1, 2],
+        },
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: { x: 64, y: 142.189052 },
+              segments: [
+                { k: "line", to: { x: 456, y: 142.189052 } },
+              ],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(203, 213, 225)",
+          strokeWidth: 1,
+          dash: [1, 2],
+        },
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: { x: 64, y: 138.066118 },
+              segments: [
+                { k: "line", to: { x: 456, y: 138.066118 } },
+              ],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(203, 213, 225)",
+          strokeWidth: 1,
+          dash: [1, 2],
+        },
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: { x: 64, y: 113.634414 },
+              segments: [
+                { k: "line", to: { x: 456, y: 113.634414 } },
+              ],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(203, 213, 225)",
+          strokeWidth: 1,
+          dash: [1, 2],
+        },
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: { x: 64, y: 81.858113 },
+              segments: [{ k: "line", to: { x: 456, y: 81.858113 } }],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(203, 213, 225)",
+          strokeWidth: 1,
+          dash: [1, 2],
+        },
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: { x: 64, y: 48.98675 },
+              segments: [{ k: "line", to: { x: 456, y: 48.98675 } }],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(203, 213, 225)",
+          strokeWidth: 1,
+          dash: [1, 2],
+        },
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: { x: 64, y: 16 },
+              segments: [{ k: "line", to: { x: 456, y: 16 } }],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(203, 213, 225)",
+          strokeWidth: 1,
+          dash: [1, 2],
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-axis",
+      role: "guide",
+      box: { x: 64, y: 280, w: 392, h: 24 },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: { x: 64, y: 280 },
+              segments: [{ k: "line", to: { x: 456, y: 280 } }],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(0, 0, 0)",
+          strokeWidth: 1.5,
+          dash: null,
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-label",
+      role: "guide",
+      box: { x: 64, y: 280, w: 392, h: 24 },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "text",
+          i: -1,
+          x: 80.333333,
+          y: 280,
+          text: "Aug 3",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 129.333333,
+          y: 280,
+          text: "Aug 3",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 178.333333,
+          y: 280,
+          text: "Aug 4",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 227.333333,
+          y: 280,
+          text: "Aug 4",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 276.333333,
+          y: 280,
+          text: "Aug 5",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 325.333333,
+          y: 280,
+          text: "Aug 5",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 374.333333,
+          y: 280,
+          text: "Aug 6",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 423.333333,
+          y: 280,
+          text: "Aug 6",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-axis",
+      role: "guide",
+      box: { x: 24, y: 16, w: 40, h: 264 },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: { x: 64, y: 280 },
+              segments: [{ k: "line", to: { x: 64, y: 16 } }],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(0, 0, 0)",
+          strokeWidth: 1.5,
+          dash: null,
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-label",
+      role: "guide",
+      box: { x: 24, y: 16, w: 40, h: 264 },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: false,
+      clipPath: null,
+      nodes: [
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 280,
+          text: "-10K",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 247.01325,
+          text: "-1K",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 214.141887,
+          text: "-0.1K",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 182.365586,
+          text: "-0.01K",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 157.933882,
+          text: "-0.001K",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 153.810948,
+          text: "-0.001K",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 148,
+          text: "0K",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 142.189052,
+          text: "0.001K",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 138.066118,
+          text: "0.001K",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 113.634414,
+          text: "0.01K",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 81.858113,
+          text: "0.1K",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 48.98675,
+          text: "1K",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 64,
+          y: 16,
+          text: "10K",
+          anchor: "end",
+          baseline: "middle",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+      ],
+    },
+    {
+      widget: "",
+      tag: "hdml-line",
+      role: "mark",
+      box: { x: 64, y: 16, w: 392, h: 264 },
+      opacity: 1,
+      filter: "none",
+      visibility: "visible",
+      clip: true,
+      clipPath: null,
+      nodes: [
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: { x: 64, y: 277.156203 },
+              segments: [
+                { k: "line", to: { x: 162, y: 218.923461 } },
+                { k: "line", to: { x: 260, y: 120.112067 } },
+                { k: "line", to: { x: 358, y: 49.72111 } },
+                { k: "line", to: { x: 456, y: 20.314803 } },
+              ],
+            },
+          ],
+          closed: false,
+          vertices: [
+            { x: 64, y: 277.156203, i: 0 },
+            { x: 162, y: 218.923461, i: 1 },
+            { x: 260, y: 120.112067, i: 2 },
+            { x: 358, y: 49.72111, i: 3 },
+            { x: 456, y: 20.314803, i: 4 },
+          ],
+          fill: null,
+          stroke: "rgb(28, 140, 244)",
+          strokeWidth: 2,
           dash: null,
         },
       ],
