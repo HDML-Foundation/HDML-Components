@@ -314,6 +314,21 @@ mechanically, fetching each page and each suite's own **source** and matching th
 runner serves no directory index, measured, so the list of thirteen is a literal there
 exactly as it is a count here.)
 
+**`validator.test.ts` is the fourteenth file and the odd one out** (step 34): it is not a
+page's gate but SPEC §11's, mounting all thirteen and asserting that every rule is silent
+on every view — plus the **absences that are claims**, which no per-page gate can state.
+It mounts **no data provider**, because §8.2's structural pass is data-independent and the
+binding pass's delivered half is what the thirteen page suites already assert; and it
+proves its own silence is a result rather than a vacuum by taking two mutations per view
+(strip the accessible name → W2; append a bare `hdml-axis` under a plane → V13), asserting
+each red, then restoring and re-asserting clean. `assertRenders` gained R20's node budget in
+the same step, so **W4** — which is warned to the console and never filed as a `Finding` —
+is asserted on all twenty-nine gated views against `validate.ts`'s own constant.
+
+SPEC §11's **V11 and V12 are not runtime-applicable** and live in
+[scripts/check-dist.mjs](../scripts/check-dist.mjs) instead, over the same thirteen pages'
+source. `npm run check_dist` reports them in its summary line, which grew a clause for it.
+
 **`11-multi-plane` is the only page whose subject is the view rather than a widget.** Every
 other page has one plane per view; this one has **three** side by side in A and **two
 overlapping** in B, which is the only way SPEC §4.8 — *"scales never cross a plane boundary;

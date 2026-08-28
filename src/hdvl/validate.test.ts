@@ -1089,10 +1089,20 @@ suite("hdvl/validate — diagnostics", () => {
   });
 
   test("V4 — the same ref, spelled right, is silent", async () => {
+    // ★ The frame is PINNED, and step 34's V7 widening is why.
+    // `x="units"` beside `y="[0]"` is SPEC §11's *literal-with-
+    // bound zip* — element 0 of an authored array is paired with
+    // row 0 of a column — so an unsorted frame is a true V7
+    // warning about this fixture's own markup, not a false
+    // positive to be silenced. The fixture is made well-formed
+    // rather than the rule narrowed (R23).
     const [, view] = await mount(html`
       <div>
         <hdml-frame name="f">
           <hdml-field name="units"></hdml-field>
+          <hdml-sort-by>
+            <hdml-field name="units"></hdml-field>
+          </hdml-sort-by>
         </hdml-frame>
         <hdml-view
           aria-label="v4c"
@@ -2087,11 +2097,21 @@ suite("hdvl/validate — diagnostics", () => {
     // legend halves and V14's two well-formedness clauses all
     // reuse codes the union already had, and SPEC §9's palette
     // exhaustion finally calls `palette-exhausted`, which had sat
-    // in the union with no caller since step 12. One code is still
-    // uncalled — `colorless-series`, which is **W3's** (*"a
-    // colourless container child or pie: legal, legend-less"*) and
-    // therefore a claim about a MARK, not about the legend. It is
-    // asserted present here and nowhere raised.
+    // in the union with no caller since step 12. **Step 34 added
+    // no code either** — it completed V7 from two of SPEC's five
+    // order-consuming constructs to all five, reusing
+    // `unpinned-row-order`.
+    //
+    // ★ **TWO codes are uncalled, not one.** This comment said one
+    // until step 34's gate went looking for it: `colorless-series`
+    // (**W3** — *"a colourless container child or pie: legal,
+    // legend-less"*, a claim about a MARK, not about the legend)
+    // and `unknown-construct` (**W1** — the forward-compatibility
+    // seam SPEC §11 closes with a warning). Both are deferred with
+    // the user, argued, and the machine-checked home for that
+    // verdict is `corpus/validator.test.ts`'s `LEDGER`, which is
+    // exhaustive over `RuleId`. Both are asserted present here and
+    // nowhere raised.
     assert.lengthOf(Object.keys(CODES), 22);
     // …and the warning space, whose seventh member is V7's rather
     // than a W-rule's (step 27).

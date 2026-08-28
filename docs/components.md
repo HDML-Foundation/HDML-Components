@@ -907,6 +907,17 @@ a0ₖ = (Σ_{j<k} vⱼ) / total       a1ₖ = a0ₖ + vₖ / total
   starts where the slice before it ended and the remaining slices still close the turn.
 - **Row order is slice order, and nothing sorts.** The duty to pin it attaches to the
   **frame** (`hdml-sort-by`) and is **V7**'s, reported where the validator can see the frame.
+  A pie is one of **five** order-consuming constructs SPEC §11 names, and since step 34 all
+  five report: a pie, a `hdml-stack`, a **path widget over bound columns** (`hdml-line` /
+  `hdml-area` join row *k* to row *k+1*, so a reordered result is a different polyline over
+  identical data), a **literal-with-bound zip** on any mark (element *k* of an authored array
+  pairs with row *k* of a column), and a **column-derived ordinal domain** (`values="region"`
+  on an `hdml-ordinal-scale` is §4.2's insertion-ordered distinct list — the same column under
+  a continuous or datetime scale yields an *extent*, which has no order to lose). It is a
+  **warning**: nothing about the composition is wrong, so it never blanks and never sets
+  `:state(error)`. *Where the validator can see the frame* is load-bearing and unchanged — an
+  **in-page** `?hdml-frame=` ref to a frame the same document declares. A `source` naming
+  another document is silent, because *unresolvable* is a different claim from *unsorted*.
 - **It publishes no radial attribute at all**, so its radial extent is always the arc's third
   case: the full range, floored by `--hdml-inner-radius`. 08-B declares that on the widget and
   08-D on the plane; the property inherits and the widget reads it, so the two are the same
@@ -1037,6 +1048,17 @@ The full table of names, syntaxes and initial values is SPEC §9; `properties.ts
 `HDVL_PROPERTIES` so the set can be asserted against without re-deriving it. (Like `./hdql`,
 the `./hdvl` entry re-exports no class or module symbol beyond the vocabulary — the tag
 registrations are its public surface.)
+
+**V12 — *"only registered `--hdml-*` properties appear in page CSS"* — is enforced at
+source, not at runtime**, and could not be otherwise: an unregistered custom property is
+perfectly legal to the platform and simply never reaches an element, so from inside the
+element there is nothing to see. Since step 34 `scripts/check-dist.mjs` reads
+`properties.ts` — the registry itself, never a second list — and checks every `--hdml-*`
+token in each corpus page's `<style>` bodies and inline `style=` attributes against it, the
+four `_hover` variants included. **V11** is source-time for the mirror reason (a data
+element is inert in the display half) and is checked in the same place, against
+`@hdml/types`: known tags, published attributes on data elements, and the `{table}_{field}`
+compound on every `origin`/`field` inside a **model**-sourced frame.
 
 ## Authoring example
 

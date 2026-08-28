@@ -89,7 +89,7 @@ import type { Scene, SceneGroup, SceneNode } from "../hdvl/scene";
 import type { HdmlViewElement } from "../hdvl/view";
 import type { FakeColumn, FakeResult } from "./FakeIo";
 import { HDVL_TAG_NAMES } from "../hdvl/vocabulary";
-import { diagnosticsOf } from "../hdvl/validate";
+import { NODE_BUDGET, diagnosticsOf } from "../hdvl/validate";
 import { sceneOf } from "./scene-of";
 
 /** Rule 3's quantization, as the options object every gate uses. */
@@ -382,6 +382,17 @@ export function result(
  * sheet declares no such rule), so a page can be in error *and*
  * paint marks.
  *
+ * ★ **The fifth clause is step 34's: R20's node budget, W4.**
+ * `validateNodeBudget` warns to the console and memoises the
+ * warning; it never files a `Finding`, so W4 is invisible to
+ * `diagnosticsOf` and the four clauses above could not see it.
+ * Counting the scene here is what turns *"zero W4 across
+ * twenty-nine views"* into an assertion every gated view makes,
+ * against the constant `validate.ts` warns from rather than a
+ * second copy of the number (R12). The densest gated view is
+ * `04-E` at 98 nodes, three orders below the budget, so a failure
+ * here means a widget started emitting per pixel.
+ *
  * @param view - The view to gate.
  */
 export function assertRenders(view: HdmlViewElement): void {
@@ -395,6 +406,7 @@ export function assertRenders(view: HdmlViewElement): void {
     0,
   );
   assert.deepEqual(diagnosticsOf(view), []);
+  assert.isAtMost(nodeCount(scene), NODE_BUDGET);
 }
 
 /** Every node in a scene — R20's W4 budget is counted over this. */

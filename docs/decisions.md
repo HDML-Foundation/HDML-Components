@@ -1306,6 +1306,86 @@ an un-upgraded custom element already has, so the rule became independent of upg
 the offending child where the index knows it, and on the container where it does not; the
 state lands on the container either way (§3.5).
 
+## The corpus V-gate mounts no data provider, deliberately
+
+*(Step 34.)*
+
+`src/hdvl/corpus/validator.test.ts` runs SPEC §11's rules over all thirteen pages and
+mounts **no `FakeIo`**. That is not a shortcut, it is the shape of §8.2: the **structural**
+pass runs inside `reindex()` off attributes and the DOM — sixteen of the twenty V-rules
+plus W2 — and is data-independent by construction, while the binding pass's
+column-derived half (V2's kind clause, V4's `absent` clause, V5, V7's row clauses) is
+already asserted zero on all twenty-nine views by the thirteen `page-NN.test.ts` suites,
+each with that page's own canned columns. A fourteenth mount would assert the same claim
+against the same data and would need a **second copy of every fixture**, which is exactly
+what the harness's decision 1 forbids for markup.
+
+It is still not a structure-only pass: every check that depends on an **authored** domain
+runs live there, because a literal `min`/`max`/`values` resolves with no delivery at all —
+SPEC §9's palette exhaustion and V2's `log`-domain clause are both real coverage in that
+file.
+
+## An empty diagnostics list is proved, not assumed
+
+*(Step 34.)*
+
+`diagnosticsOf` answers `[]` for a view it has never seen, so a gate asserting only
+emptiness passes identically whether the pass ran or never started — step 28's T2, one
+level up. Every corpus page therefore takes **two** mutations that SPEC says are
+violations, one per level the pass has: the view's accessible name is stripped (W2, the
+check made *before* the element loop) and a bare `hdml-axis` is appended under a plane
+(V13, a finding produced *inside* it). Both are asserted red and then restored and
+re-asserted clean, which is R25's recovery half. Fifty-eight probes across twenty-nine
+views, and the reason the step could report *zero violations* without that being a null
+result.
+
+## V7 attaches to five constructs, and the corpus proved it costs nothing
+
+*(Step 34, approved under D1.)*
+
+SPEC §11's V7 row names *"pie slices, path widgets over bound columns, literal-with-bound
+zips, stacks, and column-derived ordinal domains"*. Two had callers — the pie at step 27,
+the stack at 29 — and `checkV7`'s own doc comment listed the three that did not. The gate
+found it; completing it was a **strictening fix against SPEC's quoted text**, which is the
+only edit R23 permits a gate step to make to a rule.
+
+*Why one predicate rather than three clauses:* `consumesRowOrder(el)` is the entire change.
+No new `WarningCode`, no new message, no new locality — what widened is *which elements the
+duty attaches to*, the same shape step 20's `requiredChannels` took for V1. *Why
+`hdml-cluster` is absent:* SPEC's list does not name it, and its shared band is a scale,
+which the fifth clause already covers wherever that domain is column-derived. *Why a scalar
+literal is not a zip:* `color='"North"'` broadcasts and has no row *k* to be paired with.
+
+The measurement is the argument that it was safe: **zero findings across all thirteen
+corpus pages** — every one of the eleven frames already carries `hdml-sort-by` — and
+exactly **one** in the fixture suite, a V4 test whose `<hdml-point x="units" y="[0]">` over
+an unpinned in-page frame is a literal-with-bound zip and therefore a true positive. That
+fixture was **pinned**; the rule was not narrowed.
+
+## W1 and W3 stay uncalled, and the reason is measured
+
+*(Step 34, decided with the user.)*
+
+Two `WarningCode`s have no caller: `colorless-series` (**W3** — *"a colourless container
+child or pie: legal, legend-less"*) and `unknown-construct` (**W1** — SPEC §11's
+forward-compatibility seam). The tree claimed one; the pass that went looking for W3 found
+W1 in the same state. Neither W-rule was ever given a step in the implementation plan.
+
+**W3 is cheap to trigger and expensive to land.** The predicate is fifteen mechanical lines
+and would be **silent across all thirteen corpus pages** — every container child and every
+pie there binds `color`. Its blast radius is the *fixture* suite: **0 of 25**
+container-child and pie fixtures bind one, so all of them would start warning, and giving
+each a `color` to silence it **moves its committed scene**, because a colour binding changes
+the fill paint. A gate step is the wrong place to move twenty-five goldens.
+
+**W1's trigger set is a design decision SPEC sketches rather than settles** — which
+attributes count as unrecognised, how the rule composes with `HDML.supports`, and how it
+avoids warning about every global and `aria-*` attribute an author legitimately writes.
+
+Both are therefore deferred, with the machine-checked record of the verdict in
+`corpus/validator.test.ts`'s `LEDGER`, which is exhaustive over `RuleId` — a twenty-seventh
+rule cannot enter the union without one.
+
 ## 70-column line width
 
 [.eslintrc.js](../.eslintrc.js#L31-L36) sets `max-len: 70` and Prettier `printWidth: 70`.

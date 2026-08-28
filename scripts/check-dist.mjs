@@ -20,6 +20,17 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import {
+  CONNECTIVE_ATTRS_LIST,
+  CONN_ATTRS_LIST,
+  FIELD_ATTRS_LIST,
+  FILTER_ATTRS_LIST,
+  FRAME_ATTRS_LIST,
+  HDML_TAG_NAMES,
+  JOIN_ATTRS_LIST,
+  MODEL_ATTRS_LIST,
+  TABLE_ATTRS_LIST,
+} from "@hdml/types";
 
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -319,6 +330,246 @@ for (const file of tsFilesUnder("src/hdvl")) {
 }
 
 // ---------------------------------------------------------------
+// 7. V11 and V12 over the CORPUS PAGE SOURCE (SPEC §11, RFC §10.2).
+//
+// Both rules are **not runtime-applicable** (R23), and neither is
+// a matter of opinion about it:
+//
+//   V11 — "data elements use their real, current grammar". A data
+//   element is inert in the display half; nothing under
+//   `src/hdvl/` ever reads one, so no runtime check could exist.
+//
+//   V12 — "only registered `--hdml-*` properties appear in page
+//   CSS". An unregistered custom property is perfectly legal to
+//   the platform and simply never reaches an element, so it is
+//   invisible from inside the element too.
+//
+// They are therefore enforced HERE, over the thirteen committed
+// acceptance pages, which is the only place either rule has a
+// subject. Landed at step 34.
+// ---------------------------------------------------------------
+
+/** The corpus pages, in name order. */
+const CORPUS_DIR = "html/hdvl";
+
+/** Global HTML attributes any element may carry. */
+const GLOBAL_ATTRS = [
+  "class",
+  "id",
+  "style",
+  "hidden",
+  "slot",
+  "title",
+  "lang",
+  "dir",
+  "role",
+];
+
+/** The data tags, and the attribute vocabulary each publishes. */
+const DATA_ATTRS = {
+  [HDML_TAG_NAMES.CONNECTION]: CONN_ATTRS_LIST,
+  [HDML_TAG_NAMES.MODEL]: MODEL_ATTRS_LIST,
+  [HDML_TAG_NAMES.TABLE]: TABLE_ATTRS_LIST,
+  [HDML_TAG_NAMES.JOIN]: JOIN_ATTRS_LIST,
+  [HDML_TAG_NAMES.CONNECTIVE]: CONNECTIVE_ATTRS_LIST,
+  [HDML_TAG_NAMES.FILTER]: FILTER_ATTRS_LIST,
+  [HDML_TAG_NAMES.FRAME]: FRAME_ATTRS_LIST,
+  [HDML_TAG_NAMES.FIELD]: FIELD_ATTRS_LIST,
+  // The three "by" containers publish no attributes at all — they
+  // are pure grouping elements, which is itself part of V11's
+  // grammar and is asserted by the empty list rather than by
+  // leaving them out of the map.
+  [HDML_TAG_NAMES.FILTER_BY]: {},
+  [HDML_TAG_NAMES.GROUP_BY]: {},
+  [HDML_TAG_NAMES.SPLIT_BY]: {},
+  [HDML_TAG_NAMES.SORT_BY]: {},
+};
+
+/** Every tag name this package may legally register or serve. */
+const KNOWN_TAGS = new Set([
+  ...Object.values(HDML_TAG_NAMES),
+  // Neither a data nor a display tag: `HDML_TAG_NAMES` has no `IO`
+  // member, exactly as `@customElement("hdml-io")` is a literal.
+  "hdml-io",
+]);
+
+/**
+ * Every `hdml-*` start tag in a document, with its attributes.
+ *
+ * A regex over `<hdml-…>` cannot be used directly: a `clause`
+ * attribute is free SQL and may hold a `>`. This walks the text and
+ * respects quoting, which is enough for hand-written pages and adds
+ * no dependency.
+ */
+function hdmlTags(source) {
+  const out = [];
+  const re = /<(hdml-[a-z-]+)/g;
+  let m;
+  while ((m = re.exec(source)) !== null) {
+    let i = re.lastIndex;
+    let quote = null;
+    while (i < source.length) {
+      const c = source[i];
+      if (quote !== null) {
+        if (c === quote) {
+          quote = null;
+        }
+      } else if (c === '"' || c === "'") {
+        quote = c;
+      } else if (c === ">") {
+        break;
+      }
+      i++;
+    }
+    const attrs = {};
+    const body = source.slice(re.lastIndex, i);
+    const ar = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*(?:=\s*("([^"]*)"|'([^']*)'))?/g;
+    let a;
+    while ((a = ar.exec(body)) !== null) {
+      if (a[0].trim() === "") {
+        continue;
+      }
+      attrs[a[1]] = a[3] ?? a[4] ?? "";
+    }
+    out.push({ tag: m[1], attrs, end: i });
+  }
+  return out;
+}
+
+/** Every `<style>` body in a document, CSS comments stripped. */
+function styleText(source) {
+  let css = "";
+  const re = /<style[^>]*>([\s\S]*?)<\/style>/g;
+  let m;
+  while ((m = re.exec(source)) !== null) {
+    css += m[1].replace(/\/\*[\s\S]*?\*\//g, " ");
+  }
+  // Inline `style="…"` is page CSS too, and V12 says "page CSS".
+  const inline = /\sstyle\s*=\s*"([^"]*)"/g;
+  while ((m = inline.exec(source)) !== null) {
+    css += `\n${m[1]}`;
+  }
+  return css;
+}
+
+/**
+ * SPEC §9's registry, read off `src/hdvl/properties.ts`.
+ *
+ * The registry itself, never a second list: a property added there
+ * is usable in a page the moment it lands, and one removed fails
+ * every page still writing it.
+ */
+function registeredProperties() {
+  const src = read("src/hdvl/properties.ts");
+  const out = new Set();
+  const re = /name:\s*"(--hdml-[a-zA-Z0-9_-]+)"/g;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    out.add(m[1]);
+  }
+  return out;
+}
+
+const REGISTERED = registeredProperties();
+if (REGISTERED.size === 0) {
+  fail("V12", "src/hdvl/properties.ts registers no --hdml-* names");
+}
+
+const pages = fs.existsSync(path.join(root, CORPUS_DIR))
+  ? fs
+      .readdirSync(path.join(root, CORPUS_DIR))
+      .filter((n) => n.endsWith(".html"))
+      .sort()
+  : [];
+if (pages.length === 0) {
+  fail("V11", `${CORPUS_DIR} serves no pages`);
+}
+
+for (const name of pages) {
+  const rel = `${CORPUS_DIR}/${name}`;
+  const source = read(rel);
+
+  // --- V11 -----------------------------------------------------
+  for (const { tag, attrs } of hdmlTags(source)) {
+    if (!KNOWN_TAGS.has(tag)) {
+      fail(
+        "V11",
+        `${rel} writes <${tag}>, which is not an HDML element; ` +
+          "the vocabulary is @hdml/types' HDML_TAG_NAMES",
+      );
+      continue;
+    }
+    const vocabulary = DATA_ATTRS[tag];
+    if (vocabulary === undefined) {
+      // A display tag. V11's subject is the data half; an
+      // unrecognised attribute on a display element is W1's, and
+      // W1 is a runtime warning.
+      continue;
+    }
+    const allowed = new Set([
+      ...Object.values(vocabulary),
+      ...GLOBAL_ATTRS,
+    ]);
+    for (const attr of Object.keys(attrs)) {
+      if (attr.startsWith("aria-") || attr.startsWith("data-")) {
+        continue;
+      }
+      if (!allowed.has(attr)) {
+        fail(
+          "V11",
+          `${rel}: <${tag} ${attr}="…"> — ${tag} publishes ` +
+            `${Object.values(vocabulary).join(", ") || "no"} ` +
+            "attributes",
+        );
+      }
+    }
+  }
+
+  // A **model**-sourced frame reads its parent's fields by the
+  // `{table}_{field}` compound; a **frame**-sourced one reads bare
+  // names. The systematic bug the first verification pass found
+  // was exactly this distinction collapsed — every model-sourced
+  // frame used bare parent column names — so the corpus README's
+  // Mechanical verification log records it and this guards it.
+  const frames = source.matchAll(
+    /<hdml-frame\b([\s\S]*?)>([\s\S]*?)<\/hdml-frame>/g,
+  );
+  for (const frame of frames) {
+    const head = frame[1];
+    const src = /source\s*=\s*"([^"]*)"/.exec(head);
+    if (src === null || !/\?hdml-model=/.test(src[1])) {
+      continue;
+    }
+    const compound = /\s(origin|field)\s*=\s*"([^"]*)"/g;
+    let ref;
+    while ((ref = compound.exec(frame[2])) !== null) {
+      if (!ref[2].includes("_")) {
+        fail(
+          "V11",
+          `${rel}: ${ref[1]}="${ref[2]}" in a model-sourced ` +
+            "frame — a parent field surfaces as {table}_{field}",
+        );
+      }
+    }
+  }
+
+  // --- V12 -----------------------------------------------------
+  const css = styleText(source);
+  const used = new Set(
+    [...css.matchAll(/--hdml-[a-zA-Z0-9_-]+/g)].map((m) => m[0]),
+  );
+  for (const property of [...used].sort()) {
+    if (!REGISTERED.has(property)) {
+      fail(
+        "V12",
+        `${rel} writes ${property}, which SPEC §9 does not ` +
+          "register (src/hdvl/properties.ts)",
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------
 
 if (failures.length > 0) {
   console.error("check-dist FAILED:");
@@ -328,8 +579,14 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
+// The summary line is quoted verbatim in every landed step note
+// from 05 on, so it is extended DELIBERATELY and only once: step 34
+// adds the two source-time V-rules, and a note comparing against an
+// older quote should read the difference as this line growing a
+// clause rather than as a check having changed.
 console.log(
   `check-dist OK — ${ENTRIES.length} entries, ` +
     `${derivedSideEffects().length} sideEffects paths, ` +
-    `${rootSet.size} root registrations.`,
+    `${rootSet.size} root registrations, ` +
+    `${pages.length} corpus pages (V11, V12).`,
 );

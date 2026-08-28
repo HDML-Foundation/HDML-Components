@@ -243,8 +243,15 @@ const AREA_TAG: string = HDVL_TAG_NAMES.AREA;
 /**
  * R20's budget — *"above 20 000 scene nodes: warn (W4) and keep
  * rendering. Never decimate, never truncate silently."*
+ *
+ * **Exported at step 34** so the corpus harness can assert the
+ * budget against the same number rather than a second copy of it
+ * (R12). W4 is warned through {@link applyWarnings} and never
+ * memoised into a pass, so it cannot appear in
+ * {@link diagnosticsOf} — `assertRenders` therefore counts the
+ * scene against this constant directly.
  */
-const NODE_BUDGET = 20000;
+export const NODE_BUDGET = 20000;
 
 /**
  * The channels `hdml-rule` needs a scale for, bound or not.
@@ -296,6 +303,12 @@ const STACK_TAG: string = HDVL_TAG_NAMES.STACK;
 
 /** See {@link RULE_TAG}. */
 const CLUSTER_TAG: string = HDVL_TAG_NAMES.CLUSTER;
+
+/**
+ * See {@link RULE_TAG}. Read by V7's fifth construct — SPEC names
+ * *column-derived **ordinal** domains*, and no other scale tag.
+ */
+const ORDINAL_SCALE_TAG: string = HDVL_TAG_NAMES.ORDINAL_SCALE;
 
 /**
  * §6.5's four **positional** guides — V16's and V20's scope in this
@@ -2117,6 +2130,73 @@ function unpinnedFrameOf(
 }
 
 /**
+ * ★ **SPEC §11's five order-consuming constructs**, as one
+ * predicate (step 34, approved under D1).
+ *
+ * *"Pie slices, path widgets over bound columns, literal-with-bound
+ * zips, stacks, and column-derived ordinal domains — require their
+ * frame to pin row order."* Each reads the frame's rows **as a
+ * sequence** rather than as a set, so an unordered query gives a
+ * chart that is correct at every instant and different between
+ * refreshes:
+ *
+ * 1. **A pie** — row order is slice order (§6.3).
+ * 2. **A stack** — row order is band order along the shared band.
+ * 3. **A path widget over bound columns** — `hdml-line` and
+ *    `hdml-area` join row *k* to row *k+1*, so a reordered result
+ *    is a different polyline over identical data. A path over
+ *    literals alone is the author's own order and pins itself.
+ * 4. **A literal-with-bound zip** — element *k* of an authored
+ *    array is paired with row *k* of a column (§5's N), so the two
+ *    only line up while the rows hold still. It is *any* mark, not
+ *    only a path: `hdml-bar x='["Q1","Q2"]' y="revenue"` is the
+ *    same mistake with rectangles.
+ * 5. **A column-derived ordinal domain** — `values="region"` on an
+ *    `hdml-ordinal-scale` is §4.2's insertion-ordered distinct
+ *    list, which is row order. A *continuous* or *datetime* domain
+ *    derived from the same column is an **extent**, and an extent
+ *    has no order to lose, which is why the clause names ordinal.
+ *
+ * A **scalar** literal (`color='"North"'`) is not an array and
+ * takes no part in a zip: it broadcasts and has no row *k*. A
+ * `hdml-cluster` is deliberately absent — SPEC's list does not
+ * name it, and its own shared band is a scale, which clause 5
+ * already covers wherever that domain is column-derived.
+ *
+ * @param el - Any display element.
+ * @returns Whether it reads its source's rows as a sequence.
+ */
+function consumesRowOrder(el: HdvlElement): boolean {
+  if (el.tag === HDVL_TAG_NAMES.PIE || el.localName === STACK_TAG) {
+    return true;
+  }
+  let columns = 0;
+  let arrays = 0;
+  for (const [, raw] of boundValues(el)) {
+    const value = raw.trim();
+    if (IDENTIFIER.test(value)) {
+      columns++;
+    } else if (value.startsWith("[")) {
+      arrays++;
+    }
+  }
+  if (columns === 0) {
+    return false;
+  }
+  if (el.localName === ORDINAL_SCALE_TAG) {
+    return true;
+  }
+  if (el.family !== "mark") {
+    return false;
+  }
+  return (
+    el.localName === LINE_TAG ||
+    el.localName === AREA_TAG ||
+    arrays > 0
+  );
+}
+
+/**
  * **V7's structural half — the order-pinning warning** (SPEC §11,
  * §6.3).
  *
@@ -2126,14 +2206,25 @@ function unpinnedFrameOf(
  * blank**: nothing about the composition is wrong, and §8.3's
  * warnings *"never blank anything and never set `:state(error)`"*.
  *
- * **`hdml-pie` and `hdml-stack`.** SPEC's V7 row generalises the
- * duty to *"order-consuming constructs"* — path widgets over bound
- * columns, literal-with-bound zips, stacks, column-derived ordinal
- * domains. Step 27 landed the pie; **step 29 added the stack under
- * the same code and the same locality**, which is the whole point
- * of R12: a stack's rows are its categories in the frame's own
- * order exactly as a pie's are its slices, so a second warning code
- * for the same sentence would be two rules pretending to be one.
+ * **All five of SPEC's constructs, since step 34.** The row names
+ * *"pie slices, path widgets over bound columns, literal-with-bound
+ * zips, stacks, and column-derived ordinal domains"*. Step 27
+ * landed the pie; step 29 added the stack under the same code and
+ * the same locality; **step 34's corpus gate found the other three
+ * still unimplemented** and closed them, which is why
+ * {@link consumesRowOrder} exists as a predicate rather than as a
+ * tag test inline. It is the step-20 `requiredChannels` shape:
+ * **no new `WarningCode`, no new message and no new locality** —
+ * only *which elements the duty attaches to* widens, which is the
+ * whole point of R12, since a path's vertices are its rows in the
+ * frame's own order exactly as a pie's are its slices.
+ *
+ * **The locality is unchanged and is what keeps a static document
+ * silent.** {@link unpinnedFrameOf} matches an **in-page** ref
+ * only, so a `source` naming another document never warns (V4's
+ * split: *unresolvable* is a different claim from *unsorted*), and
+ * neither does an in-page ref to a frame the page does not
+ * declare.
  *
  * **V7's `container-source` clause lands here too**, on the child
  * rather than on the container: a `hdml-stack` child *"resolves to
@@ -2161,7 +2252,7 @@ function checkV7(el: HdvlElement, out: Finding[]): void {
       ),
     );
   }
-  if (el.tag !== HDVL_TAG_NAMES.PIE && el.localName !== STACK_TAG) {
+  if (!consumesRowOrder(el)) {
     return;
   }
   const ref = res?.source ?? null;
