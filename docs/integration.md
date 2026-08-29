@@ -70,14 +70,46 @@ as the esbuild entry for `bin/index.min.js` and is excluded from CEM analysis al
 
 ### Bundle budget
 
-Ceilings, not measurements. The build assertion that enforces them is not wired yet — it
-lands with the rest of the display runtime.
+**Measurements, and a build assertion that enforces them.**
+[`scripts/check-dist.mjs`](../scripts/check-dist.mjs) bundles each entry the way a
+consumer's bundler would — esbuild, `--bundle --minify --format=esm`, no plugins,
+nothing external — gzips the result at level 9, and fails the build over its ceiling.
+The whole of `check-dist` runs in **0.74 s** with the four bundles included.
 
-| Artifact | Ceiling |
-|---|---|
-| `.` | today's size ± 2 kB — the root entry may not grow |
-| `./hdvl` | 120 kB minified / 40 kB gzipped, measured with `--external:lit` |
-| `bin/index.min.js` | its current size plus the `./hdvl` ceiling |
+| Artifact | Measured (2026-08-29) | Ceiling |
+|---|---|---|
+| `.` | 785.1 kB / 216.4 kB | 825 kB / 228 kB |
+| `./hdio` | 779.3 kB / 215.3 kB | 819 kB / 227 kB |
+| `./hdql` | 35.5 kB / 9.7 kB | 38 kB / 11 kB |
+| `./hdvl` | 409.2 kB / 116.2 kB | 430 kB / 123 kB |
+| `bin/index.min.js` | 1 203.5 kB / 328.5 kB | 1 264 kB / 345 kB |
+
+Every ceiling is **measured × 1.05, rounded up to the whole kB** — five per cent absorbs
+a widget and does not absorb a dependency, which is the only regression the check exists
+to catch. The ceilings live in one place, `BUDGET` in `check-dist.mjs`; this table is a
+copy for readers and the script is the authority.
+
+**`.` and `./hdio` legitimately carry the whole `@hdml/parser` graph.** The checked-in
+[`endpoint.ts`](../src/hdio/endpoint.ts) is the same-thread `MessageChannel` form, and
+only the IIFE build swaps in the `Worker`-spawning one — so the number above *is* what an
+ESM consumer pays.
+
+**`./hdvl` is 409.2 kB where RFC 016/001 §9.5 budgeted 120, and 47.6 % of it is
+`apache-arrow` that nothing in the display half calls.** The path is
+`uid()` → `@hdml/hash` → `@hdml/common`, whose `index.js` is a `globalThis` barrel doing
+an unconditional `import * as arrow from "apache-arrow"`. Removing it was measured and
+**would not have been enough** — `./hdvl` is 194.4 kB / 62.2 kB with `@hdml/hash`
+stubbed out, still 1.6× the old ceiling, because §9.5 also under-counted the local
+source (108.4 kB against a budgeted 60) and `temporal-polyfill` (54.6 kB against 40).
+
+And it costs **a consumer of this package nothing**: importing `.` *and* `./hdvl`
+bundles to 949.2 kB / 270.1 kB either way, byte for byte, because
+[`decode.ts`](../src/hdio/decode.ts) imports `arrow` deliberately — it decodes Arrow IPC.
+The leak is paid only by a consumer importing `./hdvl` **alone**, which is a coherent
+shape (HDVL binds purely through `document` events, and `HdmlConfig` is shared with a
+separate consumer repo) but not one this project targets. The ceilings are therefore a
+**regression guard rather than a target**; the reasoning is in
+[docs/decisions.md](decisions.md).
 
 The IIFE bundle at `bin/index.min.js` is **not** referenced from `package.json` — it ships
 in the publish payload but consumers wire it manually via `<script src=…/bin/index.min.js>`.
@@ -218,11 +250,13 @@ manifest no longer satisfies, which is exactly the six `@hdml/*` lines.
 ## What HDIO sees on the wire
 
 `<hdml-io>` posts an `application/octet-stream` body to
-`POST {host}/public/api/v1/{tenant}/hdio/files` (see [docs/hdio-client.md](hdio-client.md)).
+`POST {host}/{tenant}/api/v1/documents/dynamic`
+([HdioClient.ts:209](../src/hdio/HdioClient.ts#L209); see
+[docs/hdio-client.md](hdio-client.md)) carrying a real `Authorization: Bearer <access>`.
 The body is the `state.data` buffer produced by
-[src/hdio/parse.ts:114](../src/hdio/parse.ts#L114), which is `fileifize(hdomToSave)` from
-`@hdml/buffer`. The HDIO server is expected to interpret this as a `FilesList` FlatBuffers
-table (per the `HDML-Schemas` repo's `.fbs` definitions).
+[src/hdio/parse.ts:151](../src/hdio/parse.ts#L151), which is `fileifize(blobs)` from
+`@hdml/buffer` — the whole `DocumentFilesStruct`, re-sent on every change. The **201**
+response is `{ stored[], ddl[] }`, folded into the ref→key→stored registry.
 
 Path scheme used by the client to identify each artifact (built in
 [src/hdio/parse.ts:62-112](../src/hdio/parse.ts#L62-L112)):

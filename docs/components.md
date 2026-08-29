@@ -46,6 +46,36 @@ flowchart TD
 A `hdml-frame`'s `source` attribute references another `hdml-model` or `hdml-frame`, either
 within the same document or via an HDIO path.
 
+The display half composes as a **chain**, not a tree of peers — the nesting *is* the
+scale binding, which is why V13 forbids a scale and a widget from sharing a level:
+
+```mermaid
+flowchart TD
+  view[hdml-view] --> plane["hdml-cartesian-plane<br/>hdml-polar-plane"]
+  view -.->|"≤ 1"| fb[hdml-fallback]
+  plane --> scale["hdml-continuous-scale<br/>hdml-datetime-scale<br/>hdml-ordinal-scale"]
+  scale -->|"link level —<br/>scales only"| scale
+  scale -->|"tip — widgets only"| mark["hdml-line · hdml-area · hdml-bar<br/>hdml-point · hdml-arc · hdml-rule<br/>hdml-pie"]
+  scale --> guide["hdml-axis · hdml-tick<br/>hdml-label · hdml-grid<br/>hdml-legend"]
+  scale --> ctr["hdml-cluster<br/>hdml-stack"]
+  ctr --> mark
+  ctr -.->|"cluster only"| ctr
+```
+
+Reading it:
+
+- **A level holds scales *xor* widgets** (V13). A scale nested under a scale is a *link*
+  level and carries nothing else; the innermost scale is the **tip**, and every widget
+  hangs off it. `hdml-view` and `hdml-fallback` are families of one, and a plane takes at
+  most one fallback.
+- **Containers compile into ranged marks** (§6.4), so they sit where a widget sits and
+  their children are marks. `hdml-stack` inside `hdml-cluster` is the **only** legal
+  nesting (V17); a stack takes one tag throughout.
+- **`hdml-legend` hangs off the scale it describes**, which for a key is normally the
+  `color` scale — the one guide whose channel no plane consumes.
+- **Scales never cross a plane boundary; data and domains do** (§4.8). Two planes in one
+  view are two coordinate systems, and a scale in one says nothing about the other.
+
 ## Elements
 
 ### `hdml-connection` — [src/hdql/HdmlConnection.ts](../src/hdql/HdmlConnection.ts)

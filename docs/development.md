@@ -49,18 +49,61 @@ npx playwright install           # if outside the devcontainer; the devcontainer
 | `npm run compile_all` | cjs + esm + dts + bin | all four |
 | `npm run check_dist` | `node ./scripts/check-dist.mjs` — the build assertion; **needs a completed `compile_all`** | — |
 | `npm run docs` | TypeDoc on the four entry points against `tsconfig/esm.json` | `docs/api/` (HTML) |
-| `npm run manifest` | `cem analyze --litelement --globs 'src/**/*.ts' --exclude 'src/index.ts' 'src/bundle.ts'` (`--exclude` takes multiple values under one flag) | `custom-elements.json` |
-| `npm run build` | `clear && lint && test && compile_all && check_dist && docs` | release-shaped tree |
+| `npm run manifest` | `cem analyze --litelement --globs 'src/**/*.ts' --exclude 'src/index.ts' 'src/bundle.ts' 'src/testing/**/*.ts' 'src/**/*.test.ts'` (`--exclude` takes multiple values under one flag) | `custom-elements.json` |
+| `npm run build` | `clear && lint && test && compile_all && manifest && check_dist && docs` | release-shaped tree |
 
-**`check_dist`.** It asserts six things browser tests cannot reach, because wtr runs
+**`check_dist`.** It asserts nine things browser tests cannot reach, because wtr runs
 `./tst/**/*.test.js` and never sees `package.json` or the emitted trees: that the `exports`
 map and the `sideEffects` list both match the ones derived from its single `ENTRIES` array;
 that every path `exports` names exists on disk; that every `exports` target is covered by
 `sideEffects`; that `src/index.ts`'s import list is still exactly the union of the `hdio`
-and `hdql` sub-entries; and that `src/hdvl/` imports no `hdio` module other than `config`
+and `hdql` sub-entries; that `src/hdvl/` imports no `hdio` module other than `config`
 (as a value) and `delivery` (**type-only** — a value import would pull the worker,
-`@hdml/parser` and Arrow into every page, and would compile silently). It sits after
-`compile_all` because two of those checks read the built trees.
+`@hdml/parser` and Arrow into every page, and would compile silently); SPEC §11's **V11
+and V12** over the thirteen corpus pages' source; and, since step 35, the **custom-elements
+manifest** and the **bundle budget**. It sits after `compile_all` because several of those
+checks read the built trees, and after `manifest` because it validates it.
+
+**The manifest is generated inside `build`, and committed.** `package.json` declares
+`"customElements": "custom-elements.json"` — a published contract that until step 35
+pointed at a file that did not exist in the repo. `manifest` now runs immediately before
+`check_dist`, so what is asserted is always what the build just produced and a stale
+manifest cannot ship. The check verifies all **21** display tags and the **12** the `.`
+entry registers are present (derived from `vocabulary.ts` and from `src/index.ts`'s own
+import list, never a hand-written list), and that **every display tag's declared
+attributes are exactly its `*_ATTRS_LIST`** — a class whose JSDoc `@attribute` block
+drifted from its enum is the failure that catches, and there are twenty of them. All
+twenty agreed when the check first ran.
+
+**`cem analyze`'s output is not reproducible, so `manifest` has a second half.** It emits
+modules in filesystem-traversal order, and three consecutive runs over an unchanged
+`src/` produced the same 78 modules in **three different orders**. For a committed
+artifact that is fatal, not cosmetic: every build would report the file as modified and a
+real drift would be invisible in the noise.
+[`scripts/normalize-manifest.mjs`](../scripts/normalize-manifest.mjs) sorts the module
+list by path — sufficient on its own, measured byte-identical over three runs — and
+`check_dist` asserts the ordering, so a skipped normalize or a hand-edit fails the build.
+
+**`cem analyze` globs all of `src/`, so the exclusions are load-bearing.** Before step 35
+the manifest published seven `src/testing/` modules, two of which
+(`binder.ts`, `probe.ts`) name their tag through a **constant** the analyzer cannot
+resolve — so the shipped contract advertised two custom elements called `BINDER_TAG` and
+`PROBE_TAG`. `FakeIo` is deliberately not a custom element for the same reason.
+`check_dist` fails if any of them reappears.
+
+**The bundle budget** (RFC 016/001 §9.5) is a build assertion, not a review habit:
+`check_dist` bundles each of the four entries with esbuild the way a consumer's bundler
+would, gzips at level 9, and fails over the ceiling. `bin/index.min.js` is measured off
+disk. The five ceilings live in one `BUDGET` constant; the numbers and the reasoning are
+in [docs/integration.md](integration.md#bundle-budget). The four bundles add ~0.4 s —
+the whole of `check_dist` runs in 0.74 s.
+
+> **Seeding a budget regression is harder than it looks.** A bare `import "some-fat-dep"`
+> proves nothing: the entry is tree-shaken away and the measurement does not move. Worse,
+> importing something *already in the graph* (`apache-arrow`, into `./hdvl`) also moves
+> nothing. A real negative control needs a package the entry does not already carry
+> **and** a retained binding — `import * as p from "@hdml/parser"; globalThis.x = p;`
+> against `./hdvl` takes it from 409.2 kB to 853.4 kB.
 
 **TypeDoc warnings are expected.** `npm run docs` reports ~24 `Encountered an unknown block
 tag @copyright` warnings — one per source file carrying the license preamble, plus the

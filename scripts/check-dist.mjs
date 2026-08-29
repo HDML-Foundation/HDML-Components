@@ -19,7 +19,9 @@
 
 import fs from "fs";
 import path from "path";
+import zlib from "zlib";
 import { fileURLToPath } from "url";
+import * as esbuild from "esbuild";
 import {
   CONNECTIVE_ATTRS_LIST,
   CONN_ATTRS_LIST,
@@ -31,6 +33,13 @@ import {
   MODEL_ATTRS_LIST,
   TABLE_ATTRS_LIST,
 } from "@hdml/types";
+// The eight data enums above are named because check 7's map is
+// deliberately explicit. The display half is the opposite case: check
+// 8 looks a vocabulary up **by derived name** (`${key}_ATTRS_LIST`),
+// which no named import can express — that is what makes a
+// twenty-second display tag unable to enter without either an enum or
+// a stated exemption.
+import * as HDML_TYPES from "@hdml/types";
 
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -44,6 +53,80 @@ const ENTRIES = [
   { subpath: "./hdql", dir: "hdql/" },
   { subpath: "./hdvl", dir: "hdvl/" },
 ];
+
+/**
+ * ★ RFC §9.5's bundle budget — **the only place a ceiling is
+ * written**, and re-baselined at step 35 with the user (option C).
+ *
+ * Values are kilobytes (1024 B), minified and gzip-9, and the rule
+ * that produced every one of them is stated so a reader can
+ * recompute it: **ceiling = measured × 1.05, rounded up to the whole
+ * kB.** Five per cent absorbs a widget; it does not absorb a
+ * dependency, which is the only regression this check exists to
+ * catch.
+ *
+ * The RFC's original `./hdvl` ceiling was **120 / 40** and the entry
+ * measures **409.2 / 116.2**. Both halves of that gap were measured
+ * at step 35 rather than assumed:
+ *
+ * 1. `apache-arrow` is **194.6 kB, 47.6 %** of it, and no line of
+ *    `src/hdvl/` renders with it. The path is `uid()` →
+ *    `@hdml/hash` → `@hdml/common`, whose `index.js` is a
+ *    `globalThis` barrel that unconditionally does
+ *    `import * as arrow from "apache-arrow"`. This is check 6's leak
+ *    class arriving through a package boundary instead of a relative
+ *    path.
+ * 2. **Removing it would not have been enough.** Measured with
+ *    `@hdml/hash` stubbed out, `./hdvl` is **194.4 / 62.2** — still
+ *    1.62× the ceiling, because §9.5's own component estimate
+ *    under-counted the local source (108.4 kB against a budgeted 60)
+ *    and `temporal-polyfill` (54.6 kB against 40).
+ *
+ * And the decisive measurement: a consumer importing **both** `.`
+ * and `./hdvl` bundles **949.2 kB / 270.1 kB either way, byte for
+ * byte**, because `src/hdio/decode.ts` imports `arrow` deliberately
+ * — it decodes Arrow IPC. So the leak costs a full-package consumer
+ * *nothing*, and costs a `./hdvl`-alone consumer everything. That
+ * consumer shape is coherent (HDVL binds only through `document`
+ * events, and `HdmlConfig` is documented as shared with a separate
+ * consumer repo) but is not one this project targets, so the
+ * ceilings below are a **regression guard rather than a target**.
+ * Detail in `docs/integration.md` and `docs/decisions.md`.
+ */
+const BUDGET = {
+  ".": { min: 825, gzip: 228 },
+  "./hdio": { min: 819, gzip: 227 },
+  "./hdql": { min: 38, gzip: 11 },
+  "./hdvl": { min: 430, gzip: 123 },
+};
+
+/** The IIFE artifact's own ceiling, same rule, same units. */
+const IIFE = { file: "bin/index.min.js", min: 1264, gzip: 345 };
+
+/** The generated custom-elements manifest (`package.json` names it). */
+const MANIFEST = "custom-elements.json";
+
+/**
+ * Display tags exempt from check 8's attribute comparison, with the
+ * reason. `hdml-fallback` publishes **no** attributes and so has no
+ * `*_ATTRS_LIST` in `@hdml/types` (§9.6 says twenty enums for
+ * twenty-one tags). Listing it here rather than treating a missing
+ * enum as "expect none" is what stops a twenty-second tag from
+ * passing silently because nobody wrote its vocabulary.
+ */
+const NO_ATTRS_LIST = new Set(["FALLBACK"]);
+
+/**
+ * `hdml-split-by` is in the published `HDML_TAG_NAMES` and **no
+ * module registers it** — `src/hdql/` has eleven elements, not
+ * twelve, and `src/index.ts` imports eleven. Found at step 35 by
+ * check 8. It is a **pre-016 gap in the data half**, out of this
+ * project's scope, and `html/hdml/index.html` writes the tag twice
+ * where it is inert. Named here rather than skipped, so the day an
+ * element lands the constant empties and the check tightens by
+ * itself.
+ */
+const UNREGISTERED_TAGS = new Set([HDML_TAG_NAMES.SPLIT_BY]);
 
 /**
  * `src/hdvl/` may import exactly two `../hdio/` modules: `config`
@@ -570,6 +653,262 @@ for (const name of pages) {
 }
 
 // ---------------------------------------------------------------
+// 8. The custom-elements manifest is COMPLETE (RFC §9.3).
+//
+// `package.json` declares `"customElements": "custom-elements.json"`
+// — a published contract that, until step 35, pointed at a file that
+// did not exist in the repo at all. `npm run manifest` now runs
+// inside `build`, immediately before this check, so what is asserted
+// is always what the build just produced.
+//
+// Everything below is derived. The display tags come from
+// `src/hdvl/vocabulary.ts`'s own `HDVL_TAG_NAMES` block, the root
+// registrations from `src/index.ts`'s import list, and each display
+// tag's attribute vocabulary from `@hdml/types` **by derived name**.
+// A twenty-second display tag therefore cannot be added without a
+// manifest entry AND an attribute enum (or a stated exemption).
+// ---------------------------------------------------------------
+
+/** The display tag KEYS, read off `vocabulary.ts`'s own block. */
+function displayTagKeys() {
+  const src = read("src/hdvl/vocabulary.ts");
+  const block = /HDVL_TAG_NAMES\s*=\s*\{([\s\S]*?)\n\}/.exec(src);
+  if (block === null) {
+    fail("CEM", "src/hdvl/vocabulary.ts has no HDVL_TAG_NAMES block");
+    return [];
+  }
+  const re = /^\s*([A-Z_]+):\s*HDML_TAG_NAMES\.([A-Z_]+),/gm;
+  const out = [];
+  let m;
+  while ((m = re.exec(block[1])) !== null) {
+    out.push(m[2]);
+  }
+  return out;
+}
+
+let manifestTags = new Map();
+const DISPLAY_KEYS = displayTagKeys();
+
+if (!exists(MANIFEST)) {
+  fail(
+    "CEM",
+    `package.json declares "customElements": "${MANIFEST}", which ` +
+      "does not exist (run `npm run manifest`)",
+  );
+} else {
+  const manifest = JSON.parse(read(MANIFEST));
+  const modules = manifest.modules ?? [];
+
+  for (const mod of modules) {
+    for (const decl of mod.declarations ?? []) {
+      if (decl.tagName) {
+        manifestTags.set(decl.tagName, {
+          path: mod.path,
+          attrs: (decl.attributes ?? [])
+            .map((a) => a.name)
+            .filter(Boolean)
+            .sort(),
+        });
+      }
+    }
+  }
+
+  // (a0) The module list is sorted by path. `cem analyze` emits
+  //      filesystem-traversal order, which is not stable between
+  //      runs — three consecutive runs over an unchanged `src/` gave
+  //      three different orders — so a COMMITTED manifest would show
+  //      as modified after every build and hide a real drift in the
+  //      noise. `scripts/normalize-manifest.mjs` sorts it; this is
+  //      what fails if that step is skipped or the file hand-edited.
+  const order = modules.map((m) => m.path);
+  const sorted = [...order].sort();
+  for (let i = 0; i < order.length; i++) {
+    if (order[i] !== sorted[i]) {
+      fail(
+        "CEM",
+        `${MANIFEST} is not sorted by path (${order[i]} where ` +
+          `${sorted[i]} belongs); run \`npm run manifest\``,
+      );
+      break;
+    }
+  }
+
+  // (a) The analyzer globs ALL of `src/`, so the exclusions are the
+  //     only thing keeping non-elements out. `src/testing/`'s
+  //     `binder.ts` and `probe.ts` name their tag through a
+  //     CONSTANT, which the analyzer cannot resolve — before step 35
+  //     the manifest published two elements called `BINDER_TAG` and
+  //     `PROBE_TAG`. `FakeIo` is deliberately not a custom element.
+  for (const mod of modules) {
+    if (
+      mod.path.startsWith("src/testing/") ||
+      mod.path.endsWith(".test.ts") ||
+      mod.path === "src/index.ts" ||
+      mod.path === "src/bundle.ts"
+    ) {
+      fail(
+        "CEM",
+        `${mod.path} is in the manifest; package.json's \`manifest\` ` +
+          "script must exclude it",
+      );
+    }
+  }
+  for (const [tag, { path: where }] of manifestTags) {
+    if (!KNOWN_TAGS.has(tag)) {
+      fail(
+        "CEM",
+        `the manifest declares <${tag}> (${where}), which is not an ` +
+          "HDML element — the analyzer could not resolve its tag name",
+      );
+    }
+  }
+
+  // (b) Every display tag is present, with its attributes.
+  for (const key of DISPLAY_KEYS) {
+    const tag = HDML_TAG_NAMES[key];
+    const got = manifestTags.get(tag);
+    if (got === undefined) {
+      fail("CEM", `<${tag}> is registered but has no manifest entry`);
+      continue;
+    }
+    const list = HDML_TYPES[`${key}_ATTRS_LIST`];
+    if (list === undefined) {
+      if (!NO_ATTRS_LIST.has(key)) {
+        fail(
+          "CEM",
+          `<${tag}> has no ${key}_ATTRS_LIST in @hdml/types and is ` +
+            "not a stated no-attribute tag",
+        );
+      }
+      if (got.attrs.length > 0) {
+        fail(
+          "CEM",
+          `<${tag}> publishes no attributes, but the manifest lists ` +
+            `${got.attrs.join(", ")}`,
+        );
+      }
+      continue;
+    }
+    const want = Object.values(list).sort();
+    for (const attr of want) {
+      if (!got.attrs.includes(attr)) {
+        fail(
+          "CEM",
+          `<${tag}> publishes ${attr}, which its manifest entry ` +
+            "omits — the class JSDoc @attribute block has drifted " +
+            `from ${key}_ATTRS_LIST`,
+        );
+      }
+    }
+    for (const attr of got.attrs) {
+      if (!want.includes(attr)) {
+        fail(
+          "CEM",
+          `the manifest gives <${tag}> an attribute ${attr}, which ` +
+            `${key}_ATTRS_LIST does not publish`,
+        );
+      }
+    }
+  }
+
+  // (c) Every module the ROOT entry registers has an entry too —
+  //     derived from `src/index.ts`, so it is the twelve the `.`
+  //     entry actually imports rather than a count.
+  const declared = new Set([...manifestTags.values()].map((v) => v.path));
+  for (const spec of rootImports) {
+    const target = `src/${spec.replace(/^\.\//, "")}.ts`;
+    if (!declared.has(target)) {
+      fail(
+        "CEM",
+        `src/index.ts registers ${spec}, but ${target} declares no ` +
+          "custom element in the manifest",
+      );
+    }
+  }
+
+  // (d) And the vocabulary as a whole: a published tag with no
+  //     element is either a gap or a lie. `UNREGISTERED_TAGS` holds
+  //     the one that is a known gap.
+  for (const tag of Object.values(HDML_TAG_NAMES)) {
+    if (!manifestTags.has(tag) && !UNREGISTERED_TAGS.has(tag)) {
+      fail(
+        "CEM",
+        `HDML_TAG_NAMES publishes <${tag}>, which no module in this ` +
+          "package registers",
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------
+// 9. The bundle budget (RFC §9.5) — "checked in Slice I as a build
+//    assertion, not a review habit".
+//
+// Each entry is bundled the way a consumer's bundler would: esbuild,
+// `--bundle --minify --format=esm`, no plugins. For `.` and `./hdio`
+// that legitimately includes the whole `@hdml/parser` graph, because
+// the checked-in `endpoint.ts` is the same-thread `MessageChannel`
+// form and only the IIFE build swaps in the `Worker`-spawning one —
+// so the number IS what an ESM consumer pays.
+// ---------------------------------------------------------------
+
+const sizes = [];
+
+function measure(label, bytes, ceiling) {
+  const gz = zlib.gzipSync(bytes, { level: 9 });
+  const min = bytes.length / 1024;
+  const gzip = gz.length / 1024;
+  sizes.push({ label, min, gzip, ceiling });
+  if (min > ceiling.min) {
+    fail(
+      "budget",
+      `${label} is ${min.toFixed(1)} kB minified, over its ` +
+        `${ceiling.min} kB ceiling (RFC §9.5)`,
+    );
+  }
+  if (gzip > ceiling.gzip) {
+    fail(
+      "budget",
+      `${label} is ${gzip.toFixed(1)} kB gzipped, over its ` +
+        `${ceiling.gzip} kB ceiling (RFC §9.5)`,
+    );
+  }
+}
+
+for (const { subpath, dir } of ENTRIES) {
+  const entry = `esm/${dir}index.js`;
+  if (!exists(entry)) {
+    fail("budget", `${entry} does not exist (run \`compile_all\`)`);
+    continue;
+  }
+  const built = esbuild.buildSync({
+    entryPoints: [path.join(root, entry)],
+    bundle: true,
+    minify: true,
+    format: "esm",
+    write: false,
+    outfile: "out.js",
+    logLevel: "silent",
+  });
+  measure(subpath, built.outputFiles[0].contents, BUDGET[subpath]);
+}
+
+if (exists(IIFE.file)) {
+  measure(IIFE.file, fs.readFileSync(path.join(root, IIFE.file)), IIFE);
+} else {
+  fail("budget", `${IIFE.file} does not exist (run \`compile_bin\`)`);
+}
+
+// ---------------------------------------------------------------
+
+for (const s of sizes) {
+  console.log(
+    `  ${s.label.padEnd(18)} ${s.min.toFixed(1).padStart(7)} kB min ` +
+      `(${String(s.ceiling.min).padStart(4)})  ` +
+      `${s.gzip.toFixed(1).padStart(6)} kB gzip ` +
+      `(${String(s.ceiling.gzip).padStart(3)})`,
+  );
+}
 
 if (failures.length > 0) {
   console.error("check-dist FAILED:");
@@ -580,13 +919,17 @@ if (failures.length > 0) {
 }
 
 // The summary line is quoted verbatim in every landed step note
-// from 05 on, so it is extended DELIBERATELY and only once: step 34
-// adds the two source-time V-rules, and a note comparing against an
+// from 05 on, so it is extended DELIBERATELY and only once per step:
+// step 34 added the two source-time V-rules, and step 35 adds the
+// manifest tag count and the budget. A note comparing against an
 // older quote should read the difference as this line growing a
 // clause rather than as a check having changed.
 console.log(
   `check-dist OK — ${ENTRIES.length} entries, ` +
     `${derivedSideEffects().length} sideEffects paths, ` +
     `${rootSet.size} root registrations, ` +
-    `${pages.length} corpus pages (V11, V12).`,
+    `${pages.length} corpus pages (V11, V12), ` +
+    `${manifestTags.size} manifest tags ` +
+    `(${DISPLAY_KEYS.length} display), ` +
+    `${sizes.length} bundles within budget.`,
 );

@@ -1386,6 +1386,95 @@ Both are therefore deferred, with the machine-checked record of the verdict in
 `corpus/validator.test.ts`'s `LEDGER`, which is exhaustive over `RuleId` — a twenty-seventh
 rule cannot enter the union without one.
 
+## The `./hdvl` bundle ceiling was re-baselined, not met
+
+RFC 016/001 §9.5 budgeted `./hdvl` at **120 kB minified / 40 kB gzipped**. Step 35
+measured it at **409.2 kB / 116.2 kB** and, with the user, **re-baselined the ceiling**
+rather than chase it. Three facts decided that, and each was measured rather than argued.
+
+**1. `apache-arrow` is 47.6 % of the entry, and no line of `src/hdvl/` calls it.** The
+path is `uid()` → `@hdml/hash` → `@hdml/common`, whose `index.js` is a `globalThis`
+barrel doing an unconditional `import * as arrow from "apache-arrow"`. This is exactly
+the leak `check-dist.mjs` check 6 forbids across the `../hdio/` boundary, arriving
+through a package boundary instead of a relative path.
+
+**2. Removing it would not have reached the ceiling anyway.** With `@hdml/hash` stubbed
+out, `./hdvl` is **194.4 kB / 62.2 kB** — still 1.6× over. §9.5's component estimate
+under-counted independently of Arrow: the local source is 108.4 kB where it budgeted 60
+(kernel 15 + elements 45), and `temporal-polyfill` is 54.6 kB where it budgeted 40.
+
+**3. It costs a consumer of this package nothing.** A bundle importing `.` **and**
+`./hdvl` measures **949.2 kB / 270.1 kB either way, byte for byte**, because
+[`decode.ts`](../src/hdio/decode.ts) imports `arrow` deliberately — decoding Arrow IPC is
+the data half's job. The same holds for `bin/index.min.js`: the display half's entire
+marginal cost there is 170.2 kB and none of it is Arrow.
+
+So the leak is paid **only** by a consumer importing `./hdvl` alone. That shape is
+coherent — HDVL binds purely through `document`-level `hdml-io-request` events, and
+[`config.ts`](../src/hdio/config.ts) is documented as the config a *separate consumer
+repo* shares — but nothing in this repo or the corpus exercises it, and §9.2's stated
+reason for the entry split runs the other way (keeping `.` free of the geometry kernel).
+
+**What was rejected.** Fixing `@hdml/common` cross-repo is the correct root fix, but it
+is out of 016's declared scope and — measured — shrinks *nothing here* that a local
+`uid` would not; its value is to `@hdml/hash` consumers in other repos. A local ~5-line
+`uid` was rejected because its only beneficiary is the untargeted consumer shape, and it
+would put a second `uid` in the workspace (R12) to save a full-package consumer zero
+bytes.
+
+The ceilings are therefore a **regression guard, not a target**: measured × 1.05, rounded
+up to the whole kB, so five per cent absorbs a widget and does not absorb a dependency.
+RFC §9.5 carries the dated amendment; the table is in
+[docs/integration.md](integration.md#bundle-budget).
+
+## The manifest is generated inside `build` and committed
+
+`package.json` has declared `"customElements": "custom-elements.json"` since long before
+016, and until step 35 **that file did not exist in the repo** — not gitignored, simply
+never generated. `npm run manifest` existed and nothing ran it.
+
+It now runs inside `build`, immediately before `check_dist`, and the output is committed.
+The alternative — leave `build` alone and have `check_dist` fail with *"run `npm run
+manifest`"* — was rejected because it makes a **generated** artifact the author's
+responsibility to keep fresh, and the failure mode it protects against (a manifest that
+drifts from the JSDoc) is precisely the one nobody notices. Generating it costs 1.0 s and
+removes the question. Committing it (rather than gitignoring it alongside `bin/`/`esm/`)
+is what makes the declared `customElements` pointer resolve for anyone reading the repo.
+
+**The `--exclude` list is load-bearing, not tidiness.** `cem analyze` globs all of
+`src/`, so before step 35 the manifest published seven `src/testing/` modules — and two
+of them name their tag through a **constant**, which the analyzer emits verbatim, so the
+published contract advertised two custom elements called `BINDER_TAG` and `PROBE_TAG`.
+`check_dist` now fails if any excluded path reappears, and separately if any declared tag
+is not an HDML element, which catches an unresolved tag name wherever it comes from.
+
+**And committing it forced a second decision: the analyzer's output is not
+reproducible.** `cem` emits modules in filesystem-traversal order; three consecutive runs
+over an unchanged `src/` gave the same 78 modules in three different orders. A committed
+artifact that changes on every build is worse than no artifact — the diff stops meaning
+anything, and a real drift hides in it. `npm run manifest` therefore has a second half,
+[`scripts/normalize-manifest.mjs`](../scripts/normalize-manifest.mjs), which sorts the
+module list by path; that alone is sufficient (measured byte-identical over three runs),
+because declarations within a module are emitted in **source** order and the source is
+stable. `check_dist` asserts the ordering rather than trusting the script to have run.
+
+The alternative was to gitignore the manifest alongside `bin/`/`esm/`, which sidesteps
+reproducibility entirely — rejected for the same reason as before: the `customElements`
+pointer would still not resolve for anyone reading the repo, which is the problem being
+fixed.
+
+## `hdml-split-by` is published and unimplemented
+
+Found by step 35's manifest check. `HDML_TAG_NAMES` has **33** members — 12 data + 21
+display — but `src/hdql/` has **eleven** elements and `src/index.ts` imports eleven, so
+`hdml-split-by` is in the published vocabulary with **no element behind it**.
+[html/hdml/index.html](../html/hdml/index.html) writes the tag twice, where it is inert.
+
+This is a **pre-016 gap in the data half** and was left alone: adding a data element is
+not a documentation-and-assertions step's work. It is named in `check-dist.mjs` as
+`UNREGISTERED_TAGS` — an explicit, argued allowance rather than a silent skip — so the
+day an element lands the constant empties and the check tightens by itself.
+
 ## 70-column line width
 
 [.eslintrc.js](../.eslintrc.js#L31-L36) sets `max-len: 70` and Prettier `printWidth: 70`.
