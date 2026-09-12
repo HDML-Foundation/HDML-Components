@@ -1,0 +1,720 @@
+<!doctype html>
+<!--
+  MAANG — the structural profile of the `tenant-a_maang` catalog.
+
+  A data dictionary, not a story. Where definition.html asks what the
+  numbers mean, this page asks what shape they are in: how many rows,
+  what the declared types are, which columns are keys, how wide the
+  values run, and therefore what an `hdml-model` over this connection
+  should actually declare. Section 8 is the payoff — the model these
+  measurements argue for.
+
+  IT DOES NOT USE THE TENANT'S MODEL, deliberately. /maang.html's model
+  declares every field untyped, so it surfaces `varchar` and pushes the
+  casts downstream; profiling through it would measure that model
+  rather than the data. Every figure here goes at the catalog directly,
+  through this page's own `type="query"` tables.
+
+  FOUR MODELS, ONE TABLE EACH. A model with two unjoined tables emits
+  `from "a", "b"` — a cross join — so a page that needs four unrelated
+  row grains needs four models, not one model with four tables.
+
+  THE SPLIT. Raw SQL produces rows; the frame aggregates them. Clearest
+  in `stat_days` → `coverage_yearly`: the model emits one row per
+  (year, ticker) and the frame pivots it with `count_if` in five
+  ordinary `hdml-field`s.
+
+  WHAT IS STATIC AND WHY. The display vocabulary renders charts; there
+  is no table element (SPEC §8's view-less elements are unscheduled).
+  So the *distributions* are live figures and the *schema* — column
+  order, declared type, nullability — is hand-written HTML. That split
+  is honest rather than convenient: schema is a contract you copy from,
+  and it changes when someone alters a table, not when a row lands.
+
+  AUTH. `mode="oidc"`, matching the sibling pages.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>MAANG — structural profile</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0 auto; padding: 2rem 1.5rem 6rem; max-width: 860px;
+        font-family: system-ui, sans-serif; line-height: 1.55;
+        color: #0f172a;
+      }
+      h1 { font-size: 1.9rem; margin: 0 0 0.25rem; letter-spacing: -0.02em; }
+      h2 {
+        font-size: 1.15rem; margin: 3.5rem 0 0.5rem;
+        letter-spacing: -0.01em;
+      }
+      h2 .n {
+        display: inline-block; min-width: 1.6em;
+        color: #94a3b8; font-variant-numeric: tabular-nums;
+      }
+      .lede { font-size: 1.05rem; color: #334155; margin: 0 0 2rem; }
+      p { margin: 0 0 1rem; }
+      .finding {
+        margin: 0 0 1.25rem; padding: 0.75rem 1rem;
+        border-left: 3px solid #1c8cf4; background: #f1f5f9;
+        font-weight: 600;
+      }
+      .caveat { color: #64748b; font-size: 0.9rem; }
+      code {
+        font-family: ui-monospace, monospace; font-size: 0.9em;
+        background: #f1f5f9; padding: 0.1em 0.35em; border-radius: 3px;
+      }
+      pre {
+        background: #f1f5f9; padding: 1rem; border-radius: 4px;
+        overflow-x: auto; font-size: 0.85rem; line-height: 1.45;
+      }
+      pre code { background: none; padding: 0; font-size: 1em; }
+      table { border-collapse: collapse; width: 100%; margin: 0 0 1rem; }
+      th, td {
+        text-align: left; padding: 0.4rem 0.6rem;
+        border-bottom: 1px solid #e2e8f0; font-size: 0.92rem;
+      }
+      th { color: #475569; font-weight: 600; }
+      td.num { text-align: right; font-variant-numeric: tabular-nums; }
+      td.ok { color: #15803d; font-weight: 600; }
+
+      figure { margin: 1.5rem 0 0; max-width: 100%; }
+      figcaption {
+        margin-bottom: 0.9rem; color: #475569; font-size: 0.9rem;
+      }
+      hdml-fallback {
+        padding: 2rem; border: 1px dashed #cbd5e1; color: #64748b;
+        text-align: center;
+      }
+
+      /* ---- shared chart skin --------------------------------- */
+      hdml-view { width: 100%; height: 340px; }
+      hdml-cartesian-plane { padding: 16px 130px 40px 76px; }
+
+      hdml-ordinal-scale[channel="x"] { padding: 0 16px; }
+      hdml-ordinal-scale.points { --hdml-bandwidth: 0; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+
+      hdml-axis { --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="x"] {
+        position: absolute; left: 0; right: 0; bottom: 0;
+      }
+      hdml-axis[channel="y"] {
+        position: absolute; top: 0; bottom: 0; left: 0;
+      }
+      hdml-grid[channel="y"] {
+        --hdml-line-width: 1px; --hdml-line-style: dotted;
+        --hdml-line-color: #cbd5e1;
+      }
+      hdml-tick {
+        --hdml-tick-style: rect; --hdml-tick-width: 1px;
+        --hdml-tick-height: 6px; --hdml-fill-color: #64748b;
+      }
+      hdml-tick[channel="x"] {
+        position: absolute; left: 0; right: 0; bottom: 0;
+      }
+      hdml-tick[channel="y"] {
+        position: absolute; top: 0; bottom: 0; left: 0;
+      }
+      hdml-label { --hdml-font-size: 11px; --hdml-font-family: inherit; }
+      hdml-label[channel="x"] {
+        position: absolute; left: 0; right: 0; top: 100%;
+      }
+      hdml-label[channel="y"] {
+        position: absolute; top: 0; bottom: 0; right: 100%;
+      }
+
+      hdml-ordinal-scale[channel="color"] {
+        --hdml-palette: #1c8cf4 #f59e0b #10b981 #a855f7 #ef4444;
+      }
+      /* the cardinality figure carries one series per COLUMN, so it
+         needs seven — the registered initial palette ships eight, but
+         an explicit list is what makes the count auditable */
+      hdml-ordinal-scale.by-column {
+        --hdml-palette:
+          #1c8cf4 #f59e0b #10b981 #a855f7 #ef4444 #06b6d4 #64748b;
+      }
+      hdml-legend {
+        position: absolute; top: 8px; left: 100%;
+        width: 120px; --hdml-font-size: 11px;
+      }
+
+      hdml-line { --hdml-line-width: 2px; --hdml-curve-type: linear; }
+      hdml-bar { --hdml-fill-opacity: 0.9; }
+
+      @media (prefers-color-scheme: dark) {
+        body { color: #e2e8f0; }
+        .lede { color: #cbd5e1; }
+        .finding, pre, code { background: #1e293b; }
+        th, td { border-bottom-color: #334155; }
+        th { color: #94a3b8; }
+        figcaption { color: #94a3b8; }
+        td.ok { color: #4ade80; }
+      }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc">
+    </hdml-io>
+
+    <!-- ========================================================
+         1 — table inventory. Five rows: row count and distinct
+         date count side by side, because their equality is the
+         claim that `date` is a key.
+         ======================================================== -->
+    <hdml-model name="stat_tables">
+      <hdml-table
+        name="t"
+        type="query"
+        description="One row per source table: cardinality of rows and of dates."
+        identifier="select 'amazon' as tbl, count(*) as n_rows, count(distinct `date`) as n_dates from `tenant-a_maang`.`maang`.`amazon`
+union all select 'apple', count(*), count(distinct `date`) from `tenant-a_maang`.`maang`.`apple`
+union all select 'google', count(*), count(distinct `date`) from `tenant-a_maang`.`maang`.`google`
+union all select 'microsoft', count(*), count(distinct `date`) from `tenant-a_maang`.`maang`.`microsoft`
+union all select 'netflix', count(*), count(distinct `date`) from `tenant-a_maang`.`maang`.`netflix`">
+        <hdml-field name="tbl"></hdml-field>
+        <hdml-field name="n_rows"></hdml-field>
+        <hdml-field name="n_dates"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="tables_overview" source="?hdml-model=stat_tables">
+      <hdml-field name="label" origin="t_tbl"></hdml-field>
+      <hdml-field name="n_rows" origin="t_n_rows"></hdml-field>
+      <hdml-field name="n_dates" origin="t_n_dates"></hdml-field>
+      <hdml-sort-by>
+        <hdml-field name="label" order="asc"></hdml-field>
+      </hdml-sort-by>
+    </hdml-frame>
+
+    <!-- ========================================================
+         2 — one row per (year, ticker). The model emits the rows;
+         the FRAME does the pivot, with `count_if` in five ordinary
+         fields. This is the split the page argues for.
+         ======================================================== -->
+    <hdml-model name="stat_days">
+      <hdml-table
+        name="d"
+        type="query"
+        description="One row per trading day per ticker, reduced to its year."
+        identifier="select year(cast(`date` as date)) as yr, 'amzn' as sym from `tenant-a_maang`.`maang`.`amazon`
+union all select year(cast(`date` as date)), 'aapl' from `tenant-a_maang`.`maang`.`apple`
+union all select year(cast(`date` as date)), 'goog' from `tenant-a_maang`.`maang`.`google`
+union all select year(cast(`date` as date)), 'msft' from `tenant-a_maang`.`maang`.`microsoft`
+union all select year(cast(`date` as date)), 'nflx' from `tenant-a_maang`.`maang`.`netflix`">
+        <hdml-field name="yr"></hdml-field>
+        <hdml-field name="sym"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="coverage_yearly" source="?hdml-model=stat_days">
+      <hdml-field name="label" clause="cast(`d_yr` as varchar)"></hdml-field>
+      <hdml-field name="yr" origin="d_yr"></hdml-field>
+      <hdml-field name="n_amzn" clause="count_if(`d_sym` = 'amzn')"></hdml-field>
+      <hdml-field name="n_aapl" clause="count_if(`d_sym` = 'aapl')"></hdml-field>
+      <hdml-field name="n_goog" clause="count_if(`d_sym` = 'goog')"></hdml-field>
+      <hdml-field name="n_msft" clause="count_if(`d_sym` = 'msft')"></hdml-field>
+      <hdml-field name="n_nflx" clause="count_if(`d_sym` = 'nflx')"></hdml-field>
+      <hdml-group-by><hdml-field name="yr"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="yr" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- ========================================================
+         3 — distinct values per column, one row per table. Seven
+         counts in one pass per table; no unpivot, so the chart
+         carries one series per COLUMN rather than per table.
+         ======================================================== -->
+    <hdml-model name="stat_cardinality">
+      <hdml-table
+        name="c"
+        type="query"
+        description="Distinct-value count of every column, per table."
+        identifier="select 'amazon' as tbl, count(distinct open) as n_open, count(distinct high) as n_high, count(distinct low) as n_low, count(distinct close) as n_close, count(distinct adj_close) as n_adj, count(distinct volume) as n_volume, count(distinct `date`) as n_date from `tenant-a_maang`.`maang`.`amazon`
+union all select 'apple', count(distinct open), count(distinct high), count(distinct low), count(distinct close), count(distinct adj_close), count(distinct volume), count(distinct `date`) from `tenant-a_maang`.`maang`.`apple`
+union all select 'google', count(distinct open), count(distinct high), count(distinct low), count(distinct close), count(distinct adj_close), count(distinct volume), count(distinct `date`) from `tenant-a_maang`.`maang`.`google`
+union all select 'microsoft', count(distinct open), count(distinct high), count(distinct low), count(distinct close), count(distinct adj_close), count(distinct volume), count(distinct `date`) from `tenant-a_maang`.`maang`.`microsoft`
+union all select 'netflix', count(distinct open), count(distinct high), count(distinct low), count(distinct close), count(distinct adj_close), count(distinct volume), count(distinct `date`) from `tenant-a_maang`.`maang`.`netflix`">
+        <hdml-field name="tbl"></hdml-field>
+        <hdml-field name="n_open"></hdml-field>
+        <hdml-field name="n_high"></hdml-field>
+        <hdml-field name="n_low"></hdml-field>
+        <hdml-field name="n_close"></hdml-field>
+        <hdml-field name="n_adj"></hdml-field>
+        <hdml-field name="n_volume"></hdml-field>
+        <hdml-field name="n_date"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="cardinality_by_table" source="?hdml-model=stat_cardinality">
+      <hdml-field name="label" origin="c_tbl"></hdml-field>
+      <hdml-field name="n_open" origin="c_n_open"></hdml-field>
+      <hdml-field name="n_high" origin="c_n_high"></hdml-field>
+      <hdml-field name="n_low" origin="c_n_low"></hdml-field>
+      <hdml-field name="n_close" origin="c_n_close"></hdml-field>
+      <hdml-field name="n_adj" origin="c_n_adj"></hdml-field>
+      <hdml-field name="n_volume" origin="c_n_volume"></hdml-field>
+      <hdml-field name="n_date" origin="c_n_date"></hdml-field>
+      <hdml-sort-by>
+        <hdml-field name="label" order="asc"></hdml-field>
+      </hdml-sort-by>
+    </hdml-frame>
+
+    <!-- ========================================================
+         4 — the observed value range of every numeric column,
+         across all five tables. One row per column, so the chart
+         is a ranged bar: y0 = min, y1 = max.
+         ======================================================== -->
+    <hdml-model name="stat_ranges">
+      <hdml-table
+        name="r"
+        type="query"
+        description="Observed min and max of each numeric column, all tables pooled."
+        identifier="select col, min(pos) as pos, min(v) as lo, max(v) as hi
+from (
+  select 'open' as col, 1 as pos, cast(open as double) as v from `tenant-a_maang`.`maang`.`amazon`
+  union all select 'high', 2, cast(high as double) from `tenant-a_maang`.`maang`.`amazon`
+  union all select 'low', 3, cast(low as double) from `tenant-a_maang`.`maang`.`amazon`
+  union all select 'close', 4, cast(close as double) from `tenant-a_maang`.`maang`.`amazon`
+  union all select 'adj_close', 5, cast(adj_close as double) from `tenant-a_maang`.`maang`.`amazon`
+  union all select 'volume', 6, cast(volume as double) from `tenant-a_maang`.`maang`.`amazon`
+  union all select 'open', 1, cast(open as double) from `tenant-a_maang`.`maang`.`apple`
+  union all select 'high', 2, cast(high as double) from `tenant-a_maang`.`maang`.`apple`
+  union all select 'low', 3, cast(low as double) from `tenant-a_maang`.`maang`.`apple`
+  union all select 'close', 4, cast(close as double) from `tenant-a_maang`.`maang`.`apple`
+  union all select 'adj_close', 5, cast(adj_close as double) from `tenant-a_maang`.`maang`.`apple`
+  union all select 'volume', 6, cast(volume as double) from `tenant-a_maang`.`maang`.`apple`
+  union all select 'open', 1, cast(open as double) from `tenant-a_maang`.`maang`.`google`
+  union all select 'high', 2, cast(high as double) from `tenant-a_maang`.`maang`.`google`
+  union all select 'low', 3, cast(low as double) from `tenant-a_maang`.`maang`.`google`
+  union all select 'close', 4, cast(close as double) from `tenant-a_maang`.`maang`.`google`
+  union all select 'adj_close', 5, cast(adj_close as double) from `tenant-a_maang`.`maang`.`google`
+  union all select 'volume', 6, cast(volume as double) from `tenant-a_maang`.`maang`.`google`
+  union all select 'open', 1, cast(open as double) from `tenant-a_maang`.`maang`.`microsoft`
+  union all select 'high', 2, cast(high as double) from `tenant-a_maang`.`maang`.`microsoft`
+  union all select 'low', 3, cast(low as double) from `tenant-a_maang`.`maang`.`microsoft`
+  union all select 'close', 4, cast(close as double) from `tenant-a_maang`.`maang`.`microsoft`
+  union all select 'adj_close', 5, cast(adj_close as double) from `tenant-a_maang`.`maang`.`microsoft`
+  union all select 'volume', 6, cast(volume as double) from `tenant-a_maang`.`maang`.`microsoft`
+  union all select 'open', 1, cast(open as double) from `tenant-a_maang`.`maang`.`netflix`
+  union all select 'high', 2, cast(high as double) from `tenant-a_maang`.`maang`.`netflix`
+  union all select 'low', 3, cast(low as double) from `tenant-a_maang`.`maang`.`netflix`
+  union all select 'close', 4, cast(close as double) from `tenant-a_maang`.`maang`.`netflix`
+  union all select 'adj_close', 5, cast(adj_close as double) from `tenant-a_maang`.`maang`.`netflix`
+  union all select 'volume', 6, cast(volume as double) from `tenant-a_maang`.`maang`.`netflix`
+) z
+group by col">
+        <hdml-field name="col"></hdml-field>
+        <hdml-field name="pos"></hdml-field>
+        <hdml-field name="lo"></hdml-field>
+        <hdml-field name="hi"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="ranges_by_column" source="?hdml-model=stat_ranges">
+      <hdml-field name="label" origin="r_col"></hdml-field>
+      <hdml-field name="pos" origin="r_pos"></hdml-field>
+      <hdml-field name="lo" origin="r_lo"></hdml-field>
+      <hdml-field name="hi" origin="r_hi"></hdml-field>
+      <!-- a domain-only sort key: alphabetical order would scatter
+           the OHLC columns, so row order is pinned by position -->
+      <hdml-sort-by>
+        <hdml-field name="pos" order="asc"></hdml-field>
+      </hdml-sort-by>
+    </hdml-frame>
+
+    <h1>MAANG — structural profile</h1>
+    <p class="lede">
+      What is in the <code>tenant-a_maang</code> catalog, measured
+      rather than assumed: sizes, keys, cardinalities, value ranges —
+      and the <code>hdml-model</code> those measurements argue for.
+    </p>
+
+    <h2><span class="n">1</span> The catalog</h2>
+
+    <p>
+      One HDML connection, <code>tenant-a_maang</code>, over a local
+      PostgreSQL. The connection name <em>is</em> the Trino catalog
+      name, so a table is addressed with all three parts — and the
+      hyphen in the tenant prefix means the catalog identifier must be
+      quoted:
+    </p>
+
+    <pre><code>identifier="`tenant-a_maang`.`maang`.`amazon`"</code></pre>
+
+    <p class="caveat">
+      Backticks in an <code>identifier</code> are decoded to double
+      quotes on the way to Trino, which rejects backquoted identifiers
+      outright. Write backticks in HDML; expect
+      <code>"tenant-a_maang"."maang"."amazon"</code> in the SQL.
+    </p>
+
+    <h2><span class="n">2</span> Five tables, and <code>date</code> is a key</h2>
+
+    <p class="finding">
+      Row count equals distinct-<code>date</code> count in every table.
+      <code>date</code> is unique, so a join on it cannot fan out.
+    </p>
+
+    <p>
+      That is the single most important fact for modelling this
+      catalog. The tenant's model full-outer-joins all five on
+      <code>date</code>; if any table had repeated dates, that join
+      would multiply rows silently and every aggregate downstream would
+      be wrong. The two bars per table below are the check — they are
+      equal by measurement, not by assumption.
+    </p>
+
+    <figure>
+      <figcaption id="cap-tables">
+        Rows against distinct <code>date</code> values, per table
+      </figcaption>
+      <hdml-view aria-labelledby="cap-tables">
+        <hdml-fallback>
+          Row counts and distinct date counts for the five tables.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=tables_overview">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="6500">
+              <hdml-ordinal-scale
+                channel="color" values='["Rows","Distinct dates"]'>
+
+                <hdml-grid channel="y" count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+
+                <!-- the cluster hoists x; its children never bind it -->
+                <hdml-cluster x="label">
+                  <hdml-bar y="n_rows" color='"Rows"'></hdml-bar>
+                  <hdml-bar y="n_dates" color='"Distinct dates"'></hdml-bar>
+                </hdml-cluster>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Table</th><th class="num">Rows</th>
+          <th>First</th><th>Last</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>amazon</code></td><td class="num">5 839</td><td>2000-01-03</td><td>2023-03-17</td></tr>
+        <tr><td><code>apple</code></td><td class="num">5 839</td><td>2000-01-03</td><td>2023-03-17</td></tr>
+        <tr><td><code>google</code></td><td class="num">4 677</td><td>2004-08-19</td><td>2023-03-17</td></tr>
+        <tr><td><code>microsoft</code></td><td class="num">5 839</td><td>2000-01-03</td><td>2023-03-17</td></tr>
+        <tr><td><code>netflix</code></td><td class="num">5 241</td><td>2002-05-23</td><td>2023-03-17</td></tr>
+      </tbody>
+    </table>
+
+    <p class="finding">
+      The union of all five date sets is <strong>5 839</strong> days.
+      All five tables cover <strong>4 677</strong> of them; 564 days
+      have four tables and 598 have three.
+    </p>
+
+    <p>
+      So a full-outer join yields 5 839 rows, of which only 80 % are
+      complete. Those 1 162 partial rows are why the tenant's frame
+      coalesces five <code>*_date</code> columns into one, and why any
+      cross-ticker measure has to decide what an absent leg means.
+    </p>
+
+    <h2><span class="n">3</span> Coverage over time</h2>
+
+    <p>
+      Rows per year. The plateau at roughly 252 is the US trading
+      calendar; the two ramps are listing dates, and the short bar at
+      2023 is the March cut-off rather than missing data.
+    </p>
+
+    <figure>
+      <figcaption id="cap-cov">
+        Rows per year, per table
+      </figcaption>
+      <hdml-view aria-labelledby="cap-cov">
+        <hdml-fallback>
+          Row counts per year for each of the five tables.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=coverage_yearly">
+          <hdml-ordinal-scale class="points" channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="270">
+              <hdml-ordinal-scale
+                channel="color"
+                values='["Amazon","Apple","Google","Microsoft","Netflix"]'>
+
+                <hdml-grid channel="y" count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x" count="8"></hdml-tick>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="x" count="8"></hdml-label>
+                <hdml-label channel="y" count="5"></hdml-label>
+
+                <hdml-line x="label" y="n_amzn" color='"Amazon"'></hdml-line>
+                <hdml-line x="label" y="n_aapl" color='"Apple"'></hdml-line>
+                <hdml-line x="label" y="n_goog" color='"Google"'></hdml-line>
+                <hdml-line x="label" y="n_msft" color='"Microsoft"'></hdml-line>
+                <hdml-line x="label" y="n_nflx" color='"Netflix"'></hdml-line>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">4</span> The column dictionary</h2>
+
+    <p class="finding">
+      All seven columns in all five tables are <code>text</code> and
+      nullable — and <code>date</code> is the <em>last</em> column, not
+      the first.
+    </p>
+
+    <p>
+      The shape is identical across the five tables, which is what
+      makes one model over all of them reasonable. But nothing is
+      typed at the source, so every numeric operation is a cast, and a
+      model that declares no <code>type</code> hands raw
+      <code>varchar</code> to everything downstream. Section 8 fixes
+      that.
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th class="num">#</th><th>Column</th><th>Declared</th>
+          <th>Nullable</th><th>What it is</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="num">1</td><td><code>open</code></td><td><code>text</code></td><td>yes</td><td>Session opening price, split-adjusted</td></tr>
+        <tr><td class="num">2</td><td><code>high</code></td><td><code>text</code></td><td>yes</td><td>Session high</td></tr>
+        <tr><td class="num">3</td><td><code>low</code></td><td><code>text</code></td><td>yes</td><td>Session low</td></tr>
+        <tr><td class="num">4</td><td><code>close</code></td><td><code>text</code></td><td>yes</td><td>Session close, split-adjusted only</td></tr>
+        <tr><td class="num">5</td><td><code>adj_close</code></td><td><code>text</code></td><td>yes</td><td>Close adjusted for splits <em>and</em> dividends</td></tr>
+        <tr><td class="num">6</td><td><code>volume</code></td><td><code>text</code></td><td>yes</td><td>Shares traded, integral, split-adjusted</td></tr>
+        <tr><td class="num">7</td><td><code>date</code></td><td><code>text</code></td><td>yes</td><td>Trading day, ISO <code>YYYY-MM-DD</code>, unique</td></tr>
+      </tbody>
+    </table>
+
+    <h2><span class="n">5</span> Cardinality: what is a key, what is a measure</h2>
+
+    <p>
+      Distinct values per column. <code>date</code> sits exactly at the
+      row count — the definition of a key. <code>volume</code> is just
+      below it, so it is effectively continuous. The price columns fall
+      further, and Microsoft's fall furthest — 3 682 distinct
+      <code>high</code> values across 5 839 rows — because prices are
+      quoted on a tick grid and a low-volatility stock revisits the
+      same ticks for years.
+    </p>
+
+    <p class="caveat">
+      The axis is linear, not log, and deliberately: every value here
+      sits between 3 682 and 5 839, and a log axis would compress
+      exactly the differences the figure exists to show. A log axis
+      would also break the bars — the simple <code>y</code> form
+      desugars to a baseline of <strong>zero</strong>, which has no
+      position on a logarithmic scale.
+    </p>
+
+    <figure>
+      <figcaption id="cap-card">
+        Distinct values per column, per table
+      </figcaption>
+      <hdml-view aria-labelledby="cap-card">
+        <hdml-fallback>
+          Distinct-value counts for all seven columns in each table.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=cardinality_by_table">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="6500">
+              <hdml-ordinal-scale
+                class="by-column"
+                channel="color"
+                values='["open","high","low","close","adj_close","volume","date"]'>
+
+                <hdml-grid channel="y" count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+
+                <hdml-cluster x="label">
+                  <hdml-bar y="n_open" color='"open"'></hdml-bar>
+                  <hdml-bar y="n_high" color='"high"'></hdml-bar>
+                  <hdml-bar y="n_low" color='"low"'></hdml-bar>
+                  <hdml-bar y="n_close" color='"close"'></hdml-bar>
+                  <hdml-bar y="n_adj" color='"adj_close"'></hdml-bar>
+                  <hdml-bar y="n_volume" color='"volume"'></hdml-bar>
+                  <hdml-bar y="n_date" color='"date"'></hdml-bar>
+                </hdml-cluster>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">6</span> Value ranges: how wide each column runs</h2>
+
+    <p class="finding">
+      <code>volume</code> reaches 7.42 × 10⁹ — past the top of a signed
+      32-bit integer. Declaring it <code>int-32</code> overflows on real
+      rows.
+    </p>
+
+    <p>
+      Each bar spans the observed minimum to the observed maximum,
+      pooled across all five tables, on a log axis — five decades in
+      one figure. The four price columns share a range of roughly 0.23
+      to 700; <code>volume</code> sits four orders of magnitude above
+      them. This is the figure that sizes the types in section 8.
+    </p>
+
+    <figure>
+      <figcaption id="cap-rng2">
+        Observed minimum → maximum per numeric column, all tables
+        pooled, log scale
+      </figcaption>
+      <hdml-view aria-labelledby="cap-rng2">
+        <hdml-fallback>
+          Observed value ranges of the six numeric columns.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=ranges_by_column">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale
+              channel="y" type="log" min="0.1" max="10000000000">
+              <hdml-ordinal-scale channel="color" values='["Observed range"]'>
+
+                <hdml-grid channel="y" count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+
+                <!-- the ranged form: y0/y1 rather than a baseline -->
+                <hdml-bar
+                  x="label" y0="lo" y1="hi"
+                  color='"Observed range"'></hdml-bar>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">7</span> Every cast is safe</h2>
+
+    <p>
+      The columns are untyped, so the question that decides whether a
+      model can declare types at all is whether the text actually
+      parses. Measured across all 27 435 rows:
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Check</th><th class="num">Violations</th><th>Consequence</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>NULL</code> or empty string, any column</td><td class="num ok">0</td><td>No <code>coalesce</code> needed at the source</td></tr>
+        <tr><td>Value not parseable as a number</td><td class="num ok">0</td><td><code>cast(… as double)</code> cannot fail</td></tr>
+        <tr><td><code>date</code> not exactly 10 characters</td><td class="num ok">0</td><td>Uniform ISO; <code>cast(… as date)</code> is safe</td></tr>
+        <tr><td><code>volume</code> with a decimal point</td><td class="num ok">0</td><td>Integral — <code>int-64</code> is exact, not a rounding</td></tr>
+        <tr><td><code>volume</code> equal to zero</td><td class="num ok">0</td><td>Safe as a divisor</td></tr>
+      </tbody>
+    </table>
+
+    <p class="caveat">
+      Prices carry up to <strong>17 decimal places</strong> — the
+      residue of back-adjusting for splits, not real precision. That
+      rules out <code>decimal</code>: a scale wide enough to hold them
+      is meaningless, and a narrower one silently rounds.
+      <code>float-64</code> is the honest type.
+    </p>
+
+    <h2><span class="n">8</span> The model these measurements argue for</h2>
+
+    <p>
+      Everything above resolves into four decisions —
+      <code>date</code> as a typed key, prices as
+      <code>float-64</code>, <code>volume</code> as
+      <code>int-64</code>, and the join declared on the column proven
+      unique. Per table:
+    </p>
+
+<pre><code>&lt;hdml-table name="amazon" type="table"
+            identifier="`tenant-a_maang`.`maang`.`amazon`"&gt;
+  &lt;!-- unique, ISO, always 10 chars: a real key --&gt;
+  &lt;hdml-field name="date"      type="date"&gt;&lt;/hdml-field&gt;
+
+  &lt;!-- 0.23 … 700.99, up to 17 decimals: not decimal --&gt;
+  &lt;hdml-field name="open"      type="float-64"&gt;&lt;/hdml-field&gt;
+  &lt;hdml-field name="high"      type="float-64"&gt;&lt;/hdml-field&gt;
+  &lt;hdml-field name="low"       type="float-64"&gt;&lt;/hdml-field&gt;
+  &lt;hdml-field name="close"     type="float-64"&gt;&lt;/hdml-field&gt;
+  &lt;hdml-field name="adj_close" type="float-64"&gt;&lt;/hdml-field&gt;
+
+  &lt;!-- integral, max 7.42e9: int-32 overflows --&gt;
+  &lt;hdml-field name="volume"    type="int-64"&gt;&lt;/hdml-field&gt;
+&lt;/hdml-table&gt;</code></pre>
+
+    <p>
+      And the join, once per pair, on the column section 2 proved
+      unique — a <code>keys</code> filter rather than an
+      <code>expr</code> one, so the planner sees an equijoin:
+    </p>
+
+<pre><code>&lt;hdml-join type="full-outer" left="amazon" right="apple"&gt;
+  &lt;hdml-connective operator="and"&gt;
+    &lt;hdml-filter type="keys" left="date" right="date"&gt;&lt;/hdml-filter&gt;
+  &lt;/hdml-connective&gt;
+&lt;/hdml-join&gt;</code></pre>
+
+    <p>
+      Two consequences worth stating before anyone builds on it.
+      Model fields surface downstream as
+      <code>{table}_{field}</code>, so a frame over this model reads
+      <code>amazon_volume</code> and never <code>volume</code>. And
+      <code>full-outer</code> is the right join only if partial rows
+      are wanted: 1 162 of the 5 839 days will carry nulls for at least
+      one ticker. An <code>inner</code> join gives 4 677 complete days
+      instead, and for anything cross-sectional — correlations, index
+      weights, rankings — that is the more honest shape.
+    </p>
+
+    <p class="caveat">
+      What is <em>not</em> measured here: on-disk size. Trino's
+      PostgreSQL connector exposes no relation-size statistic, and
+      <code>pg_relation_size</code> is not reachable through it, so
+      byte counts would have to come from a direct Postgres session
+      rather than from this catalog. Row counts and cardinalities are
+      the size proxies this page can honestly report.
+    </p>
+  </body>
+</html>

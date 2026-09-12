@@ -502,6 +502,33 @@ end to end, not just a static server artifact. Two things to know:
   [docs/hdio-client.md](hdio-client.md)) — the value committed in the page is a spent
   dev-tenant code kept only as a shape example. Replace it with a fresh one before use.
 
+### Live HDVL pages
+
+[html/airbnb/](../html/airbnb/) and [html/maang/](../html/maang/) hold **live** HDVL pages,
+listed under *Live pages* on the hub. They are the counterpart of the thirteen corpus pages
+under [html/hdvl/](../html/hdvl/): the corpus is driven by a test double and gated by
+`src/hdvl/corpus/`, while these load the real `bin/index.min.js` and render whatever Trino
+returns through a live HDIO server. **Nothing gates them** — they are manual pages, and they
+inherit both caveats above (`127.0.0.1` in `host`; the `token` is a spent single-use handoff
+code to be replaced per run).
+
+They exist because a page an author writes is the only thing that runs the vocabulary the way
+an author does. Two shapes are deliberately contrasted: `maang` is five tables that **join**
+on a shared key, `airbnb` twenty that **union**, with the partition keys living in the table
+*names* rather than in any column. `maang/definition.html` is also the one page that reaches
+for `hdml-table type="query"` — raw Trino as a CTE — for the figures a window function is
+needed for and the declarative vocabulary therefore cannot express.
+
+Three files are **unlisted iterations**, kept as a record rather than served:
+`maang/base.html`, `maang/def_1.html` and `maang/def_2.html`. Two things about them are worth
+knowing before editing this directory, because neither is visible from the hub:
+`maang/def_2.html` is byte-identical to `maang/definition.html`, and **`maang/index.html` is
+not the page the hub links it as** — it holds a copy of `airbnb/airbnb.html` whose
+`hdml-grid` carries an array where a channel name belongs (`channel='[1, 500, 1000, 5000]'`
+rather than `channel="y"`), while the *"volume by year"* page that link describes is
+`maang/base.html`. `TODO(confirm: intended resolution — restore maang/index.html from
+base.html and drop the two def_* drafts, or re-point the hub link at base.html?)`
+
 ## Release
 
 [scripts/release.sh](../scripts/release.sh) is **entirely commented out** — it appears to be

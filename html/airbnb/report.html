@@ -1,0 +1,1051 @@
+<!doctype html>
+<!--
+  Airbnb in ten European cities — what the data says.
+
+  A comprehensive report over the `airbnb` schema, built on the
+  structural profile in airbnb.html. Ten figures, no scripts; every
+  number is computed by Trino from four models declared below.
+
+  EVERY QUERY WAS RUN AGAINST THE LIVE TRINO before being written into
+  an `identifier` or a `clause`, and the figures in the prose are its
+  output — including the aggregates that are not obviously portable:
+  `approx_percentile`, `avg(...) FILTER (WHERE ...)`, `corr`, and the
+  cross-join-to-a-VALUES-list pattern that turns one wide aggregate row
+  into one row per measure.
+
+  FOUR MODELS. `abnb` is the twenty-way union at row grain, with `city`
+  and `period` promoted out of the table names — six of the ten figures
+  are ordinary grouped frames over it. The other three models exist
+  because a frame produces columns, not rows: a per-quantile,
+  per-driver or per-segment figure needs a row per quantile, driver or
+  segment, and that unpivot has to happen in SQL.
+
+  THE HEADLINE IS SIMPSON'S PARADOX, sections 6 and 7. Pooled across
+  cities, price barely moves with distance from the centre (r =
+  -0.045). Within every single city it falls hard (r as low as -0.41,
+  London -68% from the first kilometre to beyond five). Aggregating
+  across cities destroys the effect, because the cheap cities are
+  compact and the expensive ones sprawl.
+
+  AUTH. `mode="oidc"`, matching the sibling pages.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Airbnb — ten cities, what the data says</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0 auto; padding: 2rem 1.5rem 6rem; max-width: 860px;
+        font-family: system-ui, sans-serif; line-height: 1.55;
+        color: #0f172a;
+      }
+      h1 { font-size: 1.9rem; margin: 0 0 0.25rem; letter-spacing: -0.02em; }
+      h2 {
+        font-size: 1.15rem; margin: 3.5rem 0 0.5rem;
+        letter-spacing: -0.01em;
+      }
+      h2 .n {
+        display: inline-block; min-width: 1.6em;
+        color: #94a3b8; font-variant-numeric: tabular-nums;
+      }
+      .lede { font-size: 1.05rem; color: #334155; margin: 0 0 2rem; }
+      p { margin: 0 0 1rem; }
+      .finding {
+        margin: 0 0 1.25rem; padding: 0.75rem 1rem;
+        border-left: 3px solid #1c8cf4; background: #f1f5f9;
+        font-weight: 600;
+      }
+      .warn { border-left-color: #dc2626; }
+      .caveat { color: #64748b; font-size: 0.9rem; }
+      code {
+        font-family: ui-monospace, monospace; font-size: 0.9em;
+        background: #f1f5f9; padding: 0.1em 0.35em; border-radius: 3px;
+      }
+      table { border-collapse: collapse; width: 100%; margin: 0 0 1rem; }
+      th, td {
+        text-align: left; padding: 0.4rem 0.6rem;
+        border-bottom: 1px solid #e2e8f0; font-size: 0.92rem;
+      }
+      th { color: #475569; font-weight: 600; }
+      td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+      figure { margin: 1.5rem 0 0; max-width: 100%; }
+      figcaption {
+        margin-bottom: 0.9rem; color: #475569; font-size: 0.9rem;
+      }
+      hdml-fallback {
+        padding: 2rem; border: 1px dashed #cbd5e1; color: #64748b;
+        text-align: center;
+      }
+
+      hdml-view { width: 100%; height: 340px; }
+      hdml-cartesian-plane { padding: 16px 130px 44px 76px; }
+      hdml-ordinal-scale[channel="x"] { padding: 0 16px; }
+      hdml-ordinal-scale.points { --hdml-bandwidth: 0; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+
+      hdml-axis { --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="x"] {
+        position: absolute; left: 0; right: 0; bottom: 0;
+      }
+      hdml-axis[channel="y"] {
+        position: absolute; top: 0; bottom: 0; left: 0;
+      }
+      hdml-grid[channel="y"] {
+        --hdml-line-width: 1px; --hdml-line-style: dotted;
+        --hdml-line-color: #cbd5e1;
+      }
+      hdml-tick {
+        --hdml-tick-style: rect; --hdml-tick-width: 1px;
+        --hdml-tick-height: 6px; --hdml-fill-color: #64748b;
+      }
+      hdml-tick[channel="x"] {
+        position: absolute; left: 0; right: 0; bottom: 0;
+      }
+      hdml-tick[channel="y"] {
+        position: absolute; top: 0; bottom: 0; left: 0;
+      }
+      hdml-label { --hdml-font-size: 11px; --hdml-font-family: inherit; }
+      hdml-label[channel="x"] {
+        position: absolute; left: 0; right: 0; top: 100%;
+      }
+      hdml-label[channel="y"] {
+        position: absolute; top: 0; bottom: 0; right: 100%;
+      }
+
+      hdml-ordinal-scale[channel="color"] {
+        --hdml-palette: #1c8cf4 #f59e0b #10b981 #a855f7 #ef4444 #06b6d4;
+      }
+      hdml-legend {
+        position: absolute; top: 8px; left: 100%;
+        width: 120px; --hdml-font-size: 11px;
+      }
+
+      hdml-line { --hdml-line-width: 2px; --hdml-curve-type: linear; }
+      hdml-line.pooled { --hdml-line-width: 3px; --hdml-line-style: dashed; }
+      hdml-bar { --hdml-fill-opacity: 0.9; }
+      hdml-point {
+        --hdml-tick-style: ellipse;
+        --hdml-tick-width: 9px; --hdml-tick-height: 9px;
+      }
+      hdml-rule {
+        --hdml-line-width: 1px; --hdml-line-color: #dc2626;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body { color: #e2e8f0; }
+        .lede { color: #cbd5e1; }
+        .finding, code { background: #1e293b; }
+        th, td { border-bottom-color: #334155; }
+        th { color: #94a3b8; }
+        figcaption { color: #94a3b8; }
+      }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc">
+    </hdml-io>
+
+    <!-- ============ row grain: six figures come from here ======== -->
+    <hdml-model name="abnb">
+      <hdml-table
+        name="t"
+        type="query"
+        description="All twenty city/period tables stacked; partition keys promoted."
+        identifier="  select 'amsterdam' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`amsterdam_weekdays`
+union all
+  select 'amsterdam' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`amsterdam_weekends`
+union all
+  select 'athens' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`athens_weekdays`
+union all
+  select 'athens' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`athens_weekends`
+union all
+  select 'barcelona' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`barcelona_weekdays`
+union all
+  select 'barcelona' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`barcelona_weekends`
+union all
+  select 'berlin' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`berlin_weekdays`
+union all
+  select 'berlin' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`berlin_weekends`
+union all
+  select 'budapest' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`budapest_weekdays`
+union all
+  select 'budapest' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`budapest_weekends`
+union all
+  select 'lisbon' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`lisbon_weekdays`
+union all
+  select 'lisbon' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`lisbon_weekends`
+union all
+  select 'london' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`london_weekdays`
+union all
+  select 'london' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`london_weekends`
+union all
+  select 'paris' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`paris_weekdays`
+union all
+  select 'paris' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`paris_weekends`
+union all
+  select 'rome' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`rome_weekdays`
+union all
+  select 'rome' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`rome_weekends`
+union all
+  select 'vienna' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`vienna_weekdays`
+union all
+  select 'vienna' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`vienna_weekends`">
+        <hdml-field name="city"></hdml-field>
+        <hdml-field name="period"></hdml-field>
+        <hdml-field name="realsum"></hdml-field>
+        <hdml-field name="dist"></hdml-field>
+        <hdml-field name="person_capacity"></hdml-field>
+        <hdml-field name="cleanliness_rating"></hdml-field>
+        <hdml-field name="guest_satisfaction_overall"></hdml-field>
+        <hdml-field name="room_type"></hdml-field>
+        <hdml-field name="host_is_superhost"></hdml-field>
+        <hdml-field name="multi"></hdml-field>
+        <hdml-field name="biz"></hdml-field>
+        <hdml-field name="attr_index_norm"></hdml-field>
+        <hdml-field name="rest_index_norm"></hdml-field>
+        <hdml-field name="metro_dist"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <!-- One frame, three figures: the city is the grain for price
+         level, price per guest and the weekend gap alike. -->
+    <hdml-frame name="city_price" source="?hdml-model=abnb">
+      <hdml-field name="label" origin="t_city"></hdml-field>
+      <hdml-field name="med"
+        clause="approx_percentile(cast(`t_realsum` as double), 0.5)"></hdml-field>
+      <hdml-field name="p90"
+        clause="approx_percentile(cast(`t_realsum` as double), 0.9)"></hdml-field>
+      <hdml-field name="per_person"
+        clause="approx_percentile(cast(`t_realsum` as double) / cast(`t_person_capacity` as double), 0.5)"></hdml-field>
+      <hdml-field name="wknd"
+        clause="100.0 * (avg(cast(`t_realsum` as double)) filter (where `t_period` = 'weekends') / avg(cast(`t_realsum` as double)) filter (where `t_period` = 'weekdays') - 1)"></hdml-field>
+      <hdml-group-by><hdml-field name="label"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="med" order="desc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- Distance grain: the pooled curve and five city curves are the
+         same rows, so both figures share one query. -->
+    <hdml-frame name="dist_curve" source="?hdml-model=abnb">
+      <hdml-field name="km"
+        clause="cast(least(floor(cast(`t_dist` as double)), 9) as integer)"></hdml-field>
+      <hdml-field name="label"
+        clause="cast(cast(least(floor(cast(`t_dist` as double)), 9) as integer) as varchar)"></hdml-field>
+      <hdml-field name="pooled"
+        clause="approx_percentile(cast(`t_realsum` as double), 0.5)"></hdml-field>
+      <hdml-field name="london"
+        clause="approx_percentile(cast(`t_realsum` as double), 0.5) filter (where `t_city` = 'london')"></hdml-field>
+      <hdml-field name="amsterdam"
+        clause="approx_percentile(cast(`t_realsum` as double), 0.5) filter (where `t_city` = 'amsterdam')"></hdml-field>
+      <hdml-field name="paris"
+        clause="approx_percentile(cast(`t_realsum` as double), 0.5) filter (where `t_city` = 'paris')"></hdml-field>
+      <hdml-field name="rome"
+        clause="approx_percentile(cast(`t_realsum` as double), 0.5) filter (where `t_city` = 'rome')"></hdml-field>
+      <hdml-field name="athens"
+        clause="approx_percentile(cast(`t_realsum` as double), 0.5) filter (where `t_city` = 'athens')"></hdml-field>
+      <hdml-group-by><hdml-field name="km"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="km" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <hdml-frame name="clean_satisf" source="?hdml-model=abnb">
+      <hdml-field name="cr"
+        clause="cast(cast(`t_cleanliness_rating` as double) as integer)"></hdml-field>
+      <hdml-field name="label"
+        clause="cast(cast(cast(`t_cleanliness_rating` as double) as integer) as varchar)"></hdml-field>
+      <hdml-field name="satisf"
+        clause="avg(cast(`t_guest_satisfaction_overall` as double))"></hdml-field>
+      <hdml-group-by><hdml-field name="cr"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="cr" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- ==== three unpivots: a frame makes columns, not rows ====== -->
+    <hdml-model name="abnb_quantiles">
+      <hdml-table name="q" type="query"
+        description="One row per price quantile."
+        identifier="select
+  v.label as label,
+  v.pos as pos,
+  case v.label
+    when 'p1' then w.q1
+    when 'p10' then w.q2
+    when 'p25' then w.q3
+    when 'p50' then w.q4
+    when 'p75' then w.q5
+    when 'p90' then w.q6
+    when 'p99' then w.q7
+  end as price
+from (
+  select
+    approx_percentile(cast(realsum as double), 0.01) as q1,
+    approx_percentile(cast(realsum as double), 0.10) as q2,
+    approx_percentile(cast(realsum as double), 0.25) as q3,
+    approx_percentile(cast(realsum as double), 0.50) as q4,
+    approx_percentile(cast(realsum as double), 0.75) as q5,
+    approx_percentile(cast(realsum as double), 0.90) as q6,
+    approx_percentile(cast(realsum as double), 0.99) as q7
+  from (
+  select 'amsterdam' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`amsterdam_weekdays`
+union all
+  select 'amsterdam' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`amsterdam_weekends`
+union all
+  select 'athens' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`athens_weekdays`
+union all
+  select 'athens' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`athens_weekends`
+union all
+  select 'barcelona' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`barcelona_weekdays`
+union all
+  select 'barcelona' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`barcelona_weekends`
+union all
+  select 'berlin' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`berlin_weekdays`
+union all
+  select 'berlin' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`berlin_weekends`
+union all
+  select 'budapest' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`budapest_weekdays`
+union all
+  select 'budapest' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`budapest_weekends`
+union all
+  select 'lisbon' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`lisbon_weekdays`
+union all
+  select 'lisbon' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`lisbon_weekends`
+union all
+  select 'london' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`london_weekdays`
+union all
+  select 'london' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`london_weekends`
+union all
+  select 'paris' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`paris_weekdays`
+union all
+  select 'paris' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`paris_weekends`
+union all
+  select 'rome' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`rome_weekdays`
+union all
+  select 'rome' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`rome_weekends`
+union all
+  select 'vienna' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`vienna_weekdays`
+union all
+  select 'vienna' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`vienna_weekends`
+  ) u
+) w
+cross join (values
+  ('p1', 1),
+  ('p10', 2),
+  ('p25', 3),
+  ('p50', 4),
+  ('p75', 5),
+  ('p90', 6),
+  ('p99', 7)
+) v (label, pos)">
+        <hdml-field name="label"></hdml-field>
+        <hdml-field name="pos"></hdml-field>
+        <hdml-field name="price"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="quantiles" source="?hdml-model=abnb_quantiles">
+      <hdml-field name="label" origin="q_label"></hdml-field>
+      <hdml-field name="pos" origin="q_pos"></hdml-field>
+      <hdml-field name="price" origin="q_price"></hdml-field>
+      <hdml-sort-by><hdml-field name="pos" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <hdml-model name="abnb_drivers">
+      <hdml-table name="d" type="query"
+        description="Correlation of price with each candidate driver."
+        identifier="select
+  v.label as label,
+  v.pos as pos,
+  case v.label
+    when 'Attraction index' then w.r1
+    when 'Guests' then w.r2
+    when 'Restaurant index' then w.r3
+    when 'Metro distance' then w.r4
+    when 'Centre distance' then w.r5
+    when 'Cleanliness' then w.r6
+    when 'Guest satisfaction' then w.r7
+  end as r
+from (
+  select
+    corr(cast(realsum as double), cast(attr_index_norm as double)) as r1,
+    corr(cast(realsum as double), cast(person_capacity as double)) as r2,
+    corr(cast(realsum as double), cast(rest_index_norm as double)) as r3,
+    corr(cast(realsum as double), cast(metro_dist as double)) as r4,
+    corr(cast(realsum as double), cast(dist as double)) as r5,
+    corr(cast(realsum as double), cast(cleanliness_rating as double)) as r6,
+    corr(cast(realsum as double), cast(guest_satisfaction_overall as double)) as r7
+  from (
+  select 'amsterdam' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`amsterdam_weekdays`
+union all
+  select 'amsterdam' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`amsterdam_weekends`
+union all
+  select 'athens' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`athens_weekdays`
+union all
+  select 'athens' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`athens_weekends`
+union all
+  select 'barcelona' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`barcelona_weekdays`
+union all
+  select 'barcelona' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`barcelona_weekends`
+union all
+  select 'berlin' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`berlin_weekdays`
+union all
+  select 'berlin' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`berlin_weekends`
+union all
+  select 'budapest' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`budapest_weekdays`
+union all
+  select 'budapest' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`budapest_weekends`
+union all
+  select 'lisbon' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`lisbon_weekdays`
+union all
+  select 'lisbon' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`lisbon_weekends`
+union all
+  select 'london' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`london_weekdays`
+union all
+  select 'london' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`london_weekends`
+union all
+  select 'paris' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`paris_weekdays`
+union all
+  select 'paris' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`paris_weekends`
+union all
+  select 'rome' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`rome_weekdays`
+union all
+  select 'rome' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`rome_weekends`
+union all
+  select 'vienna' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`vienna_weekdays`
+union all
+  select 'vienna' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`vienna_weekends`
+  ) u
+) w
+cross join (values
+  ('Attraction index', 1),
+  ('Guests', 2),
+  ('Restaurant index', 3),
+  ('Metro distance', 4),
+  ('Centre distance', 5),
+  ('Cleanliness', 6),
+  ('Guest satisfaction', 7)
+) v (label, pos)">
+        <hdml-field name="label"></hdml-field>
+        <hdml-field name="pos"></hdml-field>
+        <hdml-field name="r"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="drivers" source="?hdml-model=abnb_drivers">
+      <hdml-field name="label" origin="d_label"></hdml-field>
+      <hdml-field name="pos" origin="d_pos"></hdml-field>
+      <hdml-field name="r" origin="d_r"></hdml-field>
+      <hdml-sort-by><hdml-field name="pos" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <hdml-model name="abnb_segments">
+      <hdml-table name="s" type="query"
+        description="Price and satisfaction for nine listing/host segments."
+        identifier="select
+  s.label as label,
+  s.pos as pos,
+  approx_percentile(cast(t.realsum as double), 0.5) as med,
+  avg(cast(t.guest_satisfaction_overall as double)) as satisf,
+  count(*) as n
+from (
+  select 'amsterdam' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`amsterdam_weekdays`
+union all
+  select 'amsterdam' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`amsterdam_weekends`
+union all
+  select 'athens' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`athens_weekdays`
+union all
+  select 'athens' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`athens_weekends`
+union all
+  select 'barcelona' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`barcelona_weekdays`
+union all
+  select 'barcelona' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`barcelona_weekends`
+union all
+  select 'berlin' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`berlin_weekdays`
+union all
+  select 'berlin' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`berlin_weekends`
+union all
+  select 'budapest' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`budapest_weekdays`
+union all
+  select 'budapest' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`budapest_weekends`
+union all
+  select 'lisbon' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`lisbon_weekdays`
+union all
+  select 'lisbon' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`lisbon_weekends`
+union all
+  select 'london' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`london_weekdays`
+union all
+  select 'london' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`london_weekends`
+union all
+  select 'paris' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`paris_weekdays`
+union all
+  select 'paris' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`paris_weekends`
+union all
+  select 'rome' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`rome_weekdays`
+union all
+  select 'rome' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`rome_weekends`
+union all
+  select 'vienna' as city, 'weekdays' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`vienna_weekdays`
+union all
+  select 'vienna' as city, 'weekends' as period, realsum, dist, person_capacity, cleanliness_rating, guest_satisfaction_overall, room_type, host_is_superhost, multi, biz, attr_index_norm, rest_index_norm, metro_dist from `tenant-a_maang`.`airbnb`.`vienna_weekends`
+) t
+cross join (values
+  ('Entire home', 1),
+  ('Private room', 2),
+  ('Shared room', 3),
+  ('Superhost', 4),
+  ('Not superhost', 5),
+  ('Multi-listing', 6),
+  ('Single-listing', 7),
+  ('Business host', 8),
+  ('Private host', 9)
+) s (label, pos)
+where (s.pos = 1 and t.room_type = 'Entire home/apt')
+   or (s.pos = 2 and t.room_type = 'Private room')
+   or (s.pos = 3 and t.room_type = 'Shared room')
+   or (s.pos = 4 and t.host_is_superhost = 'True')
+   or (s.pos = 5 and t.host_is_superhost = 'False')
+   or (s.pos = 6 and t.multi = '1')
+   or (s.pos = 7 and t.multi = '0')
+   or (s.pos = 8 and t.biz = '1')
+   or (s.pos = 9 and t.biz = '0')
+group by s.label, s.pos">
+        <hdml-field name="label"></hdml-field>
+        <hdml-field name="pos"></hdml-field>
+        <hdml-field name="med"></hdml-field>
+        <hdml-field name="satisf"></hdml-field>
+        <hdml-field name="n"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="segments" source="?hdml-model=abnb_segments">
+      <hdml-field name="label" origin="s_label"></hdml-field>
+      <hdml-field name="pos" origin="s_pos"></hdml-field>
+      <hdml-field name="med" origin="s_med"></hdml-field>
+      <hdml-field name="satisf" origin="s_satisf"></hdml-field>
+      <hdml-sort-by><hdml-field name="pos" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <h1>Ten European cities, 51 707 listings</h1>
+    <p class="lede">
+      What the Airbnb data actually says — about price, place, hosts
+      and what a rating is worth. Ten figures, all live. The most
+      important one is that the obvious way to look at this data gives
+      the wrong answer.
+    </p>
+
+    <h2><span class="n">1</span> What you are looking at</h2>
+
+    <p>
+      One row is one <strong>listing offer</strong>: a property, in a
+      city, priced for either a weekday or a weekend stay. There is no
+      date anywhere in the schema and no booking record — this is a
+      snapshot of what was <em>advertised</em>, not of what was sold.
+      <code>realsum</code> is the total price for the stay in euros,
+      not a nightly rate, which is why section 3 divides it by guest
+      count before comparing cities.
+    </p>
+
+    <p class="caveat">
+      Consequences worth holding onto: nothing here is a time series;
+      "weekend" is a two-valued category, not a calendar; and a
+      property appearing in both the weekday and weekend table is two
+      rows, not one property observed twice — nothing in the data links
+      them.
+    </p>
+
+    <h2><span class="n">2</span> Amsterdam costs three and a half Athenses</h2>
+
+    <p class="finding">
+      Median stay: <strong>€460</strong> in Amsterdam,
+      <strong>€128</strong> in Athens. The top decile spreads wider
+      still — €988 against €238.
+    </p>
+
+    <p>
+      Two bars per city: the median listing and the 90th percentile.
+      The gap between them is how unequal each city's supply is —
+      Amsterdam, London and Barcelona have long upper tails, while
+      Lisbon, Vienna and Athens are comparatively flat markets where
+      the expensive listings are not that much more expensive.
+    </p>
+
+    <figure>
+      <figcaption id="cap-city">
+        Median and 90th-percentile price per stay, EUR, by city
+      </figcaption>
+      <hdml-view aria-labelledby="cap-city">
+        <hdml-fallback>Median and P90 price by city.</hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=city_price">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="1050">
+              <hdml-ordinal-scale channel="color" values='["Median","90th percentile"]'>
+                <hdml-grid channel="y" count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5"></hdml-label>
+                <hdml-cluster x="label">
+                  <hdml-bar y="med" color='"Median"'></hdml-bar>
+                  <hdml-bar y="p90" color='"90th percentile"'></hdml-bar>
+                </hdml-cluster>
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">3</span> Per guest, the gap is wider — and the order changes</h2>
+
+    <p class="finding">
+      Per person the spread is <strong>5×</strong>, not 3.5×:
+      €184 in Amsterdam against €37 in Athens.
+    </p>
+
+    <p>
+      Dividing by <code>person_capacity</code> is not cosmetic — it
+      reorders the table. Lisbon has the fifth-highest median stay
+      (€225) but the sixth-lowest price per guest (€68), because what
+      it rents is bigger. Barcelona moves the other way. A ranking of
+      "expensive cities" that never divides by capacity is comparing a
+      studio in one city with an apartment in another.
+    </p>
+
+    <figure>
+      <figcaption id="cap-pp">
+        Median price per guest, EUR — bars in overall-price order, so
+        the reordering is visible
+      </figcaption>
+      <hdml-view aria-labelledby="cap-pp">
+        <hdml-fallback>Median price per guest by city.</hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=city_price">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="200">
+              <hdml-ordinal-scale channel="color" values='["Per guest"]'>
+                <hdml-grid channel="y" count="4"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="4"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="4"></hdml-label>
+                <hdml-bar x="label" y="per_person" color='"Per guest"'></hdml-bar>
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">4</span> The tail is long enough to break an average</h2>
+
+    <p class="finding">
+      Half of all listings sit between €149 and €320. The 99th
+      percentile is <strong>€1 155</strong> and the maximum is
+      <strong>€18 545</strong> — 88× the median.
+    </p>
+
+    <p>
+      The quantile curve is plotted on a log axis because on a linear
+      one the bottom three quarters of the market collapse into the
+      axis. The practical consequence: <strong>never use the mean</strong>
+      on this column. The mean stay is €280 against a median of €212,
+      and the gap is entirely the top percentile, which carries 7.6 %
+      of all the money on offer.
+    </p>
+
+    <figure>
+      <figcaption id="cap-q">
+        Price quantiles, EUR, log scale — p1 through p99
+      </figcaption>
+      <hdml-view aria-labelledby="cap-q">
+        <hdml-fallback>Price distribution quantiles.</hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=quantiles">
+          <hdml-ordinal-scale class="points" channel="x" values="label">
+            <hdml-continuous-scale channel="y" type="log" min="50" max="2000">
+              <hdml-ordinal-scale channel="color" values='["Price"]'>
+                <hdml-grid channel="y" count="4"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="4"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="4"></hdml-label>
+                <hdml-line x="label" y="price" color='"Price"'></hdml-line>
+                <hdml-point x="label" y="price" color='"Price"'></hdml-point>
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">5</span> The weekend premium is not universal</h2>
+
+    <p class="finding warn">
+      Amsterdam charges <strong>+11.0 %</strong> for a weekend. Athens
+      charges <strong>−5.3 %</strong> — weekends are cheaper there, and
+      in Paris too.
+    </p>
+
+    <p>
+      This is the dataset's one built-in experiment, and the answer is
+      that "weekends cost more" is a property of some markets and not
+      of the market. The two cities where weekends are cheaper are the
+      two with the largest share of long-stay and business demand in
+      the week; the two with the biggest premium — Amsterdam and
+      Budapest, both near +10 % — are short-break destinations. Six of
+      the ten sit between 0 and +4 %, which is close enough to nothing.
+    </p>
+
+    <figure>
+      <figcaption id="cap-wk">
+        Weekend price premium, % over the same city's weekday mean
+      </figcaption>
+      <hdml-view aria-labelledby="cap-wk">
+        <hdml-fallback>Weekend premium by city.</hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=city_price">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="-8" max="14">
+              <hdml-ordinal-scale channel="color" values='["Weekend premium"]'>
+                <hdml-grid channel="y" count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5"></hdml-label>
+                <hdml-bar x="label" y="wknd" color='"Weekend premium"'></hdml-bar>
+                <!-- the zero line: bars below it are real discounts -->
+                <hdml-rule y="0"></hdml-rule>
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">6</span> Distance does not matter — and that is wrong</h2>
+
+    <p class="finding">
+      Pooled across all ten cities, the median price falls from €229
+      within one kilometre of the centre to €161 beyond nine. Across
+      ten kilometres, that is almost a flat line — and the correlation
+      is <strong>−0.045</strong>, which is nothing.
+    </p>
+
+    <p>
+      Taken at face value this says location does not price a listing,
+      which contradicts everything known about property. The figure
+      below is the naive answer, and section 7 is why it is wrong.
+    </p>
+
+    <figure>
+      <figcaption id="cap-d1">
+        Pooled median price by distance from the city centre, EUR
+      </figcaption>
+      <hdml-view aria-labelledby="cap-d1">
+        <hdml-fallback>Pooled price against distance.</hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=dist_curve">
+          <hdml-ordinal-scale class="points" channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="700">
+              <hdml-ordinal-scale channel="color" values='["All ten cities"]'>
+                <hdml-grid channel="y" count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5"></hdml-label>
+                <hdml-line class="pooled" x="label" y="pooled" color='"All ten cities"'></hdml-line>
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">7</span> Split by city and the effect reappears</h2>
+
+    <p class="finding warn">
+      Within every single city, price falls sharply with distance.
+      London: <strong>€627</strong> in the first kilometre,
+      <strong>€199</strong> beyond five — a 68 % drop. The
+      log-price/distance correlation is negative in all ten cities,
+      from −0.19 to <strong>−0.41</strong>.
+    </p>
+
+    <p>
+      This is Simpson's paradox, and the mechanism is simple once
+      seen: the cheap cities are <em>compact</em> and the expensive
+      ones <em>sprawl</em>. Athens has almost no listings past seven
+      kilometres — its line simply stops, because there is no data
+      there rather than because the price is zero. London and
+      Amsterdam extend far out, and their outer suburbs are still more
+      expensive than central Athens. Pooling the cities lets the
+      between-city price gap swamp the within-city gradient, and the
+      real effect cancels out to nothing.
+    </p>
+
+    <p class="caveat">
+      The same figure carries the pooled line, dashed, for comparison.
+      It is the flattest thing on the chart, and every individual city
+      is steeper than it. Whenever a pooled correlation is suspiciously
+      near zero over data that has an obvious grouping, this is the
+      first thing to check.
+    </p>
+
+    <figure>
+      <figcaption id="cap-d2">
+        Median price by distance, five cities, against the pooled line
+      </figcaption>
+      <hdml-view aria-labelledby="cap-d2">
+        <hdml-fallback>Price against distance, per city.</hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=dist_curve">
+          <hdml-ordinal-scale class="points" channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="700">
+              <hdml-ordinal-scale channel="color"
+                values='["London","Amsterdam","Paris","Rome","Athens","All ten"]'>
+                <hdml-grid channel="y" count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5"></hdml-label>
+                <hdml-line x="label" y="london" color='"London"'></hdml-line>
+                <hdml-line x="label" y="amsterdam" color='"Amsterdam"'></hdml-line>
+                <hdml-line x="label" y="paris" color='"Paris"'></hdml-line>
+                <hdml-line x="label" y="rome" color='"Rome"'></hdml-line>
+                <hdml-line x="label" y="athens" color='"Athens"'></hdml-line>
+                <hdml-line class="pooled" x="label" y="pooled" color='"All ten"'></hdml-line>
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">8</span> What actually moves the price</h2>
+
+    <p class="finding">
+      Nothing correlates strongly. The best single predictor is the
+      attraction index at <strong>0.29</strong> — and guest
+      satisfaction is at <strong>−0.002</strong>, which is to say
+      price and rating are unrelated.
+    </p>
+
+    <p>
+      Read the last two bars carefully, because they are the most
+      commercially interesting numbers in the dataset: neither
+      <strong>cleanliness</strong> (−0.006) nor
+      <strong>guest satisfaction</strong> (−0.002) has any relationship
+      with what a listing charges. Paying twice as much buys no
+      measurable increase in how much guests liked it. Whatever price
+      is signalling here, it is location and capacity — not quality.
+    </p>
+
+    <p class="caveat">
+      Both distance measures come out near zero for the reason section
+      7 gives — these are pooled correlations, and the within-city
+      figure is four to eight times stronger. The bar for
+      <em>centre distance</em> is a measurement of the paradox rather
+      than of the city.
+    </p>
+
+    <figure>
+      <figcaption id="cap-dr">
+        Correlation of price with each candidate driver, all cities
+        pooled
+      </figcaption>
+      <hdml-view aria-labelledby="cap-dr">
+        <hdml-fallback>Correlations of price with its drivers.</hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=drivers">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="-0.1" max="0.35">
+              <hdml-ordinal-scale channel="color" values='["Correlation with price"]'>
+                <hdml-grid channel="y" count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5"></hdml-label>
+                <hdml-bar x="label" y="r" color='"Correlation with price"'></hdml-bar>
+                <hdml-rule y="0"></hdml-rule>
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">9</span> Superhosts charge less and score higher</h2>
+
+    <p class="finding">
+      Superhost median <strong>€199</strong> against €214 for everyone
+      else — and a satisfaction score of <strong>96.9</strong> against
+      91.2. The badge is not a price premium; it is a different kind of
+      host.
+    </p>
+
+    <p>
+      The same split runs through every host attribute. Hosts with
+      several listings charge less (€196 vs €222) and rate slightly
+      better. <strong>Business hosts are the mirror image of
+      superhosts</strong>: the highest median price on the chart,
+      €228, and the lowest satisfaction, 90.1. Read together, the two
+      figures below say that the professionalised end of this market
+      charges more and pleases less, while the badge that signals
+      quality is attached to hosts who undercharge.
+    </p>
+
+    <figure>
+      <figcaption id="cap-s1">
+        Median price by segment, EUR
+      </figcaption>
+      <hdml-view aria-labelledby="cap-s1">
+        <hdml-fallback>Median price by listing and host segment.</hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=segments">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="280">
+              <hdml-ordinal-scale channel="color" values='["Median price"]'>
+                <hdml-grid channel="y" count="4"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="4"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="4"></hdml-label>
+                <hdml-bar x="label" y="med" color='"Median price"'></hdml-bar>
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-s2">
+        Mean guest satisfaction by the same segments — note the axis
+        starts at 85, because the whole range is 89.7 to 96.9
+      </figcaption>
+      <hdml-view aria-labelledby="cap-s2">
+        <hdml-fallback>Satisfaction by listing and host segment.</hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=segments">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="85" max="100">
+              <hdml-ordinal-scale channel="color" values='["Guest satisfaction"]'>
+                <hdml-grid channel="y" count="4"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="4"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="4"></hdml-label>
+                <hdml-point x="label" y="satisf" color='"Guest satisfaction"'></hdml-point>
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="caveat">
+      A truncated axis usually deserves suspicion, so: the satisfaction
+      figure starts at 85 because every segment lies between 89.7 and
+      96.9, and a zero-based axis would render all nine bars visually
+      identical. The differences are small in absolute terms and
+      completely consistent in sign.
+    </p>
+
+    <h2><span class="n">10</span> Cleanliness is the rating</h2>
+
+    <p class="finding">
+      Cleanliness and overall satisfaction correlate at
+      <strong>0.714</strong> — by far the strongest relationship in the
+      data. At cleanliness 10 the mean satisfaction is 96.3; at
+      cleanliness 2 it is <strong>30.1</strong>.
+    </p>
+
+    <p>
+      The curve is close to a straight line across the whole range, and
+      it is much steeper than anything price does. A host who cannot
+      change their location or their square metres can still move the
+      only score guests read, and this is the lever. The caveat is
+      direction: a guest who disliked a stay may mark everything down
+      together, so part of the 0.714 is a halo rather than causation.
+      The size of it is still unmatched by any other pair of columns.
+    </p>
+
+    <p class="caveat">
+      Weight the left-hand end lightly. Only 143 listings score
+      cleanliness 2 and just 10 score 3, against 30 067 at 10 — the
+      left of the curve is a handful of very bad stays, and the right
+      is most of the market.
+    </p>
+
+    <figure>
+      <figcaption id="cap-cs">
+        Mean guest satisfaction by cleanliness rating
+      </figcaption>
+      <hdml-view aria-labelledby="cap-cs">
+        <hdml-fallback>Satisfaction against cleanliness.</hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=clean_satisf">
+          <hdml-ordinal-scale class="points" channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="100">
+              <hdml-ordinal-scale channel="color" values='["Mean satisfaction"]'>
+                <hdml-grid channel="y" count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5"></hdml-label>
+                <hdml-line x="label" y="satisf" color='"Mean satisfaction"'></hdml-line>
+                <hdml-point x="label" y="satisf" color='"Mean satisfaction"'></hdml-point>
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">11</span> Five things this data cannot tell you</h2>
+
+    <table>
+      <thead><tr><th>Question</th><th>Why not</th></tr></thead>
+      <tbody>
+        <tr><td>Did anyone book it?</td><td>No occupancy, no bookings — only what was advertised</td></tr>
+        <tr><td>How did prices move?</td><td>No date column anywhere; this is one snapshot</td></tr>
+        <tr><td>Is it a good deal per night?</td><td><code>realsum</code> is the total for the stay, and stay length is absent</td></tr>
+        <tr><td>Same flat, weekday vs weekend?</td><td>Nothing links a row in one table to a row in the other</td></tr>
+        <tr><td>Is it big?</td><td><code>bedrooms</code> and capacity only — no floor area</td></tr>
+      </tbody>
+    </table>
+
+    <p class="caveat">
+      And one caution about section 8's near-zero correlations:
+      <code>corr</code> measures a <em>linear</em> relationship. Price
+      is heavily skewed (section 4), so a correlation on the raw column
+      understates any real effect. Every one of those bars would be
+      worth recomputing against <code>ln(price)</code> before drawing a
+      conclusion from its size — the sign and the ranking are safer
+      than the magnitude.
+    </p>
+  </body>
+</html>

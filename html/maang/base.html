@@ -1,0 +1,196 @@
+<!doctype html>
+<!--
+  MAANG — average daily trading volume per year, one line per stock.
+
+  A LIVE page, not a corpus mock: it loads the real bundle
+  (bin/index.min.js — all three layers) and renders against the local
+  HDIO server, exactly as html/hdio/hdml-io-token.bin.html does. The
+  thirteen pages under html/hdvl/ are the design corpus and are driven
+  by a test double; this one is driven by Trino.
+
+  DATA. tenant-a's /maang.html declares a five-table model (amazon,
+  apple, google, microsoft, netflix, full-outer joined on date) and a
+  frame `maang_stock_frame` over it: one row per trading day, with
+  year / month / day and open / high / low / close / adj_close /
+  volume per stock. That frame is DAILY and has no single date column
+  — year, month and day are three smallints — so the frame below
+  derives a chartable shape from it: one row per year, carrying the
+  mean daily volume of each stock. `label` is the year as a string,
+  which is what the ordinal x scale binds.
+
+  SCALES. Five series share one y axis, so no single column is the
+  right ceiling and the domain is authored rather than subscribed
+  (SPEC §6 rule 1 — there is no widget-union fallback). Apple peaks at
+  ~1.13e9 mean daily shares in 2008, so 1.2e9 is the ceiling with a
+  little headroom. Microsoft and Netflix are an order of magnitude
+  smaller and read flat against it; `type="log"` on the y scale is the
+  one-attribute change that separates them (drop `min="0"` with it —
+  a log domain that touches zero is a V2 error).
+
+  AUTH. `token` is a SINGLE-USE handoff code (006's two-step
+  issuance): it is redeemed once at POST /{tenant}/api/v1/auth/token
+  for the access/refresh pair. Re-mint one before each session —
+  POST /private/tenant-a/auth/token — and paste it below.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>MAANG — volume by year</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0; max-width: 900px; }
+      figcaption { margin-bottom: 0.75rem; color: #334155; }
+
+      hdml-view { width: 100%; height: 420px; }
+      /* the right gutter is where the legend lives */
+      hdml-cartesian-plane { padding: 16px 130px 40px 72px; }
+
+      /* bandwidth 0 puts a line's vertices on the band boundary
+         rather than in the middle of a band (SPEC §6) */
+      hdml-ordinal-scale[channel="x"] { padding: 0 8px; --hdml-bandwidth: 0; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+
+      /* Guides: placement is pure CSS — x below the plot, y left of it. */
+      hdml-axis[channel="x"] { position: absolute; left: 0; right: 0; bottom: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="y"] { position: absolute; top: 0; bottom: 0; left: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-grid[channel="y"] { --hdml-line-width: 1px; --hdml-line-style: dotted;
+        --hdml-line-color: #cbd5e1; }
+      hdml-tick { --hdml-tick-style: rect; --hdml-tick-width: 1px;
+        --hdml-tick-height: 6px; --hdml-fill-color: #64748b; }
+      hdml-tick[channel="x"] { position: absolute; left: 0; right: 0; bottom: 0; }
+      hdml-tick[channel="y"] { position: absolute; top: 0; bottom: 0; left: 0; }
+      hdml-label { --hdml-font-size: 11px; --hdml-font-family: inherit; }
+      hdml-label[channel="x"] { position: absolute; left: 0; right: 0; top: 100%; }
+      hdml-label[channel="y"] { position: absolute; top: 0; bottom: 0; right: 100%; }
+
+      /* the palette IS the color channel's range — five series, five
+         entries, one short of nothing (a sixth would be V2's
+         palette-exhausted, never a silently reused colour) */
+      hdml-ordinal-scale[channel="color"] {
+        --hdml-palette: #1c8cf4 #f59e0b #10b981 #a855f7 #ef4444; }
+      hdml-legend { position: absolute; top: 8px; left: 100%;
+        width: 120px; --hdml-font-size: 11px; }
+
+      hdml-line { --hdml-line-width: 2px; --hdml-curve-type: natural; }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc">
+    </hdml-io>
+
+    <!-- Derived frame: source is the tenant document's frame, so the
+         fields below reference ITS columns by their bare names (a
+         frame-sourced frame reads bare names; only a model-sourced one
+         reads the {table}_{field} compound). -->
+    <hdml-frame
+      name="maang_volume_yearly"
+      source="/maang.html?hdml-frame=maang_stock_frame">
+
+      <!-- dimension: the year as a string, because a band scale's
+           domain is strings (the tag IS the kind — SPEC §6) -->
+      <hdml-field
+        name="label"
+        clause="cast(`year` as varchar)">
+      </hdml-field>
+
+      <!-- grouping/sort key; no widget binds it -->
+      <hdml-field name="year"></hdml-field>
+
+      <!-- measures: mean daily volume, one per stock -->
+      <hdml-field
+        name="avg_amazon_volume"
+        origin="amazon_volume"
+        aggregation="avg">
+      </hdml-field>
+
+      <hdml-field
+        name="avg_apple_volume"
+        origin="apple_volume"
+        aggregation="avg">
+      </hdml-field>
+
+      <hdml-field
+        name="avg_google_volume"
+        origin="google_volume"
+        aggregation="avg">
+      </hdml-field>
+
+      <hdml-field
+        name="avg_microsoft_volume"
+        origin="microsoft_volume"
+        aggregation="avg">
+      </hdml-field>
+
+      <hdml-field
+        name="avg_netflix_volume"
+        origin="netflix_volume"
+        aggregation="avg">
+      </hdml-field>
+
+      <hdml-group-by>
+        <hdml-field name="year"></hdml-field>
+      </hdml-group-by>
+
+      <!-- row order IS the ordinal x domain (first occurrence wins),
+           so pinning it here is what keeps the years ascending -->
+      <hdml-sort-by>
+        <hdml-field name="year" order="asc"></hdml-field>
+      </hdml-sort-by>
+    </hdml-frame>
+
+    <figure>
+      <figcaption id="cap-volume">
+        MAANG — mean daily trading volume by year, one line per stock
+      </figcaption>
+      <hdml-view aria-labelledby="cap-volume">
+        <hdml-cartesian-plane source="?hdml-frame=maang_volume_yearly">
+          <hdml-ordinal-scale channel="x" values="label">
+            <!-- five series on one axis: the ceiling is authored, not
+                 derived from any one column -->
+            <hdml-continuous-scale channel="y" min="0" max="1200000000">
+              <!-- the string constants below are this scale's domain;
+                   swatch and name are generated from the same value -->
+              <hdml-ordinal-scale
+                channel="color"
+                values='["Amazon","Apple","Google","Microsoft","Netflix"]'>
+
+                <hdml-grid channel="y" count="6"></hdml-grid>
+
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+
+                <hdml-tick channel="x" count="8"></hdml-tick>
+                <hdml-tick channel="y" count="6"></hdml-tick>
+
+                <hdml-label channel="x" count="8"></hdml-label>
+                <hdml-label channel="y" count="6" format="compact-short"></hdml-label>
+
+                <!-- one mark per stock; the color constant broadcasts
+                     the series name through the chromatic scale, so
+                     stroke and legend entry are the same lookup -->
+                <hdml-line x="label" y="avg_amazon_volume"
+                  color='"Amazon"'></hdml-line>
+                <hdml-line x="label" y="avg_apple_volume"
+                  color='"Apple"'></hdml-line>
+                <hdml-line x="label" y="avg_google_volume"
+                  color='"Google"'></hdml-line>
+                <hdml-line x="label" y="avg_microsoft_volume"
+                  color='"Microsoft"'></hdml-line>
+                <hdml-line x="label" y="avg_netflix_volume"
+                  color='"Netflix"'></hdml-line>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+  </body>
+</html>

@@ -1,0 +1,897 @@
+<!doctype html>
+<!--
+  MAANG — what the dataset is, and what it says.
+
+  A narrative page: HTML carries the claims, HDML carries the evidence.
+  No scripts. Every number in every figure is computed by Trino from a
+  single `hdml-frame` and bound declaratively by the HDVL elements.
+
+  SOURCE. tenant-a's /maang.html declares the model and the daily frame
+  `maang_stock_frame` (one row per trading day; year/month/day plus
+  open/high/low/close/adj_close/volume per stock). This page adds its
+  own HDML on top of it, in two layers:
+
+    • `maang_yearly` — a frame over the tenant's frame. Figures 1–5.
+    • `maang_daily`  — a MODEL of this page's own, whose single
+      `hdml-table type="query"` runs raw Trino against the same
+      catalog. Figures 6 and 7.
+
+  TWO THINGS THAT DECIDE WHAT IS EXPRESSIBLE, both verified against
+  the source rather than assumed:
+
+  1. `hdml-group-by` is the *whole* of the emitted GROUP BY (the
+     stringifier lists the ordinals of exactly the fields it names),
+     so a `clause` holding an aggregate is emitted raw and never
+     grouped. Hence the daily range, the dividend ratio and the mean
+     pairwise correlation are all ordinary fields.
+
+  2. A `type="query"` table's `identifier` is inlined VERBATIM as a
+     CTE and the table's fields select from it. That is the escape
+     hatch for everything an `hdml-field` cannot say — window
+     functions above all. Day-over-day returns and running-peak
+     drawdowns need `lag()` and a framed `max()`, so they live in the
+     model, and the frames above them stay ordinary aggregates. A
+     model's fields surface downstream as `{table}_{field}`, which is
+     why they read `d_ret_amzn` and not `ret_amzn`.
+
+  A local `source="?hdml-model=maang_daily"` is rewritten to that
+  sibling's canonical key at parse time, so an in-page model needs no
+  path and no hash.
+
+  ONE THING THIS PAGE ASSUMES. `maang_daily` names the catalog
+  `tenant-a_maang` without redeclaring the `hdml-connection` that
+  created it — deliberately, because a redeclared connection is
+  find-drop-create DDL against a live catalog. If the access gate
+  rejects an undeclared connection, that is where it will show.
+
+  AUTH. `token` is a SINGLE-USE handoff code, redeemed once per page
+  load. This page and index.html each need their own; re-mint at
+  POST /private/tenant-a/auth/token.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>MAANG — the dataset</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0 auto; padding: 2rem 1.5rem 6rem; max-width: 860px;
+        font-family: system-ui, sans-serif; line-height: 1.55;
+        color: #0f172a;
+      }
+      h1 { font-size: 1.9rem; margin: 0 0 0.25rem; letter-spacing: -0.02em; }
+      h2 {
+        font-size: 1.15rem; margin: 3.5rem 0 0.5rem;
+        letter-spacing: -0.01em;
+      }
+      h2 .n {
+        display: inline-block; min-width: 1.6em;
+        color: #94a3b8; font-variant-numeric: tabular-nums;
+      }
+      .lede { font-size: 1.05rem; color: #334155; margin: 0 0 2rem; }
+      p { margin: 0 0 1rem; }
+      .finding {
+        margin: 0 0 1.25rem; padding: 0.75rem 1rem;
+        border-left: 3px solid #1c8cf4; background: #f1f5f9;
+        font-weight: 600;
+      }
+      .caveat { color: #64748b; font-size: 0.9rem; }
+      code {
+        font-family: ui-monospace, monospace; font-size: 0.9em;
+        background: #f1f5f9; padding: 0.1em 0.35em; border-radius: 3px;
+      }
+      table { border-collapse: collapse; width: 100%; margin: 0 0 1rem; }
+      th, td {
+        text-align: left; padding: 0.4rem 0.6rem;
+        border-bottom: 1px solid #e2e8f0; font-size: 0.92rem;
+      }
+      th { color: #475569; font-weight: 600; }
+      td.num {
+        text-align: right; font-variant-numeric: tabular-nums;
+      }
+
+      figure { margin: 1.5rem 0 0; max-width: 100%; }
+      figcaption {
+        margin-bottom: 0.9rem; color: #475569; font-size: 0.9rem;
+      }
+      hdml-fallback {
+        padding: 2rem; border: 1px dashed #cbd5e1; color: #64748b;
+        text-align: center;
+      }
+
+      /* ---- shared chart skin --------------------------------- */
+      hdml-view { width: 100%; height: 340px; }
+      hdml-cartesian-plane { padding: 16px 130px 40px 76px; }
+
+      hdml-ordinal-scale[channel="x"] {
+        padding: 0 8px; --hdml-bandwidth: 0;
+      }
+      hdml-continuous-scale[channel="x"] { padding: 0 12px; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+
+      hdml-axis { --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="x"] {
+        position: absolute; left: 0; right: 0; bottom: 0;
+      }
+      hdml-axis[channel="y"] {
+        position: absolute; top: 0; bottom: 0; left: 0;
+      }
+      hdml-grid[channel="y"] {
+        --hdml-line-width: 1px; --hdml-line-style: dotted;
+        --hdml-line-color: #cbd5e1;
+      }
+      hdml-tick {
+        --hdml-tick-style: rect; --hdml-tick-width: 1px;
+        --hdml-tick-height: 6px; --hdml-fill-color: #64748b;
+      }
+      hdml-tick[channel="x"] {
+        position: absolute; left: 0; right: 0; bottom: 0;
+      }
+      hdml-tick[channel="y"] {
+        position: absolute; top: 0; bottom: 0; left: 0;
+      }
+      hdml-label {
+        --hdml-font-size: 11px; --hdml-font-family: inherit;
+      }
+      hdml-label[channel="x"] {
+        position: absolute; left: 0; right: 0; top: 100%;
+      }
+      hdml-label[channel="y"] {
+        position: absolute; top: 0; bottom: 0; right: 100%;
+      }
+
+      /* one palette for the whole page, so a ticker is the same
+         colour in every figure — the legend is generated from the
+         same lookup the marks use, so they cannot drift apart */
+      hdml-ordinal-scale[channel="color"] {
+        --hdml-palette: #1c8cf4 #f59e0b #10b981 #a855f7 #ef4444;
+      }
+      hdml-legend {
+        position: absolute; top: 8px; left: 100%;
+        width: 120px; --hdml-font-size: 11px;
+      }
+
+      hdml-line { --hdml-line-width: 2px; --hdml-curve-type: linear; }
+      hdml-point {
+        --hdml-tick-style: ellipse;
+        --hdml-tick-width: 9px; --hdml-tick-height: 9px;
+        --hdml-fill-opacity: 0.75;
+      }
+      hdml-rule {
+        --hdml-line-width: 1px; --hdml-line-style: dashed;
+        --hdml-line-color: #dc2626;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body { color: #e2e8f0; }
+        .lede { color: #cbd5e1; }
+        .finding { background: #1e293b; }
+        code { background: #1e293b; }
+        th, td { border-bottom-color: #334155; }
+        th { color: #94a3b8; }
+        figcaption { color: #94a3b8; }
+      }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc">
+    </hdml-io>
+
+    <!-- ============================================================
+         ONE frame drives figures 1–5. Every measure is either an
+         origin+aggregation pass-through or an aggregate `clause`;
+         nothing here needs a window function, so nothing here needs
+         a model of its own.
+         ============================================================ -->
+    <hdml-frame
+      name="maang_yearly"
+      source="/maang.html?hdml-frame=maang_stock_frame">
+
+      <!-- the band domain: the year as a string -->
+      <hdml-field name="label" clause="cast(`year` as varchar)"></hdml-field>
+      <hdml-field name="year"></hdml-field>
+
+      <!-- mean daily volume, in shares -->
+      <hdml-field name="vol_amzn" origin="amazon_volume" aggregation="avg"></hdml-field>
+      <hdml-field name="vol_aapl" origin="apple_volume" aggregation="avg"></hdml-field>
+      <hdml-field name="vol_goog" origin="google_volume" aggregation="avg"></hdml-field>
+      <hdml-field name="vol_msft" origin="microsoft_volume" aggregation="avg"></hdml-field>
+      <hdml-field name="vol_nflx" origin="netflix_volume" aggregation="avg"></hdml-field>
+
+      <!-- mean daily high−low range, as a percentage of the close.
+           An aggregate over a per-row expression: legal because the
+           GROUP BY names only `year`. -->
+      <hdml-field name="rng_amzn"
+        clause="avg((`amazon_high` - `amazon_low`) / nullif(`amazon_close`, 0)) * 100"></hdml-field>
+      <hdml-field name="rng_aapl"
+        clause="avg((`apple_high` - `apple_low`) / nullif(`apple_close`, 0)) * 100"></hdml-field>
+      <hdml-field name="rng_goog"
+        clause="avg((`google_high` - `google_low`) / nullif(`google_close`, 0)) * 100"></hdml-field>
+      <hdml-field name="rng_msft"
+        clause="avg((`microsoft_high` - `microsoft_low`) / nullif(`microsoft_close`, 0)) * 100"></hdml-field>
+      <hdml-field name="rng_nflx"
+        clause="avg((`netflix_high` - `netflix_low`) / nullif(`netflix_close`, 0)) * 100"></hdml-field>
+
+      <!-- mean split- and dividend-adjusted close -->
+      <hdml-field name="px_amzn" origin="amazon_adj_close" aggregation="avg"></hdml-field>
+      <hdml-field name="px_aapl" origin="apple_adj_close" aggregation="avg"></hdml-field>
+      <hdml-field name="px_goog" origin="google_adj_close" aggregation="avg"></hdml-field>
+      <hdml-field name="px_msft" origin="microsoft_adj_close" aggregation="avg"></hdml-field>
+      <hdml-field name="px_nflx" origin="netflix_adj_close" aggregation="avg"></hdml-field>
+
+      <!-- close ÷ adj_close: 1.0 forever for a non-payer, drifting
+           up with every dividend for a payer -->
+      <hdml-field name="div_amzn"
+        clause="avg(`amazon_close` / nullif(`amazon_adj_close`, 0))"></hdml-field>
+      <hdml-field name="div_aapl"
+        clause="avg(`apple_close` / nullif(`apple_adj_close`, 0))"></hdml-field>
+      <hdml-field name="div_goog"
+        clause="avg(`google_close` / nullif(`google_adj_close`, 0))"></hdml-field>
+      <hdml-field name="div_msft"
+        clause="avg(`microsoft_close` / nullif(`microsoft_adj_close`, 0))"></hdml-field>
+      <hdml-field name="div_nflx"
+        clause="avg(`netflix_close` / nullif(`netflix_adj_close`, 0))"></hdml-field>
+
+      <hdml-group-by>
+        <hdml-field name="year"></hdml-field>
+      </hdml-group-by>
+
+      <!-- row order IS the ordinal x domain, and every path widget on
+           this page consumes it — pinning it here is not cosmetic -->
+      <hdml-sort-by>
+        <hdml-field name="year" order="asc"></hdml-field>
+      </hdml-sort-by>
+    </hdml-frame>
+
+    <!-- ============================================================
+         This page's OWN model. Its one table is `type="query"`, so
+         the identifier below is raw Trino, inlined as a CTE — which
+         is how day-over-day returns and running-peak drawdowns get
+         expressed at all. The two frames beneath it are then ordinary
+         grouped aggregates.
+
+         No `hdml-connection` is declared: the catalog already exists,
+         created by the tenant document, and redeclaring it here would
+         run find-drop-create DDL against it.
+         ============================================================ -->
+    <hdml-model name="maang_daily">
+      <hdml-table
+        name="d"
+        type="query"
+        description="Daily returns and running-peak drawdowns, pivoted wide."
+        identifier="select
+  year(d) as yr,
+  amzn / lag(amzn) over (order by d) - 1 as ret_amzn,
+  aapl / lag(aapl) over (order by d) - 1 as ret_aapl,
+  goog / lag(goog) over (order by d) - 1 as ret_goog,
+  msft / lag(msft) over (order by d) - 1 as ret_msft,
+  nflx / lag(nflx) over (order by d) - 1 as ret_nflx,
+  amzn / max(amzn) over (order by d rows between unbounded preceding and current row) - 1 as dd_amzn,
+  aapl / max(aapl) over (order by d rows between unbounded preceding and current row) - 1 as dd_aapl,
+  goog / max(goog) over (order by d rows between unbounded preceding and current row) - 1 as dd_goog,
+  msft / max(msft) over (order by d rows between unbounded preceding and current row) - 1 as dd_msft,
+  nflx / max(nflx) over (order by d rows between unbounded preceding and current row) - 1 as dd_nflx
+from (
+  select
+    d,
+    max(case when s = 'amzn' then c end) as amzn,
+    max(case when s = 'aapl' then c end) as aapl,
+    max(case when s = 'goog' then c end) as goog,
+    max(case when s = 'msft' then c end) as msft,
+    max(case when s = 'nflx' then c end) as nflx
+  from (
+    select cast(date as date) as d, 'amzn' as s, cast(adj_close as double) as c from `tenant-a_maang`.`maang`.`amazon`
+    union all select cast(date as date), 'aapl', cast(adj_close as double) from `tenant-a_maang`.`maang`.`apple`
+    union all select cast(date as date), 'goog', cast(adj_close as double) from `tenant-a_maang`.`maang`.`google`
+    union all select cast(date as date), 'msft', cast(adj_close as double) from `tenant-a_maang`.`maang`.`microsoft`
+    union all select cast(date as date), 'nflx', cast(adj_close as double) from `tenant-a_maang`.`maang`.`netflix`
+  ) u
+  group by d
+) p">
+        <hdml-field name="yr"></hdml-field>
+        <hdml-field name="ret_amzn"></hdml-field>
+        <hdml-field name="ret_aapl"></hdml-field>
+        <hdml-field name="ret_goog"></hdml-field>
+        <hdml-field name="ret_msft"></hdml-field>
+        <hdml-field name="ret_nflx"></hdml-field>
+        <hdml-field name="dd_amzn"></hdml-field>
+        <hdml-field name="dd_aapl"></hdml-field>
+        <hdml-field name="dd_goog"></hdml-field>
+        <hdml-field name="dd_msft"></hdml-field>
+        <hdml-field name="dd_nflx"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <!-- Deepest drawdown reached in each year: an ordinary `min` over
+         a column the model already computed. -->
+    <hdml-frame name="maang_drawdown" source="?hdml-model=maang_daily">
+      <hdml-field name="label" clause="cast(`d_yr` as varchar)"></hdml-field>
+      <hdml-field name="yr" origin="d_yr"></hdml-field>
+      <hdml-field name="dd_amzn" clause="min(`d_dd_amzn`) * 100"></hdml-field>
+      <hdml-field name="dd_aapl" clause="min(`d_dd_aapl`) * 100"></hdml-field>
+      <hdml-field name="dd_goog" clause="min(`d_dd_goog`) * 100"></hdml-field>
+      <hdml-field name="dd_msft" clause="min(`d_dd_msft`) * 100"></hdml-field>
+      <hdml-field name="dd_nflx" clause="min(`d_dd_nflx`) * 100"></hdml-field>
+
+      <hdml-group-by><hdml-field name="yr"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="yr" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- Mean of all ten pairwise return correlations, per year.
+         Filtered to 2005+ so every year averages the same ten pairs:
+         before Google's August 2004 listing there are only three or
+         six, and a mean over a changing denominator is not a series. -->
+    <hdml-frame name="maang_cohesion" source="?hdml-model=maang_daily">
+      <hdml-field name="label" clause="cast(`d_yr` as varchar)"></hdml-field>
+      <hdml-field name="yr" origin="d_yr"></hdml-field>
+      <hdml-field
+        name="corr_mean"
+        clause="(
+          corr(`d_ret_amzn`, `d_ret_aapl`) +
+          corr(`d_ret_amzn`, `d_ret_goog`) +
+          corr(`d_ret_amzn`, `d_ret_msft`) +
+          corr(`d_ret_amzn`, `d_ret_nflx`) +
+          corr(`d_ret_aapl`, `d_ret_goog`) +
+          corr(`d_ret_aapl`, `d_ret_msft`) +
+          corr(`d_ret_aapl`, `d_ret_nflx`) +
+          corr(`d_ret_goog`, `d_ret_msft`) +
+          corr(`d_ret_goog`, `d_ret_nflx`) +
+          corr(`d_ret_msft`, `d_ret_nflx`)
+        ) / 10"></hdml-field>
+
+      <hdml-filter-by>
+        <hdml-connective operator="and">
+          <hdml-filter type="expr" clause="`d_yr` >= 2005"></hdml-filter>
+        </hdml-connective>
+      </hdml-filter-by>
+
+      <hdml-group-by><hdml-field name="yr"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="yr" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <h1>The MAANG dataset</h1>
+    <p class="lede">
+      Twenty-three years of daily prices for five large-cap technology
+      stocks. This page describes what is in it and what it says —
+      every figure is a live query against the same frame.
+    </p>
+
+    <h2><span class="n">1</span> What it is</h2>
+
+    <p>
+      Five tables in the <code>maang</code> schema, one per ticker,
+      each a daily OHLCV series. The model joins them
+      <strong>full-outer on <code>date</code></strong>, so a day is one
+      row across all five — and the two stocks that listed later leave
+      genuine nulls in the early years rather than zeros.
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Table</th><th>Ticker</th><th>First day</th>
+          <th class="num">Rows</th><th class="num">Total return</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>amazon</code></td><td>AMZN</td><td>2000-01-03</td><td class="num">5 839</td><td class="num">22×</td></tr>
+        <tr><td><code>apple</code></td><td>AAPL</td><td>2000-01-03</td><td class="num">5 839</td><td class="num">182×</td></tr>
+        <tr><td><code>google</code></td><td>GOOG</td><td>2004-08-19</td><td class="num">4 676</td><td class="num">41×</td></tr>
+        <tr><td><code>microsoft</code></td><td>MSFT</td><td>2000-01-03</td><td class="num">5 839</td><td class="num">7.7×</td></tr>
+        <tr><td><code>netflix</code></td><td>NFLX</td><td>2002-05-23</td><td class="num">5 240</td><td class="num">254×</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      Every column is stored as <code>TEXT</code>; the frame casts on
+      the way out. The last trading day is <strong>2023-03-17</strong>.
+    </p>
+
+    <p>
+      One property is worth establishing before any of the figures
+      below, because all of them lean on it: the series is
+      <strong>split-adjusted throughout</strong>. <code>close</code>
+      and <code>adj_close</code> never diverge by more than a dividend
+      — there is no discontinuity anywhere in their ratio, at any of
+      the splits these five went through. So a fall in share volume is
+      a real fall, not an artifact of a 20-for-1 that reset the
+      denominator.
+    </p>
+
+    <h2><span class="n">2</span> Liquidity collapsed</h2>
+
+    <p class="finding">
+      Every one of the five trades a fraction of the shares it did
+      before 2009 — and the decline is monotone enough to be
+      structural rather than cyclical.
+    </p>
+
+    <p>
+      The y axis is <strong>logarithmic</strong>, and deliberately: on
+      a linear scale Apple's billion-share years flatten Netflix and
+      Microsoft into the axis, and the fact that <em>all five</em>
+      decline together is exactly what a linear chart hides. On a log
+      axis a constant slope is a constant rate, so the five are
+      directly comparable despite spanning three orders of magnitude.
+    </p>
+
+    <figure>
+      <figcaption id="cap-vol">
+        Mean daily volume by year, shares, log scale
+      </figcaption>
+      <hdml-view aria-labelledby="cap-vol">
+        <hdml-fallback>
+          Mean daily share volume per year, 2000–2023 — this figure
+          needs a browser with custom-element support.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=maang_yearly">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale
+              channel="y" type="log" min="3000000" max="1300000000">
+              <hdml-ordinal-scale
+                channel="color"
+                values='["Amazon","Apple","Google","Microsoft","Netflix"]'>
+
+                <hdml-grid channel="y" count="3"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x" count="8"></hdml-tick>
+                <hdml-tick channel="y" count="3"></hdml-tick>
+                <hdml-label channel="x" count="8"></hdml-label>
+                <hdml-label channel="y" count="3" format="compact-short"></hdml-label>
+
+                <hdml-line x="label" y="vol_amzn" color='"Amazon"'></hdml-line>
+                <hdml-line x="label" y="vol_aapl" color='"Apple"'></hdml-line>
+                <hdml-line x="label" y="vol_goog" color='"Google"'></hdml-line>
+                <hdml-line x="label" y="vol_msft" color='"Microsoft"'></hdml-line>
+                <hdml-line x="label" y="vol_nflx" color='"Netflix"'></hdml-line>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">3</span> Volatility has regimes</h2>
+
+    <p class="finding">
+      The average day got calmer for seventeen years — 6.5 % of the
+      close in 2000 down to 1.5 % in 2017 — and every crisis is a
+      spike off that floor.
+    </p>
+
+    <p>
+      The measure is the mean daily high−low range as a percentage of
+      that day's close: a scale-free proxy for realised volatility that
+      needs no returns, and therefore no window function. Read the
+      spikes as dates — 2008, 2018, 2020, 2022 — and the dashed line as
+      the whole-period mean of 2.95 %.
+    </p>
+
+    <figure>
+      <figcaption id="cap-rng">
+        Mean daily high−low range by year, % of close; dashed line is
+        the 2000–2023 mean
+      </figcaption>
+      <hdml-view aria-labelledby="cap-rng">
+        <hdml-fallback>
+          Mean daily trading range as a percentage of close, by year.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=maang_yearly">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="10">
+              <hdml-ordinal-scale
+                channel="color"
+                values='["Amazon","Apple","Google","Microsoft","Netflix"]'>
+
+                <hdml-grid channel="y" count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x" count="8"></hdml-tick>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="x" count="8"></hdml-label>
+                <hdml-label channel="y" count="5"></hdml-label>
+
+                <hdml-line x="label" y="rng_amzn" color='"Amazon"'></hdml-line>
+                <hdml-line x="label" y="rng_aapl" color='"Apple"'></hdml-line>
+                <hdml-line x="label" y="rng_goog" color='"Google"'></hdml-line>
+                <hdml-line x="label" y="rng_msft" color='"Microsoft"'></hdml-line>
+                <hdml-line x="label" y="rng_nflx" color='"Netflix"'></hdml-line>
+
+                <!-- a scalar constant on one channel: the rule spans
+                     the other channel's whole range -->
+                <hdml-rule y="2.95"></hdml-rule>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">4</span> They are the same phenomenon</h2>
+
+    <p class="finding">
+      Volume is a fear gauge. Plot the two previous figures against
+      each other and the years line up along a rising diagonal.
+    </p>
+
+    <p>
+      Each dot is one ticker-year: its mean daily range on x, its mean
+      daily volume on y. What looked like two independent secular
+      trends is one relationship — quiet years are thin years. Measured
+      on daily data the link is direct: the correlation between volume
+      and the size of that day's move runs from 0.37 (Google) to 0.58
+      (Amazon).
+    </p>
+
+    <figure>
+      <figcaption id="cap-scatter">
+        One dot per ticker-year: mean daily range (% of close) against
+        mean daily volume, log scale
+      </figcaption>
+      <hdml-view aria-labelledby="cap-scatter">
+        <hdml-fallback>
+          Mean daily volume against mean daily range, one point per
+          ticker per year.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=maang_yearly">
+          <hdml-continuous-scale channel="x" min="0" max="10">
+            <hdml-continuous-scale
+              channel="y" type="log" min="3000000" max="1300000000">
+              <hdml-ordinal-scale
+                channel="color"
+                values='["Amazon","Apple","Google","Microsoft","Netflix"]'>
+
+                <hdml-grid channel="y" count="3"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x" count="6"></hdml-tick>
+                <hdml-tick channel="y" count="3"></hdml-tick>
+                <hdml-label channel="x" count="6"></hdml-label>
+                <hdml-label channel="y" count="3" format="compact-short"></hdml-label>
+
+                <hdml-point x="rng_amzn" y="vol_amzn" color='"Amazon"'></hdml-point>
+                <hdml-point x="rng_aapl" y="vol_aapl" color='"Apple"'></hdml-point>
+                <hdml-point x="rng_goog" y="vol_goog" color='"Google"'></hdml-point>
+                <hdml-point x="rng_msft" y="vol_msft" color='"Microsoft"'></hdml-point>
+                <hdml-point x="rng_nflx" y="vol_nflx" color='"Netflix"'></hdml-point>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">5</span> The outcomes are not close</h2>
+
+    <p class="finding">
+      Netflix returned 254× and Microsoft 7.7×. Calling these five a
+      peer group is a claim the data does not support.
+    </p>
+
+    <p>
+      Log scale again, and here it is doing real work: on a log axis
+      <em>slope is growth rate</em>, so the five curves can be compared
+      without normalising any of them to a common base — which would
+      have needed a window function this vocabulary cannot express.
+    </p>
+
+    <p class="caveat">
+      The multiples above are measured from each ticker's own first
+      day, and those days differ by four and a half years. Google's 41×
+      excludes the 2000–2004 period; Netflix's 254× starts from a
+      post-IPO price of well under a dollar, split-adjusted. Compare
+      the slopes, not the endpoints.
+    </p>
+
+    <figure>
+      <figcaption id="cap-px">
+        Mean adjusted close by year, USD, log scale
+      </figcaption>
+      <hdml-view aria-labelledby="cap-px">
+        <hdml-fallback>
+          Mean split- and dividend-adjusted close per year, 2000–2023.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=maang_yearly">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale
+              channel="y" type="log" min="0.2" max="700">
+              <hdml-ordinal-scale
+                channel="color"
+                values='["Amazon","Apple","Google","Microsoft","Netflix"]'>
+
+                <hdml-grid channel="y" count="4"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x" count="8"></hdml-tick>
+                <hdml-tick channel="y" count="4"></hdml-tick>
+                <hdml-label channel="x" count="8"></hdml-label>
+                <hdml-label channel="y" count="4"></hdml-label>
+
+                <hdml-line x="label" y="px_amzn" color='"Amazon"'></hdml-line>
+                <hdml-line x="label" y="px_aapl" color='"Apple"'></hdml-line>
+                <hdml-line x="label" y="px_goog" color='"Google"'></hdml-line>
+                <hdml-line x="label" y="px_msft" color='"Microsoft"'></hdml-line>
+                <hdml-line x="label" y="px_nflx" color='"Netflix"'></hdml-line>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">6</span> The winners are the ones that fell hardest</h2>
+
+    <p class="finding">
+      Amazon lost 93 % of its value and Netflix 82 % — the same two
+      names that returned 22× and 254×. Holding the winner meant
+      holding through that.
+    </p>
+
+    <p>
+      Drawdown is the distance below the highest close reached so far,
+      so it needs a running peak — <code>max()</code> over an unbounded
+      preceding frame — which is why this figure is the first one
+      sourced from this page's own <code>maang_daily</code> model
+      rather than from the tenant's frame. The line for each year is
+      the deepest point reached in it.
+    </p>
+
+    <p class="caveat">
+      Read the troughs as dates: Amazon bottoms in September 2001 at
+      −93.3 %, Apple in April 2003 at −81.8 %, Google in November 2008
+      at −65.3 %, Microsoft in March 2009 at −68.7 %, and Netflix — the
+      only one whose worst moment belongs to no market-wide crisis — in
+      September 2012 at −82.0 %.
+    </p>
+
+    <figure>
+      <figcaption id="cap-dd">
+        Deepest drawdown from the running peak, by year, %
+      </figcaption>
+      <hdml-view aria-labelledby="cap-dd">
+        <hdml-fallback>
+          Deepest annual drawdown from each stock's running peak.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=maang_drawdown">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="-100" max="0">
+              <hdml-ordinal-scale
+                channel="color"
+                values='["Amazon","Apple","Google","Microsoft","Netflix"]'>
+
+                <hdml-grid channel="y" count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x" count="8"></hdml-tick>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="x" count="8"></hdml-label>
+                <hdml-label channel="y" count="5"></hdml-label>
+
+                <hdml-line x="label" y="dd_amzn" color='"Amazon"'></hdml-line>
+                <hdml-line x="label" y="dd_aapl" color='"Apple"'></hdml-line>
+                <hdml-line x="label" y="dd_goog" color='"Google"'></hdml-line>
+                <hdml-line x="label" y="dd_msft" color='"Microsoft"'></hdml-line>
+                <hdml-line x="label" y="dd_nflx" color='"Netflix"'></hdml-line>
+
+                <hdml-rule y="-50"></hdml-rule>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">7</span> Two of them pay you</h2>
+
+    <p class="finding">
+      <code>close ÷ adj_close</code> separates the dividend payers from
+      the non-payers with no other information at all.
+    </p>
+
+    <p>
+      Because <code>adj_close</code> is back-adjusted from the present,
+      the ratio at year <em>t</em> is the cumulative dividend
+      adjustment still owed to that year's price — so it
+      <strong>decays to 1.0 at the final row by construction</strong>,
+      and its height at the left edge is how much dividend income the
+      series has thrown off since. Microsoft enters the window at 1.60
+      and Apple at 1.17. Amazon, Google and Netflix sit exactly on the
+      dashed 1.0 line for all twenty-three years: none of them paid a
+      dividend inside it. It is the cheapest structural fact in the
+      dataset, and it is legible only because the source carries both
+      an adjusted and an unadjusted close.
+    </p>
+
+    <figure>
+      <figcaption id="cap-div">
+        Mean <code>close ÷ adj_close</code> by year — 1.0 means no
+        dividends have been paid since
+      </figcaption>
+      <hdml-view aria-labelledby="cap-div">
+        <hdml-fallback>
+          Ratio of unadjusted to adjusted close, by year.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=maang_yearly">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0.9" max="1.7">
+              <hdml-ordinal-scale
+                channel="color"
+                values='["Amazon","Apple","Google","Microsoft","Netflix"]'>
+
+                <hdml-grid channel="y" count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x" count="8"></hdml-tick>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="x" count="8"></hdml-label>
+                <hdml-label channel="y" count="5"></hdml-label>
+
+                <hdml-line x="label" y="div_amzn" color='"Amazon"'></hdml-line>
+                <hdml-line x="label" y="div_aapl" color='"Apple"'></hdml-line>
+                <hdml-line x="label" y="div_goog" color='"Google"'></hdml-line>
+                <hdml-line x="label" y="div_msft" color='"Microsoft"'></hdml-line>
+                <hdml-line x="label" y="div_nflx" color='"Netflix"'></hdml-line>
+
+                <hdml-rule y="1"></hdml-rule>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">8</span> They have become one trade</h2>
+
+    <p class="finding">
+      The average correlation between any two of these five has roughly
+      tripled — 0.13 in 2013 against 0.70 in 2018 — and has not gone
+      back down.
+    </p>
+
+    <p>
+      This is the strongest thing in the dataset and the one that most
+      needs the model layer: it is the mean of all ten pairwise
+      correlations of daily returns, so it needs returns, and returns
+      need <code>lag()</code>. The frame does the easy half —
+      <code>corr()</code> is an ordinary aggregate, ten of them summed
+      and divided by ten in a single <code>hdml-field</code> — while
+      the model does the half a field cannot express.
+    </p>
+
+    <p>
+      Read it against figure 3. The two crisis spikes line up, which is
+      the familiar result that diversification fails exactly when it is
+      needed. But the level after 2017 is the finding: correlation is
+      now high in <em>calm</em> years too. Whatever made these five
+      independent businesses in 2013 has stopped being visible in their
+      prices.
+    </p>
+
+    <p class="caveat">
+      Restricted to 2005 onward, because before Google's August 2004
+      listing only three or six of the ten pairs exist, and a mean over
+      a changing denominator is not a series. The 2000–2004 values —
+      0.28, 0.43, 0.30, 0.33, 0.13 — are not comparable with what
+      follows and are excluded rather than plotted.
+    </p>
+
+    <figure>
+      <figcaption id="cap-corr">
+        Mean of all ten pairwise correlations of daily returns, by year
+      </figcaption>
+      <hdml-view aria-labelledby="cap-corr">
+        <hdml-fallback>
+          Mean pairwise correlation of daily returns, 2005–2023.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=maang_cohesion">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="0.8">
+              <hdml-ordinal-scale channel="color" values='["All ten pairs"]'>
+
+                <hdml-grid channel="y" count="4"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x" count="10"></hdml-tick>
+                <hdml-tick channel="y" count="4"></hdml-tick>
+                <hdml-label channel="x" count="10"></hdml-label>
+                <hdml-label channel="y" count="4"></hdml-label>
+
+                <hdml-line
+                  x="label" y="corr_mean"
+                  color='"All ten pairs"'></hdml-line>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">9</span> Which pairs, over the whole period</h2>
+
+    <p>
+      Averaging hides who is doing the moving. Whole-period pairwise
+      correlations, ten rows — a ranking, which is a table rather than
+      a chart:
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Pair</th>
+          <th class="num">Correlation of daily returns</th>
+          <th class="num">Overlapping days</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>GOOG · MSFT</td><td class="num">0.567</td><td class="num">4 676</td></tr>
+        <tr><td>AAPL · GOOG</td><td class="num">0.521</td><td class="num">4 676</td></tr>
+        <tr><td>AMZN · GOOG</td><td class="num">0.512</td><td class="num">4 676</td></tr>
+        <tr><td>AAPL · MSFT</td><td class="num">0.481</td><td class="num">5 838</td></tr>
+        <tr><td>AMZN · MSFT</td><td class="num">0.438</td><td class="num">5 838</td></tr>
+        <tr><td>AAPL · AMZN</td><td class="num">0.371</td><td class="num">5 838</td></tr>
+        <tr><td>AMZN · NFLX</td><td class="num">0.360</td><td class="num">5 240</td></tr>
+        <tr><td>GOOG · NFLX</td><td class="num">0.298</td><td class="num">5 240</td></tr>
+        <tr><td>MSFT · NFLX</td><td class="num">0.290</td><td class="num">5 240</td></tr>
+        <tr><td>AAPL · NFLX</td><td class="num">0.274</td><td class="num">5 240</td></tr>
+      </tbody>
+    </table>
+
+    <p class="finding">
+      Netflix occupies the bottom four rows. It is in the acronym, not
+      in the correlation structure.
+    </p>
+
+    <p class="caveat">
+      This table is static HTML, and it is the only number on the page
+      that is. It is not a limit of the vocabulary — a second
+      <code>type="query"</code> model returning ten rows
+      (<code>pair</code>, <code>corr</code>) would make it an
+      <code>hdml-bar</code> on an ordinal <em>y</em> — but it would
+      duplicate the returns CTE at a different row grain to render ten
+      numbers that a ranking already reads better as a table. Say the
+      word and it becomes a figure.
+    </p>
+
+    <p class="caveat">
+      Correlating the price <em>levels</em> instead needs no model at
+      all, since <code>corr()</code> is an aggregate — and it would
+      return roughly 0.9 for every pair and mean nothing: five series
+      that all trend upward are correlated by construction. It is left
+      out on purpose.
+    </p>
+
+    <!--
+      Two further figures the same frame would support, left out to
+      keep the narrative to one claim per section:
+
+      • A 5×5 correlation heatmap — expressible with `hdml-point` on
+        ordinal × ordinal with a continuous colour scale, no new
+        vocabulary. A point's extent is `--hdml-tick-width`/`-height`
+        in px rather than the band's, so the cells will not resize
+        with the plane.
+      • The typical daily trading band — `hdml-area` with
+        y0="avg_low" y1="avg_high" per ticker over a log price axis,
+        where the band's vertical thickness reads as percentage
+        volatility. Needs five more origin+aggregation field pairs.
+    -->
+  </body>
+</html>

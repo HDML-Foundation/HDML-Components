@@ -1,0 +1,888 @@
+<!doctype html>
+<!--
+  Airbnb — the structural profile of the `airbnb` schema.
+
+  The sibling of maang/statistic.html, over a schema whose shape is the
+  opposite: where MAANG is five tables that JOIN on a shared key, this
+  is twenty tables that UNION, with the partition keys living in the
+  table NAMES rather than in any column.
+
+  THE CATALOG IS ALREADY THERE, which is the first thing to know. The
+  tenant's `tenant-a_maang` connection points at
+  `jdbc:postgresql://localhost:5432/postgres` — the whole database —
+  and Trino's PostgreSQL connector maps every Postgres schema to a
+  Trino schema. Verified against the running Trino as user `tenant-a`:
+
+    show schemas from "tenant-a_maang"
+      → airbnb, information_schema, maang, netflix, pg_catalog,
+        public, spotify
+
+  So `airbnb` is addressable today, through a catalog named after a
+  different schema. That works and it is misleading; section 1 says
+  what to do about it.
+
+  EVERY QUERY ON THIS PAGE WAS RUN AGAINST THAT TRINO before being
+  written into an `identifier`, and the numbers in the prose are its
+  output. That is the difference between this page and its MAANG
+  sibling, whose SQL is still unexecuted.
+
+  TWO MODELS. `airbnb_rows` is the twenty-way union with `city` and
+  `period` promoted from table names to literal columns — the shape
+  section 8 argues every model over this schema should start from.
+  `airbnb_columns` is one row per column, carrying its distinct count
+  and, where a log axis can hold it, its observed range.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Airbnb — structural profile</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0 auto; padding: 2rem 1.5rem 6rem; max-width: 860px;
+        font-family: system-ui, sans-serif; line-height: 1.55;
+        color: #0f172a;
+      }
+      h1 { font-size: 1.9rem; margin: 0 0 0.25rem; letter-spacing: -0.02em; }
+      h2 {
+        font-size: 1.15rem; margin: 3.5rem 0 0.5rem;
+        letter-spacing: -0.01em;
+      }
+      h2 .n {
+        display: inline-block; min-width: 1.6em;
+        color: #94a3b8; font-variant-numeric: tabular-nums;
+      }
+      .lede { font-size: 1.05rem; color: #334155; margin: 0 0 2rem; }
+      p { margin: 0 0 1rem; }
+      .finding {
+        margin: 0 0 1.25rem; padding: 0.75rem 1rem;
+        border-left: 3px solid #1c8cf4; background: #f1f5f9;
+        font-weight: 600;
+      }
+      .warn { border-left-color: #dc2626; }
+      .caveat { color: #64748b; font-size: 0.9rem; }
+      code {
+        font-family: ui-monospace, monospace; font-size: 0.9em;
+        background: #f1f5f9; padding: 0.1em 0.35em; border-radius: 3px;
+      }
+      pre {
+        background: #f1f5f9; padding: 1rem; border-radius: 4px;
+        overflow-x: auto; font-size: 0.85rem; line-height: 1.45;
+      }
+      pre code { background: none; padding: 0; font-size: 1em; }
+      table { border-collapse: collapse; width: 100%; margin: 0 0 1rem; }
+      th, td {
+        text-align: left; padding: 0.4rem 0.6rem;
+        border-bottom: 1px solid #e2e8f0; font-size: 0.92rem;
+      }
+      th { color: #475569; font-weight: 600; }
+      td.num { text-align: right; font-variant-numeric: tabular-nums; }
+      td.ok { color: #15803d; font-weight: 600; }
+      td.bad { color: #dc2626; font-weight: 600; }
+
+      figure { margin: 1.5rem 0 0; max-width: 100%; }
+      figcaption {
+        margin-bottom: 0.9rem; color: #475569; font-size: 0.9rem;
+      }
+      hdml-fallback {
+        padding: 2rem; border: 1px dashed #cbd5e1; color: #64748b;
+        text-align: center;
+      }
+
+      hdml-view { width: 100%; height: 340px; }
+      hdml-view.tall { height: 420px; }
+      hdml-cartesian-plane { padding: 16px 130px 40px 76px; }
+
+      hdml-ordinal-scale[channel="x"] { padding: 0 16px; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+
+      hdml-axis { --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="x"] {
+        position: absolute; left: 0; right: 0; bottom: 0;
+      }
+      hdml-axis[channel="y"] {
+        position: absolute; top: 0; bottom: 0; left: 0;
+      }
+      hdml-grid[channel="y"] {
+        --hdml-line-width: 1px; --hdml-line-style: dotted;
+        --hdml-line-color: #cbd5e1;
+      }
+      hdml-tick {
+        --hdml-tick-style: rect; --hdml-tick-width: 1px;
+        --hdml-tick-height: 6px; --hdml-fill-color: #64748b;
+      }
+      hdml-tick[channel="x"] {
+        position: absolute; left: 0; right: 0; bottom: 0;
+      }
+      hdml-tick[channel="y"] {
+        position: absolute; top: 0; bottom: 0; left: 0;
+      }
+      hdml-label { --hdml-font-size: 11px; --hdml-font-family: inherit; }
+      hdml-label[channel="x"] {
+        position: absolute; left: 0; right: 0; top: 100%;
+      }
+      hdml-label[channel="y"] {
+        position: absolute; top: 0; bottom: 0; right: 100%;
+      }
+
+      hdml-ordinal-scale[channel="color"] {
+        --hdml-palette: #1c8cf4 #f59e0b #10b981 #a855f7 #ef4444;
+      }
+      hdml-legend {
+        position: absolute; top: 8px; left: 100%;
+        width: 120px; --hdml-font-size: 11px;
+      }
+
+      hdml-bar { --hdml-fill-opacity: 0.9; }
+      hdml-point {
+        --hdml-tick-style: ellipse;
+        --hdml-tick-width: 10px; --hdml-tick-height: 10px;
+        --hdml-fill-opacity: 0.85;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body { color: #e2e8f0; }
+        .lede { color: #cbd5e1; }
+        .finding, pre, code { background: #1e293b; }
+        th, td { border-bottom-color: #334155; }
+        th { color: #94a3b8; }
+        figcaption { color: #94a3b8; }
+        td.ok { color: #4ade80; }
+        td.bad { color: #f87171; }
+      }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc">
+    </hdml-io>
+
+    <!-- ========================================================
+         The twenty-way union, with `city` and `period` lifted out
+         of the table names into real columns. This is the shape
+         section 8 recommends; the page uses it on itself.
+         ======================================================== -->
+    <hdml-model name="airbnb_rows">
+      <hdml-table
+        name="r"
+        type="query"
+        description="All twenty city/period tables stacked, partition keys promoted to columns."
+        identifier="  select 'amsterdam' as city, 'weekdays' as period, person_capacity from `tenant-a_maang`.`airbnb`.`amsterdam_weekdays`
+union all
+  select 'amsterdam' as city, 'weekends' as period, person_capacity from `tenant-a_maang`.`airbnb`.`amsterdam_weekends`
+union all
+  select 'athens' as city, 'weekdays' as period, person_capacity from `tenant-a_maang`.`airbnb`.`athens_weekdays`
+union all
+  select 'athens' as city, 'weekends' as period, person_capacity from `tenant-a_maang`.`airbnb`.`athens_weekends`
+union all
+  select 'barcelona' as city, 'weekdays' as period, person_capacity from `tenant-a_maang`.`airbnb`.`barcelona_weekdays`
+union all
+  select 'barcelona' as city, 'weekends' as period, person_capacity from `tenant-a_maang`.`airbnb`.`barcelona_weekends`
+union all
+  select 'berlin' as city, 'weekdays' as period, person_capacity from `tenant-a_maang`.`airbnb`.`berlin_weekdays`
+union all
+  select 'berlin' as city, 'weekends' as period, person_capacity from `tenant-a_maang`.`airbnb`.`berlin_weekends`
+union all
+  select 'budapest' as city, 'weekdays' as period, person_capacity from `tenant-a_maang`.`airbnb`.`budapest_weekdays`
+union all
+  select 'budapest' as city, 'weekends' as period, person_capacity from `tenant-a_maang`.`airbnb`.`budapest_weekends`
+union all
+  select 'lisbon' as city, 'weekdays' as period, person_capacity from `tenant-a_maang`.`airbnb`.`lisbon_weekdays`
+union all
+  select 'lisbon' as city, 'weekends' as period, person_capacity from `tenant-a_maang`.`airbnb`.`lisbon_weekends`
+union all
+  select 'london' as city, 'weekdays' as period, person_capacity from `tenant-a_maang`.`airbnb`.`london_weekdays`
+union all
+  select 'london' as city, 'weekends' as period, person_capacity from `tenant-a_maang`.`airbnb`.`london_weekends`
+union all
+  select 'paris' as city, 'weekdays' as period, person_capacity from `tenant-a_maang`.`airbnb`.`paris_weekdays`
+union all
+  select 'paris' as city, 'weekends' as period, person_capacity from `tenant-a_maang`.`airbnb`.`paris_weekends`
+union all
+  select 'rome' as city, 'weekdays' as period, person_capacity from `tenant-a_maang`.`airbnb`.`rome_weekdays`
+union all
+  select 'rome' as city, 'weekends' as period, person_capacity from `tenant-a_maang`.`airbnb`.`rome_weekends`
+union all
+  select 'vienna' as city, 'weekdays' as period, person_capacity from `tenant-a_maang`.`airbnb`.`vienna_weekdays`
+union all
+  select 'vienna' as city, 'weekends' as period, person_capacity from `tenant-a_maang`.`airbnb`.`vienna_weekends`">
+        <hdml-field name="city"></hdml-field>
+        <hdml-field name="period"></hdml-field>
+        <hdml-field name="person_capacity"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="rows_by_city" source="?hdml-model=airbnb_rows">
+      <hdml-field name="label" origin="r_city"></hdml-field>
+      <hdml-field name="n_weekdays" clause="count_if(`r_period` = 'weekdays')"></hdml-field>
+      <hdml-field name="n_weekends" clause="count_if(`r_period` = 'weekends')"></hdml-field>
+      <hdml-group-by><hdml-field name="label"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="label" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- The same rows, grouped by the NUMERIC capacity and split by
+         which textual form the row happens to use. -->
+    <hdml-frame name="capacity_forms" source="?hdml-model=airbnb_rows">
+      <hdml-field
+        name="label"
+        clause="cast(cast(cast(`r_person_capacity` as double) as integer) as varchar)"></hdml-field>
+      <hdml-field
+        name="cap"
+        clause="cast(cast(`r_person_capacity` as double) as integer)"></hdml-field>
+      <hdml-field name="n_dotted" clause="count_if(`r_person_capacity` like '%.%')"></hdml-field>
+      <hdml-field name="n_plain" clause="count_if(`r_person_capacity` not like '%.%')"></hdml-field>
+      <hdml-group-by><hdml-field name="cap"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="cap" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- ========================================================
+         One row per column: its distinct count, and its observed
+         range where a log axis can hold it. A column whose minimum
+         is zero or negative gets NULL endpoints and simply does not
+         paint — missing renders as absent, never as zero.
+         ======================================================== -->
+    <hdml-model name="airbnb_columns">
+      <hdml-table
+        name="c"
+        type="query"
+        description="One row per column: distinct count plus observed min/max."
+        identifier="select
+  v.col as col,
+  v.pos as pos,
+  case v.col
+    when 'col_0' then w.d_col_0
+    when 'realsum' then w.d_realsum
+    when 'room_type' then w.d_room_type
+    when 'room_shared' then w.d_room_shared
+    when 'room_private' then w.d_room_private
+    when 'person_capacity' then w.d_person_capacity
+    when 'host_is_superhost' then w.d_host_is_superhost
+    when 'multi' then w.d_multi
+    when 'biz' then w.d_biz
+    when 'cleanliness_rating' then w.d_cleanliness_rating
+    when 'guest_satisfaction_overall' then w.d_guest_satisfaction_overall
+    when 'bedrooms' then w.d_bedrooms
+    when 'dist' then w.d_dist
+    when 'metro_dist' then w.d_metro_dist
+    when 'attr_index' then w.d_attr_index
+    when 'attr_index_norm' then w.d_attr_index_norm
+    when 'rest_index' then w.d_rest_index
+    when 'rest_index_norm' then w.d_rest_index_norm
+    when 'lng' then w.d_lng
+    when 'lat' then w.d_lat
+  end as n_distinct,
+  case v.col
+    when 'realsum' then w.lo_realsum
+    when 'person_capacity' then w.lo_person_capacity
+    when 'cleanliness_rating' then w.lo_cleanliness_rating
+    when 'guest_satisfaction_overall' then w.lo_guest_satisfaction_overall
+    when 'dist' then w.lo_dist
+    when 'metro_dist' then w.lo_metro_dist
+    when 'attr_index' then w.lo_attr_index
+    when 'attr_index_norm' then w.lo_attr_index_norm
+    when 'rest_index' then w.lo_rest_index
+    when 'rest_index_norm' then w.lo_rest_index_norm
+    when 'lat' then w.lo_lat
+    else null
+  end as lo,
+  case v.col
+    when 'realsum' then w.hi_realsum
+    when 'person_capacity' then w.hi_person_capacity
+    when 'cleanliness_rating' then w.hi_cleanliness_rating
+    when 'guest_satisfaction_overall' then w.hi_guest_satisfaction_overall
+    when 'dist' then w.hi_dist
+    when 'metro_dist' then w.hi_metro_dist
+    when 'attr_index' then w.hi_attr_index
+    when 'attr_index_norm' then w.hi_attr_index_norm
+    when 'rest_index' then w.hi_rest_index
+    when 'rest_index_norm' then w.hi_rest_index_norm
+    when 'lat' then w.hi_lat
+    else null
+  end as hi
+from (
+  select
+      count(distinct col_0) as d_col_0,
+      count(distinct realsum) as d_realsum,
+      count(distinct room_type) as d_room_type,
+      count(distinct room_shared) as d_room_shared,
+      count(distinct room_private) as d_room_private,
+      count(distinct person_capacity) as d_person_capacity,
+      count(distinct host_is_superhost) as d_host_is_superhost,
+      count(distinct multi) as d_multi,
+      count(distinct biz) as d_biz,
+      count(distinct cleanliness_rating) as d_cleanliness_rating,
+      count(distinct guest_satisfaction_overall) as d_guest_satisfaction_overall,
+      count(distinct bedrooms) as d_bedrooms,
+      count(distinct dist) as d_dist,
+      count(distinct metro_dist) as d_metro_dist,
+      count(distinct attr_index) as d_attr_index,
+      count(distinct attr_index_norm) as d_attr_index_norm,
+      count(distinct rest_index) as d_rest_index,
+      count(distinct rest_index_norm) as d_rest_index_norm,
+      count(distinct lng) as d_lng,
+      count(distinct lat) as d_lat,
+      min(cast(realsum as double)) as lo_realsum,
+      min(cast(person_capacity as double)) as lo_person_capacity,
+      min(cast(cleanliness_rating as double)) as lo_cleanliness_rating,
+      min(cast(guest_satisfaction_overall as double)) as lo_guest_satisfaction_overall,
+      min(cast(dist as double)) as lo_dist,
+      min(cast(metro_dist as double)) as lo_metro_dist,
+      min(cast(attr_index as double)) as lo_attr_index,
+      min(cast(attr_index_norm as double)) as lo_attr_index_norm,
+      min(cast(rest_index as double)) as lo_rest_index,
+      min(cast(rest_index_norm as double)) as lo_rest_index_norm,
+      min(cast(lat as double)) as lo_lat,
+      max(cast(realsum as double)) as hi_realsum,
+      max(cast(person_capacity as double)) as hi_person_capacity,
+      max(cast(cleanliness_rating as double)) as hi_cleanliness_rating,
+      max(cast(guest_satisfaction_overall as double)) as hi_guest_satisfaction_overall,
+      max(cast(dist as double)) as hi_dist,
+      max(cast(metro_dist as double)) as hi_metro_dist,
+      max(cast(attr_index as double)) as hi_attr_index,
+      max(cast(attr_index_norm as double)) as hi_attr_index_norm,
+      max(cast(rest_index as double)) as hi_rest_index,
+      max(cast(rest_index_norm as double)) as hi_rest_index_norm,
+      max(cast(lat as double)) as hi_lat
+  from (
+      select * from `tenant-a_maang`.`airbnb`.`amsterdam_weekdays`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`amsterdam_weekends`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`athens_weekdays`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`athens_weekends`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`barcelona_weekdays`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`barcelona_weekends`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`berlin_weekdays`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`berlin_weekends`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`budapest_weekdays`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`budapest_weekends`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`lisbon_weekdays`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`lisbon_weekends`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`london_weekdays`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`london_weekends`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`paris_weekdays`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`paris_weekends`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`rome_weekdays`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`rome_weekends`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`vienna_weekdays`
+union all
+      select * from `tenant-a_maang`.`airbnb`.`vienna_weekends`
+  ) u
+) w
+cross join (values
+  ('col_0', 1),
+  ('realsum', 2),
+  ('room_type', 3),
+  ('room_shared', 4),
+  ('room_private', 5),
+  ('person_capacity', 6),
+  ('host_is_superhost', 7),
+  ('multi', 8),
+  ('biz', 9),
+  ('cleanliness_rating', 10),
+  ('guest_satisfaction_overall', 11),
+  ('bedrooms', 12),
+  ('dist', 13),
+  ('metro_dist', 14),
+  ('attr_index', 15),
+  ('attr_index_norm', 16),
+  ('rest_index', 17),
+  ('rest_index_norm', 18),
+  ('lng', 19),
+  ('lat', 20)
+) v (col, pos)">
+        <hdml-field name="col"></hdml-field>
+        <hdml-field name="pos"></hdml-field>
+        <hdml-field name="n_distinct"></hdml-field>
+        <hdml-field name="lo"></hdml-field>
+        <hdml-field name="hi"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="columns_profile" source="?hdml-model=airbnb_columns">
+      <hdml-field name="label" origin="c_col"></hdml-field>
+      <hdml-field name="pos" origin="c_pos"></hdml-field>
+      <hdml-field name="n_distinct" origin="c_n_distinct"></hdml-field>
+      <hdml-field name="lo" origin="c_lo"></hdml-field>
+      <hdml-field name="hi" origin="c_hi"></hdml-field>
+      <!-- declaration order, not alphabetical: the dictionary in
+           section 3 reads down the same list -->
+      <hdml-sort-by><hdml-field name="pos" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <h1>Airbnb — structural profile</h1>
+    <p class="lede">
+      Twenty tables, 51 707 rows, twenty columns, and not one of them
+      typed. What is in the <code>airbnb</code> schema, measured
+      against the running Trino — and the <code>hdml-model</code> those
+      measurements argue for, which is <em>not</em> the shape the MAANG
+      schema wanted.
+    </p>
+
+    <h2><span class="n">1</span> The catalog you already have</h2>
+
+    <p class="finding">
+      No new connection is needed. <code>tenant-a_maang</code> points
+      at the whole <code>postgres</code> database, and Trino maps every
+      Postgres schema to a Trino schema — so
+      <code>`tenant-a_maang`.`airbnb`.`london_weekdays`</code> resolves
+      today.
+    </p>
+
+    <p>
+      Asked directly, that catalog answers with seven schemas —
+      <code>airbnb</code>, <code>maang</code>, <code>netflix</code>,
+      <code>spotify</code>, plus <code>information_schema</code>,
+      <code>pg_catalog</code> and <code>public</code>. An HDML
+      connection is a <em>database</em>, not a schema, and the name
+      <code>tenant-a_maang</code> only ever described one of the things
+      inside it.
+    </p>
+
+    <p>
+      That is workable and misleading in equal measure, so the
+      recommendation is to declare a second connection —
+      <code>tenant-a_airbnb</code>, same JDBC URL, same credentials —
+      purely so the catalog name tells the truth and access rules can
+      be written per dataset. It costs one <code>hdml-connection</code>
+      and a compile. Until then every identifier on this page carries
+      the <code>maang</code> name over <code>airbnb</code> data, which
+      is exactly the confusion worth removing.
+    </p>
+
+    <p class="caveat">
+      Adding it is not free of risk: a connection element compiles to
+      find-drop-create catalog DDL, so declare the <em>new</em> name
+      and leave <code>tenant-a_maang</code> untouched.
+    </p>
+
+    <h2><span class="n">2</span> Twenty tables, and the keys are in the names</h2>
+
+    <p class="finding warn">
+      <code>city</code> and <code>period</code> exist nowhere in the
+      data. They are encoded in the table names —
+      <code>london_weekdays</code>, <code>rome_weekends</code> — so
+      every model over this schema has to promote them to columns
+      before anything can group by them.
+    </p>
+
+    <p>
+      Ten cities × two periods, identical twenty-column layout in all
+      twenty tables. That uniformity is what makes one model over the
+      whole schema reasonable; the naming convention is what makes it
+      a <code>union</code> rather than a <code>join</code>. London and
+      Rome carry a fifth of the corpus between them; Amsterdam is the
+      smallest at 2 080 rows.
+    </p>
+
+    <figure>
+      <figcaption id="cap-city">
+        Rows per city, split by period
+      </figcaption>
+      <hdml-view aria-labelledby="cap-city">
+        <hdml-fallback>
+          Row counts for ten cities, weekdays against weekends.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=rows_by_city">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="6000">
+              <hdml-ordinal-scale
+                channel="color" values='["Weekdays","Weekends"]'>
+
+                <hdml-grid channel='[1, 500, 1000, 5000]' count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+
+                <hdml-cluster x="label">
+                  <hdml-bar y="n_weekdays" color='"Weekdays"'></hdml-bar>
+                  <hdml-bar y="n_weekends" color='"Weekends"'></hdml-bar>
+                </hdml-cluster>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="finding warn">
+      <code>col_0</code> is not a key. It is a per-file row index
+      restarting at 0 in every table: 51 707 rows carry only
+      <strong>5 379</strong> distinct values.
+    </p>
+
+    <p>
+      Unique <em>within</em> a table, worthless across the union. The
+      real identity of a row is
+      <code>(city, period, col_0)</code> — and two thirds of that
+      tuple has to be manufactured from the table name first. No
+      column, and no combination of columns present in the data, is a
+      primary key.
+    </p>
+
+    <h2><span class="n">3</span> The column dictionary</h2>
+
+    <p class="finding">
+      All twenty columns are <code>text</code> and nullable in all
+      twenty tables — including the booleans, the ratings and the
+      coordinates.
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th class="num">#</th><th>Column</th><th>Holds</th>
+          <th>Model as</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="num">1</td><td><code>col_0</code></td><td>Per-file row index, 0…n−1</td><td><code>int-32</code></td></tr>
+        <tr><td class="num">2</td><td><code>realsum</code></td><td>Total price for the stay, EUR</td><td><code>float-64</code></td></tr>
+        <tr><td class="num">3</td><td><code>room_type</code></td><td><code>Entire home/apt</code> · <code>Private room</code> · <code>Shared room</code></td><td><code>utf-8</code></td></tr>
+        <tr><td class="num">4</td><td><code>room_shared</code></td><td><code>True</code> / <code>False</code></td><td><code>utf-8</code></td></tr>
+        <tr><td class="num">5</td><td><code>room_private</code></td><td><code>True</code> / <code>False</code></td><td><code>utf-8</code></td></tr>
+        <tr><td class="num">6</td><td><code>person_capacity</code></td><td>2…6 — <strong>in two textual forms</strong></td><td><code>float-64</code>, see §5</td></tr>
+        <tr><td class="num">7</td><td><code>host_is_superhost</code></td><td><code>True</code> / <code>False</code></td><td><code>utf-8</code></td></tr>
+        <tr><td class="num">8</td><td><code>multi</code></td><td>Flag, <code>0</code> / <code>1</code></td><td><code>int-8</code></td></tr>
+        <tr><td class="num">9</td><td><code>biz</code></td><td>Flag, <code>0</code> / <code>1</code></td><td><code>int-8</code></td></tr>
+        <tr><td class="num">10</td><td><code>cleanliness_rating</code></td><td>2…10, nine distinct</td><td><code>float-64</code></td></tr>
+        <tr><td class="num">11</td><td><code>guest_satisfaction_overall</code></td><td>20…100, fifty-three distinct</td><td><code>float-64</code></td></tr>
+        <tr><td class="num">12</td><td><code>bedrooms</code></td><td>0…10 (no 7)</td><td><code>int-8</code></td></tr>
+        <tr><td class="num">13</td><td><code>dist</code></td><td>km to city centre</td><td><code>float-64</code></td></tr>
+        <tr><td class="num">14</td><td><code>metro_dist</code></td><td>km to nearest metro</td><td><code>float-64</code></td></tr>
+        <tr><td class="num">15</td><td><code>attr_index</code></td><td>Attraction index, raw</td><td><code>float-64</code></td></tr>
+        <tr><td class="num">16</td><td><code>attr_index_norm</code></td><td>Attraction index, 0…100</td><td><code>float-64</code></td></tr>
+        <tr><td class="num">17</td><td><code>rest_index</code></td><td>Restaurant index, raw</td><td><code>float-64</code></td></tr>
+        <tr><td class="num">18</td><td><code>rest_index_norm</code></td><td>Restaurant index, 0…100</td><td><code>float-64</code></td></tr>
+        <tr><td class="num">19</td><td><code>lng</code></td><td>Longitude, −9.23…23.79</td><td><code>float-64</code></td></tr>
+        <tr><td class="num">20</td><td><code>lat</code></td><td>Latitude, 37.95…52.64</td><td><code>float-64</code></td></tr>
+      </tbody>
+    </table>
+
+    <p class="caveat">
+      There is no boolean in <code>FIELD_TYPE_VALUES</code>, so the
+      three <code>True</code>/<code>False</code> columns model as
+      <code>utf-8</code> and become predicates downstream
+      (<code>host_is_superhost = 'True'</code>), or as
+      <code>int-8</code> behind a <code>clause</code> that does the
+      comparison once. <code>multi</code> and <code>biz</code> are
+      already the second form.
+    </p>
+
+    <h2><span class="n">4</span> Cardinality: dimensions, measures, and one impostor</h2>
+
+    <p>
+      Distinct values per column across all 51 707 rows, log scale.
+      Three bands, and each one is a modelling instruction.
+    </p>
+
+    <p>
+      At the bottom, the <strong>dimensions</strong>: two-valued flags
+      and booleans, three room types, nine cleanliness ratings, ten
+      bedroom counts. Group by these freely. At the top, four columns
+      —<code>dist</code>, <code>metro_dist</code>,
+      <code>attr_index</code>, <code>rest_index</code> — with
+      <strong>51 707 distinct values, one per row</strong>: continuous
+      measures, and collectively the closest thing this schema has to
+      a natural key. In between sits <code>realsum</code> at 10 497 and
+      the coordinates at ~21–24 000, lower than the indices because
+      listings share buildings.
+    </p>
+
+    <p class="caveat">
+      The impostor is <code>person_capacity</code> at ten distinct
+      values for five real capacities — §5. The marks are points, not
+      bars, because a bar's simple <code>y</code> form desugars to a
+      baseline of zero and zero has no position on a log axis.
+    </p>
+
+    <figure>
+      <figcaption id="cap-card">
+        Distinct values per column, log scale, in declaration order
+      </figcaption>
+      <hdml-view class="tall" aria-labelledby="cap-card">
+        <hdml-fallback>
+          Distinct-value counts for all twenty columns.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=columns_profile">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale
+              channel="y" type="log" min="1" max="100000">
+              <hdml-ordinal-scale
+                channel="color" values='["Distinct values"]'>
+
+                <hdml-grid channel="y" count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+
+                <hdml-point
+                  x="label" y="n_distinct"
+                  color='"Distinct values"'></hdml-point>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="caveat">
+      Twenty category labels will not fit under a 760 px axis, so this
+      figure omits its x labels rather than overprinting them; read the
+      order off the dictionary in section 3, which is the same
+      <code>pos</code> the frame sorts by.
+    </p>
+
+    <h2><span class="n">5</span> The same number, stored two ways</h2>
+
+    <p class="finding warn">
+      <code>person_capacity</code> holds <code>'2'</code> in 757 rows
+      and <code>'2.0'</code> in 23 576 — the same capacity, two
+      strings. Grouping by the raw column splits every capacity in two.
+    </p>
+
+    <p>
+      This is the single most damaging thing in the schema, because it
+      fails quietly. A <code>GROUP BY person_capacity</code> returns
+      ten groups where there are five real ones; a filter on
+      <code>'2'</code> silently misses 23 576 rows; and
+      <code>cast(person_capacity as integer)</code> does not merely
+      round — it <strong>throws</strong>, because Trino cannot cast the
+      string <code>'2.0'</code> to <code>INT</code>. The route is
+      <code>cast(cast(… as double) as integer)</code>, and the model in
+      section 8 does exactly that.
+    </p>
+
+    <p>
+      Both forms appear in every capacity, in roughly the same ratio —
+      so it is not one bad city or one bad file, and no filter isolates
+      it. The only fix is to normalise on read.
+    </p>
+
+    <figure>
+      <figcaption id="cap-cap">
+        Rows per capacity, split by which textual form the row uses
+      </figcaption>
+      <hdml-view aria-labelledby="cap-cap">
+        <hdml-fallback>
+          Row counts per person_capacity, split by textual form.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=capacity_forms">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale
+              channel="y" type="log" min="10" max="100000">
+              <hdml-ordinal-scale
+                channel="color"
+                values='["Stored as 2.0","Stored as 2"]'>
+
+                <hdml-grid channel="y" count="4"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="4"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="4" format="compact-short"></hdml-label>
+
+                <hdml-point x="label" y="n_dotted" color='"Stored as 2.0"'></hdml-point>
+                <hdml-point x="label" y="n_plain" color='"Stored as 2"'></hdml-point>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <h2><span class="n">6</span> Value ranges</h2>
+
+    <p>
+      Observed minimum to maximum, pooled across all twenty tables, log
+      scale. <code>realsum</code> spans three decades — €34.78 to
+      €18 545.45 — which is the heavy tail every price model on this
+      data has to decide what to do about. The two
+      <code>*_index_norm</code> columns confirm they really are
+      normalised to 100; the raw indices are not, running to 4 514 and
+      6 696.
+    </p>
+
+    <p class="caveat">
+      Five columns are deliberately absent, and their absence is the
+      figure working rather than failing: <code>col_0</code>,
+      <code>multi</code>, <code>biz</code> and <code>bedrooms</code>
+      all have a minimum of <strong>zero</strong>, and <code>lng</code>
+      goes <strong>negative</strong> to −9.23. Neither has a position
+      on a logarithmic axis, so the model returns <code>NULL</code>
+      endpoints for them and the mark is simply not drawn — missing
+      rendering as absent rather than as zero.
+    </p>
+
+    <figure>
+      <figcaption id="cap-rng">
+        Observed minimum → maximum, the eleven columns a log axis can
+        hold
+      </figcaption>
+      <hdml-view class="tall" aria-labelledby="cap-rng">
+        <hdml-fallback>
+          Observed value ranges for the numeric columns.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=columns_profile">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale
+              channel="y" type="log" min="0.001" max="100000">
+              <hdml-ordinal-scale channel="color" values='["Observed range"]'>
+
+                <hdml-grid channel="y" count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+
+                <hdml-bar
+                  x="label" y0="lo" y1="hi"
+                  color='"Observed range"'></hdml-bar>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <table>
+      <thead>
+        <tr><th>Column</th><th class="num">Min</th><th class="num">Max</th><th>Why it is not above</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>col_0</code></td><td class="num">0</td><td class="num">5 378</td><td>Zero minimum</td></tr>
+        <tr><td><code>multi</code></td><td class="num">0</td><td class="num">1</td><td>Zero minimum</td></tr>
+        <tr><td><code>biz</code></td><td class="num">0</td><td class="num">1</td><td>Zero minimum</td></tr>
+        <tr><td><code>bedrooms</code></td><td class="num">0</td><td class="num">10</td><td>Zero minimum</td></tr>
+        <tr><td><code>lng</code></td><td class="num">−9.2263</td><td class="num">23.7860</td><td>Negative</td></tr>
+      </tbody>
+    </table>
+
+    <h2><span class="n">7</span> Quality audit</h2>
+
+    <table>
+      <thead>
+        <tr><th>Check</th><th class="num">Violations</th><th>Consequence</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>NULL</code> or empty string, any column</td><td class="num ok">0</td><td>No source-side <code>coalesce</code></td></tr>
+        <tr><td><code>realsum</code> not parseable as a number</td><td class="num ok">0</td><td>The price cast cannot fail</td></tr>
+        <tr><td>Booleans outside <code>True</code>/<code>False</code></td><td class="num ok">0</td><td>A two-branch <code>CASE</code> is total</td></tr>
+        <tr><td><code>room_type</code> outside its three values</td><td class="num ok">0</td><td>Safe as an ordinal domain</td></tr>
+        <tr><td><code>person_capacity</code> in mixed textual forms</td><td class="num bad">50 507</td><td>Cast via <code>double</code>; never group on the raw text</td></tr>
+        <tr><td><code>col_0</code> unique across the union</td><td class="num bad">46 328</td><td>Not a key — see §2</td></tr>
+      </tbody>
+    </table>
+
+    <p class="caveat">
+      The second red row is a collision count, not a violation count:
+      51 707 rows carry 5 379 distinct <code>col_0</code> values, so
+      46 328 of them repeat a value already used elsewhere in the
+      union.
+    </p>
+
+    <h2><span class="n">8</span> The model this argues for</h2>
+
+    <p class="finding">
+      An HDML model <em>joins</em> its tables — there is no union in
+      the model vocabulary. So a twenty-table stack has exactly one
+      expression: a single <code>type="query"</code> table that unions
+      them and promotes the partition keys.
+    </p>
+
+    <p>
+      This is the opposite conclusion from the MAANG schema, where five
+      <code>type="table"</code> entries joined on a shared key were the
+      right shape. Here every table has the same columns and no shared
+      key at all; stacking is the only meaningful composition, and the
+      city and the period have to be manufactured on the way through:
+    </p>
+
+<pre><code>&lt;hdml-model name="airbnb"&gt;
+  &lt;hdml-table name="listing" type="query" identifier="
+    select 'amsterdam' as city, 'weekdays' as period, *
+      from `tenant-a_airbnb`.`airbnb`.`amsterdam_weekdays`
+    union all
+    select 'amsterdam', 'weekends', *
+      from `tenant-a_airbnb`.`airbnb`.`amsterdam_weekends`
+    union all
+    ... eighteen more ..."&gt;
+
+    &lt;!-- promoted from the table names --&gt;
+    &lt;hdml-field name="city"   type="utf-8"&gt;&lt;/hdml-field&gt;
+    &lt;hdml-field name="period" type="utf-8"&gt;&lt;/hdml-field&gt;
+
+    &lt;!-- '2' and '2.0' are the same capacity: normalise here,
+         once, or every consumer re-learns it the hard way --&gt;
+    &lt;hdml-field name="person_capacity" type="int-8"
+      clause="cast(cast(`person_capacity` as double) as integer)"&gt;
+    &lt;/hdml-field&gt;
+
+    &lt;hdml-field name="realsum"   type="float-64"&gt;&lt;/hdml-field&gt;
+    &lt;hdml-field name="room_type" type="utf-8"&gt;&lt;/hdml-field&gt;
+    &lt;hdml-field name="bedrooms"  type="int-8"&gt;&lt;/hdml-field&gt;
+    &lt;hdml-field name="dist"      type="float-64"&gt;&lt;/hdml-field&gt;
+    &lt;hdml-field name="lat"       type="float-64"&gt;&lt;/hdml-field&gt;
+    &lt;hdml-field name="lng"       type="float-64"&gt;&lt;/hdml-field&gt;
+
+    &lt;!-- booleans have no type: keep the string, or fold it --&gt;
+    &lt;hdml-field name="superhost" type="int-8"
+      clause="case when `host_is_superhost` = 'True'
+                   then 1 else 0 end"&gt;
+    &lt;/hdml-field&gt;
+  &lt;/hdml-table&gt;
+&lt;/hdml-model&gt;</code></pre>
+
+    <p>
+      Three consequences to plan for. Fields surface downstream as
+      <code>{table}_{field}</code>, so a frame over this model reads
+      <code>listing_realsum</code> — name the table for what a row
+      <em>is</em>, because that prefix is permanent. There is no
+      <code>date</code> anywhere in the schema, so nothing here is a
+      time series: <code>period</code> is a two-valued category, not a
+      calendar. And a model is the right place for the capacity
+      normalisation precisely because it is the layer every consumer
+      shares — pushed into a frame it gets rewritten, differently, by
+      whoever writes the next one.
+    </p>
+
+    <p class="caveat">
+      Not measured here: on-disk size. Trino's PostgreSQL connector
+      exposes no relation-size statistic, so byte counts need a direct
+      Postgres session. Row counts and cardinalities are the size
+      proxies this page can honestly report.
+    </p>
+  </body>
+</html>
