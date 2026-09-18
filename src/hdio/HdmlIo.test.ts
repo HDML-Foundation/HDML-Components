@@ -9,10 +9,10 @@ import { HdmlIo, nav, endpoints } from "./HdmlIo";
 import type { Delivery } from "./delivery";
 import type { Endpoint } from "./endpoint";
 
-// The app's own page URL (origin + pathname); `?code&state` is added
-// per-case. The exchange/stale tests run against the wtr mock HDIO
-// (`.testrc.js`) so `host` is "" (same-origin); the tenant selects
-// the scenario ("oidc-ok" → 200, "stale-state" → 401).
+// The app's own page URL (origin + pathname); the auth params and any
+// page query are added per-case through `search`. The tests that need
+// a real worker run it against the wtr mock HDIO (`.testrc.js`), so
+// `host` is "" (same-origin) and every tenant's `/auth/token` mints.
 const HREF = "http://app.example/dash";
 
 // A 20 ms macrotask yield. Bare `await`ing a promise resolved by a
@@ -34,9 +34,16 @@ async function until(pred: () => boolean, cap = 200): Promise<void> {
   }
 }
 
+// The `token` a captured `props` message carried.
+function tokenOf(msg: { data: unknown }): unknown {
+  return (msg.data as { token?: unknown }).token;
+}
+
 suite("HdmlIo auth state machine", () => {
   let mounted: HdmlIo[] = [];
   const saved = { ...nav };
+  const savedEndpoints = { ...endpoints };
+  const savedFetch = globalThis.fetch;
   // Per-test recording seams; each test points nav's methods here.
   let navCalls: string[] = [];
   let stripCalls: string[] = [];
@@ -57,6 +64,8 @@ suite("HdmlIo auth state machine", () => {
 
   teardown(() => {
     Object.assign(nav, saved);
+    Object.assign(endpoints, savedEndpoints);
+    globalThis.fetch = savedFetch;
     mounted.forEach((el) => el.remove());
     mounted = [];
   });
@@ -71,21 +80,112 @@ suite("HdmlIo auth state machine", () => {
     return el;
   }
 
-  test("code+state → exchange → strip params", async () => {
-    search = "?code=c&state=s";
-    mount({ host: "", tenant: "oidc-ok" });
+  // Swaps in a capturing fake endpoint for the tests that read the
+  // `props` the element posts.
+  function capture(): FakeEndpoint {
+    const ep = fakeEndpoint();
+    endpoints.create = () => ep as unknown as Endpoint;
+    return ep;
+  }
+
+  test("?handoff reaches the worker in the first props", async () => {
+    const ep = capture();
+    search = "?handoff=h1";
+    mount({ host: "", tenant: "t" });
+    await until(() => ofType(ep, "props").length > 0);
+    // Indexed at 0: the redeem branch nudges #sendProps, so a LATER
+    // props carries the code even when the first did not.
+    assert.equal(tokenOf(ofType(ep, "props")[0]), "h1");
+  });
+
+  test("the ?handoff strip runs once", async () => {
+    search = "?handoff=h1";
+    mount({ host: "", tenant: "t" });
+    await until(() => stripCalls.length > 0);
+    await tick(60);
+    assert.lengthOf(stripCalls, 1);
+    assert.equal(stripCalls[0], HREF);
+    assert.deepEqual(navCalls, []);
+  });
+
+  test("?handoff under oidc mode does not navigate", async () => {
+    search = "?handoff=h1";
+    mount({ host: "", tenant: "t", mode: "oidc" });
+    await until(() => stripCalls.length > 0);
+    await tick(60);
+    assert.lengthOf(stripCalls, 1);
+    assert.deepEqual(navCalls, []);
+  });
+
+  test("the token attribute route does not strip", async () => {
+    mount({ host: "", tenant: "t", token: "h1" });
+    await tick(60);
+    assert.deepEqual(stripCalls, []);
+    assert.deepEqual(navCalls, []);
+  });
+
+  test("the page query survives a redeem strip", async () => {
+    search = "?id=42&handoff=h1";
+    mount({ host: "", tenant: "t" });
+    await until(() => stripCalls.length > 0);
+    assert.equal(stripCalls[0], HREF + "?id=42");
+  });
+
+  test("the page query survives an error strip", async () => {
+    search = "?id=42&error=access_denied";
+    mount({ host: "", tenant: "t", mode: "oidc" });
+    await until(() => stripCalls.length > 0);
+    assert.equal(stripCalls[0], HREF + "?id=42");
+    assert.deepEqual(navCalls, []);
+  });
+
+  test("an empty ?handoff= does not mask the token", async () => {
+    const ep = capture();
+    search = "?handoff=";
+    mount({ host: "", tenant: "t", token: "h9" });
+    await until(() => ofType(ep, "props").length > 0);
+    assert.equal(tokenOf(ofType(ep, "props")[0]), "h9");
+    await tick(60);
+    assert.deepEqual(stripCalls, []);
+  });
+
+  test("login_required is terminal: strip, no navigate", async () => {
+    search = "?error=login_required";
+    mount({ host: "", tenant: "t", mode: "oidc" });
+    await until(() => stripCalls.length > 0);
+    await tick(60);
+    assert.deepEqual(stripCalls, [HREF]);
+    assert.deepEqual(navCalls, []);
+  });
+
+  test("an IdP error strips, no navigate", async () => {
+    search = "?error=access_denied";
+    mount({ host: "", tenant: "t", mode: "oidc" });
     await until(() => stripCalls.length > 0);
     assert.deepEqual(stripCalls, [HREF]);
     assert.deepEqual(navCalls, []);
   });
 
-  test("a stale 401 re-navigates, not a hard error", async () => {
-    search = "?code=c&state=s";
-    mount({ host: "", tenant: "stale-state" });
-    await until(() => navCalls.length > 0);
-    assert.equal(navCalls.length, 1);
-    assert.include(navCalls[0], "/stale-state/api/v1/auth/login");
-    assert.include(navCalls[0], "redirect_uri=");
+  test("a ?handoff is redeemed at POST /auth/token", async () => {
+    // The source build's endpoint is a same-thread MessageChannel,
+    // so the worker's `fetch` is this page's: spy, then pass through.
+    const calls: { url: string; method: string; body: string }[] = [];
+    globalThis.fetch = (input, init) => {
+      calls.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        body: typeof init?.body === "string" ? init.body : "",
+      });
+      return savedFetch(input, init);
+    };
+    const isRedeem = (c: { url: string; method: string }): boolean =>
+      c.method === "POST" && c.url.endsWith("/ok/api/v1/auth/token");
+    search = "?handoff=h1";
+    mount({ host: "", tenant: "ok" });
+    await until(() => calls.some(isRedeem));
+    const redeems = calls.filter(isRedeem);
+    assert.lengthOf(redeems, 1);
+    assert.deepEqual(JSON.parse(redeems[0].body), { token: "h1" });
   });
 
   test("interleaved changes navigate at most once", async () => {
@@ -93,30 +193,13 @@ suite("HdmlIo auth state machine", () => {
     await until(() => navCalls.length > 0);
     assert.equal(navCalls.length, 1);
     assert.include(navCalls[0], "/t/api/v1/auth/login");
+    assert.include(navCalls[0], "?origin=");
     // A later mode/token flurry cannot commit a second navigation.
     el.setAttribute("token", "x");
     el.removeAttribute("token");
     el.setAttribute("mode", "oidc");
     await tick(60);
     assert.equal(navCalls.length, 1);
-  });
-
-  test("a silent-auth failure retries interactively", async () => {
-    search = "?error=login_required&state=s";
-    mount({ host: "", tenant: "t", mode: "oidc" });
-    await until(() => navCalls.length > 0);
-    assert.equal(navCalls.length, 1);
-    assert.include(navCalls[0], "/t/api/v1/auth/login");
-    assert.include(navCalls[0], "interactive=1");
-    assert.deepEqual(stripCalls, []);
-  });
-
-  test("a non-silent IdP error strips, no navigate", async () => {
-    search = "?error=access_denied&state=s";
-    mount({ host: "", tenant: "t", mode: "oidc" });
-    await until(() => stripCalls.length > 0);
-    assert.deepEqual(stripCalls, [HREF]);
-    assert.deepEqual(navCalls, []);
   });
 });
 
@@ -205,7 +288,7 @@ suite("HdmlIo D8 discovery bus + registry", () => {
   let ep: FakeEndpoint;
 
   setup(() => {
-    // Isolate navigation (no ?code&state, no real assign) so the
+    // Isolate navigation (no auth params, no real assign) so the
     // OIDC auto-trigger stays inert regardless of the runner URL.
     nav.href = () => "http://app.example/dash";
     nav.search = () => "";

@@ -6,88 +6,103 @@
 
 /**
  * The next auth step the main-thread state machine should take,
- * computed purely from the URL + attributes (RFC 014/001 §3.3, B5).
+ * computed purely from the URL + attributes (RFC 018/002 §7.2).
  * A thin effect layer in `HdmlIo` turns each into a side effect:
- * `exchange` runs the code→token exchange on the main thread (§3.3),
- * `redeem` lets the `props` path forward the handoff (token mode,
- * Step 02), `navigate` is a full-page redirect to `/auth/login`,
- * `auth-error` strips the IdP error off the URL and logs it (no
- * retry), `inert` does nothing.
+ * `redeem` forwards a handoff code to the worker — the single auth
+ * leg, reached either from the `token` attribute (Path 1) or from
+ * `?handoff` on the URL after the callback's 302 (Path 2, D4) —
+ * `navigate` is a full-page redirect to `/auth/login`, `auth-error`
+ * strips the forwarded IdP error off the URL and logs it (no retry),
+ * `inert` does nothing.
  */
 export type AuthAction =
-  | { kind: "exchange"; code: string; state: string }
-  | { kind: "redeem" }
+  | { kind: "redeem"; code: string; fromUrl: boolean }
   | { kind: "navigate"; url: string }
   | { kind: "auth-error"; error: string }
   | { kind: "inert" };
 
 /**
- * The four OIDC-standard "interaction required" error codes an IdP
- * returns to a `prompt=none` silent-auth attempt it cannot satisfy
- * without UI (OIDC Core 1.0 §3.1.2.6). Each is recoverable by a
- * single interactive retry; every other `error` (e.g.
- * `access_denied`) is a genuine failure and is surfaced instead.
+ * The query parameters this component owns on the embedding page's
+ * URL, and the only ones `stripAuthParams` removes (RFC 018/002
+ * §7.6). `handoff` is D4's carrier; `error` (+ its optional
+ * description) is what the callback forwards on a terminal IdP
+ * failure (§5.5).
  */
-const SILENT_AUTH_FAILURES = new Set([
-  "login_required",
-  "interaction_required",
-  "consent_required",
-  "account_selection_required",
-]);
+export const AUTH_PARAMS = [
+  "handoff",
+  "error",
+  "error_description",
+] as const;
 
 /**
- * The app's own page URL with any query/hash stripped —
- * `location.origin + location.pathname`. This is the `redirect_uri`
- * the IdP must land the browser on, and the target `replaceState`
- * uses to strip `?code&state` after a successful exchange (§3.3).
+ * The page's URL with every {@link AUTH_PARAMS} entry removed and
+ * **everything else preserved** — the page's own query params,
+ * their order, and the fragment. Returns the input unchanged (by
+ * value) when no auth param is present, so the caller can skip a
+ * pointless `replaceState` (RFC 018/002 §7.6).
  *
  * @param href - A full URL (`location.href`).
- * @returns `origin + pathname`, no query, no hash.
+ * @returns The URL without its auth params.
  */
-export function originPathname(href: string): string {
+export function stripAuthParams(href: string): string {
   const url = new URL(href);
-  return url.origin + url.pathname;
+  let hit = false;
+  for (const key of AUTH_PARAMS) {
+    if (url.searchParams.has(key)) {
+      url.searchParams.delete(key);
+      hit = true;
+    }
+  }
+  if (!hit) {
+    return href;
+  }
+  const query = url.searchParams.toString();
+  return (
+    url.origin + url.pathname + (query ? `?${query}` : "") + url.hash
+  );
 }
 
 /**
- * The `host`-based `/auth/login` URL (RFC §3.3): the login target is
- * `host` like every other call; only the `redirect_uri` **value** is
- * the app's own `origin + pathname` (URL-encoded, no query). That
- * exact URL must be pre-registered in the tenant's SSO config or the
- * server answers 403 `ErrRedirectURINotAllowed`.
- *
- * When `interactive` is set, `&interactive=1` is appended so the
- * server suppresses the tenant's configured `prompt` (e.g.
- * `prompt=none`): the fallback after a silent-auth failure, forcing
- * the IdP's interactive flow so it cannot loop (§3.3).
+ * The `host`-based `/auth/login` URL (RFC 018/002 §7.5). The login
+ * target is `host` like every other call; the **origin** parameter is
+ * the app's own `location.origin` — no path, no query — which the
+ * server validates against the tenant's stored allowlist (D6) before
+ * it enters the state blob. `return_to` carries the page's own
+ * `pathname + search` so a deep link survives the round trip; it is
+ * path-only by construction here and re-validated server-side (§6.3).
  *
  * @param host - The `host` attribute (server base, no slash).
  * @param tenant - The `tenant` attribute.
  * @param href - The app's current `location.href`.
- * @param interactive - Force interactive (suppress the prompt).
- * @returns The full `/auth/login?redirect_uri=…` URL to navigate to.
+ * @returns The full `/auth/login?origin=…&return_to=…` URL.
  */
 export function loginUrl(
   host: string,
   tenant: string,
   href: string,
-  interactive = false,
 ): string {
-  const redirect = encodeURIComponent(originPathname(href));
-  const url =
+  const url = new URL(href);
+  const origin = encodeURIComponent(url.origin);
+  const returnTo = encodeURIComponent(url.pathname + url.search);
+  return (
     `${host}/${tenant}/api/v1/auth/login` +
-    `?redirect_uri=${redirect}`;
-  return interactive ? `${url}&interactive=1` : url;
+    `?origin=${origin}&return_to=${returnTo}`
+  );
 }
 
 /**
- * Pure decision for the OIDC auto-trigger state machine (RFC §3.3
- * mermaid, B5). Ordered: a `?code&state` on the URL wins (exchange
- * the code); else an `?error` from the IdP is handled (a silent-auth
- * failure retries interactively, any other error surfaces); else a
- * `token` attribute wins over `mode` (redeem the handoff — token
- * mode, Step 02); else `mode === "oidc"` navigates to the IdP; else
- * inert. Reads no globals and performs no effect, so it is
+ * Pure decision for the auth auto-trigger state machine (RFC 018/002
+ * §7.2). Ordered: a non-empty `?handoff` on the URL wins, because a
+ * live single-use credential has just arrived from the callback and
+ * `mode` is still `"oidc"` on the way back, so it must beat the
+ * navigate or the page loops (redeem, then strip); else an `?error`
+ * the callback forwarded is terminal for this page load, since the
+ * server already retried the interaction-required codes (strip and
+ * log, no retry); else a `token` attribute, which may be older than
+ * a URL credential but is still a concrete credential beating a flow
+ * that would fetch one (redeem, no strip); else `mode === "oidc"`
+ * navigates to `/auth/login`, the cold start; else inert, because
+ * auth is opt-in. Reads no globals and performs no effect, so it is
  * unit-testable without navigating.
  *
  * @param i - The URL + attribute snapshot.
@@ -102,28 +117,17 @@ export function nextAuthAction(i: {
   token: string | null;
 }): AuthAction {
   const params = new URLSearchParams(i.search);
-  const code = params.get("code");
-  const state = params.get("state");
-  if (code !== null && state !== null) {
-    return { kind: "exchange", code, state };
+  // An empty `?handoff=` is not a credential and falls through.
+  const handoff = params.get("handoff");
+  if (handoff) {
+    return { kind: "redeem", code: handoff, fromUrl: true };
   }
-  // The IdP bounced back an error instead of a code. A `prompt=none`
-  // silent attempt that needs interaction fails with one of the
-  // OIDC-standard codes → retry once interactively (the retry omits
-  // prompt via `interactive=1`, so it cannot loop). Any other error
-  // (e.g. `access_denied`) is a real failure and is surfaced.
   const error = params.get("error");
   if (error !== null) {
-    if (SILENT_AUTH_FAILURES.has(error)) {
-      return {
-        kind: "navigate",
-        url: loginUrl(i.host, i.tenant, i.href, true),
-      };
-    }
     return { kind: "auth-error", error };
   }
   if (i.token) {
-    return { kind: "redeem" };
+    return { kind: "redeem", code: i.token, fromUrl: false };
   }
   if (i.mode === "oidc") {
     return {

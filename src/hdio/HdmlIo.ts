@@ -11,7 +11,7 @@ import type { Endpoint } from "./endpoint";
 import { createEndpoint, closeEndpoint } from "./endpoint";
 import type { OutboundMessage } from "./onmessage";
 import type { Delivery, RequestDetail } from "./delivery";
-import { loginUrl, nextAuthAction, originPathname } from "./oidc";
+import { loginUrl, nextAuthAction, stripAuthParams } from "./oidc";
 import { exchangeCode } from "./exchange";
 import { readConfig } from "./config";
 
@@ -147,6 +147,20 @@ export class HdmlIo extends LitElement {
   #navigating = false;
 
   /**
+   * The handoff code from `?handoff` on the page URL, captured ONCE
+   * per connect, synchronously, BEFORE the first `props` is posted
+   * (RFC 018/002 §7.4a). `null` when absent or empty — an empty
+   * `?handoff=` is not a credential, and `""` would mask the `token`
+   * attribute in `#sendProps`' coalescer, where `??` does not skip
+   * it. Re-assigned on every connect, so a reconnect after the strip
+   * sees `null` rather than re-sending a spent code to a fresh
+   * worker.
+   *
+   * @private
+   */
+  #handoff: null | string = null;
+
+  /**
    * The message endpoint — a real `Worker` in the IIFE build, a
    * same-thread `MessagePort` in the esm/cjs fallback (RFC §2.2, A2).
    * The element never branches on the build: `createEndpoint` /
@@ -162,9 +176,10 @@ export class HdmlIo extends LitElement {
    * subscribers (§2.5, D7), and an `error` fans out to every
    * subscriber of its ref (§7.5 delta 4) — where it used to be
    * dropped on the floor, so no consumer could ever leave
-   * `:state(loading)` on a failure. The OIDC exchange now runs on the
-   * main thread (§3.3, {@link #runExchange}), so there is no `auth`
-   * reply to route here.
+   * `:state(loading)` on a failure. No `auth` reply is routed here:
+   * both auth entry points (the `token` attribute and `?handoff`)
+   * reach the worker in `props`, and the worker redeems the code
+   * itself (RFC 018/002 §7.1).
    *
    * @private
    */
@@ -544,7 +559,8 @@ export class HdmlIo extends LitElement {
         host: this.host,
         tenant: this.tenant,
         mode: this.mode,
-        token: this.token,
+        // URL wins (RFC 018/002 §7.2a).
+        token: this.#handoff ?? this.token,
         // The D8 shared config, read lazily (§5.8): only the D4 gate
         // backstop is forwarded — a worker has no `window`.
         config: {
@@ -575,24 +591,27 @@ export class HdmlIo extends LitElement {
       token: this.token,
     });
     switch (action.kind) {
-      case "exchange":
-        void this.#runExchange(action.code, action.state);
-        break;
       case "redeem":
-        // `props` already forwards the handoff `token`; the worker
-        // redeems it (Step 02). Nudge in case this fired first.
+        // `props` already carries the code (`#handoff ?? token`) and
+        // the worker redeems it once. Nudge in case this fired first.
+        // A URL-borne code is then stripped; it was captured at
+        // connect, so the strip cannot lose it (RFC 018/002 §7.4).
         this.#sendProps();
+        if (action.fromUrl) {
+          nav.strip(stripAuthParams(nav.href()));
+        }
         break;
       case "navigate":
         this.#navigating = true;
         nav.navigate(action.url);
         break;
       case "auth-error":
-        // A non-recoverable IdP error (e.g. `access_denied`, or a
-        // silent-auth failure that already fell back). Strip it off
-        // the URL so a reload does not re-surface it, and log once —
-        // no retry.
-        nav.strip(originPathname(nav.href()));
+        // An error the callback forwarded is terminal for this page
+        // load: the server already retried the interaction-required
+        // codes (RFC 018/002 §5.6). Strip the auth params, keeping
+        // the page's own query, so a reload does not re-surface it,
+        // and log once — no retry.
+        nav.strip(stripAuthParams(nav.href()));
         console.error("hdml-io oidc error:", action.error);
         break;
       case "inert":
@@ -601,6 +620,10 @@ export class HdmlIo extends LitElement {
   };
 
   /**
+   * Unreachable: no `AuthAction` produces an exchange any more
+   * (RFC 018/002 §7.3), and the callback now returns `?handoff`,
+   * which `redeem` handles.
+   *
    * Runs the OIDC code→token exchange on the **main thread** (§3.3).
    * It must run main-side, not in the worker: the IIFE build's worker
    * is inlined from a `blob:` URL, whose `fetch` carries `Origin:
@@ -631,7 +654,7 @@ export class HdmlIo extends LitElement {
         type: "oidc-tokens",
         data: { access: result.access, refresh: result.refresh },
       });
-      nav.strip(originPathname(nav.href()));
+      nav.strip(stripAuthParams(nav.href()));
       return;
     }
     if (result.status === "stale") {
@@ -707,6 +730,10 @@ export class HdmlIo extends LitElement {
    */
   public connectedCallback(): void {
     super.connectedCallback();
+    // Before #enableMessagable(), which posts the first `props`
+    // (RFC 018/002 §7.4a). `|| null`: an empty `?handoff=` is absent.
+    this.#handoff =
+      new URLSearchParams(nav.search()).get("handoff") || null;
     this.#enableMessagable();
     this.#listenHdomChanges();
     this.#listenRequests();

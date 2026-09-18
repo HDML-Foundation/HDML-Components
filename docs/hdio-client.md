@@ -17,7 +17,11 @@ Worker / MessagePort-fallback execution.
 | `host` | string | Base URL of the HDIO server (no trailing slash) — the one base every request is sent to |
 | `tenant` | string | Tenant identifier — the leading path segment of every request (`/{tenant}/api/v1/…`) |
 | `mode` | string | Auth flow selector (B1, §3.1): `token` (default) or `oidc`. Forwarded to the worker in `props`. |
-| `token` | string | Token mode: a **single-use handoff code** the host app's backend minted in issuance step 1, redeemed here for the access/refresh pair (§3.2, B2). Not a bearer token. |
+| `token` | string | Token mode: a **single-use handoff code** the host app's backend minted in issuance step 1, redeemed here for the access/refresh pair (§3.2, B2). Not a bearer token. Path 2 delivers the same kind of code as `?handoff` on the URL; if both are present the URL wins. |
+
+There are two auth entry points, the `token` attribute and `?handoff` on the page URL, and
+**one** redemption leg: the code rides `props.token` to the worker, which calls
+`HdioClient.redeemHandoff` → `POST {host}/{tenant}/api/v1/auth/token` (RFC 018/002 §7.1).
 
 Place one `<hdml-io>` in the page **as a sibling** of the `<hdml-*>` declarations — not as a
 parent. It listens to `document` for `hdom-changed` events, so any position works as long as
@@ -86,6 +90,32 @@ needs no attribute, it just reacts to the `?error` the `prompt=none` redirect ca
 > **Deployment requirement.** The exact `redirect_uri` (`location.origin + location.pathname`)
 > must be **pre-registered** in the tenant's SSO config, or the server answers `403
 > ErrRedirectURINotAllowed` (`slices.Contains(oidc.RedirectURIs, …)`).
+
+### The URL parameters `<hdml-io>` owns
+
+`<hdml-io>` reads and removes exactly three query parameters on the embedding page's URL
+(`AUTH_PARAMS` in [src/hdio/oidc.ts](../src/hdio/oidc.ts), RFC 018/002 §7.6). HDIO's
+`/auth/callback` puts them there when it 302s the browser back to the page:
+
+| Parameter | When it appears | What `<hdml-io>` does |
+|---|---|---|
+| `handoff` | A successful login. A single-use code, valid for 60 s | Captures it **at connect**, before the first `props` is posted, and forwards it as `props.token`. The worker redeems it. The parameter is then stripped |
+| `error` | A terminal login failure: the server's own `access_denied` / `invalid_request` / `server_error`, or the IdP's code passed through | Strips it and logs it once (`hdml-io oidc error: <code>`). **No retry**: the server has already retried the interaction-required codes itself |
+| `error_description` | Beside `error`, only when the IdP sent one | Stripped with `error` |
+
+A non-empty `handoff` beats `error`, and both beat the `token` attribute and `mode="oidc"`.
+Because the URL credential is checked first, a page returning from the IdP with `mode="oidc"`
+redeems the code and does not navigate to `/auth/login` again. An empty `?handoff=` is not a
+credential and is ignored.
+
+**The strip.** The parameters are removed with `history.replaceState`, **exactly once**, as
+the redeem is forwarded or as the error is logged. **The page's own query and fragment are
+preserved**: `/reports?id=42&handoff=…#top` becomes `/reports?id=42#top`, and the last
+parameter leaves no bare `?`. A URL carrying none of the three is left untouched, and no
+history entry is written. The query is re-serialized with `URLSearchParams`, so a page that
+reads `location.search` byte for byte can see two normalizations after a strip: a space
+encoded `%20` comes back as `+`, and a valueless `?flag` comes back as `flag=`. Both are
+semantically equivalent (RFC 018/002 §7.6).
 
 ## Lifecycle
 
@@ -243,7 +273,10 @@ transfer). `raw:false` subscribers (a pure axis/legend) get `domain` + `type` on
   mode**, if `data.token` (a handoff code) is present it calls `client.redeemHandoff(token)`
   — but **once per distinct code**: the last redeemed code is retained in closure state so a
   debounced re-`props` carrying the same single-use code does not redeem it twice (§3.2,
-  B2); the guard resets only when the identity changes. A failed redeem is logged, not
+  B2); the guard resets only when the identity changes. The guard covers a code sourced from
+  `?handoff` exactly as it covers one from the attribute: the element forwards
+  `#handoff ?? token` in `props.token` (RFC 018/002 §7.4), so the worker cannot tell them
+  apart. A failed redeem is logged, not
   re-thrown.
 - **`html`** — calls `parse(state, html)` (the bottom-up Merkle namer — see [docs/architecture.md#parse--serialize](architecture.md#parse--serialize)) then `client.postDocument(state.data)`, folding the returned 201 body via `recordStored(state.registry, body)`. `postDocument` internally awaits any in-flight redeem (§3.2), so in **token** mode an `html` that races the auth round-trip still posts with a real `Bearer`. **OIDC** mode has no in-flight redeem to await, so a load-time `html` (fired by `hdom-changed` before the async exchange resolves) throws "not authenticated"; the `oidc-tokens` handler below re-POSTs once the pair lands. `parse` re-names and re-packs the **whole** document every call (no dedup — every element is re-posted; the server idempotent-skips already-present keys). `state` is closure-scoped and holds the `ref → {key, stored}` registry (keyed by local ref `hdml-{type}={name}`) that survives for the endpoint's lifetime — the substrate for the post→confirm→query handshake (RFC 004 Slice E §8.6, E-L).
 - **`oidc-tokens`** — the OIDC exchange runs on the **main thread** now (§3.3): a `blob:`-URL

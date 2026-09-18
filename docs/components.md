@@ -1133,7 +1133,7 @@ selected by the **`mode`** attribute:
 | `mode` | Auth flow |
 |---|---|
 | `token` (default) | The `token` attribute is a single-use **handoff code** redeemed for the access/refresh pair (§3.2). |
-| `oidc` | Full-page redirect to the IdP; on return, `?code&state` is exchanged for tokens (§3.3). No `token` needed. |
+| `oidc` | Full-page redirect to the IdP; on return, `?handoff` is redeemed at the same endpoint token mode uses. No `token` needed. |
 
 `mode` is an `<hdml-io>`-local attribute (no `@hdml/types` `*_ATTRS_LIST` enum), so it is
 declared directly on the class.

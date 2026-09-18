@@ -433,6 +433,16 @@
             },
             {
               "kind": "field",
+              "name": "#handoff",
+              "privacy": "private",
+              "type": {
+                "text": "null | string"
+              },
+              "default": "null",
+              "description": "The handoff code from `?handoff` on the page URL, captured ONCE\nper connect, synchronously, BEFORE the first `props` is posted\n(RFC 018/002 §7.4a). `null` when absent or empty — an empty\n`?handoff=` is not a credential, and `\"\"` would mask the `token`\nattribute in `#sendProps`' coalescer, where `??` does not skip\nit. Re-assigned on every connect, so a reconnect after the strip\nsees `null` rather than re-sending a spent code to a fresh\nworker."
+            },
+            {
+              "kind": "field",
               "name": "#endpoint",
               "privacy": "private",
               "type": {
@@ -445,7 +455,7 @@
               "kind": "field",
               "name": "#onMessage",
               "privacy": "private",
-              "description": "Handles messages coming back from the endpoint (worker→main).\nOnly the query leg replies: a `result` fans out to the D8\nsubscribers (§2.5, D7), and an `error` fans out to every\nsubscriber of its ref (§7.5 delta 4) — where it used to be\ndropped on the floor, so no consumer could ever leave\n`:state(loading)` on a failure. The OIDC exchange now runs on the\nmain thread (§3.3, #runExchange), so there is no `auth`\nreply to route here."
+              "description": "Handles messages coming back from the endpoint (worker→main).\nOnly the query leg replies: a `result` fans out to the D8\nsubscribers (§2.5, D7), and an `error` fans out to every\nsubscriber of its ref (§7.5 delta 4) — where it used to be\ndropped on the floor, so no consumer could ever leave\n`:state(loading)` on a failure. No `auth` reply is routed here:\nboth auth entry points (the `token` attribute and `?handoff`)\nreach the worker in `props`, and the worker redeems the code\nitself (RFC 018/002 §7.1)."
             },
             {
               "kind": "field",
@@ -592,7 +602,7 @@
               "kind": "field",
               "name": "#runExchange",
               "privacy": "private",
-              "description": "Runs the OIDC code→token exchange on the **main thread** (§3.3).\nIt must run main-side, not in the worker: the IIFE build's worker\nis inlined from a `blob:` URL, whose `fetch` carries `Origin:\nnull` — which a cross-origin HDIO server's CORS rejects, so a\nworker-side callback never completes. On success the minted\n`{access, refresh}` pair is the only token data handed to the\nworker (`oidc-tokens`, held in memory there for the authed\ndocument/query requests) and `?code&state` is stripped; a spent\n`state` (401) restarts at the IdP; any other failure surfaces\nonce. The reentrancy guard still permits exactly one navigation.",
+              "description": "Unreachable: no `AuthAction` produces an exchange any more\n(RFC 018/002 §7.3), and the callback now returns `?handoff`,\nwhich `redeem` handles.\n\nRuns the OIDC code→token exchange on the **main thread** (§3.3).\nIt must run main-side, not in the worker: the IIFE build's worker\nis inlined from a `blob:` URL, whose `fetch` carries `Origin:\nnull` — which a cross-origin HDIO server's CORS rejects, so a\nworker-side callback never completes. On success the minted\n`{access, refresh}` pair is the only token data handed to the\nworker (`oidc-tokens`, held in memory there for the authed\ndocument/query requests) and `?code&state` is stripped; a spent\n`state` (401) restarts at the IdP; any other failure surfaces\nonce. The reentrancy guard still permits exactly one navigation.",
               "parameters": [
                 {
                   "description": "The `code` query param the IdP returned.",
@@ -1003,8 +1013,17 @@
       "path": "src/hdio/oidc.ts",
       "declarations": [
         {
+          "kind": "variable",
+          "name": "AUTH_PARAMS",
+          "type": {
+            "text": "[\n  \"handoff\",\n  \"error\",\n  \"error_description\",\n]"
+          },
+          "default": "[ \"handoff\", \"error\", \"error_description\", ]",
+          "description": "The query parameters this component owns on the embedding page's\nURL, and the only ones `stripAuthParams` removes (RFC 018/002\n§7.6). `handoff` is D4's carrier; `error` (+ its optional\ndescription) is what the callback forwards on a terminal IdP\nfailure (§5.5)."
+        },
+        {
           "kind": "function",
-          "name": "originPathname",
+          "name": "stripAuthParams",
           "return": {
             "type": {
               "text": ""
@@ -1019,7 +1038,7 @@
               "description": "A full URL (`location.href`)."
             }
           ],
-          "description": "The app's own page URL with any query/hash stripped —\n`location.origin + location.pathname`. This is the `redirect_uri`\nthe IdP must land the browser on, and the target `replaceState`\nuses to strip `?code&state` after a successful exchange (§3.3)."
+          "description": "The page's URL with every AUTH_PARAMS entry removed and\n**everything else preserved** — the page's own query params,\ntheir order, and the fragment. Returns the input unchanged (by\nvalue) when no auth param is present, so the caller can skip a\npointless `replaceState` (RFC 018/002 §7.6)."
         },
         {
           "kind": "function",
@@ -1050,14 +1069,9 @@
                 "text": "string"
               },
               "description": "The app's current `location.href`."
-            },
-            {
-              "name": "interactive",
-              "default": "false",
-              "description": "Force interactive (suppress the prompt)."
             }
           ],
-          "description": "The `host`-based `/auth/login` URL (RFC §3.3): the login target is\n`host` like every other call; only the `redirect_uri` **value** is\nthe app's own `origin + pathname` (URL-encoded, no query). That\nexact URL must be pre-registered in the tenant's SSO config or the\nserver answers 403 `ErrRedirectURINotAllowed`.\n\nWhen `interactive` is set, `&interactive=1` is appended so the\nserver suppresses the tenant's configured `prompt` (e.g.\n`prompt=none`): the fallback after a silent-auth failure, forcing\nthe IdP's interactive flow so it cannot loop (§3.3)."
+          "description": "The `host`-based `/auth/login` URL (RFC 018/002 §7.5). The login\ntarget is `host` like every other call; the **origin** parameter is\nthe app's own `location.origin` — no path, no query — which the\nserver validates against the tenant's stored allowlist (D6) before\nit enters the state blob. `return_to` carries the page's own\n`pathname + search` so a deep link survives the round trip; it is\npath-only by construction here and re-validated server-side (§6.3)."
         },
         {
           "kind": "function",
@@ -1076,15 +1090,23 @@
               "description": "The URL + attribute snapshot."
             }
           ],
-          "description": "Pure decision for the OIDC auto-trigger state machine (RFC §3.3\nmermaid, B5). Ordered: a `?code&state` on the URL wins (exchange\nthe code); else an `?error` from the IdP is handled (a silent-auth\nfailure retries interactively, any other error surfaces); else a\n`token` attribute wins over `mode` (redeem the handoff — token\nmode, Step 02); else `mode === \"oidc\"` navigates to the IdP; else\ninert. Reads no globals and performs no effect, so it is\nunit-testable without navigating."
+          "description": "Pure decision for the auth auto-trigger state machine (RFC 018/002\n§7.2). Ordered: a non-empty `?handoff` on the URL wins, because a\nlive single-use credential has just arrived from the callback and\n`mode` is still `\"oidc\"` on the way back, so it must beat the\nnavigate or the page loops (redeem, then strip); else an `?error`\nthe callback forwarded is terminal for this page load, since the\nserver already retried the interaction-required codes (strip and\nlog, no retry); else a `token` attribute, which may be older than\na URL credential but is still a concrete credential beating a flow\nthat would fetch one (redeem, no strip); else `mode === \"oidc\"`\nnavigates to `/auth/login`, the cold start; else inert, because\nauth is opt-in. Reads no globals and performs no effect, so it is\nunit-testable without navigating."
         }
       ],
       "exports": [
         {
           "kind": "js",
-          "name": "originPathname",
+          "name": "AUTH_PARAMS",
           "declaration": {
-            "name": "originPathname",
+            "name": "AUTH_PARAMS",
+            "module": "src/hdio/oidc.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "stripAuthParams",
+          "declaration": {
+            "name": "stripAuthParams",
             "module": "src/hdio/oidc.ts"
           }
         },
