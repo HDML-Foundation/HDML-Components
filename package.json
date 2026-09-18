@@ -6,6 +6,13 @@
     "registry": "https://registry.npmjs.org/",
     "access": "public"
   },
+  "files": [
+    "esm/",
+    "cjs/",
+    "dts/",
+    "bin/",
+    "custom-elements.json"
+  ],
   "dependencies": {
     "@hdml/common": "0.0.2-alpha.24",
     "@hdml/hash": "0.0.2-alpha.24",

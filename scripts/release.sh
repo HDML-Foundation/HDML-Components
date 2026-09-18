@@ -4,72 +4,66 @@
 # @copyright Artem Lytvynov
 # @license Apache-2.0
 
-# Checking version parameter:
-# RELEASE=$1
-# if [ "v$RELEASE" == "v" ]; then
-#   echo "Error: release number must be specified";
-#   exit 1;
-# fi
+# Prepares a release of @hdml/components LOCALLY and stops before any
+# push. Usage: scripts/release.sh <version>   (e.g. 0.0.2-alpha.25)
+#
+# It sets the version, runs the full build gate, prints the tarball
+# file list, commits `build(release): <version>` and creates the
+# annotated tag. It never pushes: pushing the tag triggers
+# .github/workflows/release.yml, which runs `npm publish` with the
+# org token, and an npm version once published can never be reused.
 
-# # For every package:
-# for d in packages/*/ ; do
-#   # building package name:
-#   n=${d#*packages/}
-#   n=${n%/}
+set -euo pipefail
 
-#   # checking package.json:
-#   p=$d"package.json"
-#   if [ ! -f $p ]; then
-#     echo "Error: $p not found"
-#     exit 1
-#   fi
+RELEASE="${1:-}"
+if [ -z "$RELEASE" ]; then
+  echo "Error: release number must be specified" >&2
+  exit 1
+fi
 
-#   # updating package.json version:
-#   sed -i.bak -E "s/\"version\": \"[^\"]+\"/\"version\": \"$RELEASE\"/" $p
-#   if [ $? -eq 0 ]; then
-#     echo "Version updated to $RELEASE in $p"
-#   else
-#     echo "Failed to update version in $p"
-#   fi
+cd "$(dirname "$0")/.."
 
-#   # recursively update current package version in all dependent packages: 
-#   for sub_d in packages/*/ ; do
-#     # checking package.json:
-#     sub_p=$sub_d"package.json"
-#     if [ ! -f $sub_p ]; then
-#       echo "Error: $sub_p not found"
-#       exit 1
-#     fi
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+if [ "$BRANCH" != "main" ]; then
+  echo "Error: must be run from the 'main' branch (on '$BRANCH')" >&2
+  exit 1
+fi
 
-#     # updating package.json version:
-#     sed -i.bak -E "s/\"@hdml\/$n\": \"[^\"]+\"/\"@hdml\/$n\": \"$RELEASE\"/" $sub_p
-#     if [ $? -eq 0 ]; then
-#       echo "@hdml/$n version updated to $RELEASE in $sub_p"
-#     else
-#       echo "Failed to update @hdml/$n version in $sub_p"
-#     fi
-#   done
-# done
+if [ -n "$(git status --porcelain)" ]; then
+  echo "Error: the working tree is not clean" >&2
+  git status --short >&2
+  exit 1
+fi
 
-# # removing .bak files
-# rm -rf packages/**/package.json.bak
+if git rev-parse -q --verify "refs/tags/$RELEASE" >/dev/null; then
+  echo "Error: tag '$RELEASE' already exists" >&2
+  exit 1
+fi
 
-# # Checking and applying GH token:
-# if [ ! -f /home/.ssh/gh_token ]; then
-#     echo "Error: /home/.ssh/gh_token not found"
-#     exit 1
-# fi
-# . /home/.ssh/gh_token
+# Moves package.json's and package-lock.json's root `version` only.
+npm version "$RELEASE" --no-git-tag-version
 
-# # Checking git branch:
-# BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-# if [[ "$BRANCH" != "main" ]]; then
-#   echo "Error: must be run from the 'main' branch";
-#   exit 1;
-# fi
+# clear → lint → test → compile_all → manifest → check_dist → docs
+npm run build
 
-# # Commiting changes and adding new tag:
-# git commit -a -m "$RELEASE"
-# git push origin main
-# git tag -a $RELEASE -m "$RELEASE"
-# git push origin $RELEASE
+# The build must not have rewritten any other tracked file, or the
+# tagged tree is not the tree that was built.
+CHANGED="$(git status --porcelain --untracked-files=no | awk '{print $2}' | sort)"
+EXPECTED="$(printf '%s\n' package-lock.json package.json)"
+if [ "$CHANGED" != "$EXPECTED" ]; then
+  echo "Error: the build changed tracked files other than the version:" >&2
+  echo "$CHANGED" >&2
+  exit 1
+fi
+
+npm pack --dry-run
+
+git commit -m "build(release): $RELEASE" package.json package-lock.json
+git tag -a "$RELEASE" -m "$RELEASE"
+
+echo
+echo "Committed and tagged $RELEASE locally. Nothing has been pushed."
+echo "Publishing is NOT revertible. To publish, run:"
+echo
+echo "  git push origin main"
+echo "  git push origin $RELEASE"

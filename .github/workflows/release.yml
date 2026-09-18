@@ -1,0 +1,47 @@
+# @author Artem Lytvynov
+# @copyright Artem Lytvynov
+# @license Apache-2.0
+
+name: Release Version
+
+on:
+  push:
+    tags:
+      - '*.*.*'
+      - '*.*.*-*'
+
+jobs:
+  release_components:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Project
+        uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.HDML_FOUNDATION_DOCKER_NAME }}
+          password: ${{ secrets.HDML_FOUNDATION_DOCKER }}
+      - name: Replace devcontainer.json to CI version
+        run: |
+          rm .devcontainer/devcontainer.json
+          mv .devcontainer/devcontainer_ci.json .devcontainer/devcontainer.json
+      - name: Setup NPM Registry
+        run: echo //registry.npmjs.org/:_authToken=$HDML_FOUNDATION_NPM > .npmrc
+        env:
+          HDML_FOUNDATION_NPM: ${{ secrets.HDML_FOUNDATION_NPM }}
+      - name: Build and Publish Components
+        uses: devcontainers/ci@v0.3
+        with:
+          push: never
+          cacheFrom: hdio/hdml-components-dev
+          runCmd: |
+            npm ci
+            npm run build
+            npm publish

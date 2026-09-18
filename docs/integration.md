@@ -11,7 +11,7 @@ Adjacent reading: [docs/components.md](components.md) for the element registry �
 
 ```
 name:    @hdml/components
-version: 0.0.0-alpha.0  (per package.json; the actually-published alpha is unverified)
+version: the @hdml/* lockstep line, 0.0.2-alpha.N  (see § Version alignment)
 license: Apache-2.0
 registry: https://registry.npmjs.org/  (publishConfig)
 access:   public
@@ -25,6 +25,7 @@ access:   public
 | `customElements` | `custom-elements.json` (CEM, produced by `npm run manifest`) |
 | `exports` | the four entry points below |
 | `sideEffects` | the eight paths below |
+| `files` | `esm/`, `cjs/`, `dts/`, `bin/`, `custom-elements.json`: the tarball whitelist ([below](#the-published-tarball)) |
 
 `main` / `module` / `types` are kept alongside `exports` as the fallback for resolvers
 that do not read `exports` — removing them would be a second breaking change.
@@ -115,9 +116,37 @@ The IIFE bundle at `bin/index.min.js` is **not** referenced from `package.json` 
 in the publish payload but consumers wire it manually via `<script src=…/bin/index.min.js>`.
 Pages in [html/hdio/hdml-io.bin.html](../html/hdio/hdml-io.bin.html) use it directly.
 
-`TODO(confirm: whether the published tarball deliberately includes all four output dirs and
-custom-elements.json, since package.json has no "files" field — by default npm publishes
-everything that is not gitignored, but `bin/cjs/dts/esm` are gitignored.)`
+### The published tarball
+
+The tarball's contents are set by `package.json`'s **`files` whitelist**, and the list is
+deliberate:
+
+```json
+"files": ["esm/", "cjs/", "dts/", "bin/", "custom-elements.json"]
+```
+
+npm always adds `package.json` and `LICENSE` (and a `README` if one ever exists). So the
+tarball is:
+- the three module trees (`esm/`, `cjs/`, `dts/`), each with its source maps. The maps
+  name `../src/*.ts` without `sourcesContent`, so in an installed copy they point at files
+  that are not shipped;
+- the IIFE `bin/index.min.js` and its map;
+- the manifest;
+- `package.json` and `LICENSE`.
+
+It carries **no** `src/`, tests, `html/` dev pages, `docs/`, `.devcontainer/`, `.github/`
+or `CLAUDE.md`.
+
+The field is not optional. `esm/`, `cjs/`, `dts/` and `bin/` are gitignored, and with no
+`files` field npm falls back to `.gitignore`. The `npm pack --dry-run` run before the
+first publish listed 390 entries, and they included `src/` and `html/` but **no** `esm/`,
+`dts/` or `bin/`. Every `import` condition, every `types` path and the IIFE would have
+been missing.
+
+**`check-dist` check 11** guards the whitelist. It fails the build if `main`, `module`,
+`types`, `customElements`, any `exports` target, the IIFE or any `sideEffects` directory
+is not covered by a `files` entry, or if an entry names `src`, `html`, `tst` or `docs`.
+Verify the result with `npm pack --dry-run` after `npm run build`.
 
 ## Side-effect import contract
 
@@ -246,6 +275,12 @@ Editing the manifest and running plain `npm install` updates only the entries th
 manifest no longer satisfies, which is exactly the six `@hdml/*` lines.
 
 `lit` (`^3.2.1`) and `whatwg-fetch` are not bound to the workspace lockstep.
+
+**The package's own version is on the same line.** `@hdml/components` publishes at
+`0.0.2-alpha.N` alongside the `@hdml/*` packages it pins, so one number describes the
+whole `@hdml/*` surface. The accepted cost is that a components-only fix still bumps the
+shared line, and a version alone does not say which repo changed. Releasing is in
+[development.md § Release](development.md#release).
 
 ## What HDIO sees on the wire
 

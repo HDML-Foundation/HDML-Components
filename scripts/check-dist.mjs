@@ -949,6 +949,78 @@ for (const emitted of [
 }
 
 // ---------------------------------------------------------------
+// 11. `files` covers every published target (RFC 018/002 §9.2;
+//     step 12's amendment).
+//
+// `esm/`, `cjs/`, `dts/` and `bin/` are gitignored, and with no
+// `files` field npm falls back to `.gitignore` — so the tarball
+// `npm pack --dry-run` listed before the first publish carried
+// `src/`, the tests and `html/` but no `esm/`, `dts/` or `bin/`:
+// a package that installs and resolves nothing. `files` is a
+// WHITELIST, so this check asserts both halves: every path
+// `package.json` points a consumer at is covered by an entry, and
+// no entry names a directory that must never ship. Checks 1–4
+// prove the targets are right and exist; only this one proves
+// they are in the tarball.
+// ---------------------------------------------------------------
+
+const FILES_NEVER = ["src", "html", "tst", "docs"];
+
+/** True when `target` equals a `files` entry or sits under a `dir/` one. */
+function filesCover(entries, target) {
+  const rel = target.replace(/^\.\//, "");
+  return entries.some((e) => {
+    const entry = e.replace(/^\.\//, "");
+    if (entry.endsWith("/")) {
+      return rel.startsWith(entry);
+    }
+    return rel === entry || rel.startsWith(`${entry}/`);
+  });
+}
+
+const gotFiles = Array.isArray(pkg.files) ? pkg.files : null;
+const filesTargets = [];
+if (gotFiles === null) {
+  fail(
+    "files",
+    "package.json has no `files` array; npm would fall back to " +
+      "`.gitignore` and ship no esm/, dts/ or bin/",
+  );
+} else {
+  for (const field of ["main", "module", "types", "customElements"]) {
+    if (pkg[field] !== undefined) {
+      filesTargets.push({ what: field, target: pkg[field] });
+    }
+  }
+  for (const [subpath, entry] of Object.entries(gotExports)) {
+    for (const [cond, target] of Object.entries(entry ?? {})) {
+      filesTargets.push({ what: `"${subpath}".${cond}`, target });
+    }
+  }
+  filesTargets.push({ what: "the IIFE", target: IIFE.file });
+  for (const p of gotSide ?? []) {
+    // A glob's directory part is what `files` has to cover.
+    const dir = p.includes("*") ? p.slice(0, p.lastIndexOf("/") + 1) : p;
+    filesTargets.push({ what: `sideEffects ${p}`, target: dir });
+  }
+  for (const { what, target } of filesTargets) {
+    if (!filesCover(gotFiles, target)) {
+      fail(
+        "files",
+        `${what} target ${target} is not covered by \`files\`; ` +
+          "it would be missing from the published tarball",
+      );
+    }
+  }
+  for (const e of gotFiles) {
+    const head = e.replace(/^\.\//, "").split("/")[0];
+    if (FILES_NEVER.includes(head)) {
+      fail("files", `\`files\` entry "${e}" would publish ${head}/`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------
 
 for (const s of sizes) {
   console.log(
@@ -971,7 +1043,8 @@ if (failures.length > 0) {
 // from 05 on, so it is extended DELIBERATELY and only once per step:
 // step 34 added the two source-time V-rules, step 35 added the
 // manifest tag count and the budget, and 018/002 adds the absent
-// exchange leg (check 10). A note comparing against an
+// exchange leg (check 10) and the `files` coverage (check 11,
+// step 13). A note comparing against an
 // older quote should read the difference as this line growing a
 // clause rather than as a check having changed.
 console.log(
@@ -982,5 +1055,6 @@ console.log(
     `${manifestTags.size} manifest tags ` +
     `(${DISPLAY_KEYS.length} display), ` +
     `${sizes.length} bundles within budget, ` +
-    `exchange leg absent.`,
+    `exchange leg absent, ` +
+    `files covers ${filesTargets.length} targets.`,
 );

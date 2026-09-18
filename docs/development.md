@@ -537,18 +537,52 @@ base.html and drop the two def_* drafts, or re-point the hub link at base.html?)
 
 ## Release
 
-[scripts/release.sh](../scripts/release.sh) is **entirely commented out** — it appears to be
-a stale plan inherited from a monorepo template. `TODO(confirm: the actual release flow.
-Likely manual: bump version, npm publish, git tag, push.)` The
-[.github/workflows/main.yml](../.github/workflows/main.yml) CI only validates `npm ci && npm
-run build` inside the devcontainer image; it does not publish.
+A release is a **pushed tag**. CI publishes it, and nobody runs `npm publish` locally
+(RFC 018/002 §9.2).
+
+1. **`scripts/release.sh <version>`** (on a clean `main`, with
+   `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`) runs every local step. It:
+   - refuses an empty version, another branch, a dirty tree, or an existing tag;
+   - sets the version with `npm version <v> --no-git-tag-version`, which moves only the
+     root `version` in `package.json` and `package-lock.json`;
+   - runs `npm run build`, the full gate;
+   - refuses if the build rewrote any other tracked file;
+   - prints `npm pack --dry-run`;
+   - commits `build(release): <v>` and creates the annotated tag `<v>` (no `v` prefix).
+
+   It then **stops** and prints the two push commands. It never pushes.
+2. **`git push origin main && git push origin <v>`**. The tag matches `*.*.*` / `*.*.*-*`
+   and triggers [.github/workflows/release.yml](../.github/workflows/release.yml). The
+   workflow is ported from HDML-Utilities-TS: it writes `.npmrc` from the
+   `HDML_FOUNDATION_NPM` org secret, then runs `npm ci`, `npm run build` and `npm publish`
+   inside the `hdio/hdml-components-dev` devcontainer, with a 30-minute timeout.
+3. Check it: `npm view @hdml/components@<v> version`.
+
+**Versions follow the `@hdml/*` lockstep line**
+([integration.md](integration.md#version-alignment)). The package's own
+version sits on the same `0.0.2-alpha.N` line as the five `@hdml/*` dependencies it pins.
+The accepted cost is that a components-only fix still bumps the shared number.
+
+**A published version is never reused.** If the CI publish failed, the version is not
+consumed: fix the cause, move the tag, and push again. If it published and is wrong, the
+fix is the next version.
+
+What the tarball contains is set by the `files` whitelist and guarded by `check-dist`
+check 11. See [integration.md](integration.md#published-package).
 
 ## CI
 
-- **`devcontainer.yml`** — `TODO(confirm: not read in this audit.)`
-- **`main.yml`** — on push/PR to `main` touching `src/**`, `.devcontainer/**`, configs, or
-  the workflow itself: rebuilds the devcontainer image (only if `Dockerfile` changed) and
-  runs `npm ci && npm run build` inside it. No publish step.
+- **`devcontainer.yml`**: `workflow_dispatch` only. It builds the image from
+  `.devcontainer/devcontainer_ci.json` and pushes it as `hdio/hdml-components-dev`.
+- **`main.yml`**: on push/PR to `main` touching `src/**`, `.devcontainer/**`, configs, or
+  the workflows. It rebuilds the devcontainer image (only if `Dockerfile` changed) and runs
+  `npm ci && npm run build` inside it. It has no publish step. **Two known defects, not
+  fixed:**
+  - its build job's `timeout-minutes: 5` is shorter than the three-engine test run, and
+    every run since 2026-02-26 has been cancelled at that limit;
+  - its image step's `imageName`/`cacheFrom` read `hdio/hdml-schemas-dev`, a copy-paste.
+- **`release.yml`**: on a pushed version tag, the build plus `npm publish` (see
+  [§ Release](#release)).
 
 ## Devcontainer
 
