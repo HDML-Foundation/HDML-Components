@@ -41,7 +41,11 @@ jobs:
         with:
           push: never
           cacheFrom: hdio/hdml-components-dev
+          # `set -e`: without it a failed build falls through to
+          # `npm publish` (seen at 0.0.2-alpha.25's first run: six red
+          # tests, then a publish attempt of a three-file tarball).
           runCmd: |
+            set -e
             npm ci
             npm run build
             npm publish

@@ -61,7 +61,9 @@ and `hdql` sub-entries; that `src/hdvl/` imports no `hdio` module other than `co
 (as a value) and `delivery` (**type-only** — a value import would pull the worker,
 `@hdml/parser` and Arrow into every page, and would compile silently); SPEC §11's **V11
 and V12** over the thirteen corpus pages' source; and, since step 35, the **custom-elements
-manifest** and the **bundle budget**. It sits after `compile_all` because several of those
+manifest** and the **bundle budget**. RFC 018/002 added two more: check 10 asserts that
+the main-thread OIDC exchange leg is absent, and check 11 asserts that `files` covers every
+published target (see [integration.md](integration.md#the-published-tarball)). It sits after `compile_all` because several of those
 checks read the built trees, and after `manifest` because it validates it.
 
 **The manifest is generated inside `build`, and committed.** `package.json` declares
@@ -555,7 +557,10 @@ A release is a **pushed tag**. CI publishes it, and nobody runs `npm publish` lo
    and triggers [.github/workflows/release.yml](../.github/workflows/release.yml). The
    workflow is ported from HDML-Utilities-TS: it writes `.npmrc` from the
    `HDML_FOUNDATION_NPM` org secret, then runs `npm ci`, `npm run build` and `npm publish`
-   inside the `hdio/hdml-components-dev` devcontainer, with a 30-minute timeout.
+   inside the `hdio/hdml-components-dev` devcontainer, with a 30-minute timeout. Its
+   `runCmd` starts with **`set -e`**. Without it a red build falls through to `npm publish`:
+   the first `0.0.2-alpha.25` run did exactly that, with six red tests and a three-file
+   tarball. Only the npm token's missing permission stopped that publish.
 3. Check it: `npm view @hdml/components@<v> version`.
 
 **Versions follow the `@hdml/*` lockstep line**
@@ -576,13 +581,21 @@ check 11. See [integration.md](integration.md#published-package).
   `.devcontainer/devcontainer_ci.json` and pushes it as `hdio/hdml-components-dev`.
 - **`main.yml`**: on push/PR to `main` touching `src/**`, `.devcontainer/**`, configs, or
   the workflows. It rebuilds the devcontainer image (only if `Dockerfile` changed) and runs
-  `npm ci && npm run build` inside it. It has no publish step. **Two known defects, not
-  fixed:**
-  - its build job's `timeout-minutes: 5` is shorter than the three-engine test run, and
-    every run since 2026-02-26 has been cancelled at that limit;
-  - its image step's `imageName`/`cacheFrom` read `hdio/hdml-schemas-dev`, a copy-paste.
+  `npm ci && npm run build` inside it. It has no publish step. The image step pushes to
+  `hdio/hdml-components-dev`. Until `0.0.2-alpha.25` it named `hdio/hdml-schemas-dev`, a
+  copy-paste that went unnoticed only because the Dockerfile had not changed since.
+  **One known defect, not fixed:** its build job's `timeout-minutes: 5` is shorter than
+  the three-engine test run, and every run since 2026-02-26 has been cancelled at that
+  limit.
 - **`release.yml`**: on a pushed version tag, the build plus `npm publish` (see
   [§ Release](#release)).
+
+The CI image must resolve `sans-serif` to the font the goldens were recorded against,
+**DejaVu Sans**. The Dockerfile therefore installs `fonts-dejavu-core`. Without it, `npx
+playwright install-deps` leaves only its own fonts (Liberation and others), and six
+text-metric tests fail in CI while passing locally (`measure-text`'s *"North at 11px"* and
+`08-pie-doughnut`'s golden and text). A workflow with `push: never` rebuilds a changed
+layer itself, so no image push is needed.
 
 ## Devcontainer
 

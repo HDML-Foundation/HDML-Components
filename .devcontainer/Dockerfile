@@ -19,7 +19,8 @@ RUN apt-get update && \
       python3-pip \
       python3-kazoo \
       build-essential \
-      openssh-client
+      openssh-client \
+      fonts-dejavu-core
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
 RUN ln -s /usr/bin/python3 /usr/bin/python
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash && apt-get install -y nodejs

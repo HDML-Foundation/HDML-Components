@@ -70,8 +70,8 @@ jobs:
         uses: devcontainers/ci@v0.3
         with:
           push: always
-          imageName: hdio/hdml-schemas-dev
-          cacheFrom: hdio/hdml-schemas-dev
+          imageName: hdio/hdml-components-dev
+          cacheFrom: hdio/hdml-components-dev
       # else
       - name: No Changes Message
         if: steps.filter.outputs.devcontainer != 'true'
