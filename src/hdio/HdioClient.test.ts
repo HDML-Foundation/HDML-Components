@@ -101,18 +101,6 @@ suite("HdioClient (token mode, wtr mock HDIO)", () => {
     assert.notInclude(message.toLowerCase(), "unexpected");
     client.close();
   });
-
-  test("setTokens adopts a pair minted elsewhere → authed", () => {
-    // The OIDC exchange is main-side now (§3.3); the worker's client
-    // adopts the pair via setTokens rather than fetching itself.
-    const client = new HdioClient("", "oidc-ok");
-    assert.isFalse(client.authed);
-    client.setTokens("access-x", "refresh-x");
-    assert.isTrue(client.authed);
-    client.setTokens(null, null);
-    assert.isFalse(client.authed);
-    client.close();
-  });
 });
 
 suite("HdioClient query leg (D2 shape, wtr mock HDIO)", () => {

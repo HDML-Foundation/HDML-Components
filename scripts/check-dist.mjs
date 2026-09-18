@@ -900,6 +900,55 @@ if (exists(IIFE.file)) {
 }
 
 // ---------------------------------------------------------------
+// 10. The main-thread OIDC exchange leg is gone (RFC 018/002 §10.4,
+//     "Deletion coverage").
+//
+// "The file is gone" is not the same claim as "nothing reaches it":
+// the callback now returns `?handoff`, which rides the one
+// `props.token` → `redeemHandoff` leg, so the exchange module, the
+// `oidc-tokens` message and `setTokens` have no producer. Three
+// clauses: no `./exchange` import under `src/hdio/`; none of the
+// leg's symbols anywhere under `src/` (tests and comments included —
+// a comment naming a deleted symbol is stale prose); and no emitted
+// `exchange` file in any tree. The budget in check 9 cannot stand in
+// for this: it is a ceiling, and a deletion only ever passes it.
+// ---------------------------------------------------------------
+
+const DELETED_SYMBOLS = [
+  /\bexchangeCode\b/,
+  /\bExchangeResult\b/,
+  /\bSILENT_AUTH_FAILURES\b/,
+  /\boriginPathname\b/,
+  /\bsetTokens\b/,
+  /["'`]oidc-tokens["'`]/,
+];
+
+for (const file of tsFilesUnder("src/hdio")) {
+  for (const spec of specifiersOf(file)) {
+    if (spec === "./exchange" || spec.endsWith("/exchange")) {
+      fail("exchange", `${file} imports ${spec}`);
+    }
+  }
+}
+for (const file of tsFilesUnder("src")) {
+  const text = read(file);
+  for (const re of DELETED_SYMBOLS) {
+    if (re.test(text)) {
+      fail("exchange", `${file} still names ${re.source}`);
+    }
+  }
+}
+for (const emitted of [
+  "esm/hdio/exchange.js",
+  "cjs/hdio/exchange.js",
+  "dts/hdio/exchange.d.ts",
+]) {
+  if (exists(emitted)) {
+    fail("exchange", `${emitted} exists (stale tree? run \`clear\`)`);
+  }
+}
+
+// ---------------------------------------------------------------
 
 for (const s of sizes) {
   console.log(
@@ -920,8 +969,9 @@ if (failures.length > 0) {
 
 // The summary line is quoted verbatim in every landed step note
 // from 05 on, so it is extended DELIBERATELY and only once per step:
-// step 34 added the two source-time V-rules, and step 35 adds the
-// manifest tag count and the budget. A note comparing against an
+// step 34 added the two source-time V-rules, step 35 added the
+// manifest tag count and the budget, and 018/002 adds the absent
+// exchange leg (check 10). A note comparing against an
 // older quote should read the difference as this line growing a
 // clause rather than as a check having changed.
 console.log(
@@ -931,5 +981,6 @@ console.log(
     `${pages.length} corpus pages (V11, V12), ` +
     `${manifestTags.size} manifest tags ` +
     `(${DISPLAY_KEYS.length} display), ` +
-    `${sizes.length} bundles within budget.`,
+    `${sizes.length} bundles within budget, ` +
+    `exchange leg absent.`,
 );

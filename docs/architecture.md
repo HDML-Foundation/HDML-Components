@@ -116,7 +116,9 @@ not represent HDML state, it observes it. It owns four concerns:
 2. **Property sync.** `host` / `tenant` / `mode` / `token` changes are debounced 5ms via
    `throdeb.debounce` (`@hdml/common`) and posted as `{type:"props", data:{host, tenant, mode,
    token, config}}` — `config.queryReadyTimeout` is read from `window.HDML_CONFIG` (the D4 gate
-   backstop; a worker has no `window`).
+   backstop; a worker has no `window`). `token` is `#handoff ?? token`: a single-use handoff
+   code from `?handoff` on the page URL (captured at connect, after the OIDC callback) or from
+   the `token` attribute, the URL winning (RFC 018/002 §7.2a).
 3. **HTML sync.** On every `hdom-changed`, debounced 5ms, it concatenates the `outerHTML` of
    every `hdml-connection`, `hdml-model`, and `hdml-frame` in the document and posts
    `{type:"html", data:{html}}`.
@@ -141,9 +143,8 @@ registry }` are **closure** state (one endpoint, one client), not module globals
   subscription, driving the reactive query engine (see [The query leg](#the-query-leg) below).
 
 The message envelope is a discriminated union on `type` (RFC §2.5) — inbound `props` /
-`html` / `oidc-tokens` / `subscribe` / `unsubscribe`, outbound `result` / `error`. (The OIDC
-exchange runs on the main thread — a `blob:`-Worker `fetch` is CORS-rejected — so it only
-hands the minted pair in via `oidc-tokens`; there is no `auth` reply.) All are routed after
+`html` / `subscribe` / `unsubscribe`, outbound `result` / `error`. There is no `auth` reply:
+the worker redeems the handoff code itself. All are routed after
 Step 07. See [docs/hdio-client.md](hdio-client.md#worker-message-protocol).
 
 ### Parse + serialize
@@ -254,11 +255,11 @@ sequenceDiagram
 ### HTTP
 
 [src/hdio/HdioClient.ts](../src/hdio/HdioClient.ts) wraps `fetch` (polyfilled via
-`whatwg-fetch`). All requests go to the post-006 tenant routes at `{host}/{tenant}/api/v1/…`
+`whatwg-fetch`, which it is now the only module to import). All requests go to the post-006 tenant routes at `{host}/{tenant}/api/v1/…`
 (the `public/api/v1/{tenant}` base is gone) carrying `Authorization: Bearer {access}` — an
 access token held **in memory only**, never a `session`. There is no `sessions` bootstrap:
-in token mode the `token` attribute is a single-use **handoff code** redeemed at
-`POST /{tenant}/api/v1/auth/token`, and the document itself goes to
+in **both** auth paths a single-use **handoff code** — the `token` attribute, or `?handoff` on
+the page URL after the OIDC callback — is redeemed at `POST /{tenant}/api/v1/auth/token`, and the document itself goes to
 `POST /{tenant}/api/v1/documents/dynamic` (`content-type: application/octet-stream`,
 `state.data.buffer` as the body) for a `201 { stored[], ddl[] }`. The query leg adds
 `POST /{tenant}/api/v1/queries` and its `GET …/{jobId}` / `…/{jobId}/result` /

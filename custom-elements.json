@@ -134,33 +134,6 @@
             },
             {
               "kind": "method",
-              "name": "setTokens",
-              "privacy": "public",
-              "return": {
-                "type": {
-                  "text": "void"
-                }
-              },
-              "parameters": [
-                {
-                  "name": "access",
-                  "type": {
-                    "text": "null | string"
-                  },
-                  "description": "The access token, or null to clear it."
-                },
-                {
-                  "name": "refresh",
-                  "type": {
-                    "text": "null | string"
-                  },
-                  "description": "The refresh token, or null to clear it."
-                }
-              ],
-              "description": "Adopts a token pair minted elsewhere — the main-thread OIDC\nexchange (§3.3) hands its `{access, refresh}` here so the worker\nholds the pair in memory for the authed document/query requests.\nThe exchange is main-side because a `blob:`-Worker `fetch` sends\n`Origin: null`, which a cross-origin HDIO server's CORS rejects.\nEither token may be null (clears that slot)."
-            },
-            {
-              "kind": "method",
               "name": "postDocument",
               "privacy": "public",
               "return": {
@@ -331,7 +304,7 @@
                   }
                 }
               ],
-              "description": "Stores the `{access, refresh}` pair from a parsed\n`TokenResponse` (redeem / refresh / OIDC exchange). Either may be\nabsent — a null token clears that slot."
+              "description": "Stores the `{access, refresh}` pair from a parsed\n`TokenResponse` (redeem / refresh). Either may be absent — a\nnull token clears that slot."
             },
             {
               "kind": "method",
@@ -590,29 +563,13 @@
               "kind": "field",
               "name": "#sendProps",
               "privacy": "private",
-              "description": "Sends the properties to the worker. Called by the\n`attributeChangedCallback` method."
+              "description": "Sends the properties to the worker, at connect and on every\nattribute change. `token` is `#handoff ?? token`: a code from\n`?handoff` on the URL wins over the attribute (RFC 018/002\n§7.2a)."
             },
             {
               "kind": "field",
               "name": "#runAuth",
               "privacy": "private",
               "description": "Runs one step of the OIDC auto-trigger state machine (§3.3, B5):\ncompute the pure nextAuthAction from URL + attributes,\nthen apply its effect. The reentrancy guard makes exactly one\nnavigation possible per document."
-            },
-            {
-              "kind": "field",
-              "name": "#runExchange",
-              "privacy": "private",
-              "description": "Unreachable: no `AuthAction` produces an exchange any more\n(RFC 018/002 §7.3), and the callback now returns `?handoff`,\nwhich `redeem` handles.\n\nRuns the OIDC code→token exchange on the **main thread** (§3.3).\nIt must run main-side, not in the worker: the IIFE build's worker\nis inlined from a `blob:` URL, whose `fetch` carries `Origin:\nnull` — which a cross-origin HDIO server's CORS rejects, so a\nworker-side callback never completes. On success the minted\n`{access, refresh}` pair is the only token data handed to the\nworker (`oidc-tokens`, held in memory there for the authed\ndocument/query requests) and `?code&state` is stripped; a spent\n`state` (401) restarts at the IdP; any other failure surfaces\nonce. The reentrancy guard still permits exactly one navigation.",
-              "parameters": [
-                {
-                  "description": "The `code` query param the IdP returned.",
-                  "name": "code"
-                },
-                {
-                  "description": "The single-use `state` query param.",
-                  "name": "state"
-                }
-              ]
             },
             {
               "kind": "field",
@@ -644,24 +601,28 @@
               "type": {
                 "text": "string"
               },
+              "description": "The HDIO server base URL.",
               "name": "host"
             },
             {
               "type": {
                 "text": "string"
               },
+              "description": "The tenant path segment.",
               "name": "tenant"
             },
             {
               "type": {
                 "text": "string"
               },
+              "description": "`token` (default) or `oidc`; `oidc` navigates to `/auth/login` and redeems the `?handoff` the callback returns.",
               "name": "mode"
             },
             {
               "type": {
                 "text": "string"
               },
+              "description": "A single-use handoff code; `?handoff` on the URL wins if both are present.",
               "name": "token"
             }
           ],
@@ -942,62 +903,6 @@
           "declaration": {
             "name": "closeEndpoint",
             "module": "src/hdio/endpoint.ts"
-          }
-        }
-      ]
-    },
-    {
-      "kind": "javascript-module",
-      "path": "src/hdio/exchange.ts",
-      "declarations": [
-        {
-          "kind": "function",
-          "name": "exchangeCode",
-          "return": {
-            "type": {
-              "text": ""
-            }
-          },
-          "parameters": [
-            {
-              "name": "host",
-              "type": {
-                "text": "string"
-              },
-              "description": "The `host` attribute (server base, no slash)."
-            },
-            {
-              "name": "tenant",
-              "type": {
-                "text": "string"
-              },
-              "description": "The `tenant` attribute."
-            },
-            {
-              "name": "code",
-              "type": {
-                "text": "string"
-              },
-              "description": "The `code` query param the IdP returned."
-            },
-            {
-              "name": "state",
-              "type": {
-                "text": "string"
-              },
-              "description": "The single-use `state` query param."
-            }
-          ],
-          "description": "Exchanges the OIDC `?code&state` for the {access, refresh} pair on\nthe **main thread** (§3.3): `GET {host}/{tenant}/api/v1/auth/\ncallback?code&state`. It runs main-side — **not** in the worker —\nso the request carries the document's real origin and passes the\nHDIO server's CORS allow-list: a worker inlined from a `blob:` URL\n(the IIFE build) issues fetches with `Origin: null`, which a\ncross-origin server rejects, so a worker-side exchange never\ncompletes. A **401** means the single-use `state` was spent (a\nstale-`?code` reload) → `stale`; any other non-2xx → `error`; a\nnetwork failure is caught as `error` too."
-        }
-      ],
-      "exports": [
-        {
-          "kind": "js",
-          "name": "exchangeCode",
-          "declaration": {
-            "name": "exchangeCode",
-            "module": "src/hdio/exchange.ts"
           }
         }
       ]

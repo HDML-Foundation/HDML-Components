@@ -15,7 +15,6 @@ import type { HdioState } from "./parse";
 const origClose = HdioClient.prototype.close;
 const origPostDocument = HdioClient.prototype.postDocument;
 const origRedeem = HdioClient.prototype.redeemHandoff;
-const origSetTokens = HdioClient.prototype.setTokens;
 const origSubmit = HdioClient.prototype.submitQuery;
 const origStatus = HdioClient.prototype.queryStatus;
 const origResult = HdioClient.prototype.queryResult;
@@ -35,15 +34,6 @@ function propsEvent(
 function htmlEvent(html: string): MessageEvent {
   return new MessageEvent("message", {
     data: { type: "html", data: { html } },
-  });
-}
-
-function tokensEvent(
-  access: null | string,
-  refresh: null | string,
-): MessageEvent {
-  return new MessageEvent("message", {
-    data: { type: "oidc-tokens", data: { access, refresh } },
   });
 }
 
@@ -115,7 +105,6 @@ suite("hdio createHandler", () => {
     HdioClient.prototype.close = origClose;
     HdioClient.prototype.postDocument = origPostDocument;
     HdioClient.prototype.redeemHandoff = origRedeem;
-    HdioClient.prototype.setTokens = origSetTokens;
   });
 
   test(
@@ -229,76 +218,6 @@ suite("hdio createHandler", () => {
     handle(propsEvent("h", "acme", "code-2"));
     await tick();
     assert.equal(redeemCount, 2);
-  });
-
-  test("oidc-tokens: the client adopts the minted pair", () => {
-    const calls: Array<[null | string, null | string]> = [];
-    HdioClient.prototype.setTokens = function (a, r) {
-      calls.push([a, r]);
-    };
-    const handle = createHandler(() => undefined);
-    handle(propsEvent("h", "acme", ""));
-    // The main thread ran the exchange (§3.3), handing the pair over.
-    handle(tokensEvent("access-1", "refresh-1"));
-    assert.deepEqual(calls, [["access-1", "refresh-1"]]);
-  });
-
-  test("oidc-tokens before props still injects (stash)", () => {
-    const calls: Array<[null | string, null | string]> = [];
-    HdioClient.prototype.setTokens = function (a, r) {
-      calls.push([a, r]);
-    };
-    const handle = createHandler(() => undefined);
-    // The exchange fetch can resolve before the debounced props built
-    // the client → stashed, then adopted on client creation.
-    handle(tokensEvent("access-2", "refresh-2"));
-    handle(propsEvent("h", "acme", ""));
-    assert.deepEqual(calls, [["access-2", "refresh-2"]]);
-  });
-
-  test("oidc-tokens re-POSTs the load-raced doc", async () => {
-    const posts: number[] = [];
-    HdioClient.prototype.setTokens = function () {
-      return undefined;
-    };
-    HdioClient.prototype.postDocument = function () {
-      posts.push(1);
-      // The load-time POST (pre-tokens, `#access` null) rejects
-      // "not authenticated"; the re-POST after adoption resolves.
-      return posts.length === 1
-        ? Promise.reject(new Error("not authenticated"))
-        : Promise.resolve({ stored: [], ddl: [] });
-    };
-    const handle = createHandler(() => undefined);
-    handle(propsEvent("h", "acme", ""));
-    // hdom-changed fires the POST before the OIDC pair arrives.
-    handle(htmlEvent(gateDoc));
-    await tick();
-    assert.equal(posts.length, 1);
-    // Adopting the pair re-drives the POST now that we are authed,
-    // so the ref stores and gated queries can run (the OIDC analogue
-    // of token mode's redeem→`#pending`→awaited POST).
-    handle(tokensEvent("access-1", "refresh-1"));
-    await tick();
-    assert.equal(posts.length, 2);
-  });
-
-  test("oidc-tokens with no parsed doc does not POST", async () => {
-    let posts = 0;
-    HdioClient.prototype.setTokens = function () {
-      return undefined;
-    };
-    HdioClient.prototype.postDocument = function () {
-      posts += 1;
-      return Promise.resolve({ stored: [], ddl: [] });
-    };
-    const handle = createHandler(() => undefined);
-    handle(propsEvent("h", "acme", ""));
-    // No `html` yet → nothing to re-POST; adoption must not send an
-    // empty document.
-    handle(tokensEvent("access-1", "refresh-1"));
-    await tick();
-    assert.equal(posts, 0);
   });
 });
 

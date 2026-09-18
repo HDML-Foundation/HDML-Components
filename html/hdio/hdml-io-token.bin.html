@@ -167,8 +167,9 @@
           if (++tries > MAX_TRIES) {
             console.warn(
               `[hdml] gave up after ${MAX_TRIES} tries — still no data. You are ` +
-              `almost certainly NOT authenticated: check that GET /auth/callback ` +
-              `returned 200 and the URL lost ?code&state.`,
+              `almost certainly NOT authenticated: check that ` +
+              `POST /{tenant}/api/v1/auth/token returned 200 (a fresh, unspent ` +
+              `token attribute) and that the document POST carried a Bearer.`,
             );
             stop();
             return;
@@ -186,6 +187,12 @@
                 deliver: (r) => {
                   if (done) return;
                   console.log("result:", r);
+                  // An `error` / `absent` delivery carries no values; the
+                  // retry loop below re-subscribes on its own schedule.
+                  if (r.kind !== "data") {
+                    console.warn(`[hdml] ${r.column}: ${r.kind}`, r.message ?? r.code);
+                    return;
+                  }
                   const values = readColumn(r);   // typed → boxed, nulls applied
                   const nulls =
                     values.filter((v) => v === null).length;

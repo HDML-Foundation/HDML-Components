@@ -41,55 +41,46 @@ held **in memory only** in both modes (B4), so re-auth happens automatically on 
 <hdml-io host="https://hdio.example" tenant="acme" mode="oidc"></hdml-io>
 ```
 
-### OIDC mode — the main-thread state machine (§3.3, B3/B5)
+### OIDC mode — the auth state machine (RFC 018/002 §7)
 
-`mode="oidc"` auto-triggers login — there is no manual `login()`. Because the navigation /
-`history` / `location` concerns are main-thread (a worker has none), the redirect dance lives
-in `HdmlIo.ts`; the code→token **exchange also runs on the main thread** ([`exchange.ts`](../src/hdio/exchange.ts),
-[`#runExchange`](../src/hdio/HdmlIo.ts)). It **must**: the IIFE build's worker is inlined from a
-`blob:` URL, whose `fetch` carries `Origin: null`, which a cross-origin HDIO server's CORS
-allow-list rejects — a worker-side callback fetch never completes. The minted pair is the only
-token data crossing into the worker (`oidc-tokens`), held in memory there for the authed
-document/query requests. The connect / attribute-change handler is an **ordered,
-reentrancy-guarded** state machine (a pure `nextAuthAction` decision in
-[src/hdio/oidc.ts](../src/hdio/oidc.ts) + a thin effect):
+`mode="oidc"` auto-triggers login — there is no manual `login()`. The login is **brokered by
+HDIO**: the page navigates to `/auth/login`, the IdP returns to HDIO's own callback, and the
+callback 302s the browser back to the page with a single-use `?handoff=` code. That code is
+redeemed on the **same leg as the `token` attribute** (`props.token` → `redeemHandoff` →
+`POST {host}/{tenant}/api/v1/auth/token`, in the worker), so there is no main-thread token
+exchange and no token data ever crosses from the main thread to the worker. The navigation /
+`history` / `location` concerns are main-thread (a worker has none), so they live in
+`HdmlIo.ts`, driven by a pure `nextAuthAction` decision in
+[src/hdio/oidc.ts](../src/hdio/oidc.ts) and a thin, **reentrancy-guarded** effect layer. On
+connect and on every `mode`/`token` change it takes the first row that matches:
 
-1. **`?code&state` on the URL** → `#runExchange` does `GET …/auth/callback` **on the main
-   thread**; on success it hands the pair to the worker (`oidc-tokens`) and `history.replaceState`s
-   to strip the params; a **401** (spent `state`) re-navigates to the IdP; any other failure is
-   logged once.
-2. else **`?error` on the URL** (the IdP bounced back an error, not a code) → if it is one of
-   the four OIDC-standard "interaction required" codes (`login_required` /
-   `interaction_required` / `consent_required` / `account_selection_required`) the element
-   **retries once interactively** — `navigate` to `/auth/login?…&interactive=1`, which tells
-   the server to suppress the tenant's configured `prompt` so the flow cannot loop. Any other
-   error (e.g. `access_denied`) is an `auth-error`: strip the params and dev-log once, **no
-   retry**.
-3. else **`token` set** → the `props` path forwards it (token mode; the worker redeems).
-4. else **`mode === "oidc"`** → `location.assign` to
-   `` `${host}/{tenant}/api/v1/auth/login?redirect_uri=<origin+pathname>` `` — the login target
-   is `host`-based like every call; only the `redirect_uri` **value** is the app's own page
-   (URL-encoded, no query). A **reentrancy guard** (`#navigating`) ensures the flurry of
-   `attributeChangedCallback` fires (`mode`/`token` in either order) triggers **exactly one**
-   navigation.
-5. else **inert**.
+| # | Condition | Action | Effect |
+|---|---|---|---|
+| 1 | a non-empty `?handoff` on the URL | redeem, from the URL | `props` already carries it (captured at connect); strip the auth params. Ahead of row 4, or a page returning with `mode="oidc"` would navigate forever |
+| 2 | `?error` on the URL | auth error | strip the auth params and log once — **no retry** (the server has already retried) |
+| 3 | a `token` attribute | redeem, from the attribute | `props` forwards it; the URL is not touched |
+| 4 | `mode === "oidc"` | navigate | `location.assign` to `` `${host}/{tenant}/api/v1/auth/login?origin=<page origin>&return_to=<pathname+search>` ``. `#navigating` guarantees **exactly one** navigation per document |
+| 5 | otherwise | inert | — |
 
-A stale reload (a spent single-use `state` → the callback 401s) comes back as `auth
-{ok:false, reason:"stale"}`, which the state machine treats as "start over" and re-navigates —
-**not** a hard error. An `auth {ok:false, reason:"error"}` is surfaced once (dev-log), no loop.
+`return_to` carries the page's own query, so a deep link (`/reports?id=42`) survives the round
+trip; the fragment cannot, since it never reaches a server. What each URL parameter means and
+how the strip preserves the page's query is in
+[The URL parameters `<hdml-io>` owns](#the-url-parameters-hdml-io-owns) below. A failed
+redemption (a reused or expired `?handoff`, 401) is logged by the worker and the page stays
+unauthenticated; it does **not** re-navigate (RFC 018/002 §7.12, named residue).
 
-**Silent auto-login.** Because tokens are in-memory only, every reload re-runs step 4; with
-no server-side `prompt` the IdP shows its account chooser each time. Set `prompt: "none"` in
-the tenant's OIDC SSO config (server-side —
-[HDIO-Server `docs/auth.md`](../../HDIO-Server/docs/auth.md#silent-auto-login-promptnone)) and
-a reload with a live IdP session returns a code with no UI. When the session is absent/expired
-the IdP returns `login_required` (etc.), and step 2's interactive retry takes over — so first
-login still works. This is a **server-configured, client-cooperative** flow: the component
-needs no attribute, it just reacts to the `?error` the `prompt=none` redirect can produce.
+**Silent auto-login.** Because tokens are in-memory only, every reload re-runs row 4. Set
+`prompt: "none"` in the tenant's OIDC SSO config (server-side —
+[HDIO-Server `docs/auth.md`](../../HDIO-Server/docs/auth.md#silent-auto-login-promptnone)) and a
+reload with a live IdP session completes with no UI. **The page needs no cooperation:** when
+the session is absent the IdP's interaction-required error (`login_required` and the three
+like it) goes to HDIO's callback, which retries once interactively itself. None of those codes
+reaches the page except as a terminal `?error` after that retry, which row 2 simply logs.
 
-> **Deployment requirement.** The exact `redirect_uri` (`location.origin + location.pathname`)
-> must be **pre-registered** in the tenant's SSO config, or the server answers `403
-> ErrRedirectURINotAllowed` (`slices.Contains(oidc.RedirectURIs, …)`).
+> **Deployment requirement.** Register **one** callback URL per tenant in the IdP —
+> `{HDIO_PUBLIC_BASE_URL}/{tenant}/api/v1/auth/callback`, byte for byte — and put the page's
+> **origin** in the tenant's allowlist (`PUT /private/{tenant}/origins`). An unlisted origin is
+> a **403 `ErrOriginNotAllowed`** at `/auth/login`. Page URLs are no longer registered anywhere.
 
 ### The URL parameters `<hdml-io>` owns
 
@@ -155,6 +146,9 @@ sequenceDiagram
   Io->>W: closeEndpoint(#endpoint)  // terminate() (Worker) / close() (port1)
 ```
 
+The handoff code `props` carries may come from the `token` attribute or from `?handoff` on
+the page URL; either way the worker redeems it on the one leg shown above.
+
 The `props` and `html` posts are independently debounced 5 ms via `throdeb.debounce` from
 `@hdml/common` — see [src/hdio/HdmlIo.ts:84-93](../src/hdio/HdmlIo.ts#L84-L93) and
 [src/hdio/HdmlIo.ts:121-140](../src/hdio/HdmlIo.ts#L121-L140).
@@ -178,7 +172,7 @@ endpoint, one client). Both directions are a discriminated union on `type`
 |---|---|---|
 | `props` | `{host, tenant, mode?, token?, config?}` | ✅ Slice A/B · `config` from `window.HDML_CONFIG` (Step 08) |
 | `html` | `{html}` | ✅ Slice A |
-| `oidc-tokens` | `{access, refresh}` | ✅ handed over by the main-thread OIDC exchange (§3.3) |
+
 | `subscribe` | `{id, ref, column, raw?}` | ✅ Step 07 (worker) · posted by the main-thread bus (Step 08) |
 | `unsubscribe` | `{id}` | ✅ Step 07 (worker) · posted by the main-thread bus (Step 08) |
 
@@ -278,19 +272,7 @@ transfer). `raw:false` subscribers (a pure axis/legend) get `domain` + `type` on
   `#handoff ?? token` in `props.token` (RFC 018/002 §7.4), so the worker cannot tell them
   apart. A failed redeem is logged, not
   re-thrown.
-- **`html`** — calls `parse(state, html)` (the bottom-up Merkle namer — see [docs/architecture.md#parse--serialize](architecture.md#parse--serialize)) then `client.postDocument(state.data)`, folding the returned 201 body via `recordStored(state.registry, body)`. `postDocument` internally awaits any in-flight redeem (§3.2), so in **token** mode an `html` that races the auth round-trip still posts with a real `Bearer`. **OIDC** mode has no in-flight redeem to await, so a load-time `html` (fired by `hdom-changed` before the async exchange resolves) throws "not authenticated"; the `oidc-tokens` handler below re-POSTs once the pair lands. `parse` re-names and re-packs the **whole** document every call (no dedup — every element is re-posted; the server idempotent-skips already-present keys). `state` is closure-scoped and holds the `ref → {key, stored}` registry (keyed by local ref `hdml-{type}={name}`) that survives for the endpoint's lifetime — the substrate for the post→confirm→query handshake (RFC 004 Slice E §8.6, E-L).
-- **`oidc-tokens`** — the OIDC exchange runs on the **main thread** now (§3.3): a `blob:`-URL
-  worker's `fetch` carries `Origin: null`, which a cross-origin HDIO server's CORS rejects, so
-  the worker cannot fetch `/auth/callback` itself. The main thread does the exchange and hands
-  the minted `{access, refresh}` here; the worker adopts it via `client.setTokens(access,
-  refresh)` for the authed document/query requests. It is **stashed** in closure state so a
-  client rebuilt by a racing `props` re-adopts it (the exchange fetch and `props` are
-  unordered), and cleared on a genuine identity change. Adopting the pair also **re-POSTs the
-  current document** (the shared post-and-fold path): the load-time `html`→`postDocument` raced
-  ahead of the async tokens and threw "not authenticated", and nothing else re-posts, so this
-  re-POST is what actually stores the doc and releases the gated queries — the OIDC analogue of
-  token mode's redeem → `#pending` → awaited POST. A no-op until a document has been parsed.
-
+- **`html`** — calls `parse(state, html)` (the bottom-up Merkle namer — see [docs/architecture.md#parse--serialize](architecture.md#parse--serialize)) then `client.postDocument(state.data)`, folding the returned 201 body via `recordStored(state.registry, body)`. `postDocument` internally awaits any in-flight redeem (§3.2), so in **token** mode an `html` that races the auth round-trip still posts with a real `Bearer`. The same holds in **OIDC** mode, whose `?handoff` is redeemed through the same `#pending` (RFC 018/002 §7.4d). `parse` re-names and re-packs the **whole** document every call (no dedup — every element is re-posted; the server idempotent-skips already-present keys). `state` is closure-scoped and holds the `ref → {key, stored}` registry (keyed by local ref `hdml-{type}={name}`) that survives for the endpoint's lifetime — the substrate for the post→confirm→query handshake (RFC 004 Slice E §8.6, E-L).
 - **`subscribe` / `unsubscribe`** — drive the reactive query engine (Step 07, D). A
   `subscribe {id, ref, column, raw?}` joins the `(ref, column)` to its frame (keyed by the
   source ref); `unsubscribe {id}` removes it and tears the frame down when its last
@@ -298,9 +280,9 @@ transfer). `raw:false` subscribers (a pure axis/legend) get `domain` + `type` on
   off the D8 request bus (Step 08) — see [The discovery bus + subscription registry](#the-discovery-bus--subscription-registry-step-08-d7d8)
   and [The query leg](#the-query-leg-slice-d) below.
 
-`HdmlIo.ts`'s `#onMessage` handles `result` **and** `error` — the OIDC `strip` (ok) /
-`re-navigate` (stale) branches moved to `#runExchange` when the exchange moved main-side
-(§3.3). A `result` carries its **transferable `ArrayBuffer`s** via the transfer-list form
+`HdmlIo.ts`'s `#onMessage` handles `result` **and** `error` — there is no `auth` reply, because
+the worker redeems the handoff itself and the URL strip is `#runAuth`'s (RFC 018/002 §7.6). A
+`result` carries its **transferable `ArrayBuffer`s** via the transfer-list form
 `post(msg, [...buffers])` for every raw numeric/temporal column (the source buffers detach —
 RFC §2.6, A4). An `error` carries a failure reason for a frame the consumer should render
 empty rather than as a silent spinner; it is routed to `#fanOutError`, which hands a
@@ -617,15 +599,14 @@ was rewritten for the post-006 auth surface: there is **no** `session` bootstrap
 tokens live **in memory only** (B4, §3.4): no `sessionStorage`, re-auth on every reload.
 
 Constructor: `(host, tenant)` — two args, no token, no side effect. The client is inert
-(`authed === false`) until an explicit `redeemHandoff` (token mode) or a `setTokens` adopting
-the pair the **main-thread** OIDC exchange minted (OIDC mode, §3.3) makes it authed.
+(`authed === false`) until `redeemHandoff` makes it authed — in both modes: the code comes from
+the `token` attribute or from `?handoff` after the OIDC callback (RFC 018/002 §7.1).
 
 Full surface (auth + document from Slice B, query leg from Step 07):
 
 ```ts
 constructor(host: string, tenant: string);
 redeemHandoff(code: string): Promise<void>;          // issuance step 2 (§3.2)
-setTokens(access: string | null, refresh: string | null): void; // OIDC adopt (§3.3)
 refresh(): Promise<void>;                              // silent, on 401 / expiry
 postDocument(data: Uint8Array): Promise<unknown>;      // → 201 body
 submitQuery(p: { docPath: string; columns: string[] }):
@@ -637,10 +618,6 @@ cancelQuery(jobId: string): Promise<void>;             // DELETE …/queries/{id
 close(): void;                                          // abort in-flight + clear tokens
 get authed(): boolean;                                 // #access != null
 ```
-
-The OIDC callback `GET …/auth/callback` is **not** a client method: it runs on the main thread
-([`exchange.ts`](../src/hdio/exchange.ts)) because a `blob:`-Worker `fetch` sends `Origin:
-null`, which a cross-origin server's CORS rejects. The client only `setTokens` the result.
 
 `postDocument` and all four query calls share one private authed-send path: it awaits any
 in-flight redeem/refresh, rejects if unauthenticated, sends with a real `Bearer`, and on a
@@ -670,8 +647,8 @@ dead `/public/api/v1/{tenant}` base is gone). Routes are all verified against
 | `queryResult(jobId)` | `GET /{tenant}/api/v1/queries/{jobId}/result` | — (bodiless GET) | length-prefixed Arrow IPC → `ArrayBuffer[]` (one per batch) |
 | `cancelQuery(jobId)` | `DELETE /{tenant}/api/v1/queries/{jobId}` | — | `204` (or **409 ignored**) |
 
-`redeemHandoff` / `refresh` parse the token pair and hold both in memory (as does `setTokens`
-for the main-side OIDC pair); `authed` becomes `true`. `redeemHandoff` / `refresh` share the
+`redeemHandoff` / `refresh` parse the token pair and hold both in memory; `authed` becomes
+`true`. `redeemHandoff` / `refresh` share the
 in-flight `#pending` guard, so a document POST that races them awaits it first. Common request options: `mode: cors`, `redirect:
 follow`, `cache: no-cache`. The body content-type is set **only when a body is present** —
 `application/json` for the auth POSTs, `application/octet-stream` for the document POST, and

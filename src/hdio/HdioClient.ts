@@ -9,9 +9,10 @@ import type { RegistryEntry } from "./parse";
 
 /**
  * The `{ access_token, refresh_token, expires_in, token_type }`
- * payload returned by both the two-step handoff exchange and the
- * refresh route (server `domain.TokenResponse`). Only the two tokens
- * are held in memory; the expiry / type are informational.
+ * payload returned by both the handoff redemption
+ * (`POST /auth/token`) and the refresh route (server
+ * `domain.TokenResponse`). Only the two tokens are held in memory;
+ * the expiry / type are informational.
  */
 interface TokenResponse {
   access_token?: string;
@@ -173,25 +174,6 @@ export class HdioClient {
       `/${this.#tenant}/api/v1/auth/token/refresh`,
       { refresh_token: token },
     );
-  }
-
-  /**
-   * Adopts a token pair minted elsewhere — the main-thread OIDC
-   * exchange (§3.3) hands its `{access, refresh}` here so the worker
-   * holds the pair in memory for the authed document/query requests.
-   * The exchange is main-side because a `blob:`-Worker `fetch` sends
-   * `Origin: null`, which a cross-origin HDIO server's CORS rejects.
-   * Either token may be null (clears that slot).
-   *
-   * @param access - The access token, or null to clear it.
-   * @param refresh - The refresh token, or null to clear it.
-   */
-  public setTokens(
-    access: null | string,
-    refresh: null | string,
-  ): void {
-    this.#access = access;
-    this.#refresh = refresh;
   }
 
   /**
@@ -383,8 +365,8 @@ export class HdioClient {
 
   /**
    * Stores the `{access, refresh}` pair from a parsed
-   * `TokenResponse` (redeem / refresh / OIDC exchange). Either may be
-   * absent — a null token clears that slot.
+   * `TokenResponse` (redeem / refresh). Either may be absent — a
+   * null token clears that slot.
    */
   #storeTokens(tokens: TokenResponse): void {
     this.#access = tokens.access_token ?? null;

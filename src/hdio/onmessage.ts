@@ -32,10 +32,9 @@ export type Post = (
  * the one `HdmlIo.ts` posts. `subscribe`/`unsubscribe` drive the D
  * query engine (Step 07); `props.config` carries the D8
  * `HDML_CONFIG` read main-side (a worker has no `window`) — today
- * only `queryReadyTimeout` (the D4 gate backstop). `oidc-tokens`
- * hands over the pair the **main-thread** OIDC exchange minted (§3.3)
- * — the worker cannot fetch the callback itself (its `blob:` origin
- * is CORS-rejected), so it only adopts the tokens for authed calls.
+ * only `queryReadyTimeout` (the D4 gate backstop). `props.token` is
+ * the one auth input: a handoff code from the `token` attribute or
+ * from `?handoff` on the page URL, redeemed here (RFC 018/002 §7.1).
  */
 export type InboundMessage =
   | {
@@ -51,10 +50,6 @@ export type InboundMessage =
   | {
       type: "html";
       data: { html: string };
-    }
-  | {
-      type: "oidc-tokens";
-      data: { access: null | string; refresh: null | string };
     }
   | {
       type: "subscribe";
@@ -100,7 +95,9 @@ export interface ColumnResult {
  * generation G+1 beside child *k+1* at G. The per-column split it
  * replaces was a message-layer tear.
  *
- * (The OIDC exchange is main-side now, so there is no `auth` reply.)
+ * There is no `auth` reply: the worker redeems the handoff code
+ * itself and reports a failure only to the console (RFC 018/002
+ * §7.12).
  */
 export type OutboundMessage =
   | {
@@ -327,16 +324,6 @@ export function createHandler(
   // unauthenticated. Only a genuine host/tenant change rebuilds (and
   // re-redeems).
   let identity: null | string = null;
-
-  // The OIDC pair the main thread minted (§3.3) and handed over via
-  // `oidc-tokens`, stashed so a client (re)built by a racing `props`
-  // still adopts it (the exchange fetch and `props` are unordered).
-  // Cleared on a genuine identity change — a new connection's tokens
-  // are its own.
-  let injectedTokens: null | {
-    access: null | string;
-    refresh: null | string;
-  } = null;
 
   // Cross-call worker state: the last packed document bytes plus the
   // ref→key→stored registry retained for the post→confirm→query
@@ -660,14 +647,12 @@ export function createHandler(
   }
 
   // POST the whole document and fold the 201 into the registry
-  // (004 Slice E §8.6). Shared by the `html` path and `oidc-tokens`:
-  // in OIDC mode the minted pair arrives asynchronously, after the
-  // load-time hdom-changed→postDocument has already failed with
-  // `#access` null ("not authenticated"), so adopting the tokens must
-  // re-drive the POST — else the ref never becomes `stored` and every
-  // query stays gated until it times out. A no-op until a document is
-  // parsed and a client exists; a re-POST is harmless (the server
-  // idempotent-skips present keys, §8.6).
+  // (004 Slice E §8.6). Called from the `html` path only. A load-time
+  // POST that races the auth round trip is safe in both modes: the
+  // redeem sets `HdioClient#pending`, which `postDocument` awaits
+  // (RFC 018/002 §7.4d). A no-op until a document is parsed and a
+  // client exists; a re-POST is harmless (the server idempotent-skips
+  // present keys, §8.6).
   function postAndFold(): void {
     if (client === null || state.data.length === 0) {
       return;
@@ -699,27 +684,14 @@ export function createHandler(
           if (client) {
             client.close();
           }
-          if (identity !== null) {
-            // A genuine host/tenant change: the prior connection's
-            // OIDC tokens no longer apply to the new one.
-            injectedTokens = null;
-          }
           client = new HdioClient(msg.data.host, msg.data.tenant);
           identity = next;
           redeemed = null;
-          // Re-adopt an OIDC pair that arrived before this `props`
-          // built the client (the exchange fetch races `props`).
-          if (injectedTokens) {
-            client.setTokens(
-              injectedTokens.access,
-              injectedTokens.refresh,
-            );
-          }
         }
-        // Token mode (B2): the `token` attribute carries the handoff
-        // code; redeem it once per distinct code, silently. OIDC mode
-        // carries no token — the main thread runs the exchange and
-        // hands the pair over via `oidc-tokens` below.
+        // Both modes carry a handoff code in `token` — the attribute
+        // (Path 1) or `?handoff` captured by the element after the
+        // OIDC callback (Path 2); redeem it once per distinct code,
+        // silently (RFC 018/002 §7.1).
         const token = msg.data.token;
         if (token && token !== redeemed) {
           redeemed = token;
@@ -731,23 +703,6 @@ export function createHandler(
       }
       case "html":
         state = parse(state, msg.data.html);
-        postAndFold();
-        break;
-      case "oidc-tokens":
-        // The OIDC exchange ran on the main thread (§3.3) — the
-        // worker's `blob:` origin is CORS-rejected by a cross-origin
-        // HDIO server, so it cannot fetch `/auth/callback` itself. It
-        // just adopts the minted pair for the authed document/query
-        // requests, stashing it so a client rebuilt by a racing
-        // `props` re-adopts it.
-        injectedTokens = msg.data;
-        client?.setTokens(msg.data.access, msg.data.refresh);
-        // The load-time hdom-changed→postDocument raced ahead of
-        // these tokens and threw "not authenticated" (no `#access`
-        // yet), and nothing else re-POSTs. Re-drive it now that the
-        // client is authed so the ref stores and gated queries can
-        // run. (Token mode never hits this: its redeem sets
-        // `#pending`, which the POST awaits.)
         postAndFold();
         break;
       case "subscribe": {

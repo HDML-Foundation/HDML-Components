@@ -11,8 +11,7 @@ import type { Endpoint } from "./endpoint";
 import { createEndpoint, closeEndpoint } from "./endpoint";
 import type { OutboundMessage } from "./onmessage";
 import type { Delivery, RequestDetail } from "./delivery";
-import { loginUrl, nextAuthAction, stripAuthParams } from "./oidc";
-import { exchangeCode } from "./exchange";
+import { nextAuthAction, stripAuthParams } from "./oidc";
 import { readConfig } from "./config";
 
 /**
@@ -70,10 +69,11 @@ interface Subscriber {
 }
 
 /**
- * The main-thread navigation seam the OIDC state machine drives
- * (RFC §3.3): reading `?code&state` off the URL, the full-page
- * redirect to `/auth/login`, and the post-exchange `replaceState`
- * param strip — the three things a worker (no `window`) cannot do.
+ * The main-thread navigation seam the auth state machine drives
+ * (RFC 018/002 §7.6): reading `?handoff` / `?error` off the URL, the
+ * full-page redirect to `/auth/login`, and the `replaceState` strip
+ * of the auth params — the three things a worker (no `window`)
+ * cannot do.
  */
 interface NavSeam {
   href(): string;
@@ -105,10 +105,13 @@ export const nav: NavSeam = {
  *
  * @tagname hdml-io
  *
- * @attribute {string} host
- * @attribute {string} tenant
- * @attribute {string} mode
- * @attribute {string} token
+ * @attribute {string} host - The HDIO server base URL.
+ * @attribute {string} tenant - The tenant path segment.
+ * @attribute {string} mode - `token` (default) or `oidc`; `oidc`
+ *   navigates to `/auth/login` and redeems the `?handoff` the
+ *   callback returns.
+ * @attribute {string} token - A single-use handoff code; `?handoff`
+ *   on the URL wins if both are present.
  */
 @customElement("hdml-io")
 export class HdmlIo extends LitElement {
@@ -547,8 +550,10 @@ export class HdmlIo extends LitElement {
   };
 
   /**
-   * Sends the properties to the worker. Called by the
-   * `attributeChangedCallback` method.
+   * Sends the properties to the worker, at connect and on every
+   * attribute change. `token` is `#handoff ?? token`: a code from
+   * `?handoff` on the URL wins over the attribute (RFC 018/002
+   * §7.2a).
    *
    * @private
    */
@@ -617,54 +622,6 @@ export class HdmlIo extends LitElement {
       case "inert":
         break;
     }
-  };
-
-  /**
-   * Unreachable: no `AuthAction` produces an exchange any more
-   * (RFC 018/002 §7.3), and the callback now returns `?handoff`,
-   * which `redeem` handles.
-   *
-   * Runs the OIDC code→token exchange on the **main thread** (§3.3).
-   * It must run main-side, not in the worker: the IIFE build's worker
-   * is inlined from a `blob:` URL, whose `fetch` carries `Origin:
-   * null` — which a cross-origin HDIO server's CORS rejects, so a
-   * worker-side callback never completes. On success the minted
-   * `{access, refresh}` pair is the only token data handed to the
-   * worker (`oidc-tokens`, held in memory there for the authed
-   * document/query requests) and `?code&state` is stripped; a spent
-   * `state` (401) restarts at the IdP; any other failure surfaces
-   * once. The reentrancy guard still permits exactly one navigation.
-   *
-   * @param code - The `code` query param the IdP returned.
-   * @param state - The single-use `state` query param.
-   * @private
-   */
-  #runExchange = async (
-    code: string,
-    state: string,
-  ): Promise<void> => {
-    const result = await exchangeCode(
-      this.host ?? "",
-      this.tenant ?? "",
-      code,
-      state,
-    );
-    if (result.status === "ok") {
-      this.#endpoint?.postMessage({
-        type: "oidc-tokens",
-        data: { access: result.access, refresh: result.refresh },
-      });
-      nav.strip(stripAuthParams(nav.href()));
-      return;
-    }
-    if (result.status === "stale") {
-      this.#navigating = true;
-      nav.navigate(
-        loginUrl(this.host ?? "", this.tenant ?? "", nav.href()),
-      );
-      return;
-    }
-    console.error("hdml-io auth failed:", result.detail);
   };
 
   /**

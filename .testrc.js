@@ -84,8 +84,6 @@ function tokenResponse(access, refresh) {
 //   always-401    → doc always 401 (persistent, survives the retry)
 //   slow          → doc hangs (abort target for close())
 //   err-html      → doc 502 with a text/html body (no JSON parse)
-//   oidc-ok       → GET /auth/callback 200 (OIDC exchange succeeds)
-//   stale-state   → GET /auth/callback 401 (spent state → re-nav)
 //   q-ok          → /queries 202 completed; result = 2 IPC batches
 //   q-fail        → GET /queries/{id} 200 {status:failed, error}
 //   q-pending     → GET /queries/{id} 202 {status:pending}
@@ -125,21 +123,6 @@ function mockHdio() {
     // Silent refresh — always mints "fresh-access".
     if (post && route === "/auth/token/refresh") {
       ctx.body = tokenResponse("fresh-access", "refresh-1");
-      return;
-    }
-
-    // OIDC exchange — a plain GET returning the token pair as JSON.
-    // A spent single-use `state` is a 401 (the stale-`?code` reload).
-    if (!post && route === "/auth/callback") {
-      if (tenant === "stale-state") {
-        ctx.status = 401;
-        ctx.body = { error: "state invalid or reused" };
-        return;
-      }
-      ctx.body = tokenResponse(
-        "access-" + tenant,
-        "refresh-" + tenant,
-      );
       return;
     }
 
