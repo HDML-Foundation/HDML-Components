@@ -10,7 +10,7 @@ Worker / MessagePort-fallback execution.
 ## Element surface
 
 [src/hdio/HdmlIo.ts](../src/hdio/HdmlIo.ts) registers `<hdml-io>` (extends `LitElement`, not
-`HdqlElement`). It renders `<slot></slot>` and exposes three attributes:
+`HdqlElement`). It renders `<slot></slot>` and exposes four attributes:
 
 | Attribute | Type | Purpose |
 |---|---|---|
@@ -76,6 +76,7 @@ reload with a live IdP session completes with no UI. **The page needs no coopera
 the session is absent the IdP's interaction-required error (`login_required` and the three
 like it) goes to HDIO's callback, which retries once interactively itself. None of those codes
 reaches the page except as a terminal `?error` after that retry, which row 2 simply logs.
+The client keeps no `SILENT_AUTH_FAILURES` set and never sends `interactive=1`.
 
 > **Deployment requirement.** Register **one** callback URL per tenant in the IdP —
 > `{HDIO_PUBLIC_BASE_URL}/{tenant}/api/v1/auth/callback`, byte for byte — and put the page's
@@ -172,7 +173,6 @@ endpoint, one client). Both directions are a discriminated union on `type`
 |---|---|---|
 | `props` | `{host, tenant, mode?, token?, config?}` | ✅ Slice A/B · `config` from `window.HDML_CONFIG` (Step 08) |
 | `html` | `{html}` | ✅ Slice A |
-
 | `subscribe` | `{id, ref, column, raw?}` | ✅ Step 07 (worker) · posted by the main-thread bus (Step 08) |
 | `unsubscribe` | `{id}` | ✅ Step 07 (worker) · posted by the main-thread bus (Step 08) |
 
