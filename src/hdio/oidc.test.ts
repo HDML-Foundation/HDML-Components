@@ -145,6 +145,62 @@ suite("nextAuthAction (pure state machine)", () => {
     });
   });
 
+  test("a login-hint rides the login URL", () => {
+    const action = nextAuthAction({
+      ...base,
+      search: "",
+      mode: "oidc",
+      token: null,
+      loginHint: "u1@acme.example",
+    });
+    assert.equal(action.kind, "navigate");
+    const url = (action as { url: string }).url;
+    assert.equal(
+      new URL(url).searchParams.get("login_hint"),
+      "u1@acme.example",
+    );
+  });
+
+  // Absent, not present-and-empty. An empty login_hint would ask
+  // the server to treat "" as a named account rather than as "fall
+  // back to the tenant default", which is the one thing the empty
+  // value means.
+  test("no login-hint omits the parameter entirely", () => {
+    for (const loginHint of [null, undefined, ""]) {
+      const action = nextAuthAction({
+        ...base,
+        search: "",
+        mode: "oidc",
+        token: null,
+        loginHint,
+      });
+      assert.equal(action.kind, "navigate");
+      const url = (action as { url: string }).url;
+      assert.isFalse(
+        new URL(url).searchParams.has("login_hint"),
+        `login_hint must be absent for ${JSON.stringify(loginHint)}`,
+      );
+    }
+  });
+
+  // The value is a user identifier, so it reaches the URL
+  // percent-encoded rather than splitting the query at "@" or "+".
+  test("a login-hint is percent-encoded", () => {
+    const action = nextAuthAction({
+      ...base,
+      search: "",
+      mode: "oidc",
+      token: null,
+      loginHint: "a+b@acme.example",
+    });
+    const url = (action as { url: string }).url;
+    assert.include(url, `login_hint=${enc("a+b@acme.example")}`);
+    assert.equal(
+      new URL(url).searchParams.get("login_hint"),
+      "a+b@acme.example",
+    );
+  });
+
   test("a deep link's query rides return_to", () => {
     const action = nextAuthAction({
       ...base,

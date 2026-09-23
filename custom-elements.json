@@ -974,9 +974,17 @@
                 "text": "string"
               },
               "description": "The app's current `location.href`."
+            },
+            {
+              "name": "loginHint",
+              "optional": true,
+              "type": {
+                "text": "null | string"
+              },
+              "description": "The `login-hint` attribute, or nullish for\nnone."
             }
           ],
-          "description": "The `host`-based `/auth/login` URL (RFC 018/002 §7.5). The login\ntarget is `host` like every other call; the **origin** parameter is\nthe app's own `location.origin` — no path, no query — which the\nserver validates against the tenant's stored allowlist (D6) before\nit enters the state blob. `return_to` carries the page's own\n`pathname + search` so a deep link survives the round trip; it is\npath-only by construction here and re-validated server-side (§6.3)."
+          "description": "The `host`-based `/auth/login` URL (RFC 018/002 §7.5). The login\ntarget is `host` like every other call; the **origin** parameter is\nthe app's own `location.origin` — no path, no query — which the\nserver validates against the tenant's stored allowlist (D6) before\nit enters the state blob. `return_to` carries the page's own\n`pathname + search` so a deep link survives the round trip; it is\npath-only by construction here and re-validated server-side (§6.3).\n\n`login_hint` is appended only when the page supplied one. It names\nWHICH account this login is for, which an IdP holding several\nsigned-in sessions cannot otherwise work out — so it answers\n`account_selection_required` and shows its account chooser, on\nevery reload, because tokens are held in memory only. A multi-user\napp knows its own signed-in user and passes it per login; the\ntenant's stored config carries a default for the single-account\ncase. It is a hint, never an access decision: the IdP still\nauthenticates and the server still verifies the `id_token`."
         },
         {
           "kind": "function",
@@ -990,7 +998,7 @@
             {
               "name": "i",
               "type": {
-                "text": "{\n  href: string;\n  search: string;\n  host: string;\n  tenant: string;\n  mode: string | null;\n  token: string | null;\n}"
+                "text": "{\n  href: string;\n  search: string;\n  host: string;\n  tenant: string;\n  mode: string | null;\n  token: string | null;\n  loginHint?: null | string;\n}"
               },
               "description": "The URL + attribute snapshot."
             }

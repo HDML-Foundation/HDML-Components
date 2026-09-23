@@ -30,7 +30,7 @@ flowchart LR
         srb[hdml-sort-by]
       end
       base["HdqlElement (Lit base)<br/>connected / disconnected / attrChanged<br/>→ document.dispatchEvent('hdom-changed')"]
-      io["hdml-io (LitElement)<br/>props: host · tenant · token<br/>createEndpoint / closeEndpoint, owns lifecycle"]
+      io["hdml-io (LitElement)<br/>props: host · tenant · token · mode · login-hint<br/>createEndpoint / closeEndpoint, owns lifecycle"]
     end
 
     subgraph "Web Worker (or MessagePort fallback in ESM/CJS)"

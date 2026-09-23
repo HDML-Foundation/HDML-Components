@@ -188,6 +188,32 @@ suite("HdmlIo auth state machine", () => {
     assert.deepEqual(JSON.parse(redeems[0].body), { token: "h1" });
   });
 
+  // The ATTRIBUTE, not the property. Lit derives an attribute name
+  // by lowercasing, so a property declared with no explicit
+  // `attribute` would bind `loginhint` and leave `login-hint`
+  // silently unread — working in JS and doing nothing in HTML.
+  test("a login-hint attribute reaches the login URL", async () => {
+    mount({
+      host: "",
+      tenant: "t",
+      mode: "oidc",
+      "login-hint": "u1@acme.example",
+    });
+    await until(() => navCalls.length > 0);
+    assert.equal(
+      new URL(navCalls[0], "http://x").searchParams.get("login_hint"),
+      "u1@acme.example",
+    );
+  });
+
+  test("no login-hint attribute omits the parameter", async () => {
+    mount({ host: "", tenant: "t", mode: "oidc" });
+    await until(() => navCalls.length > 0);
+    assert.isFalse(
+      new URL(navCalls[0], "http://x").searchParams.has("login_hint"),
+    );
+  });
+
   test("interleaved changes navigate at most once", async () => {
     const el = mount({ host: "", tenant: "t", mode: "oidc" });
     await until(() => navCalls.length > 0);

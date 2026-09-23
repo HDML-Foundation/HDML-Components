@@ -18,6 +18,7 @@ Worker / MessagePort-fallback execution.
 | `tenant` | string | Tenant identifier — the leading path segment of every request (`/{tenant}/api/v1/…`) |
 | `mode` | string | Auth flow selector (B1, §3.1): `token` (default) or `oidc`. Forwarded to the worker in `props`. |
 | `token` | string | Token mode: a **single-use handoff code** the host app's backend minted in issuance step 1, redeemed here for the access/refresh pair (§3.2, B2). Not a bearer token. Path 2 delivers the same kind of code as `?handoff` on the URL; if both are present the URL wins. |
+| `login-hint` | string | OIDC mode only: the account **this** login is for, forwarded to `/auth/login` as `login_hint`. Usually the user's email; Google also accepts the `sub` string. Set it when your app has **many users** — an IdP holding several signed-in sessions cannot resolve a login that names no account, so it shows its chooser on every reload (tokens are memory-only). Unset falls back to the tenant's stored default, which only fits a tenant sharing one IdP account. A hint, not an access control: the IdP still authenticates and the server still verifies the `id_token`. |
 
 There are two auth entry points, the `token` attribute and `?handoff` on the page URL, and
 **one** redemption leg: the code rides `props.token` to the worker, which calls

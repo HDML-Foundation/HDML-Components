@@ -15,7 +15,7 @@ chromium/firefox/webkit). Ships **four artifacts** from one source tree: `cjs/`,
 | End-to-end data flow, the `hdom-changed` event bus, main-thread ↔ Worker boundary, build pipeline diagram | [docs/architecture.md](docs/architecture.md) |
 | Install / build / lint / test / dev-server / release commands (verified against `package.json`) | [docs/development.md](docs/development.md) |
 | Reference for every `hdml-*` custom element: tag, attributes, allowed children, attribute enums | [docs/components.md](docs/components.md) |
-| `<hdml-io>` host/tenant/token props, Worker message protocol, `HdioClient` HTTP endpoints | [docs/hdio-client.md](docs/hdio-client.md) |
+| `<hdml-io>` host/tenant/token/mode/login-hint props, Worker message protocol, `HdioClient` HTTP endpoints | [docs/hdio-client.md](docs/hdio-client.md) |
 | Embedding charts in a customer app: which auth path, the complete Path 1 / Path 2 samples, what to register, troubleshooting (the customer-developer guide) | [docs/embedding.md](docs/embedding.md) |
 | How downstream consumers (apps, HDIO-Server) use this package; entry points, exports, dist variants, `@hdml/*` version pins | [docs/integration.md](docs/integration.md) |
 | Non-obvious design choices: document-level event bus, esbuild Worker-inlining plugin, `_script` sentinel, dev/prod export conditions, `docs/` collision with typedoc | [docs/decisions.md](docs/decisions.md) |

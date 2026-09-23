@@ -215,6 +215,22 @@ page with a single-use code that the element redeems exactly as in Path 1.
 [The CDN bundle](#zero-build-load-the-bundle-from-a-cdn) works here too: replace the module
 script with the `<script src>` line and keep the `<hdml-io … mode="oidc">` element.
 
+**If your app has more than one user, set `login-hint`.** Your page knows who is signed
+in; the IdP does not. A browser holding several signed-in Google sessions cannot resolve a
+login that names no account, so it shows its account chooser — on **every** reload, because
+tokens are held in memory only and each reload re-runs the redirect:
+
+```html
+<hdml-io host="https://hdio.example" tenant="acme" mode="oidc"
+         login-hint="user@customer.example"></hdml-io>
+```
+
+Set it from your own session, per user. It is the account's email, or whatever identifier
+your IdP takes — Google also accepts the `sub` string. It is a **hint**, not an access
+control: the IdP still authenticates, HDIO still verifies the `id_token`, and a wrong value
+only pre-fills the wrong account. Leave it unset only when every user of the tenant shares
+one IdP account, in which case set `login_hint` once in the tenant's SSO config instead.
+
 **b. The one-time IdP registration.** Do this once in your IdP's console. Google is shown,
 and any conforming OIDC provider takes the same shape:
 

@@ -140,6 +140,29 @@ export class HdmlIo extends LitElement {
   token: null | string = null;
 
   /**
+   * The OIDC `login_hint` for THIS login — the account the page's
+   * signed-in user should authenticate as, usually their email
+   * (Google also accepts the `sub` string). Forwarded to
+   * `/auth/login` when
+   * `mode="oidc"`; ignored otherwise.
+   *
+   * Set it when your app has many users. An IdP holding several
+   * signed-in sessions cannot resolve a login that names no account,
+   * so it shows its account chooser — on every reload, because tokens
+   * are held in memory only. Naming the account is what removes that.
+   * Leave it unset for a tenant whose users share one IdP account:
+   * the tenant's stored SSO config carries a default.
+   *
+   * It is a hint, not an access control. The IdP still authenticates,
+   * the server still verifies the `id_token`, and a wrong value
+   * pre-fills the wrong account and nothing more.
+   *
+   * @internal
+   */
+  @property({ type: String, attribute: "login-hint" })
+  loginHint: null | string = null;
+
+  /**
    * Reentrancy guard for the auto-trigger state machine (B5): once a
    * navigation is committed, the flurry of `attributeChangedCallback`
    * fires — `mode`/`token` landing in either order — cannot trigger a
@@ -594,6 +617,7 @@ export class HdmlIo extends LitElement {
       tenant: this.tenant ?? "",
       mode: this.mode,
       token: this.token,
+      loginHint: this.loginHint,
     });
     switch (action.kind) {
       case "redeem":

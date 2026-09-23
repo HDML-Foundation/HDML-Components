@@ -71,22 +71,38 @@ export function stripAuthParams(href: string): string {
  * `pathname + search` so a deep link survives the round trip; it is
  * path-only by construction here and re-validated server-side (§6.3).
  *
+ * `login_hint` is appended only when the page supplied one. It names
+ * WHICH account this login is for, which an IdP holding several
+ * signed-in sessions cannot otherwise work out — so it answers
+ * `account_selection_required` and shows its account chooser, on
+ * every reload, because tokens are held in memory only. A multi-user
+ * app knows its own signed-in user and passes it per login; the
+ * tenant's stored config carries a default for the single-account
+ * case. It is a hint, never an access decision: the IdP still
+ * authenticates and the server still verifies the `id_token`.
+ *
  * @param host - The `host` attribute (server base, no slash).
  * @param tenant - The `tenant` attribute.
  * @param href - The app's current `location.href`.
+ * @param loginHint - The `login-hint` attribute, or nullish for
+ * none.
  * @returns The full `/auth/login?origin=…&return_to=…` URL.
  */
 export function loginUrl(
   host: string,
   tenant: string,
   href: string,
+  loginHint?: null | string,
 ): string {
   const url = new URL(href);
   const origin = encodeURIComponent(url.origin);
   const returnTo = encodeURIComponent(url.pathname + url.search);
+  const hint = loginHint
+    ? `&login_hint=${encodeURIComponent(loginHint)}`
+    : "";
   return (
     `${host}/${tenant}/api/v1/auth/login` +
-    `?origin=${origin}&return_to=${returnTo}`
+    `?origin=${origin}&return_to=${returnTo}${hint}`
   );
 }
 
@@ -115,6 +131,7 @@ export function nextAuthAction(i: {
   tenant: string;
   mode: string | null;
   token: string | null;
+  loginHint?: null | string;
 }): AuthAction {
   const params = new URLSearchParams(i.search);
   // An empty `?handoff=` is not a credential and falls through.
@@ -132,7 +149,7 @@ export function nextAuthAction(i: {
   if (i.mode === "oidc") {
     return {
       kind: "navigate",
-      url: loginUrl(i.host, i.tenant, i.href),
+      url: loginUrl(i.host, i.tenant, i.href, i.loginHint),
     };
   }
   return { kind: "inert" };
