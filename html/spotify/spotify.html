@@ -1,0 +1,648 @@
+<!doctype html>
+<!--
+  Spotify — the structural profile of the `spotify` schema.
+
+  The fourth sibling of maang/statistic.html, airbnb/airbnb.html and
+  netflix/netflix.html, and the smallest schema in the set: two tables
+  of a hundred rows each, the hundred most-streamed songs on Spotify
+  with their audio features beside them.
+
+  IT IS ALSO THE ONLY ONE WITH NO KEY AT ALL. MAANG joins on a shared
+  date. Netflix has a real primary key and a sound foreign key. Airbnb
+  hides its keys in table names. Here the two tables are joined by a
+  SONG TITLE, because there is no other column they share — and the one
+  column that looks like an identifier is not unique.
+
+  THE CATALOG IS ALREADY THERE. The tenant's `tenant-a_maang`
+  connection points at `jdbc:postgresql://localhost:5432/postgres` —
+  the whole database — and Trino's PostgreSQL connector maps every
+  Postgres schema to a Trino schema. Verified against the running
+  Trino as user `tenant-a`:
+
+    show schemas from "tenant-a_maang"
+      → airbnb, information_schema, maang, netflix, pg_catalog,
+        public, spotify
+
+  So `spotify` is addressable today through a catalog named after a
+  different schema. Section 1 says what to do about that.
+
+  EVERY QUERY ON THIS PAGE WAS RUN AGAINST THAT TRINO before being
+  written into an `identifier`, and the numbers in the prose are its
+  output.
+
+  TWO MODELS. `spfy_columns` is one row per column of `features` with
+  its distinct count — the cross-join-to-a-VALUES-list unpivot, one
+  scan. `spfy_units` is the observed range of the seven features that
+  really do share the 0–1 scale, which is section 4's argument.
+
+  AUTH. `mode="oidc"`, matching the sibling pages.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Spotify — structural profile</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0 auto; padding: 2rem 1.5rem 6rem; max-width: 860px;
+        font-family: system-ui, sans-serif; line-height: 1.55;
+        color: #0f172a;
+      }
+      h1 { font-size: 1.9rem; margin: 0 0 0.25rem; letter-spacing: -0.02em; }
+      h2 {
+        font-size: 1.15rem; margin: 3.5rem 0 0.5rem;
+        letter-spacing: -0.01em;
+      }
+      h2 .n {
+        display: inline-block; min-width: 1.6em;
+        color: #94a3b8; font-variant-numeric: tabular-nums;
+      }
+      .lede { font-size: 1.05rem; color: #334155; margin: 0 0 2rem; }
+      p { margin: 0 0 1rem; }
+      .finding {
+        margin: 0 0 1.25rem; padding: 0.75rem 1rem;
+        border-left: 3px solid #1c8cf4; background: #f1f5f9;
+        font-weight: 600;
+      }
+      .warn { border-left-color: #dc2626; }
+      .caveat { color: #64748b; font-size: 0.9rem; }
+      code {
+        font-family: ui-monospace, monospace; font-size: 0.9em;
+        background: #f1f5f9; padding: 0.1em 0.35em; border-radius: 3px;
+      }
+      pre {
+        background: #f1f5f9; padding: 1rem; border-radius: 4px;
+        overflow-x: auto; font-size: 0.85rem; line-height: 1.45;
+      }
+      pre code { background: none; padding: 0; font-size: 1em; }
+      table { border-collapse: collapse; width: 100%; margin: 0 0 1rem; }
+      th, td {
+        text-align: left; padding: 0.4rem 0.6rem;
+        border-bottom: 1px solid #e2e8f0; font-size: 0.92rem;
+      }
+      th { color: #475569; font-weight: 600; }
+      td.num { text-align: right; font-variant-numeric: tabular-nums; }
+      td.ok { color: #15803d; font-weight: 600; }
+      td.bad { color: #dc2626; font-weight: 600; }
+
+      figure { margin: 1.5rem 0 0; max-width: 100%; }
+      figcaption {
+        margin-bottom: 0.9rem; color: #475569; font-size: 0.9rem;
+      }
+      hdml-fallback {
+        padding: 2rem; border: 1px dashed #cbd5e1; color: #64748b;
+        text-align: center;
+      }
+
+      hdml-view { width: 100%; height: 340px; }
+      hdml-view.tall { height: 420px; }
+      hdml-cartesian-plane { padding: 16px 130px 40px 76px; }
+
+      hdml-ordinal-scale[channel="x"] { padding: 0 16px; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+
+      hdml-axis { --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="x"] {
+        position: absolute; left: 0; right: 0; bottom: 0;
+      }
+      hdml-axis[channel="y"] {
+        position: absolute; top: 0; bottom: 0; left: 0;
+      }
+      hdml-grid[channel="y"] {
+        --hdml-line-width: 1px; --hdml-line-style: dotted;
+        --hdml-line-color: #cbd5e1;
+      }
+      hdml-tick {
+        --hdml-tick-style: rect; --hdml-tick-width: 1px;
+        --hdml-tick-height: 6px; --hdml-fill-color: #64748b;
+      }
+      hdml-tick[channel="x"] {
+        position: absolute; left: 0; right: 0; bottom: 0;
+      }
+      hdml-tick[channel="y"] {
+        position: absolute; top: 0; bottom: 0; left: 0;
+      }
+      hdml-label { --hdml-font-size: 11px; --hdml-font-family: inherit; }
+      hdml-label[channel="x"] {
+        position: absolute; left: 0; right: 0; top: 100%;
+      }
+      hdml-label[channel="y"] {
+        position: absolute; top: 0; bottom: 0; right: 100%;
+      }
+
+      hdml-ordinal-scale[channel="color"] {
+        --hdml-palette: #1c8cf4 #f59e0b #10b981 #a855f7 #ef4444;
+      }
+      hdml-legend {
+        position: absolute; top: 8px; left: 100%;
+        width: 120px; --hdml-font-size: 11px;
+      }
+
+      hdml-bar { --hdml-fill-opacity: 0.9; }
+      hdml-point {
+        --hdml-tick-style: ellipse;
+        --hdml-tick-width: 10px; --hdml-tick-height: 10px;
+        --hdml-fill-opacity: 0.85;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body { color: #e2e8f0; }
+        .lede { color: #cbd5e1; }
+        .finding, pre, code { background: #1e293b; }
+        th, td { border-bottom-color: #334155; }
+        th { color: #94a3b8; }
+        figcaption { color: #94a3b8; }
+        td.ok { color: #4ade80; }
+        td.bad { color: #f87171; }
+      }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc"
+      login-hint="hdml.github@gmail.com">
+    </hdml-io>
+
+    <!-- ========================================================
+         One row per column of `features`, with its distinct count.
+         `base` is the log axis floor carried as a column: a bare
+         `y=` bar desugars to `y0="0"`, and zero has no place on a
+         log scale, so the bar would not paint at all.
+         ======================================================== -->
+    <hdml-model name="spfy_columns">
+      <hdml-table
+        name="c"
+        type="query"
+        description="One row per column of spotify.features with its distinct count."
+        identifier="select
+  v.col as col, v.pos as pos, 1 as base,
+  case v.col
+    when 'id' then w.d_id when 'name' then w.d_name when 'duration' then w.d_duration
+    when 'energy' then w.d_energy when 'key' then w.d_key when 'loudness' then w.d_loudness
+    when 'mode' then w.d_mode when 'speechiness' then w.d_speechiness
+    when 'acousticness' then w.d_acousticness when 'instrumentalness' then w.d_instrumentalness
+    when 'liveness' then w.d_liveness when 'valence' then w.d_valence
+    when 'tempo' then w.d_tempo when 'danceability' then w.d_danceability
+  end as n_distinct
+from (
+  select
+    count(distinct id) d_id, count(distinct name) d_name, count(distinct duration) d_duration,
+    count(distinct energy) d_energy, count(distinct key) d_key, count(distinct loudness) d_loudness,
+    count(distinct mode) d_mode, count(distinct speechiness) d_speechiness,
+    count(distinct acousticness) d_acousticness, count(distinct instrumentalness) d_instrumentalness,
+    count(distinct liveness) d_liveness, count(distinct valence) d_valence,
+    count(distinct tempo) d_tempo, count(distinct danceability) d_danceability
+  from `tenant-a_maang`.`spotify`.`features`
+) w
+cross join (values
+  ('id',1),('name',2),('duration',3),('energy',4),('key',5),('loudness',6),('mode',7),
+  ('speechiness',8),('acousticness',9),('instrumentalness',10),('liveness',11),
+  ('valence',12),('tempo',13),('danceability',14)
+) v (col, pos)">
+        <hdml-field name="col"></hdml-field>
+        <hdml-field name="pos"></hdml-field>
+        <hdml-field name="base"></hdml-field>
+        <hdml-field name="n_distinct"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="columns_profile" source="?hdml-model=spfy_columns">
+      <hdml-field name="label" origin="c_col"></hdml-field>
+      <hdml-field name="pos" origin="c_pos"></hdml-field>
+      <hdml-field name="base" origin="c_base"></hdml-field>
+      <hdml-field name="n_distinct" origin="c_n_distinct"></hdml-field>
+      <hdml-sort-by><hdml-field name="pos" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- ========================================================
+         The seven features that really are on the 0–1 scale, with
+         their observed range. The four that are NOT (key, mode,
+         loudness, tempo) are deliberately absent — plotting them
+         here is exactly the mistake section 4 describes.
+         ======================================================== -->
+    <hdml-model name="spfy_units">
+      <hdml-table
+        name="u"
+        type="query"
+        description="Observed min and max of the seven unit-scaled audio features."
+        identifier="select v.lbl as lbl, v.pos as pos,
+  case v.pos when 1 then w.lo_da when 2 then w.lo_en when 3 then w.lo_va
+    when 4 then w.lo_ac when 5 then w.lo_li when 6 then w.lo_sp when 7 then w.lo_in end as lo,
+  case v.pos when 1 then w.hi_da when 2 then w.hi_en when 3 then w.hi_va
+    when 4 then w.hi_ac when 5 then w.hi_li when 6 then w.hi_sp when 7 then w.hi_in end as hi
+from (
+  select
+    min(cast(danceability as double)) lo_da, max(cast(danceability as double)) hi_da,
+    min(cast(energy as double)) lo_en, max(cast(energy as double)) hi_en,
+    min(cast(valence as double)) lo_va, max(cast(valence as double)) hi_va,
+    min(cast(acousticness as double)) lo_ac, max(cast(acousticness as double)) hi_ac,
+    min(cast(liveness as double)) lo_li, max(cast(liveness as double)) hi_li,
+    min(cast(speechiness as double)) lo_sp, max(cast(speechiness as double)) hi_sp,
+    min(cast(instrumentalness as double)) lo_in, max(cast(instrumentalness as double)) hi_in
+  from `tenant-a_maang`.`spotify`.`features`
+) w
+cross join (values
+  ('danceability',1),('energy',2),('valence',3),('acousticness',4),
+  ('liveness',5),('speechiness',6),('instrumentalness',7)
+) v (lbl, pos)">
+        <hdml-field name="lbl"></hdml-field>
+        <hdml-field name="pos"></hdml-field>
+        <hdml-field name="lo"></hdml-field>
+        <hdml-field name="hi"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="unit_ranges" source="?hdml-model=spfy_units">
+      <hdml-field name="label" origin="u_lbl"></hdml-field>
+      <hdml-field name="pos" origin="u_pos"></hdml-field>
+      <hdml-field name="lo" origin="u_lo"></hdml-field>
+      <hdml-field name="hi" origin="u_hi"></hdml-field>
+      <hdml-sort-by><hdml-field name="pos" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <h1>Spotify — structural profile</h1>
+    <p class="lede">
+      Two tables, a hundred rows each: the hundred most-streamed songs
+      on Spotify, and their audio features. The smallest schema in this
+      set, with no nulls anywhere — and the only one joined by a song
+      title, because there is nothing else to join on.
+    </p>
+
+    <h2><span class="n">1</span> The catalog you already have</h2>
+
+    <p>
+      There is no <code>spotify</code> connection, and you do not need
+      one to start. The tenant's single <code>tenant-a_maang</code>
+      connection points at
+      <code>jdbc:postgresql://localhost:5432/postgres</code> — the whole
+      database, not one schema — and Trino's PostgreSQL connector
+      exposes every schema in it:
+    </p>
+
+<pre><code>show schemas from "tenant-a_maang"
+  &rarr; airbnb, information_schema, maang, netflix,
+     pg_catalog, public, spotify</code></pre>
+
+    <p>
+      So every identifier on this page reads
+      <code>`tenant-a_maang`.`spotify`.`features`</code>. It works, and
+      it will mislead the next person who reads it. The fix is a second
+      <code>hdml-connection</code> named <code>tenant-a_spotify</code>
+      against the same JDBC URL — the connection name <em>is</em> the
+      Trino catalog name, and the tenant prefix is what satisfies the
+      access rule <code>tenant-a_.*</code>.
+    </p>
+
+    <h2><span class="n">2</span> Two tables, joined by a song title</h2>
+
+    <p>
+      <code>features</code> holds an audio-feature vector per song.
+      <code>streams</code> holds the artist, the stream count and the
+      release date. They describe the same hundred songs and they share
+      <strong>no identifier column</strong>: <code>features</code> has
+      <code>id</code> and <code>name</code>; <code>streams</code> has
+      <code>song</code> and <code>artist</code>.
+    </p>
+
+    <p>
+      So the only available join is <code>features.name =
+      streams.song</code>, and it does work — all 100 rows match
+      exactly, with no trimming, casing or fuzzy matching. That is
+      luck, not design. Both files were cut from one source in one
+      order, and the titles were never edited afterwards.
+    </p>
+
+    <p class="finding warn">
+      A hundred-row title join that happens to be perfect is still a
+      title join. Add one song whose name differs by an apostrophe
+      between the two files and it fails silently, dropping a row from
+      an inner join with nothing to indicate it.
+    </p>
+
+    <h2><span class="n">3</span> The column that looks like a key</h2>
+
+    <p>
+      <code>features.id</code> is a genuine Spotify track ID — 22
+      characters of base62, the identifier the platform itself uses.
+      It is the obvious primary key. It is not unique.
+    </p>
+
+    <figure>
+      <figcaption id="cap-card">
+        Distinct values per column, <code>spotify.features</code> (log,
+        100 rows)
+      </figcaption>
+      <hdml-view class="tall" aria-labelledby="cap-card">
+        <hdml-fallback>
+          Distinct-value counts for the fourteen columns of
+          spotify.features; id has 99, name has 100.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=columns_profile">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale
+              channel="y" type="log" min="1" max="200">
+              <hdml-grid channel="y" count="4"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-tick channel="x"></hdml-tick>
+              <hdml-tick channel="y" count="4"></hdml-tick>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" count="4"></hdml-label>
+              <hdml-bar x="label" y0="base" y1="n_distinct"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="finding warn">
+      <code>id</code> has <strong>99</strong> distinct values across
+      100 rows. <code>name</code> has <strong>100</strong>. The column
+      that should be the key is the one that collides.
+    </p>
+
+    <p>
+      The collision is worth reading in full, because it is not a
+      duplicate row — it is one song carrying another song's data:
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Title</th><th>Artist</th><th><code>id</code></th>
+          <th class="num">duration</th><th class="num">energy</th>
+          <th class="num">tempo</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Watermelon Sugar</td><td>Harry Styles</td>
+          <td><code>6UelLqGlWMcVH1E5c4H7lY</code></td>
+          <td class="num">2.90</td><td class="num">0.816</td><td class="num">95.39</td>
+        </tr>
+        <tr>
+          <td>Sugar</td><td>Maroon 5</td>
+          <td><code>6UelLqGlWMcVH1E5c4H7lY</code></td>
+          <td class="num">2.90</td><td class="num">0.816</td><td class="num">95.39</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>
+      <strong>All twelve</strong> feature columns are identical between
+      the two rows, not just the three shown — checked column by
+      column, every one has a distinct count of 1 across the pair. And
+      this is the <em>only</em> repeated feature vector in the table:
+      group all 100 rows by the full twelve-column vector and exactly
+      one group has more than one member.
+    </p>
+
+    <p>
+      That makes the diagnosis safe without leaving the data. Two
+      different songs by two different artists cannot independently
+      agree to four decimal places on twelve measurements. One row was
+      populated from the other, and the shared substring
+      <code>Sugar</code> says how: whoever built this dataset matched
+      titles by containment, and <code>Sugar</code> matched
+      <code>Watermelon Sugar</code> first.
+    </p>
+
+    <p class="finding">
+      <strong>One row in a hundred is another song's audio.</strong>
+      Every statistic on the sibling report page is computed over 100
+      rows of which 99 are trustworthy, and nothing in the schema says
+      which.
+    </p>
+
+    <h2><span class="n">4</span> Fourteen columns, and four of them lie</h2>
+
+    <p>
+      Every column in both tables is Postgres <code>text</code>, as in
+      the netflix schema. Unlike that schema there are
+      <strong>no nulls at all</strong> — 18 columns across two tables,
+      not one missing value — so the only thing a loader has cost you
+      here is type information.
+    </p>
+
+    <p>
+      That matters more than usual, because the eleven numeric columns
+      of <code>features</code> are on <em>eleven different scales</em>
+      and nothing in the data says so. Seven really are the unit
+      interval:
+    </p>
+
+    <figure>
+      <figcaption id="cap-unit">
+        Observed range of the seven unit-scaled features
+      </figcaption>
+      <hdml-view aria-labelledby="cap-unit">
+        <hdml-fallback>
+          Seven audio features, each observed within the 0–1 interval.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=unit_ranges">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="1">
+              <hdml-ordinal-scale
+                channel="color" values='["Observed range"]'>
+
+                <hdml-grid channel="y" count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5"></hdml-label>
+
+                <hdml-bar
+                  x="label" y0="lo" y1="hi"
+                  color='"Observed range"'></hdml-bar>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p>
+      The other four are not on that axis, deliberately — putting them
+      there is the mistake this section exists to prevent:
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Column</th><th>Actually</th><th class="num">Range</th><th>What goes wrong</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>key</code></td><td>Pitch class, categorical</td>
+          <td class="num">0 – 11</td>
+          <td class="bad">Averaging it is meaningless. Its mean, 5.34, is not a key</td>
+        </tr>
+        <tr>
+          <td><code>mode</code></td><td>Boolean — 1 major, 0 minor</td>
+          <td class="num">0 – 1</td>
+          <td class="bad">Looks unit-scaled. Its mean, 0.65, is a proportion, not a level</td>
+        </tr>
+        <tr>
+          <td><code>loudness</code></td><td>Decibels, always negative</td>
+          <td class="num">−12.21 – −2.81</td>
+          <td class="bad">Breaks any log axis and any 0–1 assumption</td>
+        </tr>
+        <tr>
+          <td><code>tempo</code></td><td>Beats per minute</td>
+          <td class="num">74.9 – 186.0</td>
+          <td class="bad">Two orders of magnitude above its neighbours</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="finding">
+      <code>key</code> and <code>mode</code> are categorical integers
+      sitting in the middle of eleven continuous ones, and only the
+      column name distinguishes them. A generic "chart every numeric
+      column" pass produces a mean key of 5.34 and reports it as data.
+    </p>
+
+    <h2><span class="n">5</span> <code>duration</code> is not minutes and seconds</h2>
+
+    <p>
+      <code>duration</code> reads <code>3.33</code>, <code>3.90</code>,
+      <code>5.91</code>. That looks like <em>minutes.seconds</em>, and
+      it is not — it is decimal minutes. The difference is 13 seconds
+      on the first of those, and the data proves it without leaving the
+      table:
+    </p>
+
+    <p class="finding">
+      <strong>37 of 100</strong> rows have a fractional part greater
+      than <code>.59</code>. No <em>mm.ss</em> encoding can produce
+      <code>.60</code> through <code>.99</code>, because there is no
+      sixtieth second.
+    </p>
+
+    <p>
+      So <code>3.33</code> is 3 minutes 20 seconds, not 3 minutes 33,
+      and the conversion to seconds is <code>duration * 60</code> — not
+      <code>floor(duration)*60 + frac(duration)*100</code>, which is
+      what the column's appearance invites. Read the wrong way, every
+      song in the table gains up to 39 seconds.
+    </p>
+
+    <p class="caveat">
+      One value is worth a second look regardless:
+      <em>Don't Stop Me Now</em> at <strong>7.05</strong> minutes is
+      the table's maximum and 1.9× its mean, with the next longest at
+      5.91. Nothing inside the data can settle whether that is a long
+      edit or an error, which is exactly why it is flagged and not
+      dropped.
+    </p>
+
+    <h2><span class="n">6</span> <code>release_date</code> has no century</h2>
+
+    <p>
+      Dates arrive as <code>29-Nov-19</code> — day, abbreviated month,
+      <strong>two-digit year</strong>. They parse cleanly with
+      <code>date_parse(release_date, '%d-%b-%y')</code>, all 100 of
+      them, and the result spans 1975-10-31 to 2022-04-01.
+    </p>
+
+    <p>
+      The parse is correct here and it is correct by luck. A two-digit
+      year is resolved by a pivot rule, and this table happens to
+      contain nothing between <code>23</code> and <code>74</code> — the
+      years are 75, 79, 91, 95 and then 00 through 22. Add a song from
+      1968 and <code>68</code> lands wherever the engine's pivot puts
+      it, silently.
+    </p>
+
+    <p class="finding">
+      The column is also a <code>text</code> column that sorts
+      alphabetically. <code>01-Apr-22</code> sorts before
+      <code>29-Nov-19</code>. Any ordering, range filter or
+      <code>min</code>/<code>max</code> on the raw column is wrong, and
+      wrong in a way that still returns rows.
+    </p>
+
+    <h2><span class="n">7</span> Quality audit</h2>
+
+    <table>
+      <thead>
+        <tr><th>Check</th><th>Result</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Missing values</td><td class="ok">None — 18 columns, 200 rows, zero nulls</td></tr>
+        <tr><td>Title join <code>features.name</code> = <code>streams.song</code></td><td class="ok">100 / 100 exact</td></tr>
+        <tr><td>Numeric text parses</td><td class="ok">Clean — every numeric column casts</td></tr>
+        <tr><td><code>release_date</code> parses</td><td class="ok">100 / 100 with <code>%d-%b-%y</code></td></tr>
+        <tr><td>Feature ranges</td><td class="ok">All within the Spotify API's documented bounds</td></tr>
+        <tr><td>Primary key</td><td class="bad">None. <code>id</code> collides; only <code>name</code> is unique</td></tr>
+        <tr><td>Row integrity</td><td class="bad">One row carries another song's feature vector</td></tr>
+        <tr><td>Column types</td><td class="bad">All <code>text</code>, including 12 numerics and a date</td></tr>
+        <tr><td><code>duration</code> units</td><td class="bad">Decimal minutes, reads as <em>mm.ss</em></td></tr>
+        <tr><td><code>release_date</code> century</td><td class="bad">Two-digit year, pivot-dependent</td></tr>
+        <tr><td><code>key</code>, <code>mode</code></td><td class="bad">Categorical integers among continuous ones</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      The pattern from the netflix schema holds again, and harder. What
+      a <em>database</em> owes you — completeness, parseability,
+      internal consistency of ranges — is immaculate. What a
+      <em>loader</em> owes you — types, units, a key, one row per thing
+      — is absent. The difference here is that the missing key is not
+      cosmetic: it is what let a wrong row through undetected.
+    </p>
+
+    <h2><span class="n">8</span> The model this argues for</h2>
+
+<pre><code>tenant-a_spotify            -- its own connection, same JDBC URL
+
+spotify_song                -- one row per song, the two files joined
+  name           varchar    -- the de facto key, until a real one exists
+  track_id       varchar    -- NOT unique; keep, never key on it
+  artist         varchar
+  streams_bn     double
+  released       date       -- date_parse(release_date, '%d-%b-%y')
+  duration_sec   double     -- duration * 60, named for its unit
+  key_pc         integer    -- pitch class 0-11, categorical
+  key_name       varchar    -- derived: C, C#, D, …
+  is_major       boolean    -- mode = 1
+  loudness_db    double
+  tempo_bpm      double
+  danceability, energy, valence, acousticness,
+  liveness, speechiness, instrumentalness  double   -- the unit seven
+
+  suspect        boolean    -- true where track_id is not unique</code></pre>
+
+    <p>
+      Three of those columns are the whole argument.
+      <code>duration_sec</code> carries its unit in its name, so the
+      <em>mm.ss</em> misreading cannot be made twice.
+      <code>key_pc</code> and <code>is_major</code> separate the two
+      categorical columns from the nine continuous ones, so a
+      chart-everything pass cannot average a pitch class. And
+      <code>suspect</code> makes section 3's finding queryable instead
+      of a footnote — one row is wrong, and a model that knows which
+      one is the difference between a caveat and a filter.
+    </p>
+
+    <p class="caveat">
+      Everything above is reachable today through
+      <code>`tenant-a_maang`.`spotify`</code>, at the cost of writing
+      the join, the casts and the date parse in every frame.
+    </p>
+
+    <p class="caveat">
+      Sibling pages:
+      <a href="report.html">Spotify — what the data says</a> ·
+      <a href="../netflix/netflix.html">Netflix — structural profile</a> ·
+      <a href="../airbnb/airbnb.html">Airbnb — structural profile</a> ·
+      <a href="../maang/statistic.html">MAANG — structural profile</a>
+    </p>
+  </body>
+</html>

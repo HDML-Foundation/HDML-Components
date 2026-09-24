@@ -1,0 +1,751 @@
+<!doctype html>
+<!--
+  Netflix — the structural profile of the `netflix` schema.
+
+  The third sibling of maang/statistic.html and airbnb/airbnb.html, over
+  a schema shaped unlike either. MAANG is five tables that JOIN on a
+  shared key. Airbnb is twenty tables that UNION, with the partition
+  keys hidden in the table NAMES. This is two tables with a real foreign
+  key — the first schema in the set that a relational modeller would
+  recognise on sight — and its difficulties are all INSIDE the columns
+  rather than between the tables.
+
+  THE CATALOG IS ALREADY THERE. The tenant's `tenant-a_maang`
+  connection points at `jdbc:postgresql://localhost:5432/postgres` —
+  the whole database — and Trino's PostgreSQL connector maps every
+  Postgres schema to a Trino schema. Verified against the running
+  Trino as user `tenant-a`:
+
+    show schemas from "tenant-a_maang"
+      → airbnb, information_schema, maang, netflix, pg_catalog,
+        public, spotify
+
+  So `netflix` is addressable today through a catalog named after a
+  different schema. Section 1 says what to do about that.
+
+  EVERY QUERY ON THIS PAGE WAS RUN AGAINST THAT TRINO before being
+  written into an `identifier`, and the numbers in the prose are its
+  output.
+
+  THREE MODELS. `nflx_columns` is one row per column of `titles` with
+  its distinct count and null count — the cross-join-to-a-VALUES-list
+  unpivot, one scan. `nflx_genres` unnests the genre lists that are
+  stored as Python literals in a text column. `nflx_cert` crosses the
+  certification vocabulary against the title type, which is the page's
+  sharpest finding.
+
+  AUTH. `mode="oidc"`, matching the sibling pages.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Netflix — structural profile</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0 auto; padding: 2rem 1.5rem 6rem; max-width: 860px;
+        font-family: system-ui, sans-serif; line-height: 1.55;
+        color: #0f172a;
+      }
+      h1 { font-size: 1.9rem; margin: 0 0 0.25rem; letter-spacing: -0.02em; }
+      h2 {
+        font-size: 1.15rem; margin: 3.5rem 0 0.5rem;
+        letter-spacing: -0.01em;
+      }
+      h2 .n {
+        display: inline-block; min-width: 1.6em;
+        color: #94a3b8; font-variant-numeric: tabular-nums;
+      }
+      .lede { font-size: 1.05rem; color: #334155; margin: 0 0 2rem; }
+      p { margin: 0 0 1rem; }
+      .finding {
+        margin: 0 0 1.25rem; padding: 0.75rem 1rem;
+        border-left: 3px solid #1c8cf4; background: #f1f5f9;
+        font-weight: 600;
+      }
+      .warn { border-left-color: #dc2626; }
+      .caveat { color: #64748b; font-size: 0.9rem; }
+      code {
+        font-family: ui-monospace, monospace; font-size: 0.9em;
+        background: #f1f5f9; padding: 0.1em 0.35em; border-radius: 3px;
+      }
+      pre {
+        background: #f1f5f9; padding: 1rem; border-radius: 4px;
+        overflow-x: auto; font-size: 0.85rem; line-height: 1.45;
+      }
+      pre code { background: none; padding: 0; font-size: 1em; }
+      table { border-collapse: collapse; width: 100%; margin: 0 0 1rem; }
+      th, td {
+        text-align: left; padding: 0.4rem 0.6rem;
+        border-bottom: 1px solid #e2e8f0; font-size: 0.92rem;
+      }
+      th { color: #475569; font-weight: 600; }
+      td.num { text-align: right; font-variant-numeric: tabular-nums; }
+      td.ok { color: #15803d; font-weight: 600; }
+      td.bad { color: #dc2626; font-weight: 600; }
+
+      figure { margin: 1.5rem 0 0; max-width: 100%; }
+      figcaption {
+        margin-bottom: 0.9rem; color: #475569; font-size: 0.9rem;
+      }
+      hdml-fallback {
+        padding: 2rem; border: 1px dashed #cbd5e1; color: #64748b;
+        text-align: center;
+      }
+
+      hdml-view { width: 100%; height: 340px; }
+      hdml-view.tall { height: 420px; }
+      hdml-cartesian-plane { padding: 16px 130px 40px 76px; }
+
+      hdml-ordinal-scale[channel="x"] { padding: 0 16px; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+
+      hdml-axis { --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="x"] {
+        position: absolute; left: 0; right: 0; bottom: 0;
+      }
+      hdml-axis[channel="y"] {
+        position: absolute; top: 0; bottom: 0; left: 0;
+      }
+      hdml-grid[channel="y"] {
+        --hdml-line-width: 1px; --hdml-line-style: dotted;
+        --hdml-line-color: #cbd5e1;
+      }
+      hdml-tick {
+        --hdml-tick-style: rect; --hdml-tick-width: 1px;
+        --hdml-tick-height: 6px; --hdml-fill-color: #64748b;
+      }
+      hdml-tick[channel="x"] {
+        position: absolute; left: 0; right: 0; bottom: 0;
+      }
+      hdml-tick[channel="y"] {
+        position: absolute; top: 0; bottom: 0; left: 0;
+      }
+      hdml-label { --hdml-font-size: 11px; --hdml-font-family: inherit; }
+      hdml-label[channel="x"] {
+        position: absolute; left: 0; right: 0; top: 100%;
+      }
+      hdml-label[channel="y"] {
+        position: absolute; top: 0; bottom: 0; right: 100%;
+      }
+
+      hdml-ordinal-scale[channel="color"] {
+        --hdml-palette: #1c8cf4 #f59e0b #10b981 #a855f7 #ef4444;
+      }
+      hdml-legend {
+        position: absolute; top: 8px; left: 100%;
+        width: 120px; --hdml-font-size: 11px;
+      }
+
+      hdml-bar { --hdml-fill-opacity: 0.9; }
+      hdml-point {
+        --hdml-tick-style: ellipse;
+        --hdml-tick-width: 10px; --hdml-tick-height: 10px;
+        --hdml-fill-opacity: 0.85;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body { color: #e2e8f0; }
+        .lede { color: #cbd5e1; }
+        .finding, pre, code { background: #1e293b; }
+        th, td { border-bottom-color: #334155; }
+        th { color: #94a3b8; }
+        figcaption { color: #94a3b8; }
+        td.ok { color: #4ade80; }
+        td.bad { color: #f87171; }
+      }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc"
+      login-hint="hdml.github@gmail.com">
+    </hdml-io>
+
+    <!-- ========================================================
+         One row per column of `titles`: distinct count and null
+         count. One scan of the table produces a single wide row;
+         the cross join against a VALUES list turns that row into
+         fifteen, which is the grain a chart needs.
+         ======================================================== -->
+    <hdml-model name="nflx_columns">
+      <hdml-table
+        name="c"
+        type="query"
+        description="One row per column of netflix.titles: distinct count and null count."
+        identifier="select
+  v.col as col, v.pos as pos,
+  1 as base,
+  case v.col
+    when 'id' then w.d_id when 'title' then w.d_title when 'type' then w.d_type
+    when 'description' then w.d_description when 'release_year' then w.d_release_year
+    when 'age_certification' then w.d_age_certification when 'runtime' then w.d_runtime
+    when 'genres' then w.d_genres when 'production_countries' then w.d_production_countries
+    when 'seasons' then w.d_seasons when 'imdb_id' then w.d_imdb_id
+    when 'imdb_score' then w.d_imdb_score when 'imdb_votes' then w.d_imdb_votes
+    when 'tmdb_popularity' then w.d_tmdb_popularity when 'tmdb_score' then w.d_tmdb_score
+  end as n_distinct,
+  case v.col
+    when 'id' then w.n_id when 'title' then w.n_title when 'type' then w.n_type
+    when 'description' then w.n_description when 'release_year' then w.n_release_year
+    when 'age_certification' then w.n_age_certification when 'runtime' then w.n_runtime
+    when 'genres' then w.n_genres when 'production_countries' then w.n_production_countries
+    when 'seasons' then w.n_seasons when 'imdb_id' then w.n_imdb_id
+    when 'imdb_score' then w.n_imdb_score when 'imdb_votes' then w.n_imdb_votes
+    when 'tmdb_popularity' then w.n_tmdb_popularity when 'tmdb_score' then w.n_tmdb_score
+  end as n_null
+from (
+  select
+    count(distinct id) d_id, count(*)-count(id) n_id,
+    count(distinct title) d_title, count(*)-count(title) n_title,
+    count(distinct type) d_type, count(*)-count(type) n_type,
+    count(distinct description) d_description, count(*)-count(description) n_description,
+    count(distinct release_year) d_release_year, count(*)-count(release_year) n_release_year,
+    count(distinct age_certification) d_age_certification, count(*)-count(age_certification) n_age_certification,
+    count(distinct runtime) d_runtime, count(*)-count(runtime) n_runtime,
+    count(distinct genres) d_genres, count(*)-count(genres) n_genres,
+    count(distinct production_countries) d_production_countries, count(*)-count(production_countries) n_production_countries,
+    count(distinct seasons) d_seasons, count(*)-count(seasons) n_seasons,
+    count(distinct imdb_id) d_imdb_id, count(*)-count(imdb_id) n_imdb_id,
+    count(distinct imdb_score) d_imdb_score, count(*)-count(imdb_score) n_imdb_score,
+    count(distinct imdb_votes) d_imdb_votes, count(*)-count(imdb_votes) n_imdb_votes,
+    count(distinct tmdb_popularity) d_tmdb_popularity, count(*)-count(tmdb_popularity) n_tmdb_popularity,
+    count(distinct tmdb_score) d_tmdb_score, count(*)-count(tmdb_score) n_tmdb_score
+  from `tenant-a_maang`.`netflix`.`titles`
+) w
+cross join (values
+  ('id',1),('title',2),('type',3),('description',4),('release_year',5),
+  ('age_certification',6),('runtime',7),('genres',8),('production_countries',9),
+  ('seasons',10),('imdb_id',11),('imdb_score',12),('imdb_votes',13),
+  ('tmdb_popularity',14),('tmdb_score',15)
+) v (col, pos)">
+        <hdml-field name="col"></hdml-field>
+        <hdml-field name="pos"></hdml-field>
+        <hdml-field name="base"></hdml-field>
+        <hdml-field name="n_distinct"></hdml-field>
+        <hdml-field name="n_null"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="columns_profile" source="?hdml-model=nflx_columns">
+      <hdml-field name="label" origin="c_col"></hdml-field>
+      <hdml-field name="pos" origin="c_pos"></hdml-field>
+      <!-- The log axis floor, carried as a column. A bare `y=` bar
+           desugars to `y0="0"` (mark-bar.ts), and zero has no place
+           on a log scale — the bar becomes unprojectable and simply
+           does not paint. An explicit positive y0 is the fix. -->
+      <hdml-field name="base" origin="c_base"></hdml-field>
+      <hdml-field name="n_distinct" origin="c_n_distinct"></hdml-field>
+      <hdml-field name="n_null" origin="c_n_null"></hdml-field>
+      <!-- declaration order, not alphabetical: the dictionary in
+           section 3 reads down the same list -->
+      <hdml-sort-by><hdml-field name="pos" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- ========================================================
+         The genre lists, unnested. `genres` holds a Python list
+         literal in a text column, so the split has to strip the
+         brackets, split on the comma, then trim the quotes off
+         each element. Empty lists (`[]`) are excluded rather than
+         counted as a genre named "".
+         ======================================================== -->
+    <hdml-model name="nflx_genres">
+      <hdml-table
+        name="g"
+        type="query"
+        description="One row per (title, genre) pair, parsed out of the list literal."
+        identifier="select trim(both '''' from trim(e)) as genre
+from `tenant-a_maang`.`netflix`.`titles`
+cross join unnest(split(replace(replace(genres,'[',''),']',''), ',')) as t(e)
+where genres &lt;&gt; '[]'">
+        <hdml-field name="genre"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="genre_counts" source="?hdml-model=nflx_genres">
+      <hdml-field name="label" origin="g_genre"></hdml-field>
+      <hdml-field name="n" clause="count(1)"></hdml-field>
+      <hdml-group-by><hdml-field name="label"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="n" order="desc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- ========================================================
+         The certification vocabulary against the title type. Two
+         rating systems share one column, and section 7 shows they
+         never overlap.
+         ======================================================== -->
+    <hdml-model name="nflx_cert">
+      <hdml-table
+        name="k"
+        type="query"
+        description="Certification family per title, with the title type beside it."
+        identifier="select
+  case
+    when age_certification is null then 'Unrated'
+    when age_certification like 'TV-%' then 'TV rating'
+    else 'MPA rating'
+  end as fam,
+  type as kind
+from `tenant-a_maang`.`netflix`.`titles`">
+        <hdml-field name="fam"></hdml-field>
+        <hdml-field name="kind"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="cert_split" source="?hdml-model=nflx_cert">
+      <hdml-field name="label" origin="k_fam"></hdml-field>
+      <hdml-field name="n_movie" clause="count_if(`k_kind` = 'MOVIE')"></hdml-field>
+      <hdml-field name="n_show" clause="count_if(`k_kind` = 'SHOW')"></hdml-field>
+      <hdml-group-by><hdml-field name="label"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="label" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <h1>Netflix — structural profile</h1>
+    <p class="lede">
+      Two tables, 6 137 titles and 81 355 credits, joined by a key that
+      actually holds. The third dataset in this set and the first whose
+      <em>tables</em> need no apology — every problem it has is inside a
+      column.
+    </p>
+
+    <h2><span class="n">1</span> The catalog you already have</h2>
+
+    <p>
+      There is no <code>netflix</code> connection, and you do not need one
+      to start. The tenant's single <code>tenant-a_maang</code> connection
+      points at <code>jdbc:postgresql://localhost:5432/postgres</code> —
+      the whole database, not one schema — and Trino's PostgreSQL
+      connector exposes every schema in it:
+    </p>
+
+<pre><code>show schemas from "tenant-a_maang"
+  &rarr; airbnb, information_schema, maang, netflix,
+     pg_catalog, public, spotify</code></pre>
+
+    <p>
+      So every identifier on this page reads
+      <code>`tenant-a_maang`.`netflix`.`titles`</code>: the right schema
+      through a catalog named after a different one. It works, and it will
+      mislead the next person who reads it. The fix is a second
+      <code>hdml-connection</code> named <code>tenant-a_netflix</code>
+      against the same JDBC URL — the connection name <em>is</em> the Trino
+      catalog name, and the tenant prefix is what satisfies the access
+      rule <code>tenant-a_.*</code>. Nothing else changes.
+    </p>
+
+    <h2><span class="n">2</span> Two tables, and the key holds</h2>
+
+    <p>
+      <code>titles</code> is 6 137 rows, one per film or series.
+      <code>credits</code> is 81 355 rows, one per person-in-a-title.
+      They join on <code>id</code>, and unlike the other two schemas in
+      this set the join is sound in the direction that matters:
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Check</th><th class="num">Rows</th><th>Reading</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>titles.id</code> distinct</td><td class="num">6 137 / 6 137</td><td class="ok">a real primary key</td></tr>
+        <tr><td>credits with no title</td><td class="num">0</td><td class="ok">referential integrity holds</td></tr>
+        <tr><td>titles with no credits</td><td class="num">349</td><td>5.7% — inner join silently drops them</td></tr>
+        <tr><td><code>titles.title</code> distinct</td><td class="num">6 089 / 6 137</td><td class="bad">not a key — 48 collisions</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      The last row is the trap. <code>title</code> looks like an identifier
+      and reads like one in a report, but 48 titles are shared by two
+      different works — remakes, and a film and its documentary. Group by
+      <code>title</code> and you silently merge them. Group by
+      <code>id</code>.
+    </p>
+
+    <p class="finding">
+      Use a <strong>left</strong> join from <code>titles</code> to
+      <code>credits</code>. An inner join is a filter that removes
+      <strong>349</strong> titles, and nothing in the result says so.
+    </p>
+
+    <h2><span class="n">3</span> The column dictionary</h2>
+
+    <p>
+      Fifteen columns in <code>titles</code>. The chart is distinct values
+      per column on a log axis, because the range runs from 2 to 6 137 and
+      a linear axis would flatten everything below <code>description</code>
+      into the baseline.
+    </p>
+
+    <figure>
+      <figcaption id="cap-card">
+        Distinct values per column, <code>netflix.titles</code> (log)
+      </figcaption>
+      <hdml-view class="tall" aria-labelledby="cap-card">
+        <hdml-fallback>
+          Distinct-value counts for the fifteen columns of netflix.titles.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=columns_profile">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale
+              channel="y" type="log" min="1" max="10000">
+              <hdml-grid channel="y" count="5"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-tick channel="x"></hdml-tick>
+              <hdml-tick channel="y" count="5"></hdml-tick>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+              <hdml-bar x="label" y0="base" y1="n_distinct"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>Column</th><th class="num">Distinct</th>
+          <th class="num">Null</th><th>What it is</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td><code>id</code></td><td class="num">6 137</td><td class="num">0</td><td class="ok">primary key</td></tr>
+        <tr><td>2</td><td><code>title</code></td><td class="num">6 089</td><td class="num">0</td><td>label, <em>not</em> a key</td></tr>
+        <tr><td>3</td><td><code>type</code></td><td class="num">2</td><td class="num">0</td><td>MOVIE / SHOW — the schema's real partition</td></tr>
+        <tr><td>4</td><td><code>description</code></td><td class="num">6 112</td><td class="num">23</td><td>free text</td></tr>
+        <tr><td>5</td><td><code>release_year</code></td><td class="num">62</td><td class="num">0</td><td>1945–2023</td></tr>
+        <tr><td>6</td><td><code>age_certification</code></td><td class="num">12</td><td class="num">2 743</td><td class="bad">two vocabularies — §7</td></tr>
+        <tr><td>7</td><td><code>runtime</code></td><td class="num">196</td><td class="num">0</td><td>minutes; 19 shows say 0</td></tr>
+        <tr><td>8</td><td><code>genres</code></td><td class="num">1 712</td><td class="num">0</td><td class="bad">list literal in text — §5</td></tr>
+        <tr><td>9</td><td><code>production_countries</code></td><td class="num">438</td><td class="num">0</td><td class="bad">list literal in text — §5</td></tr>
+        <tr><td>10</td><td><code>seasons</code></td><td class="num">26</td><td class="num">3 831</td><td>SHOW only — §6</td></tr>
+        <tr><td>11</td><td><code>imdb_id</code></td><td class="num">5 741</td><td class="num">396</td><td>external key</td></tr>
+        <tr><td>12</td><td><code>imdb_score</code></td><td class="num">79</td><td class="num">468</td><td>1 decimal, 1.5–9.6</td></tr>
+        <tr><td>13</td><td><code>imdb_votes</code></td><td class="num">4 011</td><td class="num">484</td><td>heavily skewed</td></tr>
+        <tr><td>14</td><td><code>tmdb_popularity</code></td><td class="num">5 203</td><td class="num">76</td><td>vendor index, unitless</td></tr>
+        <tr><td>15</td><td><code>tmdb_score</code></td><td class="num">1 580</td><td class="num">252</td><td>second opinion — disagrees, §5 of the report</td></tr>
+      </tbody>
+    </table>
+
+    <p class="caveat">
+      <code>credits</code> adds five: <code>person_id</code>,
+      <code>id</code>, <code>name</code>, <code>character</code>,
+      <code>role</code>. 56 754 distinct people, two roles.
+    </p>
+
+    <h2><span class="n">4</span> Every column is text</h2>
+
+    <p>
+      All fifteen columns of <code>titles</code> and all five of
+      <code>credits</code> are Postgres <code>text</code>. The CSV was
+      loaded without a type declaration, so <code>release_year</code>,
+      <code>runtime</code>, <code>imdb_score</code> and the rest are
+      strings that happen to look numeric.
+    </p>
+
+    <p>
+      That is recoverable — every one of them parses. Checked against
+      Trino, the count of non-null values where
+      <code>try_cast</code> returns <code>NULL</code> is
+      <strong>zero</strong>, for all five numeric columns. There is no
+      dirty data hiding in the text; there is only a missing schema.
+    </p>
+
+    <p class="finding warn">
+      <code>seasons</code> is stored as <code>1.0</code>, not
+      <code>1</code>. <code>cast(seasons as integer)</code> fails on
+      every row. You need
+      <code>cast(cast(seasons as double) as integer)</code>.
+    </p>
+
+    <p>
+      This is a pandas artifact, and an instructive one. A column with
+      any missing value becomes a float in a DataFrame, because the
+      integer types have no <code>NaN</code>; write that back out and
+      every value carries a <code>.0</code> it never had. The airbnb
+      schema has the same wound in <code>person_capacity</code>. Here
+      it is worse, because <code>seasons</code> is missing for every
+      MOVIE by design — so the one column guaranteed to have nulls is
+      the one guaranteed to be mistyped.
+    </p>
+
+    <h2><span class="n">5</span> Two columns that are really lists</h2>
+
+    <p>
+      <code>genres</code> and <code>production_countries</code> hold
+      Python list literals inside a text column:
+    </p>
+
+<pre><code>genres                                  production_countries
+['documentation']                       ['US']
+['drama', 'sport']                      ['US']
+['crime', 'drama', 'comedy', 'music']   ['US']</code></pre>
+
+    <p>
+      Not JSON — single quotes, and a space after each comma. 1 712
+      distinct genre strings and 438 distinct country strings, which is
+      what a combinatorial explosion of a small vocabulary looks like:
+      the real vocabularies are 19 genres and 107 countries. Any
+      <code>group by genres</code> gives you 1 712 groups, all but a few
+      of them size 1, and none of them a genre.
+    </p>
+
+    <p>
+      Unnesting is three string operations and a <code>cross join</code>:
+    </p>
+
+<pre><code>cross join unnest(
+  split(replace(replace(genres,'[',''),']',''), ',')
+) as t(e)
+where genres &lt;&gt; '[]'
+-- then: trim(both '''' from trim(e))</code></pre>
+
+    <p>
+      Strip the brackets, split on the comma, trim the whitespace, then
+      trim the quotes — in that order, because the quotes sit inside the
+      spaces. The <code>where</code> matters: 57 titles have
+      <code>[]</code> for genres and 176 for countries, and without the
+      guard each contributes one row with an empty-string genre that
+      sorts to the top of every chart.
+    </p>
+
+    <figure>
+      <figcaption id="cap-genre">
+        Titles per genre, after unnesting (19 genres, 6 080 titles)
+      </figcaption>
+      <hdml-view class="tall" aria-labelledby="cap-genre">
+        <hdml-fallback>
+          Title counts for the nineteen genres in the catalog.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=genre_counts">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="3400">
+              <hdml-grid channel="y" count="5"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-tick channel="x"></hdml-tick>
+              <hdml-tick channel="y" count="5"></hdml-tick>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+              <hdml-bar x="label" y="n"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="caveat">
+      A title carries 2.57 genres on average, so the bars sum to
+      15 614 across 6 080 titles, not to 6 137. Treat them as tags,
+      never as a partition — the one mistake this shape invites.
+    </p>
+
+    <h2><span class="n">6</span> Columns that exist for half the rows</h2>
+
+    <p>
+      Two columns are conditional on another column's value, and both
+      are exactly conditional — there is not a single exception in
+      either:
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Column</th><th>Populated when</th><th class="num">Null</th><th class="num">Rows in the other class</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>titles.seasons</code></td>
+          <td><code>type = 'SHOW'</code></td>
+          <td class="num">3 831</td>
+          <td class="num">3 831 movies</td>
+        </tr>
+        <tr>
+          <td><code>credits.character</code></td>
+          <td><code>role = 'ACTOR'</code></td>
+          <td class="num">4 785 empty</td>
+          <td class="num">4 785 directors</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="finding">
+      <code>seasons</code> is null for <strong>3 831</strong> rows and
+      there are <strong>3 831</strong> movies. The null count is not
+      approximately the movie count — it is the movie count.
+    </p>
+
+    <p>
+      That makes both columns safe to reason about, which is the useful
+      half of the finding: a null in <code>seasons</code> carries no
+      information beyond <code>type</code>, so imputing it, warning
+      about it, or reporting it as missing data are all wrong. It is a
+      subtype attribute in a flat table.
+    </p>
+
+    <p class="caveat">
+      <code>character</code> is empty for another 6 038 ACTOR rows,
+      which <em>is</em> ordinary missing data. Uncredited roles, voice
+      work, archive footage. 7.9% of acting credits.
+    </p>
+
+    <h2><span class="n">7</span> One column, two vocabularies</h2>
+
+    <p>
+      <code>age_certification</code> has twelve values, and they come
+      from two different rating systems that never appear on the same
+      kind of title.
+    </p>
+
+    <figure>
+      <figcaption id="cap-cert">
+        Certification family by title type
+      </figcaption>
+      <hdml-view aria-labelledby="cap-cert">
+        <hdml-fallback>
+          MPA ratings appear only on movies, TV ratings only on shows.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=cert_split">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="2800">
+              <hdml-ordinal-scale
+                channel="color" values='["Movies","Shows"]'>
+
+                <hdml-grid channel="y" count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+
+                <hdml-cluster x="label">
+                  <hdml-bar y="n_movie" color='"Movies"'></hdml-bar>
+                  <hdml-bar y="n_show" color='"Shows"'></hdml-bar>
+                </hdml-cluster>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="finding">
+      <strong>1 348</strong> movies carry an MPA rating
+      (G/PG/PG-13/R/NC-17) and <strong>zero</strong> shows do.
+      <strong>2 046</strong> shows carry a TV rating (TV-Y through
+      TV-MA) and <strong>zero</strong> movies do. The split is total.
+    </p>
+
+    <p>
+      So this is two columns sharing a name, and the twelve-value
+      vocabulary is a fiction — no title could ever take more than one
+      of the two halves. An ordinal encoding over all twelve is
+      meaningless: <code>PG-13</code> and <code>TV-14</code> are the
+      same restrictiveness expressed in incompatible alphabets, and
+      sorting them together interleaves two scales that were never
+      comparable.
+    </p>
+
+    <p>
+      The honest model is a derived <code>audience</code> column that
+      maps both alphabets onto one ordered set —
+      <em>all&nbsp;ages&nbsp;→&nbsp;older&nbsp;children&nbsp;→&nbsp;teen&nbsp;→&nbsp;adult</em>
+      — with the original kept beside it. What you must not do is let a
+      chart sort the raw twelve.
+    </p>
+
+    <p class="caveat">
+      2 743 titles (44.7%) have no certification at all: 2 483 movies
+      and 260 shows. Absent, not unrated — <code>NC-17</code> exists in
+      the data, eleven times.
+    </p>
+
+    <h2><span class="n">8</span> Quality audit</h2>
+
+    <table>
+      <thead>
+        <tr><th>Check</th><th>Result</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Primary key on <code>titles.id</code></td><td class="ok">Holds — 6 137 / 6 137</td></tr>
+        <tr><td>Foreign key <code>credits.id</code> → <code>titles.id</code></td><td class="ok">Holds — 0 orphans</td></tr>
+        <tr><td>Numeric text parses</td><td class="ok">Clean — 0 failures across 5 columns</td></tr>
+        <tr><td>Missing values encoded</td><td class="ok"><code>NULL</code> throughout, never <code>''</code></td></tr>
+        <tr><td>Conditional columns</td><td class="ok">Exact — null count = subtype count</td></tr>
+        <tr><td>Column types</td><td class="bad">All <code>text</code>, including 5 numerics</td></tr>
+        <tr><td><code>seasons</code> format</td><td class="bad">Float-formatted integers (<code>1.0</code>)</td></tr>
+        <tr><td><code>genres</code>, <code>production_countries</code></td><td class="bad">List literals in a scalar column</td></tr>
+        <tr><td><code>age_certification</code></td><td class="bad">Two vocabularies in one column</td></tr>
+        <tr><td><code>runtime</code> = 0</td><td class="bad">19 shows</td></tr>
+        <tr><td><code>title</code> uniqueness</td><td class="bad">48 collisions — do not group on it</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      The pattern is worth naming. Every structural property that a
+      <em>database</em> is responsible for — keys, referential
+      integrity, null encoding — is sound. Every property that a
+      <em>loader</em> is responsible for — types, formats, list
+      flattening — is not. This schema was exported from a DataFrame
+      and never re-typed, and all four of its defects are the fingerprint
+      of that one decision.
+    </p>
+
+    <h2><span class="n">9</span> The model this argues for</h2>
+
+    <p>
+      Three tables where the CSV gives two, and the casts pushed down
+      into the model so no frame ever repeats them:
+    </p>
+
+<pre><code>tenant-a_netflix            -- its own connection, same JDBC URL
+
+netflix_title               -- one row per work
+  id, title, type
+  release_year   integer
+  runtime        integer
+  seasons        integer    -- cast(cast(… as double) as integer)
+  certification  varchar    -- the raw value
+  audience       varchar    -- derived, one ordered vocabulary
+  imdb_score, imdb_votes, tmdb_score, tmdb_popularity  double
+
+netflix_title_genre         -- unnested, one row per (id, genre)
+  id, genre
+
+netflix_title_country       -- unnested, one row per (id, country)
+  id, country
+
+netflix_credit              -- as-is, left joined
+  person_id, id, name, character, role</code></pre>
+
+    <p>
+      The two unnest tables are the substantive change. They turn a
+      string-matching problem into a join, which is the difference
+      between <code>genres like '%drama%'</code> — which also matches
+      nothing else today, but only by luck, and would match a future
+      <code>psychodrama</code> — and an equality predicate that is
+      correct by construction.
+    </p>
+
+    <p class="caveat">
+      Everything above is reachable today through
+      <code>`tenant-a_maang`.`netflix`</code>, at the cost of writing
+      the casts and the unnest in every frame. The model is what stops
+      that repetition, not what makes the data reachable.
+    </p>
+
+    <p class="caveat">
+      Sibling pages:
+      <a href="report.html">Netflix — what the data says</a> ·
+      <a href="../airbnb/airbnb.html">Airbnb — structural profile</a> ·
+      <a href="../maang/statistic.html">MAANG — structural profile</a>
+    </p>
+  </body>
+</html>

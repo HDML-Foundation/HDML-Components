@@ -1,0 +1,826 @@
+<!doctype html>
+<!--
+  Spotify — what the data says.
+
+  A report over the `spotify` schema, built on the structural profile in
+  spotify.html. Seven figures, no scripts; every number is computed by
+  Trino from six models declared below.
+
+  EVERY QUERY WAS RUN AGAINST THE LIVE TRINO before being written into
+  an `identifier` or a `clause`, and the figures in the prose are its
+  output — including `corr`, `date_parse` over a two-digit year, and
+  the cross-join-to-a-VALUES-list pattern that turns one wide aggregate
+  row into one row per measure.
+
+  SIX MODELS. `spfy` is the joined row grain — the two tables stitched
+  on the song title, every numeric cast once and the date parsed once,
+  so no frame repeats either. The other five exist because a frame
+  produces columns, not rows: a per-correlation, per-feature or per-key
+  figure needs a row per correlation, feature or key, and that unpivot
+  has to happen in SQL.
+
+  THE HEADLINE IS SECTION 4. Nothing in the audio predicts stream
+  count — the strongest of seven correlations is 0.27, and
+  danceability is 0.02. Section 3 is the honest companion: the one
+  strong relationship on the page, duration against release year at
+  -0.609, is carried by nine songs, and the section says so rather
+  than quoting the coefficient and moving on.
+
+  ONE ROW IS WRONG, and every figure here includes it. spotify.html §3
+  identifies it — Maroon 5's "Sugar" carries Harry Styles' feature
+  vector — and nothing in the schema lets a frame exclude it without
+  hardcoding the title.
+
+  AUTH. `mode="oidc"`, matching the sibling pages.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Spotify — what the data says</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0 auto; padding: 2rem 1.5rem 6rem; max-width: 860px;
+        font-family: system-ui, sans-serif; line-height: 1.55;
+        color: #0f172a;
+      }
+      h1 { font-size: 1.9rem; margin: 0 0 0.25rem; letter-spacing: -0.02em; }
+      h2 {
+        font-size: 1.15rem; margin: 3.5rem 0 0.5rem;
+        letter-spacing: -0.01em;
+      }
+      h2 .n {
+        display: inline-block; min-width: 1.6em;
+        color: #94a3b8; font-variant-numeric: tabular-nums;
+      }
+      .lede { font-size: 1.05rem; color: #334155; margin: 0 0 2rem; }
+      p { margin: 0 0 1rem; }
+      .finding {
+        margin: 0 0 1.25rem; padding: 0.75rem 1rem;
+        border-left: 3px solid #1c8cf4; background: #f1f5f9;
+        font-weight: 600;
+      }
+      .warn { border-left-color: #dc2626; }
+      .caveat { color: #64748b; font-size: 0.9rem; }
+      code {
+        font-family: ui-monospace, monospace; font-size: 0.9em;
+        background: #f1f5f9; padding: 0.1em 0.35em; border-radius: 3px;
+      }
+      pre {
+        background: #f1f5f9; padding: 1rem; border-radius: 4px;
+        overflow-x: auto; font-size: 0.85rem; line-height: 1.45;
+      }
+      pre code { background: none; padding: 0; font-size: 1em; }
+      table { border-collapse: collapse; width: 100%; margin: 0 0 1rem; }
+      th, td {
+        text-align: left; padding: 0.4rem 0.6rem;
+        border-bottom: 1px solid #e2e8f0; font-size: 0.92rem;
+      }
+      th { color: #475569; font-weight: 600; }
+      td.num { text-align: right; font-variant-numeric: tabular-nums; }
+      td.ok { color: #15803d; font-weight: 600; }
+      td.bad { color: #dc2626; font-weight: 600; }
+
+      figure { margin: 1.5rem 0 0; max-width: 100%; }
+      figcaption {
+        margin-bottom: 0.9rem; color: #475569; font-size: 0.9rem;
+      }
+      hdml-fallback {
+        padding: 2rem; border: 1px dashed #cbd5e1; color: #64748b;
+        text-align: center;
+      }
+
+      hdml-view { width: 100%; height: 340px; }
+      hdml-view.tall { height: 420px; }
+      hdml-cartesian-plane { padding: 16px 130px 40px 76px; }
+
+      hdml-ordinal-scale[channel="x"] { padding: 0 16px; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+
+      hdml-axis { --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="x"] {
+        position: absolute; left: 0; right: 0; bottom: 0;
+      }
+      hdml-axis[channel="y"] {
+        position: absolute; top: 0; bottom: 0; left: 0;
+      }
+      hdml-grid[channel="y"] {
+        --hdml-line-width: 1px; --hdml-line-style: dotted;
+        --hdml-line-color: #cbd5e1;
+      }
+      hdml-tick {
+        --hdml-tick-style: rect; --hdml-tick-width: 1px;
+        --hdml-tick-height: 6px; --hdml-fill-color: #64748b;
+      }
+      hdml-tick[channel="x"] {
+        position: absolute; left: 0; right: 0; bottom: 0;
+      }
+      hdml-tick[channel="y"] {
+        position: absolute; top: 0; bottom: 0; left: 0;
+      }
+      hdml-label { --hdml-font-size: 11px; --hdml-font-family: inherit; }
+      hdml-label[channel="x"] {
+        position: absolute; left: 0; right: 0; top: 100%;
+      }
+      hdml-label[channel="y"] {
+        position: absolute; top: 0; bottom: 0; right: 100%;
+      }
+
+      hdml-ordinal-scale[channel="color"] {
+        --hdml-palette: #1c8cf4 #f59e0b #10b981 #a855f7 #ef4444;
+      }
+      hdml-legend {
+        position: absolute; top: 8px; left: 100%;
+        width: 120px; --hdml-font-size: 11px;
+      }
+
+      hdml-bar { --hdml-fill-opacity: 0.9; }
+      hdml-point {
+        --hdml-tick-style: ellipse;
+        --hdml-tick-width: 10px; --hdml-tick-height: 10px;
+        --hdml-fill-opacity: 0.85;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body { color: #e2e8f0; }
+        .lede { color: #cbd5e1; }
+        .finding, pre, code { background: #1e293b; }
+        th, td { border-bottom-color: #334155; }
+        th { color: #94a3b8; }
+        figcaption { color: #94a3b8; }
+        td.ok { color: #4ade80; }
+        td.bad { color: #f87171; }
+      }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc"
+      login-hint="hdml.github@gmail.com">
+    </hdml-io>
+
+    <!-- ========================================================
+         The two tables stitched on the song title — the only join
+         available (spotify.html §2) — with every numeric cast and
+         the date parsed ONCE, here, so no frame repeats either.
+         `dur` is decimal minutes, not mm.ss (spotify.html §5).
+         ======================================================== -->
+    <hdml-model name="spfy">
+      <hdml-table
+        name="t"
+        type="query"
+        description="One row per song: features joined to streams on the title."
+        identifier="select
+  f.name as nm,
+  s.artist as artist,
+  cast(s.streams_billions as double) as bn,
+  year(date_parse(s.release_date, '%d-%b-%y')) as yr,
+  cast(f.duration as double) as dur,
+  cast(f.energy as double) as energy,
+  cast(f.danceability as double) as danceability,
+  cast(f.valence as double) as valence,
+  cast(f.tempo as double) as tempo,
+  cast(f.key as integer) as key_pc,
+  cast(f.mode as integer) as is_major
+from `tenant-a_maang`.`spotify`.`features` f
+join `tenant-a_maang`.`spotify`.`streams` s on f.name = s.song">
+        <hdml-field name="nm"></hdml-field>
+        <hdml-field name="artist"></hdml-field>
+        <hdml-field name="bn"></hdml-field>
+        <hdml-field name="yr"></hdml-field>
+        <hdml-field name="dur"></hdml-field>
+        <hdml-field name="energy"></hdml-field>
+        <hdml-field name="danceability"></hdml-field>
+        <hdml-field name="valence"></hdml-field>
+        <hdml-field name="tempo"></hdml-field>
+        <hdml-field name="key_pc"></hdml-field>
+        <hdml-field name="is_major"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="top_songs" source="?hdml-model=spfy" limit="10">
+      <hdml-field name="label" origin="t_nm"></hdml-field>
+      <hdml-field name="bn" origin="t_bn"></hdml-field>
+      <hdml-sort-by><hdml-field name="bn" order="desc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <hdml-frame name="by_year" source="?hdml-model=spfy">
+      <hdml-field name="label" clause="cast(`t_yr` as varchar)"></hdml-field>
+      <hdml-field name="yr" origin="t_yr"></hdml-field>
+      <hdml-field name="n" clause="count(1)"></hdml-field>
+      <hdml-group-by><hdml-field name="yr"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="yr" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- ========================================================
+         Artists holding more than one of the hundred. The "more
+         than one" test is a HAVING, and `hdml-filter-by` is a ROW
+         filter (a WHERE) that wraps its filters in an
+         `hdml-connective` — so the restriction belongs in SQL,
+         where it is one line and unambiguous.
+         ======================================================== -->
+    <hdml-model name="spfy_artists">
+      <hdml-table
+        name="a"
+        type="query"
+        description="Artists with more than one song in the hundred."
+        identifier="select artist, count(1) as n,
+  round(sum(cast(streams_billions as double)), 2) as total_bn
+from `tenant-a_maang`.`spotify`.`streams`
+group by artist
+having count(1) &gt; 1">
+        <hdml-field name="artist"></hdml-field>
+        <hdml-field name="n"></hdml-field>
+        <hdml-field name="total_bn"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="repeat_artists" source="?hdml-model=spfy_artists">
+      <hdml-field name="label" origin="a_artist"></hdml-field>
+      <hdml-field name="n" origin="a_n"></hdml-field>
+      <hdml-field name="total_bn" origin="a_total_bn"></hdml-field>
+      <hdml-sort-by><hdml-field name="total_bn" order="desc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- ========================================================
+         Release era carries its own label AND sort key from SQL,
+         and the frame groups on BOTH. Grouping on `ord` alone
+         leaves `era` a non-aggregate expression over an ungrouped
+         column, which Trino rejects outright.
+         ======================================================== -->
+    <hdml-model name="spfy_era">
+      <hdml-table
+        name="e"
+        type="query"
+        description="Each song's duration with its release era and that era's sort key."
+        identifier="select
+  case when yr &lt; 2010 then 'pre-2010' when yr &lt; 2015 then '2010-14'
+       when yr &lt; 2018 then '2015-17' else '2018-22' end as era,
+  case when yr &lt; 2010 then 1 when yr &lt; 2015 then 2
+       when yr &lt; 2018 then 3 else 4 end as ord,
+  dur
+from (
+  select cast(f.duration as double) as dur,
+         year(date_parse(s.release_date, '%d-%b-%y')) as yr
+  from `tenant-a_maang`.`spotify`.`features` f
+  join `tenant-a_maang`.`spotify`.`streams` s on f.name = s.song
+) t">
+        <hdml-field name="era"></hdml-field>
+        <hdml-field name="ord"></hdml-field>
+        <hdml-field name="dur"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="dur_by_era" source="?hdml-model=spfy_era">
+      <hdml-field name="label" origin="e_era"></hdml-field>
+      <hdml-field name="ord" origin="e_ord"></hdml-field>
+      <hdml-field name="avg_min" clause="round(avg(`e_dur`), 2)"></hdml-field>
+      <hdml-group-by>
+        <hdml-field name="label"></hdml-field>
+        <hdml-field name="ord"></hdml-field>
+      </hdml-group-by>
+      <hdml-sort-by><hdml-field name="ord" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- Seven correlations against stream count, one wide row
+         unpivoted to seven. `zero` is the diverging baseline: these
+         values straddle 0, so a bar needs an explicit y0 there. -->
+    <hdml-model name="spfy_corr">
+      <hdml-table
+        name="r"
+        type="query"
+        description="Correlation of each audio feature against stream count."
+        identifier="select v.lbl as lbl, v.pos as pos, 0 as zero,
+  case v.pos
+    when 1 then w.c_ac when 2 then w.c_da when 3 then w.c_va when 4 then w.c_du
+    when 5 then w.c_lo when 6 then w.c_te when 7 then w.c_en
+  end as r
+from (
+  select
+    round(corr(cast(s.streams_billions as double), cast(f.acousticness as double)), 3) c_ac,
+    round(corr(cast(s.streams_billions as double), cast(f.danceability as double)), 3) c_da,
+    round(corr(cast(s.streams_billions as double), cast(f.valence as double)), 3) c_va,
+    round(corr(cast(s.streams_billions as double), cast(f.duration as double)), 3) c_du,
+    round(corr(cast(s.streams_billions as double), cast(f.loudness as double)), 3) c_lo,
+    round(corr(cast(s.streams_billions as double), cast(f.tempo as double)), 3) c_te,
+    round(corr(cast(s.streams_billions as double), cast(f.energy as double)), 3) c_en
+  from `tenant-a_maang`.`spotify`.`features` f
+  join `tenant-a_maang`.`spotify`.`streams` s on f.name = s.song
+) w
+cross join (values
+  ('acousticness',1),('danceability',2),('valence',3),('duration',4),
+  ('loudness',5),('tempo',6),('energy',7)
+) v (lbl, pos)">
+        <hdml-field name="lbl"></hdml-field>
+        <hdml-field name="pos"></hdml-field>
+        <hdml-field name="zero"></hdml-field>
+        <hdml-field name="r"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="stream_corr" source="?hdml-model=spfy_corr">
+      <hdml-field name="label" origin="r_lbl"></hdml-field>
+      <hdml-field name="pos" origin="r_pos"></hdml-field>
+      <hdml-field name="zero" origin="r_zero"></hdml-field>
+      <hdml-field name="r" origin="r_r"></hdml-field>
+      <hdml-sort-by><hdml-field name="pos" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- The mean of the seven unit-scaled features: the sound of the
+         hundred, on the one axis they genuinely share. -->
+    <hdml-model name="spfy_profile">
+      <hdml-table
+        name="p"
+        type="query"
+        description="Mean of each unit-scaled audio feature across the hundred songs."
+        identifier="select v.lbl as lbl, v.pos as pos,
+  case v.pos
+    when 1 then w.m_da when 2 then w.m_en when 3 then w.m_va when 4 then w.m_ac
+    when 5 then w.m_li when 6 then w.m_sp when 7 then w.m_in
+  end as avg_v
+from (
+  select
+    round(avg(cast(danceability as double)), 3) m_da,
+    round(avg(cast(energy as double)), 3) m_en,
+    round(avg(cast(valence as double)), 3) m_va,
+    round(avg(cast(acousticness as double)), 3) m_ac,
+    round(avg(cast(liveness as double)), 3) m_li,
+    round(avg(cast(speechiness as double)), 3) m_sp,
+    round(avg(cast(instrumentalness as double)), 4) m_in
+  from `tenant-a_maang`.`spotify`.`features`
+) w
+cross join (values
+  ('danceability',1),('energy',2),('valence',3),('acousticness',4),
+  ('liveness',5),('speechiness',6),('instrumentalness',7)
+) v (lbl, pos)">
+        <hdml-field name="lbl"></hdml-field>
+        <hdml-field name="pos"></hdml-field>
+        <hdml-field name="avg_v"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="sound_profile" source="?hdml-model=spfy_profile">
+      <hdml-field name="label" origin="p_lbl"></hdml-field>
+      <hdml-field name="pos" origin="p_pos"></hdml-field>
+      <hdml-field name="avg_v" origin="p_avg_v"></hdml-field>
+      <hdml-sort-by><hdml-field name="pos" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- Pitch class 0-11 given its name, via a LEFT join from the
+         name list so a key with no songs still paints a zero bar
+         rather than vanishing from the axis. -->
+    <hdml-model name="spfy_keys">
+      <hdml-table
+        name="k"
+        type="query"
+        description="Song count per pitch class, named, including empty keys."
+        identifier="select n.nm as key_name, n.pos as pos, count(f.key) as n
+from (values
+  ('C',0),('C#',1),('D',2),('D#',3),('E',4),('F',5),
+  ('F#',6),('G',7),('G#',8),('A',9),('A#',10),('B',11)
+) n (nm, pos)
+left join `tenant-a_maang`.`spotify`.`features` f
+  on cast(f.key as integer) = n.pos
+group by n.nm, n.pos">
+        <hdml-field name="key_name"></hdml-field>
+        <hdml-field name="pos"></hdml-field>
+        <hdml-field name="n"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="key_dist" source="?hdml-model=spfy_keys">
+      <hdml-field name="label" origin="k_key_name"></hdml-field>
+      <hdml-field name="pos" origin="k_pos"></hdml-field>
+      <hdml-field name="n" origin="k_n"></hdml-field>
+      <hdml-sort-by><hdml-field name="pos" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <h1>A hundred songs, 189.6 billion plays</h1>
+    <p class="lede">
+      What the hundred most-streamed songs on Spotify have in common,
+      and what they do not. Every number is computed by Trino at page
+      load from six models; nothing here is hardcoded.
+    </p>
+
+    <h2><span class="n">1</span> What you are looking at</h2>
+
+    <p>
+      The hundred most-streamed tracks of all time, each with the
+      audio-feature vector Spotify publishes for it: how danceable,
+      how energetic, how acoustic, what key, what tempo. The
+      structural reading of the same schema — including the missing
+      key, the units that are not what they look like, and the one
+      row that belongs to a different song — is in
+      <a href="spotify.html">the profile page</a>.
+    </p>
+
+    <p class="caveat">
+      A leaderboard, not a sample. Every song here cleared 1.5 billion
+      plays, so this says nothing about music in general and cannot —
+      §4 is what that restriction does to the statistics.
+    </p>
+
+    <h2><span class="n">2</span> The flattest leaderboard in the set</h2>
+
+    <figure>
+      <figcaption id="cap-top">
+        The ten most-streamed songs (billions of plays)
+      </figcaption>
+      <hdml-view aria-labelledby="cap-top">
+        <hdml-fallback>
+          Blinding Lights leads with 3.45 billion plays.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=top_songs">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="4">
+              <hdml-grid channel="y" count="4"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-tick channel="x"></hdml-tick>
+              <hdml-tick channel="y" count="4"></hdml-tick>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" count="4"></hdml-label>
+              <hdml-bar x="label" y="bn"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="finding">
+      The hundredth song has <strong>1.52</strong> billion plays; the
+      first has <strong>3.45</strong>. The whole leaderboard spans a
+      factor of <strong>2.27</strong>.
+    </p>
+
+    <p>
+      That is worth holding next to the netflix catalog, where IMDb
+      vote counts span a factor of 1 233 from median to maximum. The
+      difference is not that music is more equal — it is that this
+      table is a top-100 cut and that one is a whole catalog. Truncate
+      any heavy-tailed distribution at its 99th percentile and what
+      remains looks almost uniform. It is the same shape seen through
+      a keyhole, and §4 is the price of that.
+    </p>
+
+    <h2><span class="n">3</span> Songs are getting shorter — with a caveat that matters</h2>
+
+    <figure>
+      <figcaption id="cap-era">
+        Mean song length by release era (decimal minutes)
+      </figcaption>
+      <hdml-view aria-labelledby="cap-era">
+        <hdml-fallback>
+          Mean length falls from 4.87 minutes pre-2010 to 3.37 for 2018–22.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=dur_by_era">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="5.5">
+              <hdml-grid channel="y" count="5"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-tick channel="x"></hdml-tick>
+              <hdml-tick channel="y" count="5"></hdml-tick>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" count="5"></hdml-label>
+              <hdml-bar x="label" y="avg_min"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="finding">
+      Mean length falls monotonically across all four eras:
+      <strong>4.87</strong> minutes before 2010, then 3.86, then 3.51,
+      then <strong>3.37</strong> for 2018–22. Duration against release
+      year correlates at <strong>r = −0.609</strong>, easily the
+      strongest relationship on this page.
+    </p>
+
+    <p>
+      And it is mostly nine songs. The pre-2010 group holds
+      <strong>9</strong> of the 100 — Queen, Eminem, a handful of other
+      survivors — and they are long. Drop them and recompute over the
+      91 songs released since 2010, and the correlation falls from
+      −0.609 to <strong>−0.217</strong>.
+    </p>
+
+    <p>
+      So the honest statement is narrower than the coefficient. The
+      trend is real — the three post-2010 eras still decline, 3.86 →
+      3.51 → 3.37, and that ordering does not depend on the old songs
+      at all — but "−0.609" describes a contrast between two eras of
+      music, not a steady annual shortening. Quoting it alone would be
+      true and misleading in the same breath.
+    </p>
+
+    <p class="caveat">
+      The longest value in the table, <em>Don't Stop Me Now</em> at
+      7.05 minutes, sits in that nine and is flagged as suspect in
+      <a href="spotify.html">the profile page</a>. It inflates the
+      pre-2010 mean; the monotone ordering survives without it.
+    </p>
+
+    <h2><span class="n">4</span> Nothing in the audio predicts streams</h2>
+
+    <figure>
+      <figcaption id="cap-corr">
+        Correlation of each audio feature against stream count
+      </figcaption>
+      <hdml-view aria-labelledby="cap-corr">
+        <hdml-fallback>
+          All seven correlations fall between −0.27 and +0.27.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=stream_corr">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="-0.5" max="0.5">
+              <hdml-grid channel="y" count="5"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-tick channel="x"></hdml-tick>
+              <hdml-tick channel="y" count="5"></hdml-tick>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" count="5"></hdml-label>
+              <hdml-bar x="label" y0="zero" y1="r"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="finding warn">
+      Seven audio features against stream count. The strongest is
+      acousticness at <strong>+0.269</strong>; the weakest is
+      danceability at <strong>0.02</strong>. Nothing clears 0.27 in
+      either direction.
+    </p>
+
+    <p>
+      The bars straddle zero, so the mark carries an explicit
+      <code>y0</code> at zero rather than the implicit baseline — a
+      diverging measure needs its own centre line, and without one the
+      negative bars would be drawn as if they started somewhere else.
+    </p>
+
+    <p>
+      The result is not that music has no formula. It is §2's keyhole
+      again, and it has a name: <strong>range restriction</strong>.
+      Every song here is a colossal hit, so whatever separates a hit
+      from a non-hit has already been applied and cannot vary within
+      the sample. What is left is the difference between a 1.5-billion
+      song and a 3.4-billion song, and the audio does not speak to
+      that. To measure what makes a hit you need the songs that were
+      not one, and this table is defined by excluding them.
+    </p>
+
+    <p class="caveat">
+      The two ends are at least directionally sensible — more acoustic
+      and less energetic both lean very slightly toward more streams —
+      but at n = 100 and r &lt; 0.27, neither is worth a sentence in a
+      brief.
+    </p>
+
+    <h2><span class="n">5</span> What the hundred actually sound like</h2>
+
+    <figure>
+      <figcaption id="cap-prof">
+        Mean of each unit-scaled audio feature across the hundred
+      </figcaption>
+      <hdml-view aria-labelledby="cap-prof">
+        <hdml-fallback>
+          Danceability averages 0.65, instrumentalness 0.008.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=sound_profile">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="1">
+              <hdml-grid channel="y" count="5"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-tick channel="x"></hdml-tick>
+              <hdml-tick channel="y" count="5"></hdml-tick>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" count="5"></hdml-label>
+              <hdml-bar x="label" y="avg_v"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="finding">
+      The average hit is danceable (0.65), energetic (0.63), emotionally
+      neutral (valence 0.50) — and has essentially
+      <strong>no instrumental content at all</strong>: mean
+      instrumentalness is <strong>0.008</strong>, the only feature
+      pinned to its floor.
+    </p>
+
+    <p>
+      That last bar is the one that says something. Spotify's
+      instrumentalness estimates the absence of vocals; at a mean of
+      0.008 across a hundred songs, the top of the streaming chart is
+      effectively a vocal-only format. Liveness (0.166) and speechiness
+      (0.096) are nearly as pinned, which rules out live recordings and
+      spoken-word in the same gesture.
+    </p>
+
+    <p>
+      Valence at almost exactly 0.50 is the quiet surprise. Hits are
+      not happy — measured on the platform's own scale, the hundred
+      biggest songs sit precisely on the line between cheerful and
+      melancholy, and they use the full width of it (0.06 to 0.97). It
+      is the one feature with no preferred value.
+    </p>
+
+    <h2><span class="n">6</span> Two thirds are in a major key</h2>
+
+    <figure>
+      <figcaption id="cap-key">
+        Songs per key (pitch class, all twelve shown)
+      </figcaption>
+      <hdml-view aria-labelledby="cap-key">
+        <hdml-fallback>
+          C# is the most common key with 15 songs; D# the rarest with 2.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=key_dist">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="16">
+              <hdml-grid channel="y" count="4"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-tick channel="x"></hdml-tick>
+              <hdml-tick channel="y" count="4"></hdml-tick>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" count="4"></hdml-label>
+              <hdml-bar x="label" y="n"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="finding">
+      <strong>65</strong> of the hundred are major, 35 minor.
+      <strong>C#</strong> is the most common key with 15 songs;
+      <strong>D#</strong> the rarest with 2 — a seven-fold spread
+      across twelve categories that should be arbitrary.
+    </p>
+
+    <p>
+      The twelve keys are not used evenly, and the unevenness is not
+      musical taste — it is instrument ergonomics. The keys with the
+      most songs are the ones that sit well under the hand on a guitar
+      or a piano, and D# / E♭ is the one that does neither. This is the
+      only figure on the page whose x-axis is a genuine category rather
+      than a bucketed number, which is why <code>key</code> is stored
+      as 0–11 and why averaging it — as
+      <a href="spotify.html">the profile page</a> shows a naive pass
+      would — produces 5.34 and means nothing.
+    </p>
+
+    <h2><span class="n">7</span> Ed Sheeran has four of them</h2>
+
+    <figure>
+      <figcaption id="cap-art">
+        Artists with more than one song in the hundred, by total plays
+      </figcaption>
+      <hdml-view class="tall" aria-labelledby="cap-art">
+        <hdml-fallback>
+          Fourteen artists hold more than one of the hundred songs.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=repeat_artists">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="11">
+              <hdml-grid channel="y" count="4"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-tick channel="x"></hdml-tick>
+              <hdml-tick channel="y" count="4"></hdml-tick>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" count="4"></hdml-label>
+              <hdml-bar x="label" y="total_bn"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="finding">
+      <strong>Fourteen</strong> artists hold more than one of the
+      hundred songs. Ed Sheeran holds <strong>four</strong>, totalling
+      <strong>10.04</strong> billion plays — <strong>5.3%</strong> of
+      every play on this leaderboard, from one artist.
+    </p>
+
+    <p>
+      Thirty-three of the hundred slots belong to those fourteen names.
+      The other 67 are one apiece. That is a far more concentrated
+      distribution than the play counts in §2, and it points at
+      something the stream column cannot: reaching this list twice is
+      much harder than the flat 2.27× spread of play counts suggests,
+      and a small group does it repeatedly.
+    </p>
+
+    <p class="caveat">
+      <code>artist</code> is a free-text column, so
+      "Macklemore &amp; Ryan Lewis featuring Ray Dalton" is one artist
+      here and a collaboration is never split. Featured credits are
+      counted to the lead name only when the string says so, which
+      understates the reach of frequently-featured performers.
+    </p>
+
+    <h2><span class="n">8</span> Everything arrived in five years</h2>
+
+    <figure>
+      <figcaption id="cap-yr">
+        Songs by release year
+      </figcaption>
+      <hdml-view aria-labelledby="cap-yr">
+        <hdml-fallback>
+          63 of the hundred were released between 2015 and 2019.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=by_year">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="20">
+              <hdml-grid channel="y" count="4"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-tick channel="x"></hdml-tick>
+              <hdml-tick channel="y" count="4"></hdml-tick>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" count="4"></hdml-label>
+              <hdml-bar x="label" y="n"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="finding">
+      <strong>63</strong> of the hundred were released between 2015 and
+      2019, peaking at <strong>17</strong> in 2017. Only nine predate
+      2010, and only one postdates 2021.
+    </p>
+
+    <p>
+      Both tails are artifacts rather than facts. The old end is thin
+      because Spotify's counter starts in 2008 and a 1975 song only
+      accumulates plays from then on — <em>Bohemian Rhapsody</em> is
+      here on fifty years of reputation compressed into fifteen of
+      counting. The new end is thin for the opposite reason: a 2022
+      song has had no time to reach 1.5 billion plays. The 2017 peak is
+      simply where "long enough to accumulate" and "recent enough to be
+      streamed rather than owned" overlap.
+    </p>
+
+    <h2><span class="n">9</span> What this data cannot tell you</h2>
+
+    <table>
+      <thead>
+        <tr><th>Question</th><th>Why not</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>What makes a song a hit?</td>
+          <td>§4. Every row is already a hit, so the variable you want
+              has no variance left to measure.</td>
+        </tr>
+        <tr>
+          <td>Are songs getting shorter?</td>
+          <td>§3 — within this sample, yes, but the sample is
+              survivors. A 1975 song that is still streamed is not a
+              typical 1975 song.</td>
+        </tr>
+        <tr>
+          <td>Which artist is biggest?</td>
+          <td>Only songs that reached the top 100 are counted. An
+              artist with fifty songs at a billion each appears
+              nowhere.</td>
+        </tr>
+        <tr>
+          <td>How has any of this changed?</td>
+          <td>One snapshot, undated. <code>release_date</code> is when
+              the song came out, not when the count was taken.</td>
+        </tr>
+        <tr>
+          <td>Is any single row trustworthy?</td>
+          <td>99 of 100 are. One carries another song's audio, and
+              nothing in the schema marks it — see
+              <a href="spotify.html">§3 of the profile</a>.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="caveat">
+      Sibling pages:
+      <a href="spotify.html">Spotify — structural profile</a> ·
+      <a href="../netflix/report.html">Netflix — what the data says</a> ·
+      <a href="../airbnb/report.html">Airbnb — what the data says</a> ·
+      <a href="../maang/definition.html">MAANG — the dataset described</a>
+    </p>
+  </body>
+</html>

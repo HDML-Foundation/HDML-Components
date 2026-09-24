@@ -1,0 +1,811 @@
+<!doctype html>
+<!--
+  Netflix — what the data says.
+
+  A report over the `netflix` schema, built on the structural profile in
+  netflix.html. Seven figures, no scripts; every number is computed by
+  Trino from six models declared below.
+
+  EVERY QUERY WAS RUN AGAINST THE LIVE TRINO before being written into
+  an `identifier` or a `clause`, and the figures in the prose are its
+  output — including the aggregates that are not obviously portable:
+  `approx_percentile`, `corr`, `count_if`, and the
+  cross-join-to-a-VALUES-list pattern that turns one wide aggregate row
+  into one row per measure.
+
+  SIX MODELS. `nflx` is the row-grain model with every numeric column
+  cast once, in SQL, so no frame repeats a cast — sections 2 and 3 are
+  ordinary grouped frames over it. The other five exist because the
+  work has to happen in SQL, not in a frame: `nflx_shows` and
+  `nflx_pairs` carry a WHERE, because a row that cannot be plotted
+  should not be fetched; `nflx_genre_scores` and `nflx_countries`
+  unnest the list literals; and `nflx_votes` unpivots one wide
+  aggregate row into the five the vote ladder needs, since a frame
+  produces columns and that figure needs rows.
+
+  THE HEADLINE IS SECTION 2. This is not a catalog of film history —
+  85% of it was released since 2015, and the four years 2020-2023 hold
+  almost as many titles as the whole of the 2010s. Every other finding
+  on the page is conditioned on that, which is why it comes first.
+
+  AUTH. `mode="oidc"`, matching the sibling pages.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Netflix — what the data says</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0 auto; padding: 2rem 1.5rem 6rem; max-width: 860px;
+        font-family: system-ui, sans-serif; line-height: 1.55;
+        color: #0f172a;
+      }
+      h1 { font-size: 1.9rem; margin: 0 0 0.25rem; letter-spacing: -0.02em; }
+      h2 {
+        font-size: 1.15rem; margin: 3.5rem 0 0.5rem;
+        letter-spacing: -0.01em;
+      }
+      h2 .n {
+        display: inline-block; min-width: 1.6em;
+        color: #94a3b8; font-variant-numeric: tabular-nums;
+      }
+      .lede { font-size: 1.05rem; color: #334155; margin: 0 0 2rem; }
+      p { margin: 0 0 1rem; }
+      .finding {
+        margin: 0 0 1.25rem; padding: 0.75rem 1rem;
+        border-left: 3px solid #1c8cf4; background: #f1f5f9;
+        font-weight: 600;
+      }
+      .warn { border-left-color: #dc2626; }
+      .caveat { color: #64748b; font-size: 0.9rem; }
+      code {
+        font-family: ui-monospace, monospace; font-size: 0.9em;
+        background: #f1f5f9; padding: 0.1em 0.35em; border-radius: 3px;
+      }
+      pre {
+        background: #f1f5f9; padding: 1rem; border-radius: 4px;
+        overflow-x: auto; font-size: 0.85rem; line-height: 1.45;
+      }
+      pre code { background: none; padding: 0; font-size: 1em; }
+      table { border-collapse: collapse; width: 100%; margin: 0 0 1rem; }
+      th, td {
+        text-align: left; padding: 0.4rem 0.6rem;
+        border-bottom: 1px solid #e2e8f0; font-size: 0.92rem;
+      }
+      th { color: #475569; font-weight: 600; }
+      td.num { text-align: right; font-variant-numeric: tabular-nums; }
+      td.ok { color: #15803d; font-weight: 600; }
+      td.bad { color: #dc2626; font-weight: 600; }
+
+      figure { margin: 1.5rem 0 0; max-width: 100%; }
+      figcaption {
+        margin-bottom: 0.9rem; color: #475569; font-size: 0.9rem;
+      }
+      hdml-fallback {
+        padding: 2rem; border: 1px dashed #cbd5e1; color: #64748b;
+        text-align: center;
+      }
+
+      hdml-view { width: 100%; height: 340px; }
+      hdml-view.tall { height: 420px; }
+      hdml-cartesian-plane { padding: 16px 130px 40px 76px; }
+
+      hdml-ordinal-scale[channel="x"] { padding: 0 16px; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+
+      hdml-axis { --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="x"] {
+        position: absolute; left: 0; right: 0; bottom: 0;
+      }
+      hdml-axis[channel="y"] {
+        position: absolute; top: 0; bottom: 0; left: 0;
+      }
+      hdml-grid[channel="y"] {
+        --hdml-line-width: 1px; --hdml-line-style: dotted;
+        --hdml-line-color: #cbd5e1;
+      }
+      hdml-tick {
+        --hdml-tick-style: rect; --hdml-tick-width: 1px;
+        --hdml-tick-height: 6px; --hdml-fill-color: #64748b;
+      }
+      hdml-tick[channel="x"] {
+        position: absolute; left: 0; right: 0; bottom: 0;
+      }
+      hdml-tick[channel="y"] {
+        position: absolute; top: 0; bottom: 0; left: 0;
+      }
+      hdml-label { --hdml-font-size: 11px; --hdml-font-family: inherit; }
+      hdml-label[channel="x"] {
+        position: absolute; left: 0; right: 0; top: 100%;
+      }
+      hdml-label[channel="y"] {
+        position: absolute; top: 0; bottom: 0; right: 100%;
+      }
+
+      hdml-ordinal-scale[channel="color"] {
+        --hdml-palette: #1c8cf4 #f59e0b #10b981 #a855f7 #ef4444;
+      }
+      hdml-legend {
+        position: absolute; top: 8px; left: 100%;
+        width: 120px; --hdml-font-size: 11px;
+      }
+
+      hdml-bar { --hdml-fill-opacity: 0.9; }
+      /* 5 487 points overlap heavily, so the shared 10px/0.85 dot of
+         the sibling pages paints a solid block. Small and mostly
+         transparent turns the overplotting into the density it is. */
+      hdml-point {
+        --hdml-tick-style: ellipse;
+        --hdml-tick-width: 4px; --hdml-tick-height: 4px;
+        --hdml-fill-color: #1c8cf4; --hdml-fill-opacity: 0.18;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body { color: #e2e8f0; }
+        .lede { color: #cbd5e1; }
+        .finding, pre, code { background: #1e293b; }
+        th, td { border-bottom-color: #334155; }
+        th { color: #94a3b8; }
+        figcaption { color: #94a3b8; }
+        td.ok { color: #4ade80; }
+        td.bad { color: #f87171; }
+      }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc"
+      login-hint="hdml.github@gmail.com">
+    </hdml-io>
+
+    <!-- ========================================================
+         Row grain, every numeric cast ONCE. `seasons` goes through
+         double first because it is stored as `1.0` (netflix.html §4).
+         ======================================================== -->
+    <hdml-model name="nflx">
+      <hdml-table
+        name="t"
+        type="query"
+        description="One row per title, every numeric column cast in SQL."
+        identifier="select
+  type as kind,
+  cast(release_year as integer) as year,
+  (cast(release_year as integer) / 10) * 10 as decade,
+  cast(runtime as integer) as runtime,
+  cast(imdb_score as double) as imdb_score,
+  cast(imdb_votes as double) as votes,
+  cast(tmdb_score as double) as tmdb_score,
+  cast(cast(seasons as double) as integer) as seasons
+from `tenant-a_maang`.`netflix`.`titles`">
+        <hdml-field name="kind"></hdml-field>
+        <hdml-field name="year"></hdml-field>
+        <hdml-field name="decade"></hdml-field>
+        <hdml-field name="runtime"></hdml-field>
+        <hdml-field name="imdb_score"></hdml-field>
+        <hdml-field name="votes"></hdml-field>
+        <hdml-field name="tmdb_score"></hdml-field>
+        <hdml-field name="seasons"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="by_decade" source="?hdml-model=nflx">
+      <hdml-field name="label" clause="cast(`t_decade` as varchar)"></hdml-field>
+      <hdml-field name="decade" origin="t_decade"></hdml-field>
+      <hdml-field name="n_movie" clause="count_if(`t_kind` = 'MOVIE')"></hdml-field>
+      <hdml-field name="n_show" clause="count_if(`t_kind` = 'SHOW')"></hdml-field>
+      <hdml-group-by><hdml-field name="decade"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="decade" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <hdml-frame name="score_by_type" source="?hdml-model=nflx">
+      <hdml-field name="label" origin="t_kind"></hdml-field>
+      <hdml-field name="avg_imdb" clause="round(avg(`t_imdb_score`), 2)"></hdml-field>
+      <hdml-field name="med_imdb" clause="round(approx_percentile(`t_imdb_score`, 0.5), 2)"></hdml-field>
+      <hdml-group-by><hdml-field name="label"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="label" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- ========================================================
+         Series only, because `seasons` is NULL for every film
+         (netflix.html §6) and a NULL bucket is not a season count.
+         The filter lives in SQL for the same reason nflx_pairs'
+         does: a row that cannot be plotted should not be fetched.
+         ======================================================== -->
+    <hdml-model name="nflx_shows">
+      <hdml-table
+        name="sh"
+        type="query"
+        description="Series only, with the season count cast through double."
+        identifier="select cast(cast(seasons as double) as integer) as seasons
+from `tenant-a_maang`.`netflix`.`titles`
+where type = 'SHOW'">
+        <hdml-field name="seasons"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <!-- `label` and `ord` are BOTH grouped. Grouping on `ord` alone
+         leaves `label` a non-aggregate expression over an ungrouped
+         column, which Trino rejects outright — `label` is only
+         derivable from `ord` to a reader, not to the planner. -->
+    <hdml-frame name="seasons_dist" source="?hdml-model=nflx_shows">
+      <hdml-field
+        name="label"
+        clause="case when `sh_seasons` >= 6 then '6+' else cast(`sh_seasons` as varchar) end"></hdml-field>
+      <hdml-field
+        name="ord"
+        clause="case when `sh_seasons` >= 6 then 6 else `sh_seasons` end"></hdml-field>
+      <hdml-field name="n" clause="count(1)"></hdml-field>
+      <hdml-group-by>
+        <hdml-field name="label"></hdml-field>
+        <hdml-field name="ord"></hdml-field>
+      </hdml-group-by>
+      <hdml-sort-by><hdml-field name="ord" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- ========================================================
+         Scatter source: the 5 487 titles carrying BOTH scores. The
+         null filter lives in SQL, not in a frame, because a point
+         with one coordinate is not a point.
+         ======================================================== -->
+    <hdml-model name="nflx_pairs">
+      <hdml-table
+        name="p"
+        type="query"
+        description="Titles carrying both an IMDb and a TMDB score."
+        identifier="select
+  cast(imdb_score as double) as imdb_score,
+  cast(tmdb_score as double) as tmdb_score,
+  type as kind
+from `tenant-a_maang`.`netflix`.`titles`
+where imdb_score is not null and tmdb_score is not null">
+        <hdml-field name="imdb_score"></hdml-field>
+        <hdml-field name="tmdb_score"></hdml-field>
+        <hdml-field name="kind"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="score_pairs" source="?hdml-model=nflx_pairs">
+      <hdml-field name="imdb" origin="p_imdb_score"></hdml-field>
+      <hdml-field name="tmdb" origin="p_tmdb_score"></hdml-field>
+    </hdml-frame>
+
+    <!-- Genre × mean score, unnested. -->
+    <hdml-model name="nflx_genre_scores">
+      <hdml-table
+        name="gs"
+        type="query"
+        description="One row per (title, genre) with the title's IMDb score."
+        identifier="select
+  trim(both '''' from trim(e)) as genre,
+  cast(imdb_score as double) as imdb_score
+from `tenant-a_maang`.`netflix`.`titles`
+cross join unnest(split(replace(replace(genres,'[',''),']',''), ',')) as t(e)
+where genres &lt;&gt; '[]' and imdb_score is not null">
+        <hdml-field name="genre"></hdml-field>
+        <hdml-field name="imdb_score"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="genre_scores" source="?hdml-model=nflx_genre_scores">
+      <hdml-field name="label" origin="gs_genre"></hdml-field>
+      <hdml-field name="avg_imdb" clause="round(avg(`gs_imdb_score`), 2)"></hdml-field>
+      <hdml-field name="n" clause="count(1)"></hdml-field>
+      <hdml-group-by><hdml-field name="label"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="avg_imdb" order="desc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- Country × title count, unnested. -->
+    <hdml-model name="nflx_countries">
+      <hdml-table
+        name="co"
+        type="query"
+        description="One row per (title, production country)."
+        identifier="select trim(both '''' from trim(e)) as country
+from `tenant-a_maang`.`netflix`.`titles`
+cross join unnest(split(replace(replace(production_countries,'[',''),']',''), ',')) as t(e)
+where production_countries &lt;&gt; '[]'">
+        <hdml-field name="country"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="top_countries" source="?hdml-model=nflx_countries">
+      <hdml-field name="label" origin="co_country"></hdml-field>
+      <hdml-field name="n" clause="count(1)"></hdml-field>
+      <hdml-group-by><hdml-field name="label"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="n" order="desc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- The vote ladder: one wide aggregate row unpivoted to five. -->
+    <hdml-model name="nflx_votes">
+      <hdml-table
+        name="v"
+        type="query"
+        description="IMDb vote count at five points of its distribution."
+        identifier="select v.lbl as lbl, v.pos as pos,
+  1000 as base,
+  case v.pos
+    when 1 then w.p50 when 2 then w.p75 when 3 then w.p90
+    when 4 then w.p99 when 5 then w.mx
+  end as votes
+from (
+  select
+    approx_percentile(cast(imdb_votes as double), 0.5) p50,
+    approx_percentile(cast(imdb_votes as double), 0.75) p75,
+    approx_percentile(cast(imdb_votes as double), 0.9) p90,
+    approx_percentile(cast(imdb_votes as double), 0.99) p99,
+    max(cast(imdb_votes as double)) mx
+  from `tenant-a_maang`.`netflix`.`titles`
+  where imdb_votes is not null
+) w
+cross join (values
+  ('median',1),('75th',2),('90th',3),('99th',4),('max',5)
+) v (lbl, pos)">
+        <hdml-field name="lbl"></hdml-field>
+        <hdml-field name="pos"></hdml-field>
+        <hdml-field name="base"></hdml-field>
+        <hdml-field name="votes"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="votes_ladder" source="?hdml-model=nflx_votes">
+      <hdml-field name="label" origin="v_lbl"></hdml-field>
+      <hdml-field name="pos" origin="v_pos"></hdml-field>
+      <!-- The log axis floor, carried as a column — see the same
+           field on netflix.html's columns_profile. A bare `y=` bar
+           desugars to `y0="0"`, and zero cannot be placed on a log
+           scale, so the bar does not paint at all. -->
+      <hdml-field name="base" origin="v_base"></hdml-field>
+      <hdml-field name="votes" origin="v_votes"></hdml-field>
+      <hdml-sort-by><hdml-field name="pos" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <h1>6 137 titles, and most of them are new</h1>
+    <p class="lede">
+      What the Netflix catalog looks like when you ask it seven
+      questions. Every number is computed by Trino at page load from
+      six models; nothing here is hardcoded.
+    </p>
+
+    <h2><span class="n">1</span> What you are looking at</h2>
+
+    <p>
+      A snapshot of the Netflix catalog: 6 137 titles — 3 831 films and
+      2 306 series — with 81 355 acting and directing credits against
+      them, and two independent audience scores per title where they
+      exist. The structural reading of the same schema, including the
+      four defects you inherit from its CSV origin, is in
+      <a href="netflix.html">the profile page</a>.
+    </p>
+
+    <p class="caveat">
+      One snapshot, no dates attached. There is no "added to Netflix"
+      column and no territory column, so nothing on this page can speak
+      about change over time, or about what is available where. §9 is
+      the full list of what the data cannot support.
+    </p>
+
+    <h2><span class="n">2</span> This is a recent catalog, not a library</h2>
+
+    <figure>
+      <figcaption id="cap-dec">
+        Titles by release decade, films against series
+      </figcaption>
+      <hdml-view aria-labelledby="cap-dec">
+        <hdml-fallback>
+          Title counts per decade from the 1940s to the 2020s.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=by_decade">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="2000">
+              <hdml-ordinal-scale
+                channel="color" values='["Films","Series"]'>
+
+                <hdml-grid channel="y" count="5"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="5"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+
+                <hdml-cluster x="label">
+                  <hdml-bar y="n_movie" color='"Films"'></hdml-bar>
+                  <hdml-bar y="n_show" color='"Series"'></hdml-bar>
+                </hdml-cluster>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="finding">
+      <strong>85%</strong> of the catalog was released in 2015 or
+      later. The four years 2020–2023 hold <strong>2 709</strong>
+      titles — nearly as many as the entire 2010s (2 951), and more
+      than every year before 2010 put together, twelve times over.
+    </p>
+
+    <p>
+      Everything below is conditioned on that, which is why it comes
+      first. This is not a sample of cinema; it is a sample of what one
+      streaming service was carrying, weighted overwhelmingly toward
+      its own recent commissioning. The 477 titles released before 2010
+      are a curated remainder, and they behave differently from the
+      bulk — they are the survivors, so they score higher and carry far
+      more votes than a random title from 2021.
+    </p>
+
+    <p class="caveat">
+      The 2020s bar covers four years, every other bar covers ten. Read
+      it as a rate and the slope is steeper still.
+    </p>
+
+    <h2><span class="n">3</span> Series outscore films, and it is not close</h2>
+
+    <figure>
+      <figcaption id="cap-type">
+        Mean and median IMDb score by title type
+      </figcaption>
+      <hdml-view aria-labelledby="cap-type">
+        <hdml-fallback>
+          Films average 6.27, series 6.99.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=score_by_type">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="8">
+              <hdml-ordinal-scale
+                channel="color" values='["Mean","Median"]'>
+
+                <hdml-grid channel="y" count="4"></hdml-grid>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-tick channel="y" count="4"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="4"></hdml-label>
+
+                <hdml-cluster x="label">
+                  <hdml-bar y="avg_imdb" color='"Mean"'></hdml-bar>
+                  <hdml-bar y="med_imdb" color='"Median"'></hdml-bar>
+                </hdml-cluster>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="finding">
+      Series average <strong>6.99</strong> on IMDb, films
+      <strong>6.27</strong> — a gap of 0.72, on a scale where the
+      middle 80% of the catalog spans about three points.
+    </p>
+
+    <p>
+      Mean and median agree for both types, so this is not one tail
+      dragging an average around. The plausible mechanism is survivor
+      bias in the other direction: a series has to clear a
+      commissioning bar and then survive to air, and the ones that do
+      not are never catalogued as a series at all. A film that
+      disappoints still exists. Among titles with more than 50 000
+      votes the top two are series and clear of the field —
+      <em>Breaking Bad</em> at 9.5 and <em>Avatar: The Last
+      Airbender</em> at 9.3, above a crowded tie at 9.0 that holds
+      six more series and two films.
+    </p>
+
+    <h2><span class="n">4</span> Most series never get a second season</h2>
+
+    <figure>
+      <figcaption id="cap-seas">
+        Series by season count (2 306 series)
+      </figcaption>
+      <hdml-view aria-labelledby="cap-seas">
+        <hdml-fallback>
+          1 396 of 2 306 series have exactly one season.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=seasons_dist">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="1500">
+              <hdml-grid channel="y" count="5"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-tick channel="x"></hdml-tick>
+              <hdml-tick channel="y" count="5"></hdml-tick>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+              <hdml-bar x="label" y="n"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="finding">
+      <strong>1 396</strong> of 2 306 series — <strong>61%</strong> —
+      have exactly one season. Only 118 reach six or more.
+    </p>
+
+    <p>
+      The drop from one season to two is the steepest in the whole
+      distribution: 1 396 to 407, a loss of 71% at the first step. After
+      that the decay is gentle, roughly halving every two seasons. A
+      series that gets renewed once is a substantially different
+      proposition from one that does not, and the data says the decision
+      is made almost entirely at that first gate.
+    </p>
+
+    <p class="caveat">
+      Anthologies and limited series are designed to end after one
+      season and are counted here as if they were cancelled. Nothing in
+      the schema distinguishes them, so the 61% is an upper bound on
+      genuine non-renewal.
+    </p>
+
+    <h2><span class="n">5</span> Two audiences, half agreeing</h2>
+
+    <p>
+      5 487 titles carry both an IMDb and a TMDB score. If the two
+      platforms were measuring the same thing, the scatter would be a
+      line.
+    </p>
+
+    <figure>
+      <figcaption id="cap-sc">
+        IMDb against TMDB, one point per title (n = 5 487)
+      </figcaption>
+      <hdml-view class="tall" aria-labelledby="cap-sc">
+        <hdml-fallback>
+          IMDb and TMDB scores correlate at r = 0.533.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=score_pairs">
+          <hdml-continuous-scale channel="x" min="0" max="10">
+            <hdml-continuous-scale channel="y" min="0" max="10">
+              <hdml-grid channel="y" count="5"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-tick channel="x" count="5"></hdml-tick>
+              <hdml-tick channel="y" count="5"></hdml-tick>
+              <hdml-label channel="x" count="5"></hdml-label>
+              <hdml-label channel="y" count="5"></hdml-label>
+              <hdml-point x="imdb" y="tmdb"></hdml-point>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="finding warn">
+      The two scores correlate at <strong>r = 0.533</strong>. That is a
+      relationship, not an agreement — about 28% of the variance in one
+      is explained by the other.
+    </p>
+
+    <p>
+      For two ten-point scales pointed at the same 5 487 works, this is
+      a weak result, and it should change how you use either number. The
+      disagreements are not small: <em>Storybots Laugh, Learn, Sing</em>
+      is 8.7 on IMDb and 2.0 on TMDB. <em>Me Against You: Mr. S's
+      Vendetta</em> runs the other way, 1.6 against 8.1. A 6.5-point gap
+      on a 10-point scale is not noise around a shared signal; it is two
+      different populations voting.
+    </p>
+
+    <p>
+      The sensible reading is that neither is "the" score. IMDb skews
+      older, more western and far more heavily voted; TMDB is smaller
+      and more evenly spread across languages. A title's score tells you
+      about the platform's audience at least as much as about the title,
+      and any ranking you build should say which one it used.
+    </p>
+
+    <h2><span class="n">6</span> Genre moves the score by about a point</h2>
+
+    <figure>
+      <figcaption id="cap-gs">
+        Mean IMDb score by genre, best to worst
+      </figcaption>
+      <hdml-view class="tall" aria-labelledby="cap-gs">
+        <hdml-fallback>
+          War and history average above 7.1; horror averages 6.02.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=genre_scores">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="8">
+              <hdml-grid channel="y" count="4"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-tick channel="x"></hdml-tick>
+              <hdml-tick channel="y" count="4"></hdml-tick>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" count="4"></hdml-label>
+              <hdml-bar x="label" y="avg_imdb"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="finding">
+      <code>war</code> (7.14) and <code>history</code> (7.13) top the
+      table; <code>horror</code> (6.02) sits alone at the bottom, a
+      full 1.1 points below the leaders and 0.35 below the next-worst
+      genre.
+    </p>
+
+    <p>
+      Documentation is third at 7.02 across 926 titles, which is the
+      most robust of the high scores — the genres above it are small
+      (151 and 275 titles) and could move. The ordering is roughly
+      "genres with an obligation to a real subject" at the top and
+      "genres with an obligation to an effect" at the bottom, with
+      drama, comedy and action bunched indistinguishably in the middle
+      between 6.4 and 6.6.
+    </p>
+
+    <p class="caveat">
+      A title carries 2.57 genres, so these groups overlap heavily and
+      none of this is causal. <code>horror</code> scoring low is partly
+      <code>horror</code> titles being cheap to make, which the schema
+      cannot see.
+    </p>
+
+    <h2><span class="n">7</span> An American catalog with an Indian second act</h2>
+
+    <figure>
+      <figcaption id="cap-co">
+        Titles by production country (top 10 of 107)
+      </figcaption>
+      <hdml-view aria-labelledby="cap-co">
+        <hdml-fallback>
+          The US produces 2 325 titles; India, second, produces 656.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=top_countries">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="2500">
+              <hdml-grid channel="y" count="5"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-tick channel="x"></hdml-tick>
+              <hdml-tick channel="y" count="5"></hdml-tick>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+              <hdml-bar x="label" y="n"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="finding">
+      The United States accounts for <strong>2 325</strong> titles.
+      India is second with <strong>656</strong> — more than the United
+      Kingdom (421) and Japan (304) combined.
+    </p>
+
+    <p>
+      That second place is the finding, and it shows up again in the
+      credits: the most-credited actor in the entire catalog is
+      <strong>Shah Rukh Khan</strong>, with 38 titles, and five of the
+      seven most-credited actors are Indian. Nothing about a naive reading of
+      "a streaming catalog" predicts that, and it is a direct
+      consequence of §2 — this is a recent catalog, and recent
+      commissioning went where the subscriber growth was.
+    </p>
+
+    <p class="caveat">
+      Co-productions count once per country, so the bars sum past
+      6 137. 176 titles list no country at all and are excluded.
+    </p>
+
+    <h2><span class="n">8</span> Attention is far more unequal than quality</h2>
+
+    <figure>
+      <figcaption id="cap-v">
+        IMDb vote count through its distribution (log)
+      </figcaption>
+      <hdml-view aria-labelledby="cap-v">
+        <hdml-fallback>
+          Median 2 176 votes; 99th percentile 345 907; maximum 2 684 317.
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=votes_ladder">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale
+              channel="y" type="log" min="1000" max="5000000">
+              <hdml-grid channel="y" count="5"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-tick channel="x"></hdml-tick>
+              <hdml-tick channel="y" count="5"></hdml-tick>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+              <hdml-bar x="label" y0="base" y1="votes"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <p class="finding">
+      The median title has <strong>2 176</strong> votes. The 99th
+      percentile has <strong>345 907</strong> — 159 times more — and
+      the maximum, <em>The Dark Knight</em>, has
+      <strong>2 684 317</strong>, or <strong>1 233×</strong> the median.
+    </p>
+
+    <p>
+      Note the axis is logarithmic and the bars still climb like that.
+      Scores span a factor of six across the whole catalog; votes span a
+      factor of a thousand. Whatever "popular" means here, it is not a
+      variable with a meaningful average — the mean vote count
+      (21 150) sits above the 80th percentile (14 359), so four titles
+      in five are below average by construction.
+    </p>
+
+    <p>
+      And it barely tracks quality: score against log votes correlates
+      at <strong>r = 0.223</strong>. Being widely seen and being well
+      regarded are close to independent in this catalog, which is the
+      single most useful thing on this page if you are ranking titles.
+      Sort by score and you surface obscure series; sort by votes and
+      you surface old films. Neither is wrong; they are different
+      questions.
+    </p>
+
+    <h2><span class="n">9</span> What this data cannot tell you</h2>
+
+    <p>
+      Five questions this schema looks like it can answer and cannot:
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Question</th><th>Why not</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>What is popular <em>on Netflix</em>?</td>
+          <td>There is no viewing data. <code>imdb_votes</code> and
+              <code>tmdb_popularity</code> measure activity on other
+              platforms entirely.</td>
+        </tr>
+        <tr>
+          <td>How has the catalog changed?</td>
+          <td>One snapshot, and <code>release_year</code> is when the
+              work was made, not when it was added or removed.</td>
+        </tr>
+        <tr>
+          <td>What is available in my country?</td>
+          <td><code>production_countries</code> is where it was
+              <em>made</em>. There is no availability column.</td>
+        </tr>
+        <tr>
+          <td>Is Netflix commissioning more?</td>
+          <td>Nothing marks a Netflix original. §2's growth is catalog
+              growth of every kind mixed together.</td>
+        </tr>
+        <tr>
+          <td>Did a series get cancelled?</td>
+          <td><code>seasons</code> is a count, not an outcome. §4's 61%
+              includes every limited series that ended as designed.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="caveat">
+      Sibling pages:
+      <a href="netflix.html">Netflix — structural profile</a> ·
+      <a href="../airbnb/report.html">Airbnb — what the data says</a> ·
+      <a href="../maang/definition.html">MAANG — the dataset described</a>
+    </p>
+  </body>
+</html>
