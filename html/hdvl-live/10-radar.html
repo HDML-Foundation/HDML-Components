@@ -1,0 +1,250 @@
+<!doctype html>
+<!--
+  10 — Radar, over live data
+
+  ON-PAGE SPEC. What each figure represents technically, and what to
+  check when you look at it, is now VISIBLE CONTENT — the `.spec`
+  block beside each figure. This comment keeps the authoring
+  rationale; the numbers and the checklist live in the page.
+
+  LIVE twin of html/hdvl/10-radar.html. The mock mixed one literal
+  series with one subscribed one; here BOTH series are subscribed —
+  one widget pair each, from two frames over one model, which is the
+  same "multi-source stays legal per widget" claim (SPEC §4.5) with
+  the literal leg removed because this folder has no literals.
+
+  WHAT THE SIX SPOKES ARE. Each stock is scored on six measures over
+  the whole series, and each measure is MIN-MAX NORMALISED ACROSS
+  THE FIVE STOCKS to 0…10. So a 10 means "the highest of these five"
+  and a 0 means "the lowest of these five" — never "good" and never
+  an absolute. The measures:
+
+    growth      last close ÷ first close
+    price       mean close
+    turnover    mean daily close × volume
+    upside      share of days closing above the open
+    volatility  mean daily (high − low) ÷ low
+    volume      mean daily share volume
+
+  APPLE AND NETFLIX ARE NEAR-COMPLEMENTS, which is why they are the
+  two drawn:
+
+                growth  price  turnover  upside  volatility  volume
+      Apple       6.04   0.00     10.00   10.00        3.72   10.00
+      Netflix    10.00  10.00      0.00    0.00       10.00    0.00
+
+  Apple owns the three liquidity spokes and sits at the floor on
+  price; Netflix owns price, growth and volatility and sits at the
+  floor on all three liquidity spokes. Two polygons that barely
+  overlap — and the shape of that non-overlap is the thing a radar
+  is actually good at.
+
+  BEWARE THE NORMALISATION. A 0 is not "no growth"; Microsoft is the
+  0 on growth and it still multiplied. Min-max across five points is
+  a RANKING dressed as a magnitude, and the page says so here rather
+  than letting the picture imply otherwise.
+
+  ROW ORDER MUST MATCH THE ANGLE DOMAIN — path segments connect rows
+  in row order — so both frames sort by `metric` ascending and the
+  scale's literal `values` is that same alphabetical list.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>10 — Radar (live)</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0; max-width: 520px; }
+
+      hdml-view { width: 100%; height: 400px; }
+      hdml-polar-plane { padding: 28px; }
+
+      /* bandwidth 0 = point placement: spokes sit ON the category, which
+         is what a radar polygon connects (band↔point is one scale). */
+      hdml-ordinal-scale[channel="angle"] { --hdml-angle-start: 0deg;
+        --hdml-angle-end: 360deg; --hdml-bandwidth: 0; }
+
+      /* rings between spokes render as polygons, not circles */
+      hdml-grid[channel="radius"] { --hdml-grid-shape: polygon;
+        --hdml-line-width: 1px; --hdml-line-color: #cbd5e1; }
+      /* spokes */
+      hdml-grid[channel="angle"] { --hdml-line-width: 1px;
+        --hdml-line-color: #cbd5e1; }
+      hdml-label[channel="angle"] { --hdml-font-size: 11px; }
+      hdml-label[channel="radius"] { --hdml-font-size: 10px; }
+
+      hdml-area.aapl { --hdml-fill-color: #1c8cf433; }
+      hdml-line.aapl { --hdml-line-width: 2px; --hdml-line-color: #1c8cf4; }
+      hdml-area.nflx { --hdml-fill-color: #ef444433; }
+      hdml-line.nflx { --hdml-line-width: 2px; --hdml-line-color: #ef4444; }
+
+      /* ---- validation notes: prose only, no hdml-* selector ---- */
+      .page-intro { max-width: 780px; margin: 0 0 2.5rem; }
+      .page-intro h1 { font-size: 1.4rem; margin: 0 0 0.6rem;
+        letter-spacing: -0.01em; color: #0f172a; }
+      .page-intro p { margin: 0 0 0.7rem; color: #334155;
+        font-size: 14px; line-height: 1.6; }
+      .spec { margin: 1rem 0 0; padding: 0.9rem 1.1rem;
+        border-left: 3px solid #cbd5e1; background: #f8fafc;
+        font-size: 13px; line-height: 1.55; color: #334155; }
+      .spec h3 { margin: 0 0 0.6rem; font-size: 11px; font-weight: 600;
+        letter-spacing: 0.09em; text-transform: uppercase; color: #64748b; }
+      .spec p { margin: 0 0 0.6rem; }
+      .spec b { color: #0f172a; font-weight: 600; }
+      .spec ul { margin: 0; padding-left: 1.15rem; }
+      .spec li { margin: 0.3rem 0; }
+      .spec code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px; background: #e8edf3; padding: 0 0.25em;
+        border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc"
+      login-hint="hdml.github@gmail.com">
+    </hdml-io>
+
+    <!-- ========================================================
+         THE MODEL. One scan produces one wide row per stock; the
+         cross join against two parallel ARRAYS unpivots those six
+         measures into six rows, and the window functions then
+         min-max normalise each measure across the five stocks. 30
+         rows out.
+
+         `count_if(c &gt; o)` is cast to double before the division on
+         purpose: `avg(if(c &gt; o, 1.0, 0.0))` would average a DECIMAL
+         and Trino would round the result to one decimal place —
+         every stock would come back 0.5, the spread would be zero,
+         the nullif would fire and the whole `upside` spoke would be
+         NULL. That is a real bug this page was written through.
+         ======================================================== -->
+    <hdml-model name="maang_profile">
+      <hdml-table
+        name="m"
+        type="query"
+        description="Six measures per stock, min-max normalised to 0..10 across the five."
+        identifier="select b.metric as metric, b.sym as sym,
+  10e0 * (b.val - min(b.val) over (partition by b.metric))
+       / nullif(max(b.val) over (partition by b.metric) - min(b.val) over (partition by b.metric), 0) as score
+from (
+  select w.sym as sym, u.metric as metric, u.val as val
+  from (
+    select sym,
+      avg(v) as volume,
+      avg(c * v) as turnover,
+      avg((h - l) / l) as volatility,
+      avg(c) as price,
+      cast(count_if(c &gt; o) as double) / count(1) as upside,
+      max_by(c, d) / min_by(c, d) as growth
+    from (
+      select
+        s.sym as sym,
+        s.date as d,
+        cast(s.open as double) as o,
+        cast(s.high as double) as h,
+        cast(s.low as double) as l,
+        cast(s.close as double) as c,
+        cast(s.volume as double) as v
+      from (
+        select 'Amazon' as sym, date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`amazon`
+        union all select 'Apple', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`apple`
+        union all select 'Google', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`google`
+        union all select 'Microsoft', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`microsoft`
+        union all select 'Netflix', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`netflix`
+      ) s
+    ) t
+    group by sym
+  ) w
+  cross join unnest(
+    array['growth','price','turnover','upside','volatility','volume'],
+    array[w.growth, w.price, w.turnover, w.upside, w.volatility, w.volume]
+  ) as u (metric, val)
+) b">
+        <hdml-field name="metric"></hdml-field>
+        <hdml-field name="sym"></hdml-field>
+        <hdml-field name="score"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+
+    <hdml-frame name="aapl_profile" source="?hdml-model=maang_profile">
+      <hdml-field name="metric" origin="m_metric"></hdml-field>
+      <hdml-field name="score" origin="m_score"></hdml-field>
+      <hdml-filter-by>
+        <hdml-connective operator="and">
+          <hdml-filter type="named" name="equals"
+                       field="`m_sym`" values="'Apple'"></hdml-filter>
+        </hdml-connective>
+      </hdml-filter-by>
+      <hdml-sort-by><hdml-field name="metric" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <hdml-frame name="nflx_profile" source="?hdml-model=maang_profile">
+      <hdml-field name="metric" origin="m_metric"></hdml-field>
+      <hdml-field name="score" origin="m_score"></hdml-field>
+      <hdml-filter-by>
+        <hdml-connective operator="and">
+          <hdml-filter type="named" name="equals"
+                       field="`m_sym`" values="'Netflix'"></hdml-filter>
+        </hdml-connective>
+      </hdml-filter-by>
+      <hdml-sort-by><hdml-field name="metric" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <header class="page-intro">
+      <h1>10 — Radar: two subscribed series on one loop</h1>
+      <p>Both series are subscribed — one frame each, over one model, distinguished by an <code>hdml-filter-by</code>. The mock corpus drew one literal series and one bound one; this folder has no literals, so it is two bound ones, which is the same "multi-source stays legal per widget" claim.</p>
+      <p><b>The scores are ranks, not magnitudes.</b> Each measure is min-max normalised <i>across the five MAANG stocks</i> to 0–10, so a 10 means "the highest of these five" and a 0 means "the lowest of these five" — never "good", never an absolute. Microsoft is the 0 on growth and it still multiplied. Min-max across five points is a ranking dressed up as a measurement, and the figure cannot say so by itself.</p>
+      <p>Row order must match the angle domain, because path segments connect rows in row order. Both frames sort by <code>metric</code> ascending and the scale's literal <code>values</code> is that same alphabetical list.</p>
+    </header>
+
+    <figure>
+      <figcaption id="cap-radar">Apple (blue) vs. Netflix (red) — six measures, each
+        ranked 0–10 across the five MAANG stocks</figcaption>
+      <hdml-view aria-labelledby="cap-radar">
+        <hdml-polar-plane>
+          <hdml-ordinal-scale channel="angle"
+            values='["growth","price","turnover","upside","volatility","volume"]'>
+            <hdml-continuous-scale channel="radius" min="0" max="10">
+              <hdml-grid channel="radius" count="5"></hdml-grid>
+              <hdml-grid channel="angle"></hdml-grid>
+              <hdml-label channel="angle"></hdml-label>
+              <hdml-label channel="radius" count="5"></hdml-label>
+
+              <hdml-area class="aapl" closed
+                angle="metric" r0="0" r1="score"
+                source="?hdml-frame=aapl_profile"></hdml-area>
+              <hdml-line class="aapl" closed
+                angle="metric" radius="score"
+                source="?hdml-frame=aapl_profile"></hdml-line>
+
+              <hdml-area class="nflx" closed
+                angle="metric" r0="0" r1="score"
+                source="?hdml-frame=nflx_profile"></hdml-area>
+              <hdml-line class="nflx" closed
+                angle="metric" radius="score"
+                source="?hdml-frame=nflx_profile"></hdml-line>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>Apple vs. Netflix on six measures</h3>
+        <p><b>Renders.</b> Two closed polygons over six spokes: growth, price, turnover, upside, volatility, volume.</p>
+        <p><b>Grammar.</b> <code>hdml-polar-plane</code> → <code>hdml-ordinal-scale channel="angle"</code> with <code>--hdml-bandwidth: 0</code> (point placement — spokes sit <i>on</i> the category, which is what a polygon connects) → <code>hdml-continuous-scale channel="radius" min="0" max="10"</code>. Four marks: an <code>hdml-area</code> and an <code>hdml-line</code> per series, all four carrying <code>closed</code> and their own <code>source</code>. The radius grid is <code>--hdml-grid-shape: polygon</code>, so rings are hexagons, not circles.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li><b>Two</b> closed polygons — translucent blue (Apple) and translucent red (Netflix) — each outlined in its solid colour, and each loop must <b>close</b>: no gap between the last spoke and the first.</li>
+          <li>Apple, clockwise from 12 o'clock (growth): <b>6.04, 0.00, 10.00, 10.00, 3.72, 10.00</b>.</li>
+          <li>Netflix, same order: <b>10.00, 10.00, 0.00, 0.00, 10.00, 0.00</b>.</li>
+          <li><b>The two are near-complements.</b> Apple owns the three liquidity spokes (turnover, upside, volume) and sits on the floor at price; Netflix owns price, growth and volatility and sits on the floor at all three liquidity spokes. The overlap should be small and concentrated near the growth spoke.</li>
+          <li>Four vertices touch the exact centre (Apple at price; Netflix at turnover, upside, volume) and six touch the outer ring.</li>
+          <li>Six labelled spokes and five polygon rings, 0 through 10.</li>
+          <li>Netflix's growth score is <code>10.000000000000002</code> — floating point — so that vertex may sit a hair outside the outer ring. That is arithmetic, not a bug.</li>
+        </ul>
+      </section>
+    </figure>
+  </body>
+</html>

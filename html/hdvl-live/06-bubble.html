@@ -1,0 +1,210 @@
+<!doctype html>
+<!--
+  06 — Bubble, over live data
+
+  ON-PAGE SPEC. What each figure represents technically, and what to
+  check when you look at it, is now VISIBLE CONTENT — the `.spec`
+  block beside each figure. This comment keeps the authoring
+  rationale; the numbers and the checklist live in the page.
+
+  LIVE twin of html/hdvl/06-bubble.html. The scatterplot's fourth
+  and fifth dimensions on the same 114 stock-years page 05 plots:
+
+    x     mean daily volume        (shares)
+    y     mean daily range         (high − low) / low
+    size  mean daily turnover      close × volume, in dollars
+    color the stock                (five categories)
+
+  All four bound channels resolve to four scales in scope (V1), and
+  the size scale is `type="sqrt"` so that AREA is proportional to
+  value — the only perceptually honest mapping for a disc. Range
+  comes from --hdml-size-min / --hdml-size-max, in CSS px, because a
+  radius is a length and lengths are CSS.
+
+  WHAT THE PICTURE SAYS. Turnover runs $4.33 M to $14.58 bn a day,
+  a factor of 3 370, so the size channel does most of the talking:
+  Apple's late bubbles are the largest on the page while sitting at
+  the LEFT of it, because its share count collapsed as its price
+  rose. Netflix is the opposite corner — smallest bubbles, highest
+  range (up to 9.5 %). The 5-entry palette matches the 5-value
+  domain exactly; a sixth stock would be palette exhaustion, which
+  is an error and not a silently reused colour.
+
+  ROW ORDER IS PAINT ORDER, so the frame sorts turnover DESCENDING:
+  the big discs land first and the small ones stay visible on top.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>06 — Bubble (live)</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0; max-width: 760px; }
+
+      hdml-view { width: 100%; height: 380px; }
+      hdml-cartesian-plane { padding: 16px 130px 40px 64px; }
+      hdml-continuous-scale[channel="x"] { padding: 0 12px; }
+      hdml-continuous-scale[channel="y"] { padding: 12px 0; }
+
+      hdml-axis[channel="x"] { position: absolute; left: 0; right: 0; bottom: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="y"] { position: absolute; top: 0; bottom: 0; left: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-grid { --hdml-line-width: 1px; --hdml-line-style: dotted;
+        --hdml-line-color: #e2e8f0; }
+      hdml-label { --hdml-font-size: 11px; }
+      hdml-label[channel="x"] { position: absolute; left: 0; right: 0; top: 100%; }
+      hdml-label[channel="y"] { position: absolute; top: 0; bottom: 0; right: 100%; }
+      hdml-legend { position: absolute; top: 8px; left: 100%;
+        width: 120px; --hdml-font-size: 11px; }
+
+      /* size range lives on the size-channel scale */
+      hdml-continuous-scale[channel="size"] { --hdml-size-min: 4px; --hdml-size-max: 28px; }
+      hdml-ordinal-scale[channel="color"] {
+        --hdml-palette: #1c8cf4 #f59e0b #10b981 #8b5cf6 #ef4444; }
+
+      hdml-point { --hdml-tick-style: ellipse; --hdml-line-width: 1px;
+        --hdml-line-color: #0f172a40; }
+
+      /* ---- validation notes: prose only, no hdml-* selector ---- */
+      .page-intro { max-width: 780px; margin: 0 0 2.5rem; }
+      .page-intro h1 { font-size: 1.4rem; margin: 0 0 0.6rem;
+        letter-spacing: -0.01em; color: #0f172a; }
+      .page-intro p { margin: 0 0 0.7rem; color: #334155;
+        font-size: 14px; line-height: 1.6; }
+      .spec { margin: 1rem 0 0; padding: 0.9rem 1.1rem;
+        border-left: 3px solid #cbd5e1; background: #f8fafc;
+        font-size: 13px; line-height: 1.55; color: #334155; }
+      .spec h3 { margin: 0 0 0.6rem; font-size: 11px; font-weight: 600;
+        letter-spacing: 0.09em; text-transform: uppercase; color: #64748b; }
+      .spec p { margin: 0 0 0.6rem; }
+      .spec b { color: #0f172a; font-weight: 600; }
+      .spec ul { margin: 0; padding-left: 1.15rem; }
+      .spec li { margin: 0.3rem 0; }
+      .spec code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px; background: #e8edf3; padding: 0 0.25em;
+        border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc"
+      login-hint="hdml.github@gmail.com">
+    </hdml-io>
+
+    <!-- ========================================================
+         THE MODEL. One row per (stock, trading day): the five
+         MAANG tables unioned into long form and cast out of the
+         varchar they are stored in. Every numeric column is cast
+         to `double` on purpose — see the type note in the header.
+         ======================================================== -->
+    <hdml-model name="maang_daily">
+      <hdml-table
+        name="p"
+        type="query"
+        description="One row per (stock, trading day), the five MAANG tables unioned and cast."
+        identifier="select
+  s.sym as sym,
+  s.date as d,
+  cast(substr(s.date, 1, 4) as integer) as yr,
+  substr(s.date, 1, 7) || '-01' as ym,
+  format_datetime(cast(s.date as date), 'MMM') as mon,
+  cast(substr(s.date, 6, 2) as integer) as mnum,
+  cast(s.open as double) as o,
+  cast(s.high as double) as h,
+  cast(s.low as double) as l,
+  cast(s.close as double) as c,
+  cast(s.volume as double) as v,
+  cast(s.close as double) * cast(s.volume as double) as dv
+from (
+  select 'Amazon' as sym, date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`amazon`
+  union all select 'Apple', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`apple`
+  union all select 'Google', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`google`
+  union all select 'Microsoft', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`microsoft`
+  union all select 'Netflix', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`netflix`
+) s">
+        <hdml-field name="sym"></hdml-field>
+        <hdml-field name="d"></hdml-field>
+        <hdml-field name="yr"></hdml-field>
+        <hdml-field name="ym"></hdml-field>
+        <hdml-field name="mon"></hdml-field>
+        <hdml-field name="mnum"></hdml-field>
+        <hdml-field name="o"></hdml-field>
+        <hdml-field name="h"></hdml-field>
+        <hdml-field name="l"></hdml-field>
+        <hdml-field name="c"></hdml-field>
+        <hdml-field name="v"></hdml-field>
+        <hdml-field name="dv"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+    <hdml-frame name="sym_year" source="?hdml-model=maang_daily">
+      <hdml-field name="sym" origin="p_sym"></hdml-field>
+      <!-- a DIMENSION, not a measure: `yr` is one of the two group
+           keys below, and hdml-group-by emits the field's own SQL —
+           an `aggregation` here would put `min("p_yr")` inside the
+           GROUP BY, which Trino rejects. -->
+      <hdml-field name="yr" origin="p_yr"></hdml-field>
+      <hdml-field name="volume" origin="p_v" aggregation="avg"></hdml-field>
+      <hdml-field name="range" type="float-64"
+        clause="avg((`p_h` - `p_l`) / nullif(`p_l`, 0))"></hdml-field>
+      <hdml-field name="turnover" origin="p_dv" aggregation="avg"></hdml-field>
+      <hdml-group-by>
+        <hdml-field name="sym"></hdml-field>
+        <hdml-field name="yr"></hdml-field>
+      </hdml-group-by>
+      <!-- paint order: the largest discs first -->
+      <hdml-sort-by><hdml-field name="turnover" order="desc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <header class="page-intro">
+      <h1>06 — Bubble: four channels, four scales</h1>
+      <p>The same 114 stock-years as page 05, with two more channels bound. All four resolve to four scales in scope (V1): x and y are continuous, <code>size</code> is a continuous <code>sqrt</code> scale and <code>color</code> is ordinal.</p>
+      <p>The size scale is <code>type="sqrt"</code> so that <b>area</b> is proportional to value — the only perceptually honest mapping for a disc. Its range is <code>--hdml-size-min</code>/<code>-max</code> in CSS px, because a radius is a length and lengths are CSS.</p>
+    </header>
+
+    <figure>
+      <figcaption id="cap-bubble">Volume vs. daily range; bubble area = dollar turnover;
+        color = stock</figcaption>
+      <hdml-view aria-labelledby="cap-bubble">
+        <hdml-cartesian-plane source="?hdml-frame=sym_year">
+          <hdml-continuous-scale channel="x" min="0" values="volume" nice>
+            <hdml-continuous-scale channel="y" min="0" values="range" nice>
+              <hdml-continuous-scale channel="size" type="sqrt" min="0" values="turnover" nice>
+                <hdml-ordinal-scale channel="color" values="sym">
+                  <hdml-grid channel="x" count="6"></hdml-grid>
+                  <hdml-grid channel="y" count="5"></hdml-grid>
+                  <hdml-axis channel="x"></hdml-axis>
+                  <hdml-axis channel="y"></hdml-axis>
+                  <hdml-label channel="x" count="6" format="compact-short"></hdml-label>
+                  <hdml-label channel="y" count="5" format="percent precision-integer"></hdml-label>
+
+                  <hdml-point x="volume" y="range"
+                              size="turnover" color="sym"></hdml-point>
+
+                  <hdml-legend channel="color"></hdml-legend>
+                </hdml-ordinal-scale>
+              </hdml-continuous-scale>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>Volume × range × turnover × stock</h3>
+        <p><b>Renders.</b> x = mean daily volume, y = mean daily range, disc area = mean daily dollar turnover, fill = the stock.</p>
+        <p><b>Grammar.</b> Four nested scales — <code>x</code>, <code>y</code>, <code>size</code> (sqrt), <code>color</code> (ordinal, domain subscribed to the <code>sym</code> column) — one <code>hdml-point</code> binding all four, and one <code>hdml-legend channel="color"</code>. The frame sorts turnover <b>descending</b>, because row order is paint order and the big discs must land first.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>114 discs in <b>five</b> colours, sized between 4px and 28px.</li>
+          <li>Turnover spans <b>$4.33 M to $14.58 bn</b> a day — a factor of 3 370 — so the size channel does most of the talking.</li>
+          <li><b>Apple's largest discs sit at the LEFT of the plot</b>, not the right: its share count collapsed as its price rose, so its biggest dollar years are its lowest volume years. This is the page's finding.</li>
+          <li>Netflix is the opposite corner — the smallest discs, and the highest range values (up to 9.50 %).</li>
+          <li>Small discs must be visible <i>on top of</i> large ones. If a small disc is buried, the descending sort is not being honoured.</li>
+          <li>The legend lists five stocks, each swatch matching its discs. A sixth stock would exhaust the five-entry palette, which is an error and not a silently reused colour.</li>
+        </ul>
+      </section>
+    </figure>
+  </body>
+</html>

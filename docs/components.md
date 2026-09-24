@@ -174,6 +174,22 @@ One predicate. Always nested under `hdml-connective`.
 | `name` | `type=named` — one of `equals \| not-equals \| contains \| not-contains \| starts-with \| ends-with \| greater \| greater-equal \| less \| less-equal \| is-null \| is-not-null \| between` |
 | `field`, `values` | `type=named` |
 
+**`values` is emitted verbatim.** `getNamedFilterSQL` in `@hdml/stringifier`
+interpolates the value straight into the predicate — it does **not** quote, escape or type
+it. A string value must therefore carry its own SQL quotes and a number must not:
+
+```html
+<hdml-filter type="named" name="equals"        field="`sym`" values="'Apple'"></hdml-filter>
+<hdml-filter type="named" name="greater-equal" field="`yr`"  values="2018"></hdml-filter>
+```
+
+`values="Apple"` produces `sym = Apple`, which Trino resolves as a **column reference** and
+rejects — the frame fails at query time with no authoring diagnostic. `field` takes an
+identifier and is written in backticks like every other identifier-bearing attribute.
+`contains` / `starts-with` / `ends-with` are the exception: they parse the quotes off the
+value and rebuild the literal around a `like` pattern, so they require the quoted form and
+emit `false` without it.
+
 ### `hdml-frame` — [src/hdql/HdmlFrame.ts](../src/hdql/HdmlFrame.ts)
 
 A derived dataset on top of an `hdml-model` or another `hdml-frame`.
@@ -214,6 +230,25 @@ Marker container for row filters inside `hdml-frame`. No attributes.
 Group rows by one or more fields. No attributes.
 
 **Required children:** ≥1 `hdml-field`.
+
+**A group key must not carry `aggregation`.** `getFrameSQL` sorts the frame's fields
+**alphabetically by name** into the `SELECT`, then emits `GROUP BY` and `ORDER BY` as
+**ordinal positions** into that sorted list. So a field that is both a group key and carries
+`aggregation="min"` produces `GROUP BY min("yr")`, and Trino answers
+`GROUP BY clause cannot contain aggregations`. A group key is a **dimension** — plain
+`origin` or `clause`, no `aggregation`:
+
+```html
+<!-- the year as a band domain, with a numeric sort key beside it -->
+<hdml-field name="label" type="utf-8" clause="cast(`yr` as varchar)"></hdml-field>
+<hdml-field name="ord"   origin="yr" aggregation="min"></hdml-field>
+<hdml-group-by><hdml-field name="label"></hdml-field></hdml-group-by>
+<hdml-sort-by><hdml-field name="ord" order="asc"></hdml-field></hdml-sort-by>
+```
+
+`aggregation="min"` is legal on `ord` precisely because `ord` is **not** in the group-by —
+ordering by an aggregate is fine. Because the ordinals index the *sorted* list, renaming a
+field can silently re-point a `GROUP BY`; the generated SQL is the thing to read.
 
 ### `hdml-sort-by` — [src/hdql/HdmlSortBy.ts](../src/hdql/HdmlSortBy.ts)
 

@@ -1,0 +1,269 @@
+<!doctype html>
+<!--
+  01 — Line chart, over live data
+
+  ON-PAGE SPEC. What each figure represents technically, and what to
+  check when you look at it, is now VISIBLE CONTENT — the `.spec`
+  block beside each figure. This comment keeps the authoring
+  rationale; the numbers and the checklist live in the page.
+
+  LIVE twin of html/hdvl/01-line.html. The mock's two figures of
+  commentary survive intact; what changed is that both series now
+  come from the server, and from TWO DIFFERENT DOCUMENTS:
+
+    - Apple  — an in-page model (`maang_daily`) and a frame over it,
+      the DYNAMIC-document path;
+    - Microsoft — a frame over the tenant's STATIC document,
+      /maang.html?hdml-frame=maang_stock_frame, which is a
+      frame-on-frame and therefore reads its parent's columns by
+      their BARE names (a model-sourced frame would read the
+      compound {table}_{field}).
+
+  That is the mock's "two sources in one chart" made real, and it is
+  the one page in this folder that exercises both document paths at
+  once. tenant-a's access.yml grants the static pair by exact path
+  and grants the dynamic classes wholesale; if the Microsoft line is
+  the only thing missing, look there first.
+
+  THE DATETIME SCALE DOES NOT SUBSCRIBE — and this is the load-
+  bearing difference from the mock, which wrote `values="month"`.
+  HDIO's Arrow writer has four kinds and a Trino DATE falls through
+  to STRING, so a date column arrives as text; text on
+  hdml-datetime-scale is V2, a kind mismatch, and the figure would
+  refuse to render rather than mislead. The domain is therefore
+  AUTHORED (`min`/`max`, zone-less, read as UTC per §4.2) and the
+  MARKS bind the ISO string column, which projects through the same
+  `instantOf` a literal does. Both endpoints are known here — the
+  frames are bounded by their own filters — so rule 1 authors them
+  honestly rather than as a workaround.
+
+  THE NUMBERS. Mean monthly close, 63 months from 2018-01 to
+  2023-03. Apple runs 38.54 → 173.55; Microsoft 90.08 → 335.87. The
+  red rule sits at $200: Microsoft crosses it in 2021 and stays
+  above, Apple never reaches it — which is what the two series being
+  on ONE authored y domain (0…360) is there to let you see.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>01 — Line (live)</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0; max-width: 760px; }
+
+      hdml-view { width: 100%; height: 360px; }
+      hdml-cartesian-plane { padding: 16px 24px 40px 64px; }
+
+      /* Each scale pads only its own axis (layout-neutral nesting). */
+      hdml-datetime-scale[channel="x"] { padding: 0 8px; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+
+      /* Guides: placement is pure CSS — the x-axis box sits at the bottom. */
+      hdml-axis[channel="x"] { position: absolute; left: 0; right: 0; bottom: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="y"] { position: absolute; top: 0; bottom: 0; left: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-grid[channel="y"] { --hdml-line-width: 1px; --hdml-line-style: dotted;
+        --hdml-line-color: #cbd5e1; }
+      hdml-tick { --hdml-tick-style: rect; --hdml-tick-width: 1px;
+        --hdml-tick-height: 6px; --hdml-fill-color: #64748b; }
+      hdml-tick[channel="x"] { position: absolute; left: 0; right: 0; bottom: 0; }
+      hdml-tick[channel="y"] { position: absolute; top: 0; bottom: 0; left: 0; }
+      hdml-label { --hdml-font-size: 11px; --hdml-font-family: inherit; }
+      hdml-label[channel="x"] { position: absolute; left: 0; right: 0; top: 100%; }
+      hdml-label[channel="y"] { position: absolute; top: 0; bottom: 0; right: 100%; }
+
+      /* Marks */
+      hdml-line { --hdml-line-width: 2px; --hdml-line-color: #1c8cf4;
+        --hdml-curve-type: linear; }
+      hdml-line.second { --hdml-line-color: #94a3b8; --hdml-line-style: dashed; }
+      hdml-rule { --hdml-line-width: 1px; --hdml-line-style: dashed;
+        --hdml-line-color: #dc2626; }
+
+      /* ---- validation notes: prose only, no hdml-* selector ---- */
+      .page-intro { max-width: 780px; margin: 0 0 2.5rem; }
+      .page-intro h1 { font-size: 1.4rem; margin: 0 0 0.6rem;
+        letter-spacing: -0.01em; color: #0f172a; }
+      .page-intro p { margin: 0 0 0.7rem; color: #334155;
+        font-size: 14px; line-height: 1.6; }
+      .spec { margin: 1rem 0 0; padding: 0.9rem 1.1rem;
+        border-left: 3px solid #cbd5e1; background: #f8fafc;
+        font-size: 13px; line-height: 1.55; color: #334155; }
+      .spec h3 { margin: 0 0 0.6rem; font-size: 11px; font-weight: 600;
+        letter-spacing: 0.09em; text-transform: uppercase; color: #64748b; }
+      .spec p { margin: 0 0 0.6rem; }
+      .spec b { color: #0f172a; font-weight: 600; }
+      .spec ul { margin: 0; padding-left: 1.15rem; }
+      .spec li { margin: 0.3rem 0; }
+      .spec code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px; background: #e8edf3; padding: 0 0.25em;
+        border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc"
+      login-hint="hdml.github@gmail.com">
+    </hdml-io>
+
+    <!-- ========================================================
+         THE MODEL. One row per (stock, trading day): the five
+         MAANG tables unioned into long form and cast out of the
+         varchar they are stored in. Every numeric column is cast
+         to `double` on purpose — see the type note in the header.
+         ======================================================== -->
+    <hdml-model name="maang_daily">
+      <hdml-table
+        name="p"
+        type="query"
+        description="One row per (stock, trading day), the five MAANG tables unioned and cast."
+        identifier="select
+  s.sym as sym,
+  s.date as d,
+  cast(substr(s.date, 1, 4) as integer) as yr,
+  substr(s.date, 1, 7) || '-01' as ym,
+  format_datetime(cast(s.date as date), 'MMM') as mon,
+  cast(substr(s.date, 6, 2) as integer) as mnum,
+  cast(s.open as double) as o,
+  cast(s.high as double) as h,
+  cast(s.low as double) as l,
+  cast(s.close as double) as c,
+  cast(s.volume as double) as v,
+  cast(s.close as double) * cast(s.volume as double) as dv
+from (
+  select 'Amazon' as sym, date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`amazon`
+  union all select 'Apple', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`apple`
+  union all select 'Google', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`google`
+  union all select 'Microsoft', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`microsoft`
+  union all select 'Netflix', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`netflix`
+) s">
+        <hdml-field name="sym"></hdml-field>
+        <hdml-field name="d"></hdml-field>
+        <hdml-field name="yr"></hdml-field>
+        <hdml-field name="ym"></hdml-field>
+        <hdml-field name="mon"></hdml-field>
+        <hdml-field name="mnum"></hdml-field>
+        <hdml-field name="o"></hdml-field>
+        <hdml-field name="h"></hdml-field>
+        <hdml-field name="l"></hdml-field>
+        <hdml-field name="c"></hdml-field>
+        <hdml-field name="v"></hdml-field>
+        <hdml-field name="dv"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+    <!-- SOURCE 1 — the dynamic path. Apple's mean monthly close.
+         The filter is a ROW filter (a WHERE, not a HAVING) and it
+         needs exactly one hdml-connective child; its `field`s are
+         the model's compound {table}_{field} names. -->
+    <hdml-frame name="aapl_monthly" source="?hdml-model=maang_daily">
+      <hdml-field name="month" origin="p_ym"></hdml-field>
+      <hdml-field name="close" origin="p_c" aggregation="avg"></hdml-field>
+
+      <hdml-filter-by>
+        <hdml-connective operator="and">
+          <hdml-filter type="named" name="equals"
+                       field="`p_sym`" values="'Apple'"></hdml-filter>
+          <hdml-filter type="named" name="greater-equal"
+                       field="`p_yr`" values="2018"></hdml-filter>
+        </hdml-connective>
+      </hdml-filter-by>
+
+      <hdml-group-by>
+        <hdml-field name="month"></hdml-field>
+      </hdml-group-by>
+
+      <!-- ISO month strings sort lexicographically in calendar
+           order, so no separate numeric sort key is needed here -->
+      <hdml-sort-by>
+        <hdml-field name="month" order="asc"></hdml-field>
+      </hdml-sort-by>
+    </hdml-frame>
+
+    <!-- SOURCE 2 — the static path. The tenant document's frame is
+         one row per trading day with `year` / `month` / `day` as
+         three smallints and NO date column, so the ISO month is
+         assembled here. Bare column names: this frame's parent is a
+         FRAME, not a model. -->
+    <hdml-frame name="msft_monthly"
+                source="/maang.html?hdml-frame=maang_stock_frame">
+      <hdml-field name="month"
+        clause="cast(`year` as varchar) || '-' || lpad(cast(`month` as varchar), 2, '0') || '-01'"></hdml-field>
+      <hdml-field name="close" origin="microsoft_close" aggregation="avg"></hdml-field>
+
+      <hdml-filter-by>
+        <hdml-connective operator="and">
+          <hdml-filter type="named" name="greater-equal"
+                       field="`year`" values="2018"></hdml-filter>
+        </hdml-connective>
+      </hdml-filter-by>
+
+      <hdml-group-by>
+        <hdml-field name="month"></hdml-field>
+      </hdml-group-by>
+
+      <hdml-sort-by>
+        <hdml-field name="month" order="asc"></hdml-field>
+      </hdml-sort-by>
+    </hdml-frame>
+
+    <header class="page-intro">
+      <h1>01 — Line: two documents, one chart</h1>
+      <p>Two series drawn from <b>two different documents</b> on one pair of scales. Apple comes from this page's own model — the dynamic-document path. Microsoft comes from the tenant's static document <code>/maang.html?hdml-frame=maang_stock_frame</code>, which is a frame over a frame and therefore reads its parent's columns by their bare names. The two legs are granted by different halves of <code>access.yml</code>, so a missing Microsoft line and a missing Apple line mean different things.</p>
+      <p>The x scale <b>does not subscribe</b>. A Trino <code>DATE</code> reaches the browser as a string column and a string column on <code>hdml-datetime-scale</code> is a V2 kind mismatch, so the domain is authored and the marks carry the ISO strings.</p>
+    </header>
+
+    <figure>
+      <figcaption id="cap-close">Mean monthly close, Apple vs. Microsoft — $200 in red</figcaption>
+      <hdml-view aria-labelledby="cap-close">
+        <hdml-cartesian-plane source="?hdml-frame=aapl_monthly">
+          <!-- AUTHORED, not subscribed — see the header. Zone-less
+               ISO reads as UTC (§4.2). -->
+          <hdml-datetime-scale channel="x" min="2018-01-01" max="2023-03-01">
+            <!-- Three things share this axis (two stocks and a
+                 literal rule), so no single column is the right
+                 ceiling — rule 1 authors it. -->
+            <hdml-continuous-scale channel="y" min="0" max="360">
+              <hdml-grid channel="y" count="5"></hdml-grid>
+
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+
+              <hdml-tick channel="x" count="6"></hdml-tick>
+              <hdml-tick channel="y" count="5"></hdml-tick>
+
+              <hdml-label channel="x" count="6" format="yMMM"></hdml-label>
+              <hdml-label channel="y" count="5" format="currency/USD compact-short"></hdml-label>
+
+              <!-- inherits the source from the plane -->
+              <hdml-line x="month" y="close"></hdml-line>
+
+              <!-- second row set: source override on the widget -->
+              <hdml-line class="second" x="month" y="close"
+                         source="?hdml-frame=msft_monthly"></hdml-line>
+
+              <!-- numeric scalar constant → horizontal reference line -->
+              <hdml-rule y="200"></hdml-rule>
+            </hdml-continuous-scale>
+          </hdml-datetime-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>Mean monthly close, Apple vs. Microsoft</h3>
+        <p><b>Renders.</b> 63 monthly points per series, 2018-01 through 2023-03.</p>
+        <p><b>Grammar.</b> <code>hdml-datetime-scale channel="x"</code> (authored <code>2018-01-01 … 2023-03-01</code>, zone-less so read as UTC) → <code>hdml-continuous-scale channel="y"</code> (authored <code>0…360</code>, because three things share the axis and no one column is the right ceiling) → grid, two axes, two tick sets, two label sets, two <code>hdml-line</code> marks and one <code>hdml-rule</code>. The second line overrides <code>source</code> on the widget itself.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li><b>Two</b> lines: solid blue (Apple) and dashed grey (Microsoft). If only the blue one is there, the static-document leg failed — check the tenant's static grant.</li>
+          <li>Blue runs <b>38.54 → 173.55</b> over the window; grey runs <b>90.08 → 335.87</b>. Grey is above blue for the whole span.</li>
+          <li>A dashed red horizontal rule at <b>$200</b>. Grey crosses it during 2021 and stays above; blue never reaches it.</li>
+          <li>Both lines span the full plot width — 2018-01 at the left edge, 2023-03 at the right. A line that stops short, or bunches at one end, means the ISO strings are not parsing.</li>
+          <li>Six x labels in <code>yMMM</code> form ("Jan 2018"), five y labels as compact USD.</li>
+          <li>The curve is <code>linear</code> — straight segments between months, no smoothing.</li>
+        </ul>
+      </section>
+    </figure>
+  </body>
+</html>

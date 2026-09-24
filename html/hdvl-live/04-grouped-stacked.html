@@ -1,0 +1,441 @@
+<!doctype html>
+<!--
+  04 — Grouped + stacked bars, over live data
+
+  ON-PAGE SPEC. What each figure represents technically, and what to
+  check when you look at it, is now VISIBLE CONTENT — the `.spec`
+  block beside each figure. This comment keeps the authoring
+  rationale; the numbers and the checklist live in the page.
+
+  LIVE twin of html/hdvl/04-grouped-stacked.html. Five figures, one
+  wide frame, and the same claim throughout: grouped ↔ stacked is a
+  TAG RENAME and nothing else. A, B, C and D below have byte-
+  identical children; only the container and the y domain differ.
+
+  THE DATA. Annual share volume for three of the five stocks —
+  Amazon, Apple, Microsoft — over the ten complete years 2013–2022.
+  Google and Netflix are left out on purpose: three series is what
+  the mock had, and a 3-entry palette against a 3-value domain is
+  the case where palette exhaustion CANNOT hide.
+
+    year  Amazon   Apple  Microsoft    total
+    2013  14.96bn 102.42bn   12.25bn 129.63bn
+    2017  17.65bn  27.24bn    5.63bn  50.53bn
+    2022  19.10bn  22.07bn    7.84bn  49.00bn
+
+  Apple's 2013 bar is the tallest single series value in the set
+  (102.42 bn shares) and the whole decade is a decline — 2013's
+  total is 2.8× 2021's. On the normalized figure (C) that decline
+  vanishes completely and Apple's SHARE is what you see instead:
+  79 % in 2013, 45 % in 2022. Two honest charts, opposite readings,
+  same numbers — which is the reason C is in the corpus.
+
+  E — CLUSTERED STACKS, the only legal nesting (V17). The two slots
+  are the two halves of the year: January–June on the left, July–
+  December on the right. 2013 H1 alone is 73.45 bn shares, so the
+  ceiling is authored at 80 bn.
+
+  TWO DOMAIN-ONLY FIELDS. `series_max` (the tallest INDIVIDUAL bar)
+  and `total` (the tallest STACK) exist because a stack never feeds
+  a scale (SPEC §7) and there is no widget-union fallback. No widget
+  binds either.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>04 — Grouped &amp; stacked bars (live)</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0 0 3rem; max-width: 760px; }
+
+      hdml-view { width: 100%; height: 300px; }
+      hdml-cartesian-plane { padding: 16px 120px 40px 64px; }
+      hdml-ordinal-scale[channel="x"] { padding: 0 16px; --hdml-bandwidth: 0.75; }
+      /* band↔point is one scale: bandwidth 0 puts marks on the boundary,
+         which is what an area/line wants (SPEC §6). */
+      hdml-ordinal-scale.points { --hdml-bandwidth: 0; }
+      /* curve properties are read from the stack, not its children — band
+         k's top is band k+1's baseline (SPEC §7); inert on bar stacks */
+      hdml-stack { --hdml-curve-type: natural; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+
+      hdml-axis[channel="x"] { position: absolute; left: 0; right: 0; bottom: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="y"] { position: absolute; top: 0; bottom: 0; left: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-label { --hdml-font-size: 11px; }
+      hdml-label[channel="x"] { position: absolute; left: 0; right: 0; top: 100%; }
+      hdml-label[channel="y"] { position: absolute; top: 0; bottom: 0; right: 100%; }
+
+      /* hdml-legend is the color-channel legend; placed right of the plot */
+      hdml-legend { position: absolute; top: 8px; left: 100%;
+        width: 110px; --hdml-font-size: 11px; }
+
+      /* the palette is the color channel's range source */
+      hdml-ordinal-scale[channel="color"] { --hdml-palette: #1c8cf4 #f59e0b #10b981; }
+
+      /* ---- validation notes: prose only, no hdml-* selector ---- */
+      .page-intro { max-width: 780px; margin: 0 0 2.5rem; }
+      .page-intro h1 { font-size: 1.4rem; margin: 0 0 0.6rem;
+        letter-spacing: -0.01em; color: #0f172a; }
+      .page-intro p { margin: 0 0 0.7rem; color: #334155;
+        font-size: 14px; line-height: 1.6; }
+      .spec { margin: 1rem 0 0; padding: 0.9rem 1.1rem;
+        border-left: 3px solid #cbd5e1; background: #f8fafc;
+        font-size: 13px; line-height: 1.55; color: #334155; }
+      .spec h3 { margin: 0 0 0.6rem; font-size: 11px; font-weight: 600;
+        letter-spacing: 0.09em; text-transform: uppercase; color: #64748b; }
+      .spec p { margin: 0 0 0.6rem; }
+      .spec b { color: #0f172a; font-weight: 600; }
+      .spec ul { margin: 0; padding-left: 1.15rem; }
+      .spec li { margin: 0.3rem 0; }
+      .spec code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px; background: #e8edf3; padding: 0 0.25em;
+        border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc"
+      login-hint="hdml.github@gmail.com">
+    </hdml-io>
+
+    <!-- ========================================================
+         THE MODEL. One row per (stock, trading day): the five
+         MAANG tables unioned into long form and cast out of the
+         varchar they are stored in. Every numeric column is cast
+         to `double` on purpose — see the type note in the header.
+         ======================================================== -->
+    <hdml-model name="maang_daily">
+      <hdml-table
+        name="p"
+        type="query"
+        description="One row per (stock, trading day), the five MAANG tables unioned and cast."
+        identifier="select
+  s.sym as sym,
+  s.date as d,
+  cast(substr(s.date, 1, 4) as integer) as yr,
+  substr(s.date, 1, 7) || '-01' as ym,
+  format_datetime(cast(s.date as date), 'MMM') as mon,
+  cast(substr(s.date, 6, 2) as integer) as mnum,
+  cast(s.open as double) as o,
+  cast(s.high as double) as h,
+  cast(s.low as double) as l,
+  cast(s.close as double) as c,
+  cast(s.volume as double) as v,
+  cast(s.close as double) * cast(s.volume as double) as dv
+from (
+  select 'Amazon' as sym, date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`amazon`
+  union all select 'Apple', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`apple`
+  union all select 'Google', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`google`
+  union all select 'Microsoft', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`microsoft`
+  union all select 'Netflix', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`netflix`
+) s">
+        <hdml-field name="sym"></hdml-field>
+        <hdml-field name="d"></hdml-field>
+        <hdml-field name="yr"></hdml-field>
+        <hdml-field name="ym"></hdml-field>
+        <hdml-field name="mon"></hdml-field>
+        <hdml-field name="mnum"></hdml-field>
+        <hdml-field name="o"></hdml-field>
+        <hdml-field name="h"></hdml-field>
+        <hdml-field name="l"></hdml-field>
+        <hdml-field name="c"></hdml-field>
+        <hdml-field name="v"></hdml-field>
+        <hdml-field name="dv"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+    <!-- Wide pivot: stacking and clustering over KNOWN series =
+         columns (author-time knowledge). Band scales take strings,
+         so the year is cast here and the numeric sort key is kept
+         beside it. -->
+    <hdml-frame name="yearly_wide" source="?hdml-model=maang_daily">
+      <hdml-field name="label" type="utf-8" clause="cast(`p_yr` as varchar)"></hdml-field>
+      <hdml-field name="ord" origin="p_yr" aggregation="min"></hdml-field>
+
+      <!-- A–D: the full year, one column per series -->
+      <hdml-field name="amzn" type="float-64"
+        clause="sum(if(`p_sym` = 'Amazon', `p_v`, 0))"></hdml-field>
+      <hdml-field name="aapl" type="float-64"
+        clause="sum(if(`p_sym` = 'Apple', `p_v`, 0))"></hdml-field>
+      <hdml-field name="msft" type="float-64"
+        clause="sum(if(`p_sym` = 'Microsoft', `p_v`, 0))"></hdml-field>
+
+      <!-- E only: the same pivot split into the two halves of the year -->
+      <hdml-field name="amzn_h1" type="float-64"
+        clause="sum(if(`p_sym` = 'Amazon' and `p_mnum` &lt;= 6, `p_v`, 0))"></hdml-field>
+      <hdml-field name="aapl_h1" type="float-64"
+        clause="sum(if(`p_sym` = 'Apple' and `p_mnum` &lt;= 6, `p_v`, 0))"></hdml-field>
+      <hdml-field name="msft_h1" type="float-64"
+        clause="sum(if(`p_sym` = 'Microsoft' and `p_mnum` &lt;= 6, `p_v`, 0))"></hdml-field>
+      <hdml-field name="amzn_h2" type="float-64"
+        clause="sum(if(`p_sym` = 'Amazon' and `p_mnum` &gt; 6, `p_v`, 0))"></hdml-field>
+      <hdml-field name="aapl_h2" type="float-64"
+        clause="sum(if(`p_sym` = 'Apple' and `p_mnum` &gt; 6, `p_v`, 0))"></hdml-field>
+      <hdml-field name="msft_h2" type="float-64"
+        clause="sum(if(`p_sym` = 'Microsoft' and `p_mnum` &gt; 6, `p_v`, 0))"></hdml-field>
+
+      <!-- Two domain-only fields. No widget binds either: they exist so
+           the y scale has something to subscribe to (rule 2), since
+           there is no widget-union fallback — and a stack never feeds a
+           scale (SPEC §7).
+           series_max — tallest INDIVIDUAL bar, for the clustered chart.
+           total      — tallest STACK, for the stacked charts. -->
+      <hdml-field name="series_max" type="float-64"
+        clause="greatest(
+                  sum(if(`p_sym` = 'Amazon', `p_v`, 0)),
+                  sum(if(`p_sym` = 'Apple', `p_v`, 0)),
+                  sum(if(`p_sym` = 'Microsoft', `p_v`, 0)))"></hdml-field>
+      <hdml-field name="total" type="float-64"
+        clause="sum(if(`p_sym` in ('Amazon', 'Apple', 'Microsoft'), `p_v`, 0))"></hdml-field>
+
+      <hdml-filter-by>
+        <hdml-connective operator="and">
+          <hdml-filter type="named" name="greater-equal"
+                       field="`p_yr`" values="2013"></hdml-filter>
+          <hdml-filter type="named" name="less-equal"
+                       field="`p_yr`" values="2022"></hdml-filter>
+        </hdml-connective>
+      </hdml-filter-by>
+
+      <hdml-group-by><hdml-field name="label"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="ord" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <header class="page-intro">
+      <h1>04 — Grouped and stacked: one rename apart</h1>
+      <p><b>A, B, C and D have byte-identical children.</b> Only the container tag and the y domain change. That is the claim the page exists to test: grouped ↔ stacked is not a mode flag, a config object or a different chart type — it is <code>hdml-cluster</code> vs <code>hdml-stack</code>.</p>
+      <p>Annual share volume for Amazon, Apple and Microsoft over the ten complete years 2013–2022. Google and Netflix are left out so that three series meet a three-entry palette exactly — the case where a palette-exhaustion bug cannot hide.</p>
+      <p>Two fields exist purely to feed scales and are bound by no widget: <code>series_max</code> (the tallest individual bar) and <code>total</code> (the tallest stack). A stack never feeds a scale, and there is no widget-union fallback.</p>
+    </header>
+
+    <figure>
+      <figcaption id="cap-grouped">A — grouped: hdml-cluster derives dodge slots from its
+        children; series identity via string constants</figcaption>
+      <hdml-view aria-labelledby="cap-grouped">
+        <hdml-cartesian-plane source="?hdml-frame=yearly_wide">
+          <hdml-ordinal-scale channel="x" values="label">
+            <!-- grouped: each bar is one series value ⇒ series_max -->
+            <!-- nice="5" rounds the DERIVED ceiling to the same step the
+                 labels use; the authored min="0" is never moved (V15) -->
+            <hdml-continuous-scale channel="y" min="0" values="series_max" nice="5">
+              <hdml-ordinal-scale channel="color" values='["Amazon","Apple","Microsoft"]'>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+
+                <!-- the cluster hoists the shared x — children never bind
+                     it (V6). Slot = child index, slots = child count,
+                     derived from structure (SPEC §7): no slot CSS. -->
+                <hdml-cluster x="label">
+                  <hdml-bar y="amzn" color='"Amazon"'></hdml-bar>
+                  <hdml-bar y="aapl" color='"Apple"'></hdml-bar>
+                  <hdml-bar y="msft" color='"Microsoft"'></hdml-bar>
+                </hdml-cluster>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>A — grouped</h3>
+        <p><b>Renders.</b> Three bars side by side in each year's band.</p>
+        <p><b>Grammar.</b> <code>hdml-cluster x="label"</code> hoists the shared x; its three <code>hdml-bar</code> children bind only <code>y</code> and a string constant on <code>color</code>. Slot and slot-count come from child order and child count — there is no slot CSS. The y domain subscribes to <code>series_max</code> with <code>nice="5"</code>.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>Ten bands, each with <b>three</b> bars in a fixed order: Amazon (blue), Apple (amber), Microsoft (green).</li>
+          <li>Apple's 2013 bar is the tallest thing on the page at <b>102.42 bn</b>; it must not touch the axis top, because <code>nice</code> rounds the derived ceiling upward.</li>
+          <li>2013 reads Amazon <b>14.96</b>, Apple <b>102.42</b>, Microsoft <b>12.25</b> bn; 2022 reads <b>19.10 / 22.07 / 7.84</b>.</li>
+          <li>Microsoft is the shortest bar in all ten years.</li>
+          <li>A three-entry legend to the right of the plot, in the same order and the same colours as the bars.</li>
+        </ul>
+      </section>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-stacked">B — stacked: the same children, a different container
+        (grouped ↔ stacked is one tag rename)</figcaption>
+      <hdml-view aria-labelledby="cap-stacked">
+        <hdml-cartesian-plane source="?hdml-frame=yearly_wide">
+          <hdml-ordinal-scale channel="x" values="label">
+            <!-- stacked: the bar reaches the stack sum ⇒ total -->
+            <hdml-continuous-scale channel="y" min="0" values="total" nice="5">
+              <hdml-ordinal-scale channel="color" values='["Amazon","Apple","Microsoft"]'>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+
+                <!-- the stack supplies each child's baseline (per row,
+                     y0ₖ = Σ of preceding siblings' y — SPEC §7); child
+                     order = stack order, bottom-up. -->
+                <hdml-stack x="label">
+                  <hdml-bar y="amzn" color='"Amazon"'></hdml-bar>
+                  <hdml-bar y="aapl" color='"Apple"'></hdml-bar>
+                  <hdml-bar y="msft" color='"Microsoft"'></hdml-bar>
+                </hdml-stack>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>B — stacked</h3>
+        <p><b>Renders.</b> The same three series accumulated into one bar per year.</p>
+        <p><b>Grammar.</b> <code>hdml-stack</code> in place of <code>hdml-cluster</code>; the children are unchanged. The stack supplies each child's baseline per row, bottom-up in document order. The y domain now subscribes to <code>total</code>.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>Ten single bars, each in three colours, Amazon at the bottom.</li>
+          <li>The tallest is 2013 at <b>129.63 bn</b>; the shortest is 2021 at <b>46.44 bn</b>.</li>
+          <li>Each band's total must equal the sum of A's three bars for that band — check 2013: 14.96 + 102.42 + 12.25 = 129.63.</li>
+          <li>The axis ceiling is higher than A's, because it is derived from a different column.</li>
+          <li>Segment order is bottom-up in document order; the legend still reads top-down Amazon, Apple, Microsoft.</li>
+        </ul>
+      </section>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-normalized">C — 100% stacked (offset="normalize"): the decline
+        disappears and the share is what is left</figcaption>
+      <hdml-view aria-labelledby="cap-normalized">
+        <hdml-cartesian-plane source="?hdml-frame=yearly_wide">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="1">
+              <hdml-ordinal-scale channel="color"
+                values='["Amazon","Apple","Microsoft"]'>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5" format="percent precision-integer"></hdml-label>
+                <!-- offset is a parameter of the relation, so it lives on
+                     the container (SPEC §7) -->
+                <hdml-stack x="label" offset="normalize">
+                  <hdml-bar y="amzn" color='"Amazon"'></hdml-bar>
+                  <hdml-bar y="aapl" color='"Apple"'></hdml-bar>
+                  <hdml-bar y="msft" color='"Microsoft"'></hdml-bar>
+                </hdml-stack>
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>C — 100 % stacked</h3>
+        <p><b>Renders.</b> The same stack with <code>offset="normalize"</code>: every bar is full height and only the proportions vary.</p>
+        <p><b>Grammar.</b> <code>hdml-stack x="label" offset="normalize"</code>. The offset is a parameter of the relation, so it lives on the container. The y domain is authored <code>0…1</code> and the labels use the <code>percent</code> stem.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>All ten bars are <b>exactly the same height</b> and fill the plot vertically.</li>
+          <li>Apple's share falls from <b>79 %</b> in 2013 to <b>45 %</b> in 2022.</li>
+          <li><b>The decade-long decline visible in B disappears completely here.</b> Same numbers, opposite reading — that is why this figure is in the corpus.</li>
+          <li>y labels read 0 %, 25 %, 50 %, 75 %, 100 % (or the tick algorithm's five equivalents).</li>
+          <li>No gaps at the top of any bar: the three segments must sum to exactly 1.</li>
+        </ul>
+      </section>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-stacked-area">D — stacked area: same container, area-shaped
+        children</figcaption>
+      <hdml-view aria-labelledby="cap-stacked-area">
+        <hdml-cartesian-plane source="?hdml-frame=yearly_wide">
+          <hdml-ordinal-scale class="points" channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" values="total" nice="5">
+              <hdml-ordinal-scale channel="color" values='["Amazon","Apple","Microsoft"]'>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+                <!-- children bind y in SIMPLE form only (V6): the stack
+                     owns the baseline, superseding area's y0="0" sugar.
+                     The curve comes from the stack (page CSS above). -->
+                <hdml-stack x="label">
+                  <hdml-area y="amzn" color='"Amazon"'></hdml-area>
+                  <hdml-area y="aapl" color='"Apple"'></hdml-area>
+                  <hdml-area y="msft" color='"Microsoft"'></hdml-area>
+                </hdml-stack>
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>D — stacked area</h3>
+        <p><b>Renders.</b> The same container over area-shaped children.</p>
+        <p><b>Grammar.</b> <code>hdml-stack</code> with <code>hdml-area</code> children. The children bind <code>y</code> in simple form only — the stack owns the baseline, superseding the area's own <code>y0="0"</code> sugar. The curve is read from the <b>stack</b>, not its children (<code>--hdml-curve-type: natural</code>), and the band scale is set to bandwidth 0 so vertices land on boundaries rather than band centres.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>Three stacked filled bands, not bars, with vertices <b>on</b> the year positions.</li>
+          <li>The top edge traces the same silhouette as B's bar tops: 129.63 bn at 2013 down to 46.44 bn at 2021.</li>
+          <li>The outline is smoothed (<code>natural</code>), and a natural spline can overshoot — a slight bulge between two years is the curve.</li>
+          <li>The first and last bands touch the left and right plot edges, because bandwidth 0 puts the first and last vertices on the boundary.</li>
+          <li>Same three colours, same legend.</li>
+        </ul>
+      </section>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-clustered">E — clustered stacks: first half of the year in the
+        left slot, second half in the right (hdml-stack inside
+        hdml-cluster — the only legal nesting, V17)</figcaption>
+      <hdml-view aria-labelledby="cap-clustered">
+        <hdml-cartesian-plane source="?hdml-frame=yearly_wide">
+          <hdml-ordinal-scale channel="x" values="label">
+            <!-- two stacks share the band: no single column is the right
+                 ceiling, so the axis authors it — SPEC §6's documented
+                 multi-source-axis pattern. 2013 H1 is 73.45 bn. -->
+            <hdml-continuous-scale channel="y" min="0" max="80000000000">
+              <hdml-ordinal-scale channel="color" values='["Amazon","Apple","Microsoft"]'>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+
+                <!-- the OUTERMOST container hoists x for the whole
+                     composition — the stacks and their bars never bind
+                     it (V6) -->
+                <hdml-cluster x="label">
+                  <hdml-stack>
+                    <hdml-bar y="amzn_h1" color='"Amazon"'></hdml-bar>
+                    <hdml-bar y="aapl_h1" color='"Apple"'></hdml-bar>
+                    <hdml-bar y="msft_h1" color='"Microsoft"'></hdml-bar>
+                  </hdml-stack>
+                  <hdml-stack>
+                    <hdml-bar y="amzn_h2" color='"Amazon"'></hdml-bar>
+                    <hdml-bar y="aapl_h2" color='"Apple"'></hdml-bar>
+                    <hdml-bar y="msft_h2" color='"Microsoft"'></hdml-bar>
+                  </hdml-stack>
+                </hdml-cluster>
+
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>E — clustered stacks</h3>
+        <p><b>Renders.</b> Two stacks per year: the first half of the year on the left, the second half on the right.</p>
+        <p><b>Grammar.</b> <code>hdml-stack</code> inside <code>hdml-cluster</code> — the only legal nesting (V17). The <b>outermost</b> container hoists <code>x</code>; neither the stacks nor the six bars bind it. The y domain is authored <code>0…80 bn</code> because two stacks share the band and no single column is the ceiling.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>Ten bands, each with <b>two</b> three-colour stacks.</li>
+          <li>The tallest stack is <b>2013 H1 at 73.45 bn</b>, against the authored 80 bn ceiling.</li>
+          <li>H1 is taller than H2 in seven of the ten years; <b>2015 and 2018 are the exceptions</b> (41.84 vs 38.63, and 37.11 vs 33.34).</li>
+          <li>Colour order within every stack is identical, and matches the single legend.</li>
+          <li>The two stacks in a band must not overlap, and the pair must sit inside its band with gutters either side.</li>
+        </ul>
+      </section>
+    </figure>
+  </body>
+</html>

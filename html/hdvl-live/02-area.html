@@ -1,0 +1,278 @@
+<!doctype html>
+<!--
+  02 — Area chart, over live data
+
+  ON-PAGE SPEC. What each figure represents technically, and what to
+  check when you look at it, is now VISIBLE CONTENT — the `.spec`
+  block beside each figure. This comment keeps the authoring
+  rationale; the numbers and the checklist live in the page.
+
+  LIVE twin of html/hdvl/02-area.html. The mock was deliberately
+  server-free; this one is deliberately the opposite, because the
+  point of the folder is to put every shape on data that can be
+  wrong. What it keeps from the mock is the pair of forms:
+
+    A — a NUMERIC area with a constant baseline (y0="0" broadcast
+        to every row), over a datetime x;
+    B — a CATEGORICAL band area: y0 is a STRING scalar constant
+        broadcast to every row, y1 is a column of category names,
+        and hdml-rule takes a category too. Both endpoints live on
+        the same band scale, so the kinds match (V2).
+
+  A — NETFLIX, MEAN DAILY VOLUME BY MONTH, 2019-01 … 2023-03.
+  51 months. The shape is real and it is the company's story: a flat
+  2.5–7.4 M through 2021 — the quietest stretch in the series, bottoming
+  at 2.49 M in August 2021 — then 12.08 M in January 2022 and a
+  20.17 M spike in April 2022, the month the first subscriber loss in
+  a decade was reported. The ceiling is authored at 22 M so the
+  spike has somewhere to go.
+
+  The x domain is AUTHORED, not subscribed: a Trino DATE arrives as
+  a STRING column and text on hdml-datetime-scale is V2. See
+  00-minimal's header for the whole type note; the marks bind the
+  ISO string and project through `instantOf`.
+
+  B — APPLE'S VOLUME BAND, YEAR BY YEAR. The four bands are a
+  ladder, and the area runs from the floor band to the band Apple's
+  mean daily volume actually fell in that year. It rises through
+  2005–2008 — the only four stock-years in the whole dataset whose
+  mean daily volume clears 600 M all belong to Apple, and 2008's
+  1.13 bn is the high-water mark — and descends to "under 100M" from 2021 — the
+  same decline 07 shows in numbers, told as a staircase. The red
+  rule marks the "300M-600M" band.
+
+  The band STRINGS are authored twice — once in the scale's literal
+  `values`, once in the SQL `case` — and they must match byte for
+  byte. That is a real failure mode of this shape and it is left
+  visible on purpose.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>02 — Area (live)</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0 0 3rem; max-width: 760px; }
+
+      /* no height: the view's default aspect-ratio: 2/1 (SPEC §3) sizes it.
+         Every other page sets one explicitly — this is the one that proves
+         width alone is enough. */
+      hdml-view { width: 100%; }
+      hdml-cartesian-plane { padding: 16px 24px 40px 56px; }
+      hdml-datetime-scale[channel="x"], hdml-continuous-scale[channel="x"] { padding: 0 8px; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+      hdml-ordinal-scale[channel="y"] { padding: 16px 0; }
+
+      hdml-axis[channel="x"] { position: absolute; left: 0; right: 0; bottom: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="y"] { position: absolute; top: 0; bottom: 0; left: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-label { --hdml-font-size: 11px; }
+      hdml-label[channel="x"] { position: absolute; left: 0; right: 0; top: 100%; }
+      hdml-label[channel="y"] { position: absolute; top: 0; bottom: 0; right: 100%; }
+
+      hdml-area { --hdml-fill-color: #7ebcf6; --hdml-curve-type: natural; }
+      hdml-line {
+        --hdml-line-width: 2px;
+        --hdml-line-color: #1c8cf4;
+        --hdml-curve-type: natural;
+      }
+      hdml-rule {
+        --hdml-line-width: 1px;
+        --hdml-line-style: dashed;
+        --hdml-line-color: #dc2626;
+      }
+
+      /* ---- validation notes: prose only, no hdml-* selector ---- */
+      .page-intro { max-width: 780px; margin: 0 0 2.5rem; }
+      .page-intro h1 { font-size: 1.4rem; margin: 0 0 0.6rem;
+        letter-spacing: -0.01em; color: #0f172a; }
+      .page-intro p { margin: 0 0 0.7rem; color: #334155;
+        font-size: 14px; line-height: 1.6; }
+      .spec { margin: 1rem 0 0; padding: 0.9rem 1.1rem;
+        border-left: 3px solid #cbd5e1; background: #f8fafc;
+        font-size: 13px; line-height: 1.55; color: #334155; }
+      .spec h3 { margin: 0 0 0.6rem; font-size: 11px; font-weight: 600;
+        letter-spacing: 0.09em; text-transform: uppercase; color: #64748b; }
+      .spec p { margin: 0 0 0.6rem; }
+      .spec b { color: #0f172a; font-weight: 600; }
+      .spec ul { margin: 0; padding-left: 1.15rem; }
+      .spec li { margin: 0.3rem 0; }
+      .spec code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px; background: #e8edf3; padding: 0 0.25em;
+        border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc"
+      login-hint="hdml.github@gmail.com">
+    </hdml-io>
+
+    <!-- ========================================================
+         THE MODEL. One row per (stock, trading day): the five
+         MAANG tables unioned into long form and cast out of the
+         varchar they are stored in. Every numeric column is cast
+         to `double` on purpose — see the type note in the header.
+         ======================================================== -->
+    <hdml-model name="maang_daily">
+      <hdml-table
+        name="p"
+        type="query"
+        description="One row per (stock, trading day), the five MAANG tables unioned and cast."
+        identifier="select
+  s.sym as sym,
+  s.date as d,
+  cast(substr(s.date, 1, 4) as integer) as yr,
+  substr(s.date, 1, 7) || '-01' as ym,
+  format_datetime(cast(s.date as date), 'MMM') as mon,
+  cast(substr(s.date, 6, 2) as integer) as mnum,
+  cast(s.open as double) as o,
+  cast(s.high as double) as h,
+  cast(s.low as double) as l,
+  cast(s.close as double) as c,
+  cast(s.volume as double) as v,
+  cast(s.close as double) * cast(s.volume as double) as dv
+from (
+  select 'Amazon' as sym, date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`amazon`
+  union all select 'Apple', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`apple`
+  union all select 'Google', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`google`
+  union all select 'Microsoft', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`microsoft`
+  union all select 'Netflix', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`netflix`
+) s">
+        <hdml-field name="sym"></hdml-field>
+        <hdml-field name="d"></hdml-field>
+        <hdml-field name="yr"></hdml-field>
+        <hdml-field name="ym"></hdml-field>
+        <hdml-field name="mon"></hdml-field>
+        <hdml-field name="mnum"></hdml-field>
+        <hdml-field name="o"></hdml-field>
+        <hdml-field name="h"></hdml-field>
+        <hdml-field name="l"></hdml-field>
+        <hdml-field name="c"></hdml-field>
+        <hdml-field name="v"></hdml-field>
+        <hdml-field name="dv"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+    <!-- A — Netflix, mean daily volume per month, 2019 onward. -->
+    <hdml-frame name="nflx_monthly" source="?hdml-model=maang_daily">
+      <hdml-field name="month" origin="p_ym"></hdml-field>
+      <hdml-field name="volume" origin="p_v" aggregation="avg"></hdml-field>
+      <hdml-filter-by>
+        <hdml-connective operator="and">
+          <hdml-filter type="named" name="equals"
+                       field="`p_sym`" values="'Netflix'"></hdml-filter>
+          <hdml-filter type="named" name="greater-equal"
+                       field="`p_yr`" values="2019"></hdml-filter>
+        </hdml-connective>
+      </hdml-filter-by>
+      <hdml-group-by><hdml-field name="month"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="month" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- B — Apple's mean daily volume, bucketed into a four-rung
+         ladder. The `case` is an aggregate expression over the
+         year's mean, which is legal because the GROUP BY names only
+         `year`. -->
+    <hdml-frame name="aapl_band" source="?hdml-model=maang_daily">
+      <hdml-field name="year" origin="p_yr"></hdml-field>
+      <hdml-field name="band" type="utf-8"
+        clause="case
+          when avg(`p_v`) &lt; 100e6 then 'under 100M'
+          when avg(`p_v`) &lt; 300e6 then '100M-300M'
+          when avg(`p_v`) &lt; 600e6 then '300M-600M'
+          else 'over 600M'
+        end"></hdml-field>
+      <hdml-filter-by>
+        <hdml-connective operator="and">
+          <hdml-filter type="named" name="equals"
+                       field="`p_sym`" values="'Apple'"></hdml-filter>
+        </hdml-connective>
+      </hdml-filter-by>
+      <hdml-group-by><hdml-field name="year"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="year" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <header class="page-intro">
+      <h1>02 — Area: a numeric baseline and a categorical one</h1>
+      <p>Two forms of the same element. <b>A</b> is the ordinary numeric area: <code>y0="0"</code> is a scalar broadcast to every row. <b>B</b> is the categorical form — <code>y0</code> is a <i>string</i> constant, <code>y1</code> is a column of category names, and both land on the same band scale, so the kinds match (V2).</p>
+      <p>This page also proves that width alone sizes a view: neither figure sets a height, so both take the default 2:1 aspect ratio.</p>
+    </header>
+
+    <figure>
+      <figcaption id="cap-numeric">A — numeric area, constant baseline: Netflix mean daily
+        volume by month</figcaption>
+      <hdml-view aria-labelledby="cap-numeric">
+        <hdml-cartesian-plane source="?hdml-frame=nflx_monthly">
+          <!-- authored endpoints — the marks carry the ISO strings -->
+          <hdml-datetime-scale channel="x" min="2019-01-01" max="2023-03-01">
+            <hdml-continuous-scale channel="y" min="0" max="22000000">
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-label channel="x" count="5" format="yMMM"></hdml-label>
+              <hdml-label channel="y" count="4" format="compact-short"></hdml-label>
+
+              <!-- y0: numeric scalar broadcast to every row -->
+              <hdml-area x="month" y0="0" y1="volume"></hdml-area>
+              <hdml-line x="month" y="volume"></hdml-line>
+            </hdml-continuous-scale>
+          </hdml-datetime-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>A — Netflix mean daily volume by month</h3>
+        <p><b>Renders.</b> 51 monthly points, 2019-01 through 2023-03: the company's quietest stretch and then the 2022 collapse.</p>
+        <p><b>Grammar.</b> <code>hdml-datetime-scale channel="x"</code> (authored <code>2019-01-01 … 2023-03-01</code>) → <code>hdml-continuous-scale channel="y"</code> (authored <code>0…22000000</code>) → axes, labels, one <code>hdml-area</code> with a constant <code>y0</code> and one <code>hdml-line</code> over the same two columns. Curve type <code>natural</code> on both.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>A filled band from the zero line up to the series, with a darker line riding exactly on its top edge. The line must not float above or sink below the fill.</li>
+          <li>The tallest point is <b>April 2022 at 20.17 M</b> — the month the first subscriber loss in a decade was reported — reaching ~92 % of the 22 M ceiling.</li>
+          <li>The lowest point is <b>August 2021 at 2.49 M</b>; the whole of 2021 sits in a 2.5–7.4 M trough.</li>
+          <li>January 2022 steps up to <b>12.08 M</b> before the April spike.</li>
+          <li><code>natural</code> curve: the outline is smooth, and because a natural spline overshoots it may dip slightly below zero between low points. That is the curve, not a bug.</li>
+        </ul>
+      </section>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-band">B — area between categories (band y), string constant
+        baseline: Apple's volume band by year</figcaption>
+      <hdml-view aria-labelledby="cap-band">
+        <hdml-cartesian-plane source="?hdml-frame=aapl_band">
+          <hdml-continuous-scale channel="x" min="2000" max="2023">
+            <hdml-ordinal-scale channel="y"
+              values='["under 100M","100M-300M","300M-600M","over 600M"]'>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-label channel="x" count="6" format="precision-integer"></hdml-label>
+              <hdml-label channel="y"></hdml-label>
+
+              <!-- y0: string scalar broadcast. Both endpoints are
+                   categories on the band scale (kinds match, V2). -->
+              <hdml-area x="year" y0='"under 100M"' y1="band"></hdml-area>
+
+              <!-- a categorical reference line -->
+              <hdml-rule y='"300M-600M"'></hdml-rule>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>B — Apple's volume band, year by year</h3>
+        <p><b>Renders.</b> 24 yearly points, 2000–2023, each placed on one of four named volume bands rather than on a number.</p>
+        <p><b>Grammar.</b> <code>hdml-continuous-scale channel="x"</code> (authored <code>2000…2023</code>) → <code>hdml-ordinal-scale channel="y"</code> with a literal four-value domain → axes, labels, one <code>hdml-area</code> with <code>y0='"under 100M"'</code> (a string scalar) and <code>y1="band"</code> (a column), plus one <code>hdml-rule</code> bound to a category.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>A staircase, not a curve: the top edge steps between four discrete heights and the bottom edge stays pinned to the <code>under 100M</code> band.</li>
+          <li>It rises to <b>over 600M</b> for 2005–2008 — the only four stock-years in the whole dataset above 600 M mean daily volume, all Apple's — and returns to <b>under 100M</b> from 2021.</li>
+          <li><b>2003 is a one-year dip</b> to <code>100M-300M</code> inside an otherwise flat 2000–2004 run at <code>300M-600M</code>. Easy to miss, and a good test of band placement.</li>
+          <li>A dashed red rule across the <code>300M-600M</code> band.</li>
+          <li>Four y labels, bottom to top: <code>under 100M</code>, <code>100M-300M</code>, <code>300M-600M</code>, <code>over 600M</code>. The band strings are authored twice — in the scale's literal <code>values</code> and in the SQL <code>case</code> — so a mismatch shows up as an empty chart, not a warning.</li>
+        </ul>
+      </section>
+    </figure>
+  </body>
+</html>

@@ -1,0 +1,227 @@
+<!doctype html>
+<!--
+  05 — Scatter, over live data
+
+  ON-PAGE SPEC. What each figure represents technically, and what to
+  check when you look at it, is now VISIBLE CONTENT — the `.spec`
+  block beside each figure. This comment keeps the authoring
+  rationale; the numbers and the checklist live in the page.
+
+  LIVE twin of html/hdvl/05-scatter.html. One frame, 114 points: one
+  per (stock, year) over 2000–2023, five stocks and up to 24 years
+  each (Google starts in 2004, Netflix in 2002).
+
+  A — MEAN DAILY VOLUME against MEAN DAILY RANGE, where range is
+  (high − low) / low for the day. The cloud runs 3.9 M … 1.13 bn
+  shares on x and 1.23 % … 9.50 % on y. The `step="0.02"` grid and
+  the `step="0.02"` labels share an interval on purpose — a `step`
+  states the interval exactly and invokes no tick algorithm, so the
+  two cannot drift apart.
+
+  B — THE SAME x, LOG y: mean close price. This is the figure that
+  needs the log, and it is not decoration: mean close per company-
+  year runs from $0.33 to $558.20, four orders of magnitude, because
+  the prices are split-adjusted at the source and the early Apple
+  and Amazon years sit near zero. On a linear axis every point below
+  $50 lands on the axis line. `nice` on a log scale rounds to the
+  enclosing power of the base, so the domain becomes [0.1, 1000].
+
+  NO `min="0"` ON THE LOG SCALE. A log domain that touches zero is a
+  V2 error and projects nothing; the linear figure above carries the
+  `min="0"` and this one deliberately does not.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>05 — Scatter (live)</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0 0 3rem; max-width: 720px; }
+
+      hdml-view { width: 100%; height: 340px; }
+      hdml-cartesian-plane { padding: 16px 24px 40px 64px; }
+      /* one tag for linear + log: this was two selectors before the merge */
+      hdml-continuous-scale[channel="x"] { padding: 0 8px; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+
+      hdml-axis[channel="x"] { position: absolute; left: 0; right: 0; bottom: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="y"] { position: absolute; top: 0; bottom: 0; left: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-grid { --hdml-line-width: 1px; --hdml-line-style: dotted;
+        --hdml-line-color: #e2e8f0; }
+      hdml-label { --hdml-font-size: 11px; }
+      hdml-label[channel="x"] { position: absolute; left: 0; right: 0; top: 100%; }
+      hdml-label[channel="y"] { position: absolute; top: 0; bottom: 0; right: 100%; }
+
+      hdml-point { --hdml-tick-style: ellipse; --hdml-tick-width: 8px;
+        --hdml-tick-height: 8px; --hdml-fill-color: #1c8cf480;
+        --hdml-line-width: 1px; --hdml-line-color: #1c8cf4; }
+
+      /* ---- validation notes: prose only, no hdml-* selector ---- */
+      .page-intro { max-width: 780px; margin: 0 0 2.5rem; }
+      .page-intro h1 { font-size: 1.4rem; margin: 0 0 0.6rem;
+        letter-spacing: -0.01em; color: #0f172a; }
+      .page-intro p { margin: 0 0 0.7rem; color: #334155;
+        font-size: 14px; line-height: 1.6; }
+      .spec { margin: 1rem 0 0; padding: 0.9rem 1.1rem;
+        border-left: 3px solid #cbd5e1; background: #f8fafc;
+        font-size: 13px; line-height: 1.55; color: #334155; }
+      .spec h3 { margin: 0 0 0.6rem; font-size: 11px; font-weight: 600;
+        letter-spacing: 0.09em; text-transform: uppercase; color: #64748b; }
+      .spec p { margin: 0 0 0.6rem; }
+      .spec b { color: #0f172a; font-weight: 600; }
+      .spec ul { margin: 0; padding-left: 1.15rem; }
+      .spec li { margin: 0.3rem 0; }
+      .spec code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px; background: #e8edf3; padding: 0 0.25em;
+        border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc"
+      login-hint="hdml.github@gmail.com">
+    </hdml-io>
+
+    <!-- ========================================================
+         THE MODEL. One row per (stock, trading day): the five
+         MAANG tables unioned into long form and cast out of the
+         varchar they are stored in. Every numeric column is cast
+         to `double` on purpose — see the type note in the header.
+         ======================================================== -->
+    <hdml-model name="maang_daily">
+      <hdml-table
+        name="p"
+        type="query"
+        description="One row per (stock, trading day), the five MAANG tables unioned and cast."
+        identifier="select
+  s.sym as sym,
+  s.date as d,
+  cast(substr(s.date, 1, 4) as integer) as yr,
+  substr(s.date, 1, 7) || '-01' as ym,
+  format_datetime(cast(s.date as date), 'MMM') as mon,
+  cast(substr(s.date, 6, 2) as integer) as mnum,
+  cast(s.open as double) as o,
+  cast(s.high as double) as h,
+  cast(s.low as double) as l,
+  cast(s.close as double) as c,
+  cast(s.volume as double) as v,
+  cast(s.close as double) * cast(s.volume as double) as dv
+from (
+  select 'Amazon' as sym, date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`amazon`
+  union all select 'Apple', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`apple`
+  union all select 'Google', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`google`
+  union all select 'Microsoft', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`microsoft`
+  union all select 'Netflix', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`netflix`
+) s">
+        <hdml-field name="sym"></hdml-field>
+        <hdml-field name="d"></hdml-field>
+        <hdml-field name="yr"></hdml-field>
+        <hdml-field name="ym"></hdml-field>
+        <hdml-field name="mon"></hdml-field>
+        <hdml-field name="mnum"></hdml-field>
+        <hdml-field name="o"></hdml-field>
+        <hdml-field name="h"></hdml-field>
+        <hdml-field name="l"></hdml-field>
+        <hdml-field name="c"></hdml-field>
+        <hdml-field name="v"></hdml-field>
+        <hdml-field name="dv"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+    <!-- One row per (stock, year). 114 rows. -->
+    <hdml-frame name="sym_year" source="?hdml-model=maang_daily">
+      <hdml-field name="sym" origin="p_sym"></hdml-field>
+      <!-- a DIMENSION, not a measure: `yr` is one of the two group
+           keys below, and hdml-group-by emits the field's own SQL —
+           an `aggregation` here would put `min("p_yr")` inside the
+           GROUP BY, which Trino rejects. -->
+      <hdml-field name="yr" origin="p_yr"></hdml-field>
+      <hdml-field name="volume" origin="p_v" aggregation="avg"></hdml-field>
+      <hdml-field name="range" type="float-64"
+        clause="avg((`p_h` - `p_l`) / nullif(`p_l`, 0))"></hdml-field>
+      <hdml-field name="price" origin="p_c" aggregation="avg"></hdml-field>
+      <hdml-group-by>
+        <hdml-field name="sym"></hdml-field>
+        <hdml-field name="yr"></hdml-field>
+      </hdml-group-by>
+      <hdml-sort-by>
+        <hdml-field name="sym" order="asc"></hdml-field>
+      </hdml-sort-by>
+    </hdml-frame>
+
+    <header class="page-intro">
+      <h1>05 — Scatter: one cloud, two y scales</h1>
+      <p>One frame, 114 points — one per (stock, year) over 2000–2023, five stocks and up to 24 years each; Google starts in 2004 and Netflix in 2002, which is why it is 114 and not 120.</p>
+      <p><b>B is the figure that needs the log</b>, and not for decoration: mean close per stock-year spans four orders of magnitude, because the prices are split-adjusted at source and the early Apple and Amazon years sit near zero. Note that B carries <b>no</b> <code>min="0"</code> — a log domain that touches zero is a V2 error and projects nothing.</p>
+    </header>
+
+    <figure>
+      <figcaption id="cap-scatter">A — mean daily volume vs. mean daily range, per stock-year</figcaption>
+      <hdml-view aria-labelledby="cap-scatter">
+        <hdml-cartesian-plane source="?hdml-frame=sym_year">
+          <hdml-continuous-scale channel="x" min="0" values="volume" nice>
+            <hdml-continuous-scale channel="y" min="0" values="range" nice>
+              <hdml-grid channel="x" count="6"></hdml-grid>
+              <!-- step= states the interval exactly and invokes no tick
+                   algorithm (SPEC §7); grid and label share it so they align -->
+              <hdml-grid channel="y" step="0.02"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-label channel="x" count="6" format="compact-short"></hdml-label>
+              <hdml-label channel="y" step="0.02" format="percent precision-integer"></hdml-label>
+              <hdml-point x="volume" y="range"></hdml-point>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>A — volume against daily range</h3>
+        <p><b>Renders.</b> Mean daily share volume (x) against mean daily (high − low) ÷ low (y), per stock-year.</p>
+        <p><b>Grammar.</b> Two <code>hdml-continuous-scale</code>s, both <code>min="0" … nice</code>, with one <code>hdml-point</code>. The y grid and the y labels both use <code>step="0.02"</code>: a step states the interval exactly and invokes no tick algorithm, so the two cannot drift apart.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>114 semi-transparent blue discs, 8px, all the same size — this is the figure where size is <i>not</i> a channel.</li>
+          <li>x spans 0 to a rounded ceiling above <b>1.13 bn</b> (Apple 2008, the rightmost point); y spans 0 to a rounded ceiling above <b>9.50 %</b>.</li>
+          <li><b>Every y gridline has a label beside it and vice versa.</b> A gridline without a label means the shared <code>step</code> has drifted.</li>
+          <li>The densest cluster is bottom-left: most stock-years are under 200 M shares and under 4 %.</li>
+          <li>y labels are whole percentages at 2-point intervals; x labels are compact (<code>200M</code>, <code>400M</code> …).</li>
+        </ul>
+      </section>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-log">B — log y: mean close price vs. mean daily volume</figcaption>
+      <hdml-view aria-labelledby="cap-log">
+        <hdml-cartesian-plane source="?hdml-frame=sym_year">
+          <hdml-continuous-scale channel="x" min="0" values="volume" nice>
+            <hdml-continuous-scale type="log" channel="y" values="price" nice>
+              <hdml-grid channel="y" count="4"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-label channel="x" count="6" format="compact-short"></hdml-label>
+              <hdml-label channel="y" count="4" format="currency/USD compact-short"></hdml-label>
+              <hdml-point x="volume" y="price"></hdml-point>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>B — log y: mean close price</h3>
+        <p><b>Renders.</b> The same x, against mean close price on a logarithmic y.</p>
+        <p><b>Grammar.</b> <code>hdml-continuous-scale type="log" channel="y" values="price" nice</code>. <code>nice</code> on a log scale rounds to the enclosing power of the base, not to the linear ladder.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>114 points again, and the vertical spread is now <b>even</b> rather than crushed onto the axis. If the points bunch at the bottom, the scale is running linear.</li>
+          <li>The data spans <b>$0.33 to $558.20</b>; with <code>nice</code> the domain should come out as <b>[0.1, 1000]</b>.</li>
+          <li>Four y labels, compact USD, each an order of magnitude apart — roughly <code>$1</code>, <code>$10</code>, <code>$100</code>, <code>$1K</code>.</li>
+          <li>Four gridlines, evenly spaced in <i>pixels</i> and a decade apart in value.</li>
+          <li>Compare with A: the <i>same</i> 114 x positions. Any point that moves horizontally between the two figures is a bug.</li>
+        </ul>
+      </section>
+    </figure>
+  </body>
+</html>

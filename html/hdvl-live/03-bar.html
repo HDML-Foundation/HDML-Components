@@ -1,0 +1,269 @@
+<!doctype html>
+<!--
+  03 — Bar chart, over live data
+
+  ON-PAGE SPEC. What each figure represents technically, and what to
+  check when you look at it, is now VISIBLE CONTENT — the `.spec`
+  block beside each figure. This comment keeps the authoring
+  rationale; the numbers and the checklist live in the page.
+
+  LIVE twin of html/hdvl/03-bar.html. All three figures keep their
+  grammar exactly; only the data layer moved.
+
+  A and B are ONE frame seen twice. Orientation is DERIVED from
+  which channel resolves to the band scale — there is no
+  `orientation` attribute, and the two figures differ by nothing but
+  which scale carries `values="label"`. That is the claim this page
+  exists to test, and on real data it is testable by eye: the bars
+  must be the same five lengths in the same order, turned 90°.
+
+  A / B — MEAN DAILY SHARE VOLUME, 2000-01-03 … 2023-03-17:
+  Apple 411 M, Amazon 124 M, Google 123 M, Microsoft 52 M,
+  Netflix 16 M. Amazon and Google are 1.1 % apart and are
+  adjacent in the sort — if the two bars ever
+  render at visibly different lengths, the bug is real.
+
+  C — FLOATING BARS. A true two-column range: the yearly low and the
+  yearly high of Apple's daily prices, 2014-2023. A scale subscribes
+  to ONE column, so neither end can come from rule 2 — the domain is
+  authored (0…200). The bars climb from 17.63–29.94 in 2014 to
+  125.87–182.94 in 2022, and 2023 is a PARTIAL year (the data stops
+  at 2023-03-17), which is exactly the kind of fact a floating bar
+  shows and a mean hides.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>03 — Bar (live)</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0 0 3rem; max-width: 760px; }
+
+      hdml-view { width: 100%; height: 300px; }
+      hdml-cartesian-plane { padding: 16px 24px 40px 64px; }
+      hdml-ordinal-scale[channel="x"] { padding: 0 16px; }
+      hdml-ordinal-scale[channel="y"] { padding: 12px 0; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+      hdml-continuous-scale[channel="x"] { padding: 0 8px; }
+
+      hdml-axis[channel="x"] { position: absolute; left: 0; right: 0; bottom: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="y"] { position: absolute; top: 0; bottom: 0; left: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-label { --hdml-font-size: 11px; }
+      hdml-label[channel="x"] { position: absolute; left: 0; right: 0; top: 100%; }
+      hdml-label[channel="y"] { position: absolute; top: 0; bottom: 0; right: 100%; }
+      hdml-grid[channel="y"], hdml-grid[channel="x"] {
+        --hdml-line-width: 1px; --hdml-line-style: dotted; --hdml-line-color: #cbd5e1; }
+
+      /* band inner padding is CSS, not an attribute (SPEC §6) */
+      hdml-ordinal-scale { --hdml-bandwidth: 0.7; }
+
+      hdml-bar { --hdml-fill-color: #1c8cf4; --hdml-fill-color_hover: #0f6ac2; }
+      figure.floating hdml-bar { --hdml-fill-color: #f59e0b; }
+
+      /* ---- validation notes: prose only, no hdml-* selector ---- */
+      .page-intro { max-width: 780px; margin: 0 0 2.5rem; }
+      .page-intro h1 { font-size: 1.4rem; margin: 0 0 0.6rem;
+        letter-spacing: -0.01em; color: #0f172a; }
+      .page-intro p { margin: 0 0 0.7rem; color: #334155;
+        font-size: 14px; line-height: 1.6; }
+      .spec { margin: 1rem 0 0; padding: 0.9rem 1.1rem;
+        border-left: 3px solid #cbd5e1; background: #f8fafc;
+        font-size: 13px; line-height: 1.55; color: #334155; }
+      .spec h3 { margin: 0 0 0.6rem; font-size: 11px; font-weight: 600;
+        letter-spacing: 0.09em; text-transform: uppercase; color: #64748b; }
+      .spec p { margin: 0 0 0.6rem; }
+      .spec b { color: #0f172a; font-weight: 600; }
+      .spec ul { margin: 0; padding-left: 1.15rem; }
+      .spec li { margin: 0.3rem 0; }
+      .spec code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px; background: #e8edf3; padding: 0 0.25em;
+        border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc"
+      login-hint="hdml.github@gmail.com">
+    </hdml-io>
+
+    <!-- ========================================================
+         THE MODEL. One row per (stock, trading day): the five
+         MAANG tables unioned into long form and cast out of the
+         varchar they are stored in. Every numeric column is cast
+         to `double` on purpose — see the type note in the header.
+         ======================================================== -->
+    <hdml-model name="maang_daily">
+      <hdml-table
+        name="p"
+        type="query"
+        description="One row per (stock, trading day), the five MAANG tables unioned and cast."
+        identifier="select
+  s.sym as sym,
+  s.date as d,
+  cast(substr(s.date, 1, 4) as integer) as yr,
+  substr(s.date, 1, 7) || '-01' as ym,
+  format_datetime(cast(s.date as date), 'MMM') as mon,
+  cast(substr(s.date, 6, 2) as integer) as mnum,
+  cast(s.open as double) as o,
+  cast(s.high as double) as h,
+  cast(s.low as double) as l,
+  cast(s.close as double) as c,
+  cast(s.volume as double) as v,
+  cast(s.close as double) * cast(s.volume as double) as dv
+from (
+  select 'Amazon' as sym, date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`amazon`
+  union all select 'Apple', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`apple`
+  union all select 'Google', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`google`
+  union all select 'Microsoft', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`microsoft`
+  union all select 'Netflix', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`netflix`
+) s">
+        <hdml-field name="sym"></hdml-field>
+        <hdml-field name="d"></hdml-field>
+        <hdml-field name="yr"></hdml-field>
+        <hdml-field name="ym"></hdml-field>
+        <hdml-field name="mon"></hdml-field>
+        <hdml-field name="mnum"></hdml-field>
+        <hdml-field name="o"></hdml-field>
+        <hdml-field name="h"></hdml-field>
+        <hdml-field name="l"></hdml-field>
+        <hdml-field name="c"></hdml-field>
+        <hdml-field name="v"></hdml-field>
+        <hdml-field name="dv"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+    <!-- A and B share this one frame. -->
+    <hdml-frame name="sym_volume" source="?hdml-model=maang_daily">
+      <hdml-field name="label" origin="p_sym"></hdml-field>
+      <hdml-field name="volume" origin="p_v" aggregation="avg"></hdml-field>
+      <hdml-group-by><hdml-field name="label"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="volume" order="desc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- C — a genuine range per band: the year's lowest low and
+         highest high, which are two different columns of two
+         different rows. -->
+    <hdml-frame name="aapl_range" source="?hdml-model=maang_daily">
+      <hdml-field name="label" type="utf-8" clause="cast(`p_yr` as varchar)"></hdml-field>
+      <hdml-field name="ord" origin="p_yr" aggregation="min"></hdml-field>
+      <hdml-field name="lo" origin="p_l" aggregation="min"></hdml-field>
+      <hdml-field name="hi" origin="p_h" aggregation="max"></hdml-field>
+      <hdml-filter-by>
+        <hdml-connective operator="and">
+          <hdml-filter type="named" name="equals"
+                       field="`p_sym`" values="'Apple'"></hdml-filter>
+          <hdml-filter type="named" name="greater-equal"
+                       field="`p_yr`" values="2014"></hdml-filter>
+        </hdml-connective>
+      </hdml-filter-by>
+      <hdml-group-by><hdml-field name="label"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="ord" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <header class="page-intro">
+      <h1>03 — Bar: orientation is derived, and a real range</h1>
+      <p><b>A and B are the same frame twice.</b> There is no <code>orientation</code> attribute: the mark works out which way to point from which channel resolves to the band scale. The two figures differ by nothing except which scale carries <code>values="label"</code> and which way round the bar's <code>x</code> and <code>y</code> are written.</p>
+      <p><b>C</b> is a genuine two-column range. A scale subscribes to one column, so neither end of the y domain can be derived — it is authored.</p>
+    </header>
+
+    <figure>
+      <figcaption id="cap-vertical">A — vertical: x→band, y→linear ⇒ derived vertical</figcaption>
+      <hdml-view aria-labelledby="cap-vertical">
+        <hdml-cartesian-plane source="?hdml-frame=sym_volume">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" values="volume" nice>
+              <hdml-grid channel="y" count="5"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+              <hdml-bar x="label" y="volume"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>A — vertical: x→band, y→linear</h3>
+        <p><b>Renders.</b> Mean daily share volume per stock, the same five numbers as page 00.</p>
+        <p><b>Grammar.</b> <code>hdml-ordinal-scale channel="x" values="label"</code> → <code>hdml-continuous-scale channel="y" min="0" values="volume" nice</code> — the ceiling is <i>derived</i> here and rounded out by <code>nice</code>, where page 00 authored it. Band inner padding is CSS (<code>--hdml-bandwidth: 0.7</code>), not an attribute.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>Five vertical bars, Apple <b>411.3 M</b> first, then Amazon <b>124.0 M</b>, Google <b>122.6 M</b>, Microsoft <b>52.1 M</b>, Netflix <b>16.3 M</b>.</li>
+          <li>Bars occupy 70 % of their band, with visible gutters either side.</li>
+          <li>The ceiling is derived from the data and rounded up, so Apple's bar stops just short of the top rather than touching it.</li>
+          <li>Five dotted horizontal gridlines, aligned with the five y labels.</li>
+          <li>Hovering a bar darkens it (<code>--hdml-fill-color_hover</code>).</li>
+        </ul>
+      </section>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-horizontal">B — horizontal: same tag, channels swapped</figcaption>
+      <hdml-view aria-labelledby="cap-horizontal">
+        <hdml-cartesian-plane source="?hdml-frame=sym_volume">
+          <hdml-ordinal-scale channel="y" values="label">
+            <hdml-continuous-scale channel="x" min="0" values="volume" nice>
+              <hdml-grid channel="x" count="5"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-label channel="x" count="5" format="compact-short"></hdml-label>
+              <hdml-label channel="y"></hdml-label>
+              <hdml-bar x="volume" y="label"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>B — horizontal: the same tag, channels swapped</h3>
+        <p><b>Renders.</b> Identical data, identical values, turned 90°.</p>
+        <p><b>Grammar.</b> <code>hdml-ordinal-scale channel="y" values="label"</code> wrapping <code>hdml-continuous-scale channel="x"</code>, and the mark is written <code>x="volume" y="label"</code>. Everything else is unchanged.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>Five horizontal bars reading <b>top to bottom in the same order</b> A reads left to right: Apple, Amazon, Google, Microsoft, Netflix.</li>
+          <li><b>Bar lengths here must equal bar heights in A.</b> This is the page's central claim — compare the two figures directly.</li>
+          <li>The x axis now carries the compact-notation volume labels and the y axis carries the names.</li>
+          <li>Gridlines are vertical here and horizontal in A.</li>
+        </ul>
+      </section>
+    </figure>
+
+    <figure class="floating">
+      <figcaption id="cap-floating">C — floating bars (bound y0/y1): Apple's yearly price
+        range, 2014–2023</figcaption>
+      <hdml-view aria-labelledby="cap-floating">
+        <hdml-cartesian-plane source="?hdml-frame=aapl_range">
+          <hdml-ordinal-scale channel="x" values="label">
+            <!-- A TRUE two-column range (lo..hi): a scale subscribes
+                 to one column, so neither end can come from rule 2 —
+                 author both. SPEC §6. -->
+            <hdml-continuous-scale channel="y" min="0" max="200">
+              <hdml-grid channel="y" count="5"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" count="5" format="currency/USD precision-integer"></hdml-label>
+              <hdml-bar x="label" y0="lo" y1="hi"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>C — floating bars: Apple's yearly price range</h3>
+        <p><b>Renders.</b> Ten bars, 2014–2023, each running from that year's lowest low to its highest high.</p>
+        <p><b>Grammar.</b> <code>hdml-bar</code> with <b>both</b> <code>y0</code> and <code>y1</code> bound to columns (<code>lo</code>, <code>hi</code>) — no baseline is implied. The y domain is authored <code>0…200</code>; the band domain is the year as a string with a separate numeric sort key.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>Ten orange bars, none of which touches the zero line — every bar floats.</li>
+          <li>2014 runs <b>17.63 → 29.94</b>; 2022 runs <b>125.87 → 182.94</b>, the tallest bar and the highest top.</li>
+          <li><b>2023 is a partial year</b> — the data stops at 2023-03-17 — so its bar (<b>124.17 → 157.38</b>) is shorter than 2022's. That is the data, not a rendering fault.</li>
+          <li>The trend is monotone upward apart from 2016 (<b>22.37 → 29.67</b>), which sits below 2015's top.</li>
+          <li>y labels are whole-dollar USD; five of them; nothing exceeds the authored 200 ceiling.</li>
+        </ul>
+      </section>
+    </figure>
+  </body>
+</html>

@@ -512,8 +512,9 @@ with the IdP and the page's origin (`http://127.0.0.1:8000` under `wds`) must be
 
 ### Live HDVL pages
 
-[html/airbnb/](../html/airbnb/) and [html/maang/](../html/maang/) hold **live** HDVL pages,
-listed under *Live pages* on the hub. They are the counterpart of the thirteen corpus pages
+[html/airbnb/](../html/airbnb/), [html/maang/](../html/maang/),
+[html/netflix/](../html/netflix/) and [html/spotify/](../html/spotify/) hold **live** HDVL
+pages, listed under *Live pages* on the hub. They are the counterpart of the thirteen corpus pages
 under [html/hdvl/](../html/hdvl/): the corpus is driven by a test double and gated by
 `src/hdvl/corpus/`, while these load the real `bin/index.min.js` and render whatever Trino
 returns through a live HDIO server. **Nothing gates them** — they are manual pages, and they
@@ -521,11 +522,37 @@ inherit both caveats above (`127.0.0.1` in `host`; the `token` is a spent single
 code to be replaced per run).
 
 They exist because a page an author writes is the only thing that runs the vocabulary the way
-an author does. Two shapes are deliberately contrasted: `maang` is five tables that **join**
-on a shared key, `airbnb` twenty that **union**, with the partition keys living in the table
-*names* rather than in any column. `maang/definition.html` is also the one page that reaches
+an author does. Four schema shapes are deliberately contrasted: `maang` is five tables that
+**join** on a shared key, `airbnb` twenty that **union** with the partition keys living in
+the table *names* rather than in any column, `netflix` two tables with a real foreign key and
+every difficulty *inside* the columns, and `spotify` two tables with **no shared key at all**
+(the only join is on the title, and it happens to match 100/100). Each schema has a pair — a
+structural profile and a findings page — except `maang`, whose pages predate the convention. `maang/definition.html` is also the one page that reaches
 for `hdml-table type="query"` — raw Trino as a CTE — for the figures a window function is
 needed for and the declarative vocabulary therefore cannot express.
+
+#### The live corpus — `html/hdvl-live/`
+
+[html/hdvl-live/](../html/hdvl-live/) is the **thirteen corpus pages rebuilt on live data**:
+the same thirteen pages and the same twenty-nine figures as `html/hdvl/`, in the same order
+and with the same grammar, over the `maang` schema through a live HDIO server. A difference
+between a page there and its twin here is a difference in the *runtime*, not in the
+authoring — which is what the folder is for. It is **not gated**: like the rest of the live
+pages it needs a real server and an interactive login, so nothing in `src/hdvl/corpus/`
+touches it.
+
+Every page declares its own model and frames — the **dynamic-document** path, which
+`access.yml` grants wholesale — except one leg of `01`, which reaches the tenant's **static**
+document and is granted by exact path. Each figure carries its spec as visible content
+beside the chart (*Renders* / *Grammar* / *Validate*), and
+[html/hdvl-live/README.md](../html/hdvl-live/README.md) is the index plus the two rules that
+govern the folder: HDIO's Arrow writer carries four column kinds and a `DATE` falls through
+to a string, so a datetime scale authors its domain rather than subscribing to one; and
+`hdml-filter`'s `values` is emitted verbatim, so a string value carries its own SQL quotes. The mock corpus's `10-radar.html` has the unquoted form and
+would not execute — one of three defects the rebuild surfaced, the others being a `DECIMAL`
+average arriving as text and an `aggregation` on a group key compiling to
+`GROUP BY min(…)`. All three are written up in
+[components.md](components.md) under `hdml-filter` and `hdml-group-by`.
 
 Three files are **unlisted iterations**, kept as a record rather than served:
 `maang/base.html`, `maang/def_1.html` and `maang/def_2.html`. Two things about them are worth

@@ -1,0 +1,311 @@
+<!doctype html>
+<!--
+  08 — Pie &amp; doughnut, over live data
+
+  ON-PAGE SPEC. What each figure represents technically, and what to
+  check when you look at it, is now VISIBLE CONTENT — the `.spec`
+  block beside each figure. This comment keeps the authoring
+  rationale; the numbers and the checklist live in the page.
+
+  LIVE twin of html/hdvl/08-pie-doughnut.html. Four figures, and the
+  two measures behind them disagree — which is why this page is worth
+  looking at with real numbers rather than made-up ones:
+
+              share of SHARES traded   share of DOLLARS traded
+    Amazon            17.71 %                  21.64 %
+    Apple             58.74 %                  38.43 %
+    Google            14.03 %                  12.58 %
+    Microsoft          7.44 %                  19.93 %
+    Netflix            2.09 %                   7.41 %
+
+  Apple is 58.7 % of every MAANG share that changed hands and only
+  38.4 % of every MAANG dollar; Microsoft is 7.4 % of the shares and
+  19.9 % of the dollars. Same five companies, same 23 years, two
+  pies that tell different stories — D puts them on one canvas as
+  concentric rings so the difference is a single glance.
+
+    A — hdml-pie over shares (LAYOUT widget: internal value →
+        cumulative-fraction derive, SPEC §7). Its source frame MUST
+        pin row order (V7) — an unsorted query may legally reorder
+        between refreshes and the pie would visibly rearrange.
+    B — the same grammar as a doughnut (--hdml-inner-radius), over
+        dollars.
+    C — the PURE form: hdml-arc a0/a1 fed by window-clause frame
+        fields, so the prefix sum is computed in the DATA layer
+        instead of inside the widget. A and C must paint the same
+        five wedges; if they ever differ, one of the two paths is
+        wrong and the page says which.
+    D — multi-series doughnut: one hdml-pie PER RING in overlaid
+        planes (§4.8). Rings are author-named COLUMNS of one wide
+        frame, slices are ROWS. NOT a stack (nothing accumulates
+        radially) and NOT a sunburst (no hierarchy).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>08 — Pie &amp; doughnut (live)</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0 0 3rem; max-width: 480px; }
+
+      hdml-view { width: 100%; height: 320px; }
+      hdml-polar-plane { padding: 12px 120px 12px 12px; }
+
+      /* angle range is CSS custom props — a box has no angular extent.
+         Full turn is the default; shown explicitly for the corpus. */
+      hdml-continuous-scale[channel="angle"] { --hdml-angle-start: 0deg;
+        --hdml-angle-end: 360deg; }
+
+      hdml-legend { position: absolute; top: 8px; left: 100%;
+        width: 110px; --hdml-font-size: 11px; }
+      hdml-ordinal-scale[channel="color"] {
+        --hdml-palette: #1c8cf4 #f59e0b #10b981 #8b5cf6 #ef4444; }
+
+      hdml-pie, hdml-arc { --hdml-line-width: 2px; --hdml-line-color: #ffffff; }
+      hdml-pie.donut { --hdml-inner-radius: 62%; }
+
+      /* D — ring geometry is pure CSS: each ring is one plane's content
+         box + the --hdml-inner-radius floor its pie INHERITS (the
+         property is read at the widget, SPEC §9 — B sets it on the pie,
+         here the plane scopes the whole ring). The inner plane's padding
+         grows by the same 32px on every side, so the rings stay
+         concentric and the inner ring's outer edge clears the outer
+         ring's floor. */
+      figure.rings hdml-polar-plane.outer { --hdml-inner-radius: 80%; }
+      figure.rings hdml-polar-plane.inner { padding: 44px 152px 44px 44px;
+        --hdml-inner-radius: 74%; }
+
+      /* ---- validation notes: prose only, no hdml-* selector ---- */
+      .page-intro { max-width: 780px; margin: 0 0 2.5rem; }
+      .page-intro h1 { font-size: 1.4rem; margin: 0 0 0.6rem;
+        letter-spacing: -0.01em; color: #0f172a; }
+      .page-intro p { margin: 0 0 0.7rem; color: #334155;
+        font-size: 14px; line-height: 1.6; }
+      .spec { margin: 1rem 0 0; padding: 0.9rem 1.1rem;
+        border-left: 3px solid #cbd5e1; background: #f8fafc;
+        font-size: 13px; line-height: 1.55; color: #334155; }
+      .spec h3 { margin: 0 0 0.6rem; font-size: 11px; font-weight: 600;
+        letter-spacing: 0.09em; text-transform: uppercase; color: #64748b; }
+      .spec p { margin: 0 0 0.6rem; }
+      .spec b { color: #0f172a; font-weight: 600; }
+      .spec ul { margin: 0; padding-left: 1.15rem; }
+      .spec li { margin: 0.3rem 0; }
+      .spec code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px; background: #e8edf3; padding: 0 0.25em;
+        border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc"
+      login-hint="hdml.github@gmail.com">
+    </hdml-io>
+
+    <!-- ========================================================
+         THE MODEL. One row per (stock, trading day): the five
+         MAANG tables unioned into long form and cast out of the
+         varchar they are stored in. Every numeric column is cast
+         to `double` on purpose — see the type note in the header.
+         ======================================================== -->
+    <hdml-model name="maang_daily">
+      <hdml-table
+        name="p"
+        type="query"
+        description="One row per (stock, trading day), the five MAANG tables unioned and cast."
+        identifier="select
+  s.sym as sym,
+  s.date as d,
+  cast(substr(s.date, 1, 4) as integer) as yr,
+  substr(s.date, 1, 7) || '-01' as ym,
+  format_datetime(cast(s.date as date), 'MMM') as mon,
+  cast(substr(s.date, 6, 2) as integer) as mnum,
+  cast(s.open as double) as o,
+  cast(s.high as double) as h,
+  cast(s.low as double) as l,
+  cast(s.close as double) as c,
+  cast(s.volume as double) as v,
+  cast(s.close as double) * cast(s.volume as double) as dv
+from (
+  select 'Amazon' as sym, date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`amazon`
+  union all select 'Apple', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`apple`
+  union all select 'Google', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`google`
+  union all select 'Microsoft', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`microsoft`
+  union all select 'Netflix', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`netflix`
+) s">
+        <hdml-field name="sym"></hdml-field>
+        <hdml-field name="d"></hdml-field>
+        <hdml-field name="yr"></hdml-field>
+        <hdml-field name="ym"></hdml-field>
+        <hdml-field name="mon"></hdml-field>
+        <hdml-field name="mnum"></hdml-field>
+        <hdml-field name="o"></hdml-field>
+        <hdml-field name="h"></hdml-field>
+        <hdml-field name="l"></hdml-field>
+        <hdml-field name="c"></hdml-field>
+        <hdml-field name="v"></hdml-field>
+        <hdml-field name="dv"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+    <!-- Pie source: row order = slice order, so sort-by is REQUIRED
+         here (V7). Alphabetical by stock, which is also the order
+         the arcs frame below runs its prefix sum in — the two must
+         agree or A and C would not match. -->
+    <hdml-frame name="share" source="?hdml-model=maang_daily">
+      <hdml-field name="sym" origin="p_sym"></hdml-field>
+      <hdml-field name="volume" origin="p_v" aggregation="sum"></hdml-field>
+      <hdml-field name="turnover" origin="p_dv" aggregation="sum"></hdml-field>
+      <hdml-group-by><hdml-field name="sym"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="sym" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- Pure form producer: the prefix sum in the data layer.
+         Frame-on-frame chain over the aggregate above, so the
+         columns are read by their BARE names; a0/a1 are cumulative
+         fractions of the full turn. -->
+    <hdml-frame name="share_arcs" source="?hdml-frame=share">
+      <hdml-field name="sym" origin="sym"></hdml-field>
+      <hdml-field name="a0" type="float-64"
+        clause="(sum(`volume`) over (order by `sym`) - `volume`) / nullif(sum(`volume`) over (), 0)"></hdml-field>
+      <hdml-field name="a1" type="float-64"
+        clause="sum(`volume`) over (order by `sym`) / nullif(sum(`volume`) over (), 0)"></hdml-field>
+      <hdml-sort-by><hdml-field name="sym" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <header class="page-intro">
+      <h1>08 — Pie and doughnut: two measures that disagree</h1>
+      <p>Four figures over five slices, and the reason to look at them with real numbers is that the two measures do not agree. Apple is <b>58.7 %</b> of every MAANG share that changed hands and only <b>38.4 %</b> of every MAANG dollar; Microsoft is <b>7.4 %</b> of the shares and <b>19.9 %</b> of the dollars.</p>
+      <p><code>hdml-pie</code> is a <b>layout widget</b>: it derives cumulative fractions internally, so its angle domain is always <code>0…1</code>, authored and never derived. Because row order is slice order, its source frame <i>must</i> pin a sort (V7) — an unsorted query may legally reorder between refreshes and the pie would visibly rearrange.</p>
+      <p>Full share table, alphabetical (which is also the slice order): Amazon <b>17.71 % / 21.64 %</b>, Apple <b>58.74 % / 38.43 %</b>, Google <b>14.03 % / 12.58 %</b>, Microsoft <b>7.44 % / 19.93 %</b>, Netflix <b>2.09 % / 7.41 %</b> — shares first, dollars second.</p>
+    </header>
+
+    <figure>
+      <figcaption id="cap-pie">A — pie: share of all MAANG shares traded, by stock
+        (layout widget)</figcaption>
+      <hdml-view aria-labelledby="cap-pie">
+        <hdml-polar-plane source="?hdml-frame=share">
+          <!-- hdml-pie normalizes to fractions, so the angle domain is
+               always [0, 1] — authored, never derived (SPEC §7). -->
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-ordinal-scale channel="color" values="sym">
+              <hdml-pie angle="volume" color="sym"></hdml-pie>
+              <hdml-legend channel="color"></hdml-legend>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>A — pie over shares</h3>
+        <p><b>Renders.</b> Share of all MAANG shares traded, 2000–2023, by stock.</p>
+        <p><b>Grammar.</b> <code>hdml-polar-plane</code> → <code>hdml-continuous-scale channel="angle" min="0" max="1"</code> → <code>hdml-ordinal-scale channel="color" values="sym"</code> → <code>hdml-pie angle="volume" color="sym"</code> + legend. Sweep is CSS on the angle scale, shown explicitly as <code>0deg…360deg</code>.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>Five wedges filling a complete turn, starting at 12 o'clock and running clockwise.</li>
+          <li>Slice order clockwise from 12: <b>Amazon, Apple, Google, Microsoft, Netflix</b> — alphabetical, which is the frame's sort.</li>
+          <li>Apple is <b>58.74 %</b> — a little over half the disc. Netflix at <b>2.09 %</b> is a sliver roughly 7.5° wide.</li>
+          <li>White 2px separators between wedges.</li>
+          <li>A five-entry legend in the right-hand gutter.</li>
+        </ul>
+      </section>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-donut">B — doughnut: the same grammar over DOLLARS instead of
+        shares</figcaption>
+      <hdml-view aria-labelledby="cap-donut">
+        <hdml-polar-plane source="?hdml-frame=share">
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-ordinal-scale channel="color" values="sym">
+              <hdml-pie class="donut" angle="turnover" color="sym"></hdml-pie>
+              <hdml-legend channel="color"></hdml-legend>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>B — doughnut over dollars</h3>
+        <p><b>Renders.</b> The identical grammar, a different measure, and an inner radius.</p>
+        <p><b>Grammar.</b> The same chain; only <code>angle="turnover"</code> and the <code>--hdml-inner-radius: 62%</code> class differ.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>A ring with a hole, the hole 62 % of the radius.</li>
+          <li><b>The proportions must differ visibly from A.</b> Apple shrinks from 58.74 % to <b>38.43 %</b>; Microsoft more than doubles, 7.44 % → <b>19.93 %</b>; Netflix triples, 2.09 % → <b>7.41 %</b>.</li>
+          <li>Same slice order, same colours, same legend as A.</li>
+          <li>Wedge boundaries are radial and meet the inner edge cleanly.</li>
+        </ul>
+      </section>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-arcs">C — the same pie via the pure hdml-arc form: a0/a1 bound
+        row-wise from window-clause fields (fractions 0..1 on the
+        linear angle scale). It must match A exactly.</figcaption>
+      <hdml-view aria-labelledby="cap-arcs">
+        <hdml-polar-plane source="?hdml-frame=share_arcs">
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-ordinal-scale channel="color" values="sym">
+              <hdml-arc a0="a0" a1="a1" color="sym"></hdml-arc>
+              <hdml-legend channel="color"></hdml-legend>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>C — the pure arc form</h3>
+        <p><b>Renders.</b> The same pie as A, with the prefix sum computed in SQL instead of inside the widget.</p>
+        <p><b>Grammar.</b> A frame-on-frame over A's aggregate, with two window-function fields: <code>a0</code> and <code>a1</code> are cumulative fractions of the full turn. The widget is a plain <code>hdml-arc a0="a0" a1="a1"</code> — no layout step, no internal derive.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li><b>C must be pixel-for-pixel the same disc as A.</b> Same five wedges, same angles, same order, same colours. This is the whole point of the figure.</li>
+          <li>If they differ, one of the two paths is wrong — and because the SQL is readable and the widget's derive is not, C is the one you can check by hand.</li>
+          <li>No inner radius: a full disc, like A.</li>
+          <li>The two frames must sort identically (both alphabetical by stock) or the prefix sum runs in a different order than the slices are drawn in.</li>
+        </ul>
+      </section>
+    </figure>
+
+    <figure class="rings">
+      <figcaption id="cap-rings">D — multi-series doughnut: outer ring = share of shares,
+        inner ring = share of dollars, by stock</figcaption>
+      <!-- source on the VIEW: both planes inherit it (§4.5) and the
+           identical refs coalesce to one query (§4.8) -->
+      <hdml-view source="?hdml-frame=share" aria-labelledby="cap-rings">
+        <!-- outer ring: planes share data and domains, never geometry -->
+        <hdml-polar-plane class="outer">
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-ordinal-scale channel="color" values="sym">
+              <hdml-pie angle="volume" color="sym"></hdml-pie>
+              <!-- one legend serves both rings: same domain source,
+                   same page palette -->
+              <hdml-legend channel="color"></hdml-legend>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+        <!-- inner ring: its own plane, its own chain (a scale's range
+             cannot cross a plane boundary), a different value column -->
+        <hdml-polar-plane class="inner">
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-ordinal-scale channel="color" values="sym">
+              <hdml-pie angle="turnover" color="sym"></hdml-pie>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>D — multi-series doughnut</h3>
+        <p><b>Renders.</b> A and B on one canvas as concentric rings: outer = shares, inner = dollars.</p>
+        <p><b>Grammar.</b> <b>One <code>hdml-pie</code> per ring, in overlaid planes.</b> <code>source</code> sits on the <b>view</b>, so both planes inherit it and the identical refs coalesce into one query. Rings are author-named <i>columns</i> of one wide frame; slices are <i>rows</i>. Ring geometry is pure CSS — each plane's padding plus the <code>--hdml-inner-radius</code> its pie inherits.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li><b>Two</b> concentric rings, both centred on the same point, with a clear gap between them.</li>
+          <li>Outer ring = A's proportions; inner ring = B's. Apple's outer wedge is visibly wider than its inner one.</li>
+          <li><b>One</b> legend, not two — both rings share a domain source and a palette.</li>
+          <li>This is not a stack (nothing accumulates radially) and not a sunburst (there is no hierarchy): the two rings are independent full turns.</li>
+          <li>Both rings complete a full 360°. A ring that stops short means one pie's angle domain is not <code>0…1</code>.</li>
+        </ul>
+      </section>
+    </figure>
+  </body>
+</html>

@@ -1,0 +1,410 @@
+<!doctype html>
+<!--
+  12 — Coverage (the grammar the other twelve pages do not reach),
+  over live data
+
+  ON-PAGE SPEC. What each figure represents technically, and what to
+  check when you look at it, is now VISIBLE CONTENT — the `.spec`
+  block beside each figure. This comment keeps the authoring
+  rationale; the numbers and the checklist live in the page.
+
+  LIVE twin of html/hdvl/12-coverage.html. The mock is deliberately
+  server-free and is the LITERAL-ONLY conformance class; it keeps
+  that job and this page takes the other one — the same four shapes
+  with every binding subscribed, so the features below are exercised
+  against Arrow columns rather than attributes:
+
+    A — continuous colour RAMP (--hdml-color-interpolate) + a ramp
+        legend, with hdml-fallback content on the view (§2).
+    B — GAUGE: --hdml-angle-start/-end sweep on a continuous angle
+        scale (§3 polar projection: 0deg = 12 o'clock, clockwise), a
+        track arc painted under a value arc (document order = paint
+        order). The track's endpoints are literal scalars and the
+        value's a1 is a COLUMN — the two binding modes meet inside
+        one figure.
+    C — hidden-toggle STACK: `hidden` on a child re-derives the
+        relation (§7) — the stack rebases over rendered children and
+        the axis ceiling deliberately stays put.
+    D — type="symlog" with `constant`, over a datetime x with an
+        IANA `zone`.
+
+  A — 114 stock-years, volume against daily range, COLOURED BY YEAR
+  (2000 → 2023 as a light-to-dark ramp). The ramp is what makes the
+  page's real finding visible: the dark points — the recent years —
+  are all bunched at the left. Volume collapsed across the whole
+  index, not just at Apple.
+
+  B — APPLE IS 58.7 % OF EVERY MAANG SHARE TRADED since 2000. One
+  row, one number, and a gauge is the honest widget for it precisely
+  because it shows the 100 % it is a fraction of.
+
+  C — annual volume 2018–2022 for three stocks, and the ceiling is
+  authored at 100 bn. Toggle `hidden` on the third bar in DevTools:
+  the two rendered bands rebase, and the y axis does not move. Scale
+  domains never follow a toggle — the ceiling is the author's
+  statement (§6, §7).
+
+  D — APPLE'S DAILY NET DOLLAR FLOW, (close − open) × volume, over
+  the 22 trading days of March 2020. It is the right shape for
+  symlog and it is not a contrivance: the series runs from
+  −1.80 bn (2020-03-20, the March quadruple-witching Friday) to
+  +1.41 bn (2020-03-02), and passes through +21 M on 2020-03-16 — a
+  value 20–58× smaller than the days on either side of it, which a log axis cannot
+  show at all (it is on the wrong side of zero twice over) and a
+  linear axis flattens to the zero line. `constant="100000000"` puts
+  the linear region at ±100 M so that day has somewhere to sit.
+  The x zone is America/New_York — the exchange's own calendar —
+  because a zone-less domain would read as UTC and put the tick
+  boundaries in the wrong day.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>12 — Coverage (live)</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0 0 3rem; max-width: 480px; }
+
+      hdml-view { width: 100%; height: 320px; }
+      /* no legend gutter: the UA default overlays the legend on the
+         plot's top-right corner (§3), so padding stays symmetric */
+      hdml-cartesian-plane { padding: 16px 24px 40px 64px; }
+      hdml-polar-plane { padding: 12px 12px 12px 12px; }
+
+      /* A — the ramp: stops for the continuous color scale */
+      hdml-continuous-scale[channel="color"] {
+        --hdml-color-interpolate: #dbeafe #1c8cf4 #1e3a8a; }
+      figure.ramp hdml-point { --hdml-tick-style: ellipse; }
+
+      /* B — gauge: sweep is CSS on the angle scale (§3); the doughnut
+         floor inherits from the plane to both arcs (§9 reader rule) */
+      figure.gauge hdml-continuous-scale[channel="angle"] {
+        --hdml-angle-start: -120deg; --hdml-angle-end: 120deg; }
+      figure.gauge hdml-polar-plane { --hdml-inner-radius: 70%; }
+      figure.gauge hdml-arc.track { --hdml-fill-color: #e2e8f0; }
+      figure.gauge hdml-arc.value { --hdml-fill-color: #1c8cf4; }
+
+      /* D — grid only; placement is UA-default */
+      hdml-grid[channel="y"] { --hdml-line-width: 1px;
+        --hdml-line-style: dotted; --hdml-line-color: #cbd5e1; }
+      figure.symlog hdml-line { --hdml-line-width: 2px;
+        --hdml-line-color: #1c8cf4; }
+
+      /* ---- validation notes: prose only, no hdml-* selector ---- */
+      .page-intro { max-width: 780px; margin: 0 0 2.5rem; }
+      .page-intro h1 { font-size: 1.4rem; margin: 0 0 0.6rem;
+        letter-spacing: -0.01em; color: #0f172a; }
+      .page-intro p { margin: 0 0 0.7rem; color: #334155;
+        font-size: 14px; line-height: 1.6; }
+      .spec { margin: 1rem 0 0; padding: 0.9rem 1.1rem;
+        border-left: 3px solid #cbd5e1; background: #f8fafc;
+        font-size: 13px; line-height: 1.55; color: #334155; }
+      .spec h3 { margin: 0 0 0.6rem; font-size: 11px; font-weight: 600;
+        letter-spacing: 0.09em; text-transform: uppercase; color: #64748b; }
+      .spec p { margin: 0 0 0.6rem; }
+      .spec b { color: #0f172a; font-weight: 600; }
+      .spec ul { margin: 0; padding-left: 1.15rem; }
+      .spec li { margin: 0.3rem 0; }
+      .spec code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px; background: #e8edf3; padding: 0 0.25em;
+        border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc"
+      login-hint="hdml.github@gmail.com">
+    </hdml-io>
+
+    <!-- ========================================================
+         THE MODEL. One row per (stock, trading day): the five
+         MAANG tables unioned into long form and cast out of the
+         varchar they are stored in. Every numeric column is cast
+         to `double` on purpose — see the type note in the header.
+         ======================================================== -->
+    <hdml-model name="maang_daily">
+      <hdml-table
+        name="p"
+        type="query"
+        description="One row per (stock, trading day), the five MAANG tables unioned and cast."
+        identifier="select
+  s.sym as sym,
+  s.date as d,
+  cast(substr(s.date, 1, 4) as integer) as yr,
+  substr(s.date, 1, 7) || '-01' as ym,
+  format_datetime(cast(s.date as date), 'MMM') as mon,
+  cast(substr(s.date, 6, 2) as integer) as mnum,
+  cast(s.open as double) as o,
+  cast(s.high as double) as h,
+  cast(s.low as double) as l,
+  cast(s.close as double) as c,
+  cast(s.volume as double) as v,
+  cast(s.close as double) * cast(s.volume as double) as dv
+from (
+  select 'Amazon' as sym, date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`amazon`
+  union all select 'Apple', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`apple`
+  union all select 'Google', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`google`
+  union all select 'Microsoft', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`microsoft`
+  union all select 'Netflix', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`netflix`
+) s">
+        <hdml-field name="sym"></hdml-field>
+        <hdml-field name="d"></hdml-field>
+        <hdml-field name="yr"></hdml-field>
+        <hdml-field name="ym"></hdml-field>
+        <hdml-field name="mon"></hdml-field>
+        <hdml-field name="mnum"></hdml-field>
+        <hdml-field name="o"></hdml-field>
+        <hdml-field name="h"></hdml-field>
+        <hdml-field name="l"></hdml-field>
+        <hdml-field name="c"></hdml-field>
+        <hdml-field name="v"></hdml-field>
+        <hdml-field name="dv"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+    <!-- A — one row per (stock, year); `yr` doubles as the ramp's
+         measure. -->
+    <hdml-frame name="sym_year" source="?hdml-model=maang_daily">
+      <!-- a DIMENSION, not a measure: `yr` is one of the two group
+           keys below, and hdml-group-by emits the field's own SQL —
+           an `aggregation` here would put `min("p_yr")` inside the
+           GROUP BY, which Trino rejects. -->
+      <hdml-field name="yr" origin="p_yr"></hdml-field>
+      <hdml-field name="sym" origin="p_sym"></hdml-field>
+      <hdml-field name="volume" origin="p_v" aggregation="avg"></hdml-field>
+      <hdml-field name="range" type="float-64"
+        clause="avg((`p_h` - `p_l`) / nullif(`p_l`, 0))"></hdml-field>
+      <hdml-group-by>
+        <hdml-field name="sym"></hdml-field>
+        <hdml-field name="yr"></hdml-field>
+      </hdml-group-by>
+      <hdml-sort-by><hdml-field name="yr" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- B — exactly one row. The constant group key is what makes
+         that a GROUP BY rather than a bare aggregate select. -->
+    <hdml-frame name="aapl_gauge" source="?hdml-model=maang_daily">
+      <hdml-field name="whole" type="utf-8" clause="'MAANG'"></hdml-field>
+      <hdml-field name="pct" type="float-64"
+        clause="100e0 * sum(if(`p_sym` = 'Apple', `p_v`, 0)) / nullif(sum(`p_v`), 0)"></hdml-field>
+      <hdml-group-by><hdml-field name="whole"></hdml-field></hdml-group-by>
+    </hdml-frame>
+
+    <!-- C — five years, three series. -->
+    <hdml-frame name="recent_wide" source="?hdml-model=maang_daily">
+      <hdml-field name="label" type="utf-8" clause="cast(`p_yr` as varchar)"></hdml-field>
+      <hdml-field name="ord" origin="p_yr" aggregation="min"></hdml-field>
+      <hdml-field name="amzn" type="float-64"
+        clause="sum(if(`p_sym` = 'Amazon', `p_v`, 0))"></hdml-field>
+      <hdml-field name="aapl" type="float-64"
+        clause="sum(if(`p_sym` = 'Apple', `p_v`, 0))"></hdml-field>
+      <hdml-field name="msft" type="float-64"
+        clause="sum(if(`p_sym` = 'Microsoft', `p_v`, 0))"></hdml-field>
+      <hdml-filter-by>
+        <hdml-connective operator="and">
+          <hdml-filter type="named" name="greater-equal"
+                       field="`p_yr`" values="2018"></hdml-filter>
+          <hdml-filter type="named" name="less-equal"
+                       field="`p_yr`" values="2022"></hdml-filter>
+        </hdml-connective>
+      </hdml-filter-by>
+      <hdml-group-by><hdml-field name="label"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="ord" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- D — 22 rows, one per trading day. `d` is the raw ISO
+         date STRING: the datetime scale authors its own endpoints
+         (a Trino DATE arrives as text — see 00-minimal's header) and
+         the mark's binding parses through the same `instantOf` a
+         literal would. -->
+    <hdml-frame name="aapl_flow" source="?hdml-model=maang_daily">
+      <hdml-field name="day" origin="p_d"></hdml-field>
+      <hdml-field name="net" type="float-64"
+        clause="max((`p_c` - `p_o`) * `p_v`)"></hdml-field>
+      <hdml-filter-by>
+        <hdml-connective operator="and">
+          <hdml-filter type="named" name="equals"
+                       field="`p_sym`" values="'Apple'"></hdml-filter>
+          <hdml-filter type="named" name="greater-equal"
+                       field="`p_d`" values="'2020-03-01'"></hdml-filter>
+          <hdml-filter type="named" name="less-equal"
+                       field="`p_d`" values="'2020-03-31'"></hdml-filter>
+        </hdml-connective>
+      </hdml-filter-by>
+      <hdml-group-by><hdml-field name="day"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="day" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <header class="page-intro">
+      <h1>12 — Coverage: the grammar the other twelve do not reach</h1>
+      <p>The mock twin of this page is the corpus's <b>literal-only</b> conformance class and keeps that job. This one takes the other half: the same four shapes with every binding subscribed, so each feature is exercised against Arrow columns rather than attributes.</p>
+      <p>Four features, one figure each: a continuous colour ramp with a ramp legend and fallback content; a gauge built from an angle sweep; a stack with a hidden child; and <code>symlog</code> over a zoned datetime.</p>
+    </header>
+
+    <figure class="ramp">
+      <figcaption id="cap-ramp">A — daily range vs. volume, colour = year (continuous
+        ramp + ramp legend)</figcaption>
+      <hdml-view aria-labelledby="cap-ramp">
+        <!-- fallback content is user-visible alternative content —
+             a chart description, never spec commentary (§2) -->
+        <hdml-fallback>
+          <p>Scatter of mean daily price range against mean daily share
+             volume for 114 stock-years across the five MAANG stocks;
+             darker points are more recent years, and they cluster at
+             the low-volume end.</p>
+        </hdml-fallback>
+        <hdml-cartesian-plane source="?hdml-frame=sym_year">
+          <hdml-continuous-scale channel="x" min="0" values="volume" nice>
+            <hdml-continuous-scale channel="y" min="0" values="range" nice>
+              <!-- number ↔ continuous on the color channel = ramp (V2);
+                   hdml-legend renders the labeled ramp, not swatches (§2) -->
+              <hdml-continuous-scale channel="color" min="2000" max="2023">
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-tick channel="x" count="5"></hdml-tick>
+                <hdml-label channel="x" count="5" format="compact-short"></hdml-label>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-label channel="y" count="5" format="percent precision-integer"></hdml-label>
+                <hdml-point x="volume" y="range" color="yr"></hdml-point>
+                <hdml-legend channel="color" count="5"
+                             format="precision-integer"></hdml-legend>
+              </hdml-continuous-scale>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>A — continuous colour ramp</h3>
+        <p><b>Renders.</b> The 114 stock-years of page 05, coloured by year.</p>
+        <p><b>Grammar.</b> A third continuous scale on the <code>color</code> channel with an authored domain <code>2000…2023</code> and <code>--hdml-color-interpolate</code> stops. Number ↔ continuous on <code>color</code> is a <b>ramp</b> (V2), so <code>hdml-legend</code> renders a graduated bar rather than swatches. The view also carries <code>hdml-fallback</code> — user-visible alternative content, shown only while the view is not upgraded.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>114 discs shading from pale blue (2000) to near-navy (2023).</li>
+          <li><b>The dark points cluster at the LEFT.</b> Volume collapsed across the whole index, not just at Apple — that is what the ramp is here to show.</li>
+          <li>The legend is a <b>continuous bar</b> with five graduations labelled as whole years, not a list of swatches. A row of discrete swatches means the scale resolved as ordinal.</li>
+          <li>The legend overlays the plot's top-right corner, from the UA default — this figure authors no legend placement.</li>
+          <li>With JavaScript disabled, the fallback paragraph is visible and no chart is; with it enabled, the reverse. Both must never show at once.</li>
+        </ul>
+      </section>
+    </figure>
+
+    <figure class="gauge">
+      <figcaption id="cap-gauge">B — Apple's share of all MAANG shares traded since 2000
+        (angle sweep −120deg…120deg)</figcaption>
+      <hdml-view aria-labelledby="cap-gauge">
+        <hdml-polar-plane source="?hdml-frame=aapl_gauge">
+          <hdml-continuous-scale channel="angle" min="0" max="100">
+            <!-- track first, value second: document order is paint
+                 order (§1.1) — the value arc covers the track. The
+                 track's endpoints are literal scalars, the value's
+                 a1 is a column. -->
+            <hdml-arc class="track" a0="0" a1="100"></hdml-arc>
+            <hdml-arc class="value" a0="0" a1="pct"></hdml-arc>
+            <!-- deliberately AFTER the marks (§4.4's guides-first is
+                 the convention for guides the marks would occlude —
+                 here the ring would occlude the labels, so paint order
+                 is used the other way, on purpose) -->
+            <hdml-label channel="angle" count="5"
+                        format="precision-integer"></hdml-label>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>B — gauge</h3>
+        <p><b>Renders.</b> Apple's share of every MAANG share traded since 2000, as a 240° dial.</p>
+        <p><b>Grammar.</b> <code>--hdml-angle-start: -120deg</code> / <code>--hdml-angle-end: 120deg</code> on a continuous angle scale, plus a <code>--hdml-inner-radius: 70%</code> floor on the <b>plane</b>, which both arcs inherit. Two <code>hdml-arc</code>s: the track's endpoints are <b>literal scalars</b> (<code>a0="0" a1="100"</code>) and the value's <code>a1</code> is a <b>column</b> — the two binding modes meet inside one figure. The frame is one row, with a constant group key so that it is a GROUP BY rather than a bare aggregate.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>A thick 240° arc, symmetric about 12 o'clock: it starts at −120° (lower left) and ends at +120° (lower right), leaving a 120° gap at the bottom.</li>
+          <li>A grey track with a blue arc over <b>58.74 %</b> of it — a little past the top of the dial.</li>
+          <li>The value arc paints <b>over</b> the track (document order is paint order), not beside or under it.</li>
+          <li>Both arcs share the same 70 % inner radius, inherited from the plane, so they are exactly concentric and the same thickness.</li>
+          <li>Five angle labels — 0, 25, 50, 75, 100 — placed <b>after</b> the marks in document order, deliberately, so the ring does not occlude them.</li>
+        </ul>
+      </section>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-stack">C — stack with a hidden series: the stack rebases over
+        rendered children; the y ceiling stays put (§7)</figcaption>
+      <hdml-view aria-labelledby="cap-stack">
+        <hdml-cartesian-plane source="?hdml-frame=recent_wide">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="100000000000">
+              <hdml-ordinal-scale channel="color"
+                                  values='["Amazon","Apple","Microsoft"]'>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-label channel="x"></hdml-label>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+                <!-- toggle `hidden` below in DevTools: the two rendered
+                     bands rebase (relation re-derives); scale domains
+                     never follow a toggle. The palette is §9's 8-colour
+                     initial value — this figure authors no palette CSS. -->
+                <hdml-stack x="label">
+                  <hdml-bar y="amzn" color='"Amazon"'></hdml-bar>
+                  <hdml-bar y="aapl" color='"Apple"'></hdml-bar>
+                  <hdml-bar y="msft" color='"Microsoft"' hidden></hdml-bar>
+                </hdml-stack>
+                <hdml-legend channel="color"></hdml-legend>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>C — a stack with a hidden child</h3>
+        <p><b>Renders.</b> Annual volume 2018–2022 for three stocks, one of which is hidden.</p>
+        <p><b>Grammar.</b> An ordinary <code>hdml-stack</code> whose third <code>hdml-bar</code> carries the boolean <code>hidden</code>. The relation re-derives over rendered children only. The y ceiling is authored at <b>100 bn</b> and deliberately does <i>not</i> follow the toggle. The palette is §9's 8-colour initial value — this figure authors no palette CSS.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li><b>Two</b> visible bands per bar, not three: Amazon at the bottom, Apple above it. Microsoft is absent.</li>
+          <li>Bar totals, visible portion only: 2018 <b>62.52</b>, 2019 <b>47.75</b>, 2020 <b>64.81</b>, 2021 <b>39.89</b>, 2022 <b>41.17</b> bn — all well under the 100 bn ceiling, which leaves obvious headroom.</li>
+          <li><b>Toggle <code>hidden</code> off the third bar in DevTools.</b> The two rendered bands must rebase — Microsoft appears at the top and the totals grow — and <b>the y axis must not move</b>. That is the check: scale domains never follow a toggle.</li>
+          <li>The legend still lists <b>three</b> entries. The key renders the full domain; hiding a mark is not the same as removing a category.</li>
+          <li>Colours come from the default palette, so they are not this folder's blue/amber/green.</li>
+        </ul>
+      </section>
+    </figure>
+
+    <figure class="symlog">
+      <figcaption id="cap-symlog">D — Apple's daily net dollar flow, March 2020: symlog y
+        (linear through zero, log at magnitude), datetime x with an
+        IANA zone</figcaption>
+      <hdml-view aria-labelledby="cap-symlog">
+        <hdml-cartesian-plane source="?hdml-frame=aapl_flow">
+          <!-- the domain is authored and the MARK carries the ISO
+               strings; the IANA zone places tick boundaries in
+               exchange-local time rather than UTC (§6) -->
+          <hdml-datetime-scale channel="x" zone="America/New_York"
+            min="2020-03-01" max="2020-04-01">
+            <hdml-continuous-scale channel="y" type="symlog" constant="100000000"
+                                   min="-2000000000" max="2000000000">
+              <hdml-grid channel="y" count="5"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-label channel="x" count="5" format="MMMd"></hdml-label>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+              <hdml-line x="day" y="net"></hdml-line>
+            </hdml-continuous-scale>
+          </hdml-datetime-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>D — symlog over a zoned datetime</h3>
+        <p><b>Renders.</b> Apple's daily net dollar flow, (close − open) × volume, across the 22 trading days of March 2020.</p>
+        <p><b>Grammar.</b> <code>hdml-datetime-scale</code> with <code>zone="America/New_York"</code> — the exchange's own calendar — and an authored domain, because a Trino DATE reaches the browser as a string. <code>hdml-continuous-scale type="symlog" constant="100000000"</code>: linear through zero up to ±100 M, logarithmic beyond it. The domain is authored <code>−2 bn … +2 bn</code>.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>A single blue line crossing the zero level <b>eleven times</b>, with visibly uneven horizontal spacing — weekends are absent, because these are trading days on a real calendar and not a sequence.</li>
+          <li>The low is <b>−1.80 bn</b> on 2020-03-20 (the March quadruple-witching Friday, in the crash) and the high is <b>+1.41 bn</b> on 2020-03-02.</li>
+          <li><b>2020-03-16 is +20.96 M</b> — 20 to 58× smaller than the days on either side of it. On symlog it must be visibly <i>off</i> the zero line. A log axis could not show it at all (the series crosses zero), and a linear axis would flatten it onto the line. That one point is the whole reason for the scale.</li>
+          <li>The curve between large and small magnitudes is compressed at the extremes and expanded near zero — the signature of symlog. If it looks like a plain linear plot, <code>constant</code> is not being read.</li>
+          <li>Five x labels in <code>MMMd</code> form ("Mar 2"), five y labels in compact notation including negatives.</li>
+          <li>Tick boundaries fall on New York days, not UTC days. A zone-less domain would shift them.</li>
+        </ul>
+      </section>
+    </figure>
+  </body>
+</html>

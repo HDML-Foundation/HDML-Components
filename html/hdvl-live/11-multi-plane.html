@@ -1,0 +1,322 @@
+<!doctype html>
+<!--
+  11 — Multiple planes in one view (SPEC §4.8), over live data
+
+  ON-PAGE SPEC. What each figure represents technically, and what to
+  check when you look at it, is now VISIBLE CONTENT — the `.spec`
+  block beside each figure. This comment keeps the authoring
+  rationale; the numbers and the checklist live in the page.
+
+  LIVE twin of html/hdvl/11-multi-plane.html. Two figures:
+
+    A — SMALL MULTIPLES. Three side-by-side planes, ONE view-level
+        source, ONE query (identical refs coalesce). The panels are
+        comparable because every y scale points at the same domain
+        source (values="series_max") — cross-panel comparability is
+        explicit here, never inferred, and on real data it is the
+        difference between "Microsoft barely trades" and "Microsoft
+        is drawn on its own axis and you were not told".
+        Annual share volume, 2013–2022: Apple's panel is the one
+        with a ceiling, Amazon's is flat around 15–28 bn, and
+        Microsoft's — 5.6–12.3 bn against an axis topped by Apple's
+        102 bn — is almost a flat line. That IS the finding.
+
+    B — OVERLAY. A full-bleed CONTEXT plane behind a padded DETAIL
+        plane. Overlay ≠ dual axis (07): sibling y scales put two
+        coordinate systems on ONE plot region; overlapping planes
+        put two PLOT REGIONS (own padding, own guides, own chain) on
+        one canvas. DOM order = paint order across planes: detail
+        second, so it paints over the context.
+        The grey band is total MAANG share volume per year — 184 bn
+        in 2000, a 425 bn peak in 2008, 59 bn in 2022. The orange
+        line is APPLE'S SHARE of it, which runs 67 % in 2008 down to
+        37 % in 2022. Both fall, but not together: the share is
+        still 65 % in 2013, by which point the total has already lost
+        nearly two thirds of its 2008 peak.
+
+  V13 all the way down: view holds planes; planes hold scales;
+  widgets at the tips. A plane contributes no dimension — it is the
+  geometric anchor the scale chains build their spaces in. Scales
+  never cross a plane boundary; data and domains do. Panel titles
+  are host HTML positioned over the view.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>11 — Multiple planes (live)</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0 0 3rem; max-width: 780px; position: relative; }
+
+      hdml-view { width: 100%; height: 280px; }
+
+      /* ============ A — small multiples: a 1×3 panel row ============ */
+      /* planes default to position:absolute; inset:0 (SPEC §3), so a panel
+         only has to narrow itself and release the right edge */
+      figure.panels hdml-cartesian-plane { width: 33.333%; right: auto;
+        padding: 16px 12px 32px 44px; }
+      figure.panels hdml-cartesian-plane.aapl { left: 33.333%; }
+      figure.panels hdml-cartesian-plane.msft { left: 66.666%; }
+
+      figure.panels hdml-bar { --hdml-fill-color: #1c8cf4; }
+      figure.panels .aapl hdml-bar { --hdml-fill-color: #f59e0b; }
+      figure.panels .msft hdml-bar { --hdml-fill-color: #10b981; }
+
+      /* panel titles: host HTML overlaid on the view (a view's children
+         are planes — V13 — so titles live outside it) */
+      figure.panels .titles { position: absolute; top: 0; left: 0; right: 0;
+        display: flex; pointer-events: none; font-size: 12px; color: #475569; }
+      figure.panels .titles span { width: 33.333%; text-align: center; }
+
+      /* ============ B — overlay: context behind detail ============ */
+      /* both overlay planes keep the default full-bleed box; only padding differs */
+      figure.overlay hdml-cartesian-plane.context { padding: 0; }  /* full-bleed */
+      figure.overlay hdml-cartesian-plane.detail  { padding: 16px 24px 40px 56px; }
+
+      figure.overlay .context hdml-area { --hdml-fill-color: #e2e8f0;
+        --hdml-curve-type: step; }
+      figure.overlay .detail hdml-line { --hdml-line-width: 2px;
+        --hdml-line-color: #f59e0b; --hdml-curve-type: monotone; }
+
+      /* shared guide styling */
+      hdml-axis[channel="x"] { position: absolute; left: 0; right: 0; bottom: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis[channel="y"] { position: absolute; top: 0; bottom: 0; left: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-label { --hdml-font-size: 11px; }
+      hdml-label[channel="x"] { position: absolute; left: 0; right: 0; top: 100%; }
+      hdml-label[channel="y"] { position: absolute; top: 0; bottom: 0; right: 100%; }
+
+      /* point placement for the polyline charts */
+      hdml-ordinal-scale.points { --hdml-bandwidth: 0; }
+
+      /* ---- validation notes: prose only, no hdml-* selector ---- */
+      .page-intro { max-width: 780px; margin: 0 0 2.5rem; }
+      .page-intro h1 { font-size: 1.4rem; margin: 0 0 0.6rem;
+        letter-spacing: -0.01em; color: #0f172a; }
+      .page-intro p { margin: 0 0 0.7rem; color: #334155;
+        font-size: 14px; line-height: 1.6; }
+      .spec { margin: 1rem 0 0; padding: 0.9rem 1.1rem;
+        border-left: 3px solid #cbd5e1; background: #f8fafc;
+        font-size: 13px; line-height: 1.55; color: #334155; }
+      .spec h3 { margin: 0 0 0.6rem; font-size: 11px; font-weight: 600;
+        letter-spacing: 0.09em; text-transform: uppercase; color: #64748b; }
+      .spec p { margin: 0 0 0.6rem; }
+      .spec b { color: #0f172a; font-weight: 600; }
+      .spec ul { margin: 0; padding-left: 1.15rem; }
+      .spec li { margin: 0.3rem 0; }
+      .spec code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px; background: #e8edf3; padding: 0 0.25em;
+        border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc"
+      login-hint="hdml.github@gmail.com">
+    </hdml-io>
+
+    <!-- ========================================================
+         THE MODEL. One row per (stock, trading day): the five
+         MAANG tables unioned into long form and cast out of the
+         varchar they are stored in. Every numeric column is cast
+         to `double` on purpose — see the type note in the header.
+         ======================================================== -->
+    <hdml-model name="maang_daily">
+      <hdml-table
+        name="p"
+        type="query"
+        description="One row per (stock, trading day), the five MAANG tables unioned and cast."
+        identifier="select
+  s.sym as sym,
+  s.date as d,
+  cast(substr(s.date, 1, 4) as integer) as yr,
+  substr(s.date, 1, 7) || '-01' as ym,
+  format_datetime(cast(s.date as date), 'MMM') as mon,
+  cast(substr(s.date, 6, 2) as integer) as mnum,
+  cast(s.open as double) as o,
+  cast(s.high as double) as h,
+  cast(s.low as double) as l,
+  cast(s.close as double) as c,
+  cast(s.volume as double) as v,
+  cast(s.close as double) * cast(s.volume as double) as dv
+from (
+  select 'Amazon' as sym, date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`amazon`
+  union all select 'Apple', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`apple`
+  union all select 'Google', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`google`
+  union all select 'Microsoft', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`microsoft`
+  union all select 'Netflix', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`netflix`
+) s">
+        <hdml-field name="sym"></hdml-field>
+        <hdml-field name="d"></hdml-field>
+        <hdml-field name="yr"></hdml-field>
+        <hdml-field name="ym"></hdml-field>
+        <hdml-field name="mon"></hdml-field>
+        <hdml-field name="mnum"></hdml-field>
+        <hdml-field name="o"></hdml-field>
+        <hdml-field name="h"></hdml-field>
+        <hdml-field name="l"></hdml-field>
+        <hdml-field name="c"></hdml-field>
+        <hdml-field name="v"></hdml-field>
+        <hdml-field name="dv"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+    <!-- same wide frame as 04 (see there for the field commentary);
+         series_max doubles here as the SHARED panel domain -->
+    <hdml-frame name="yearly_wide" source="?hdml-model=maang_daily">
+      <hdml-field name="label" type="utf-8" clause="cast(`p_yr` as varchar)"></hdml-field>
+      <hdml-field name="ord" origin="p_yr" aggregation="min"></hdml-field>
+      <hdml-field name="amzn" type="float-64"
+        clause="sum(if(`p_sym` = 'Amazon', `p_v`, 0))"></hdml-field>
+      <hdml-field name="aapl" type="float-64"
+        clause="sum(if(`p_sym` = 'Apple', `p_v`, 0))"></hdml-field>
+      <hdml-field name="msft" type="float-64"
+        clause="sum(if(`p_sym` = 'Microsoft', `p_v`, 0))"></hdml-field>
+      <hdml-field name="series_max" type="float-64"
+        clause="greatest(
+                  sum(if(`p_sym` = 'Amazon', `p_v`, 0)),
+                  sum(if(`p_sym` = 'Apple', `p_v`, 0)),
+                  sum(if(`p_sym` = 'Microsoft', `p_v`, 0)))"></hdml-field>
+      <hdml-filter-by>
+        <hdml-connective operator="and">
+          <hdml-filter type="named" name="greater-equal"
+                       field="`p_yr`" values="2013"></hdml-filter>
+          <hdml-filter type="named" name="less-equal"
+                       field="`p_yr`" values="2022"></hdml-filter>
+        </hdml-connective>
+      </hdml-filter-by>
+      <hdml-group-by><hdml-field name="label"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="ord" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- B's frame: the whole market and one company's slice of it -->
+    <hdml-frame name="yearly_share" source="?hdml-model=maang_daily">
+      <hdml-field name="label" type="utf-8" clause="cast(`p_yr` as varchar)"></hdml-field>
+      <hdml-field name="ord" origin="p_yr" aggregation="min"></hdml-field>
+      <hdml-field name="total" origin="p_v" aggregation="sum"></hdml-field>
+      <hdml-field name="share" type="float-64"
+        clause="sum(if(`p_sym` = 'Apple', `p_v`, 0)) / nullif(sum(`p_v`), 0)"></hdml-field>
+      <hdml-filter-by>
+        <hdml-connective operator="and">
+          <hdml-filter type="named" name="less-equal"
+                       field="`p_yr`" values="2022"></hdml-filter>
+        </hdml-connective>
+      </hdml-filter-by>
+      <hdml-group-by><hdml-field name="label"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="ord" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <header class="page-intro">
+      <h1>11 — Multiple planes: panels and an overlay</h1>
+      <p>A plane contributes no dimension of its own — it is the geometric anchor that the scale chains build their spaces in. <b>Scales never cross a plane boundary</b>, because a range belongs to its plane's geometry. Data and domains do cross: source is inherited, identical refs coalesce into one query, and a shared <code>values=</code> is what makes panels comparable.</p>
+      <p><b>B is not a dual axis.</b> Page 07 puts two coordinate systems on one plot region as sibling scales; this puts two <i>plot regions</i> — each with its own padding, guides and chain — on one canvas.</p>
+    </header>
+
+    <figure class="panels">
+      <figcaption id="cap-panels">A — annual share volume, one panel per stock (authored
+        small multiples; all panels share one query and one y domain)</figcaption>
+      <!-- source once, on the view: all three planes inherit it -->
+      <hdml-view source="?hdml-frame=yearly_wide" aria-labelledby="cap-panels">
+
+        <hdml-cartesian-plane class="amzn">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" values="series_max" nice>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" count="4" format="compact-short"></hdml-label>
+              <hdml-bar x="label" y="amzn"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+
+        <hdml-cartesian-plane class="aapl">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" values="series_max" nice>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-bar x="label" y="aapl"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+
+        <hdml-cartesian-plane class="msft">
+          <hdml-ordinal-scale channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" values="series_max" nice>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-bar x="label" y="msft"></hdml-bar>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+
+      </hdml-view>
+      <div class="titles" aria-hidden="true">
+        <span>Amazon</span><span>Apple</span><span>Microsoft</span>
+      </div>
+      <section class="spec">
+        <h3>A — small multiples</h3>
+        <p><b>Renders.</b> Annual share volume 2013–2022, one panel per stock.</p>
+        <p><b>Grammar.</b> Three <code>hdml-cartesian-plane</code>s inside one <code>hdml-view</code>, with <code>source</code> declared <b>once on the view</b>. Planes default to <code>position: absolute; inset: 0</code>, so a panel only has to narrow itself and release its right edge. Every y scale subscribes to the <b>same</b> column, <code>series_max</code> — that is what makes the panels comparable, and it is explicit rather than inferred. Panel titles are host HTML overlaid on the view, because a view's children are planes (V13).</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>Three panels side by side, each one third of the width, titled Amazon / Apple / Microsoft.</li>
+          <li><b>Only the leftmost panel has a y axis and y labels.</b> The other two carry an x axis and x labels only — they are reading the same scale.</li>
+          <li><b>All three share one y ceiling</b>, derived from <code>series_max</code> (102.42 bn) and rounded out. Apple's 2013 bar nearly fills its panel; Microsoft's tallest (12.25 bn) is about a tenth of the height.</li>
+          <li>Amazon runs 14.96–28.36 bn, Apple 22.07–102.42 bn, Microsoft 5.63–12.25 bn.</li>
+          <li><b>Microsoft's panel looks almost flat. That IS the finding</b> — and it is only true because the panels share a domain. Three independently scaled panels would have told the opposite story.</li>
+          <li>Three bar colours, one per panel (blue, amber, green).</li>
+          <li>One query, not three: identical source refs coalesce.</li>
+        </ul>
+      </section>
+    </figure>
+
+    <figure class="overlay">
+      <figcaption id="cap-overlay">B — Apple's share of MAANG volume (line) over a
+        full-bleed band of the total (two plot regions on one
+        canvas)</figcaption>
+      <hdml-view source="?hdml-frame=yearly_share" aria-labelledby="cap-overlay">
+
+        <!-- context: zero padding, no guides — pure texture -->
+        <hdml-cartesian-plane class="context">
+          <hdml-ordinal-scale class="points" channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" values="total">
+              <hdml-area x="label" y0="0" y1="total"></hdml-area>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+
+        <!-- detail: padded, guided; paints over the context -->
+        <hdml-cartesian-plane class="detail">
+          <hdml-ordinal-scale class="points" channel="x" values="label">
+            <hdml-continuous-scale channel="y" min="0" max="0.8">
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" count="5" format="percent precision-integer"></hdml-label>
+              <hdml-line x="label" y="share"></hdml-line>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+
+      </hdml-view>
+      <section class="spec">
+        <h3>B — detail over context</h3>
+        <p><b>Renders.</b> Apple's share of MAANG volume as a line, over a full-bleed band of the market total.</p>
+        <p><b>Grammar.</b> Two planes in one view. The <b>context</b> plane has zero padding and no guides — pure texture, a stepped grey area. The <b>detail</b> plane is padded and guided and comes second in document order, so it paints over the context. Each has its own scale chain and its own y domain (<code>values="total"</code> derived, versus an authored <code>0…0.8</code>).</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>A grey stepped band filling the <b>entire</b> view edge to edge, with a padded, axed plot drawn on top of it.</li>
+          <li>The grey band peaks at <b>424.7 bn</b> (2008) and falls to <b>58.9 bn</b> (2022), starting at 184.5 bn in 2000. It touches the left and right edges of the view — no gutter.</li>
+          <li>The amber line runs <b>65.2 %</b> (2000) → <b>67.3 %</b> (2008) → <b>37.5 %</b> (2022), against a y axis that stops at 80 %.</li>
+          <li><b>They fall out of step.</b> The share is still 65 % in 2013, by which point the total has already lost nearly two thirds of its 2008 peak. If the two curves look parallel, one of them is being drawn on the other's scale.</li>
+          <li>The context's step curve gives square corners; the detail's <code>monotone</code> curve gives a smooth line that never overshoots.</li>
+          <li>The detail's axes and labels sit <i>inside</i> the grey band and must be legible against it.</li>
+        </ul>
+      </section>
+    </figure>
+  </body>
+</html>

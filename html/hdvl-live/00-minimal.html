@@ -1,0 +1,186 @@
+<!doctype html>
+<!--
+  00 — Minimal (the floor), over live data
+
+  ON-PAGE SPEC. What each figure represents technically, and what to
+  check when you look at it, is now VISIBLE CONTENT — the `.spec`
+  block beside each figure. This comment keeps the authoring
+  rationale; the numbers and the checklist live in the page.
+
+  LIVE. The real-data twin of html/hdvl/00-minimal.html. The mock's
+  four literal quarters are replaced by five real stocks; everything
+  else — two scales, four guides, one mark, and NO CSS beyond a width
+  — is unchanged, so what this page tests is that the floor still
+  holds when the numbers arrive over the wire instead of out of an
+  attribute.
+
+  WHAT IS DIFFERENT FROM THE MOCK, AND ONLY THIS:
+    - an <hdml-io> (the data layer has to exist),
+    - a model + a frame,
+    - `values="label"` on the x scale instead of a literal array,
+    - `x="label" y="avg_volume"` on the bar instead of two arrays.
+  The accessible name is still an attribute and there is still no
+  stylesheet, so the zero-CSS claim survives the move to real data.
+
+  TYPES — read this once, it governs every page in this folder.
+  HDIO's Arrow writer emits exactly FOUR kinds: string, int64,
+  float64, bool (internal/query/trino_executor.go). A Trino DATE,
+  TIMESTAMP or DECIMAL falls through to STRING. Two consequences the
+  pages here are written around:
+    1. every numeric column is `cast(... as double)` in the model
+       SQL — a bare `round()` over decimals would arrive as text and
+       a continuous scale would reject it (V2);
+    2. a datetime scale never takes `values="<column>"`, because an
+       ISO date arrives as a string column and a string column on
+       `hdml-datetime-scale` IS V2. It authors `min`/`max` instead
+       and the MARKS bind the ISO string, which projects through
+       `instantOf` exactly as a literal does. See 01 and 12 D.
+
+  FILTERS — the second thing that governs every page here.
+  `hdml-filter type="named"` emits its `values` VERBATIM into the SQL
+  (packages/stringifier/src/filter.ts): `values="Apple"` becomes
+  `sym = Apple`, which Trino reads as a COLUMN reference and rejects.
+  A string value must therefore carry its own SQL quotes —
+  `values="'Apple'"` — and a number must not. `field` is written in
+  backticks like every other identifier-bearing attribute. Every
+  filter in this folder is authored that way; the mock corpus's
+  `values="model-b"` in 10-radar is the un-quoted form and would not
+  execute.
+
+  THE NUMBERS. Mean daily share volume, 2000-01-03 … 2023-03-17, over
+  27 435 trading days: Apple 411 M, Amazon 124 M, Google 123 M,
+  Microsoft 52 M, Netflix 16 M. Apple trades 25× Netflix, which is
+  why the y ceiling is authored at 450 M rather than derived — a
+  derived ceiling would be Apple's and is the same number here, but
+  saying it out loud is what lets the reader check the bars.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>00 — Minimal (live)</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      /* The only rules on this page are prose layout. Nothing here
+         names an hdml-* element, so the figure below is still styled
+         by nothing but its own width attribute. */
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+
+      /* ---- validation notes: prose only, no hdml-* selector ---- */
+      .page-intro { max-width: 780px; margin: 0 0 2.5rem; }
+      .page-intro h1 { font-size: 1.4rem; margin: 0 0 0.6rem;
+        letter-spacing: -0.01em; color: #0f172a; }
+      .page-intro p { margin: 0 0 0.7rem; color: #334155;
+        font-size: 14px; line-height: 1.6; }
+      .spec { margin: 1rem 0 0; padding: 0.9rem 1.1rem;
+        border-left: 3px solid #cbd5e1; background: #f8fafc;
+        font-size: 13px; line-height: 1.55; color: #334155; }
+      .spec h3 { margin: 0 0 0.6rem; font-size: 11px; font-weight: 600;
+        letter-spacing: 0.09em; text-transform: uppercase; color: #64748b; }
+      .spec p { margin: 0 0 0.6rem; }
+      .spec b { color: #0f172a; font-weight: 600; }
+      .spec ul { margin: 0; padding-left: 1.15rem; }
+      .spec li { margin: 0.3rem 0; }
+      .spec code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px; background: #e8edf3; padding: 0 0.25em;
+        border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc"
+      login-hint="hdml.github@gmail.com">
+    </hdml-io>
+
+    <!-- ========================================================
+         THE MODEL. One row per (stock, trading day): the five
+         MAANG tables unioned into long form and cast out of the
+         varchar they are stored in. Every numeric column is cast
+         to `double` on purpose — see the type note in the header.
+         ======================================================== -->
+    <hdml-model name="maang_daily">
+      <hdml-table
+        name="p"
+        type="query"
+        description="One row per (stock, trading day), the five MAANG tables unioned and cast."
+        identifier="select
+  s.sym as sym,
+  s.date as d,
+  cast(substr(s.date, 1, 4) as integer) as yr,
+  substr(s.date, 1, 7) || '-01' as ym,
+  format_datetime(cast(s.date as date), 'MMM') as mon,
+  cast(substr(s.date, 6, 2) as integer) as mnum,
+  cast(s.open as double) as o,
+  cast(s.high as double) as h,
+  cast(s.low as double) as l,
+  cast(s.close as double) as c,
+  cast(s.volume as double) as v,
+  cast(s.close as double) * cast(s.volume as double) as dv
+from (
+  select 'Amazon' as sym, date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`amazon`
+  union all select 'Apple', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`apple`
+  union all select 'Google', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`google`
+  union all select 'Microsoft', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`microsoft`
+  union all select 'Netflix', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`netflix`
+) s">
+        <hdml-field name="sym"></hdml-field>
+        <hdml-field name="d"></hdml-field>
+        <hdml-field name="yr"></hdml-field>
+        <hdml-field name="ym"></hdml-field>
+        <hdml-field name="mon"></hdml-field>
+        <hdml-field name="mnum"></hdml-field>
+        <hdml-field name="o"></hdml-field>
+        <hdml-field name="h"></hdml-field>
+        <hdml-field name="l"></hdml-field>
+        <hdml-field name="c"></hdml-field>
+        <hdml-field name="v"></hdml-field>
+        <hdml-field name="dv"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+    <!-- One row per stock: the mean of its daily volume. `label` is
+         the stock name as text, because a band scale's domain is
+         strings (the tag IS the kind — SPEC §6). -->
+    <hdml-frame name="sym_volume" source="?hdml-model=maang_daily">
+      <hdml-field name="label" origin="p_sym"></hdml-field>
+      <hdml-field name="avg_volume" origin="p_v" aggregation="avg"></hdml-field>
+      <hdml-group-by><hdml-field name="label"></hdml-field></hdml-group-by>
+      <!-- row order IS the ordinal domain (first occurrence wins) -->
+      <hdml-sort-by><hdml-field name="avg_volume" order="desc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <header class="page-intro">
+      <h1>00 — Minimal: the floor</h1>
+      <p>The smallest legal live render. Two scales, four guides, one mark, one frame — and no stylesheet rule that names an <code>hdml-*</code> element. The figure below is styled by nothing but <code>width: 480px</code>; everything else you see is a spec default: the view's 2:1 aspect ratio, the UA plane padding the guides land in, x guides under the plot and y guides left of it, bandwidth 0.8, <code>currentColor</code> marks and 11px system-ui labels.</p>
+      <p>The page stylesheet exists only for this prose. Grep it: it contains no <code>hdml-</code> selector.</p>
+    </header>
+
+    <hdml-view style="width: 480px" aria-label="Mean daily share volume, five MAANG stocks">
+      <hdml-cartesian-plane source="?hdml-frame=sym_volume">
+        <hdml-ordinal-scale channel="x" values="label">
+          <hdml-continuous-scale channel="y" min="0" max="450000000">
+            <hdml-axis channel="x"></hdml-axis>
+            <hdml-label channel="x"></hdml-label>
+            <hdml-axis channel="y"></hdml-axis>
+            <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+            <hdml-bar x="label" y="avg_volume"></hdml-bar>
+          </hdml-continuous-scale>
+        </hdml-ordinal-scale>
+      </hdml-cartesian-plane>
+    </hdml-view>
+
+    <section class="spec">
+      <h3>The whole page</h3>
+      <p><b>Renders.</b> Mean daily share volume for each of the five MAANG stocks, 2000-01-03 → 2023-03-17.</p>
+      <p><b>Grammar.</b> <code>hdml-cartesian-plane</code> → <code>hdml-ordinal-scale channel="x"</code> (domain subscribed to the <code>label</code> column, so row order is the domain) → <code>hdml-continuous-scale channel="y"</code> (domain authored <code>0…450000000</code>) → <code>hdml-axis</code> ×2, <code>hdml-label</code> ×2, one <code>hdml-bar</code>. Frame <code>sym_volume</code>: 5 rows, <code>avg(p_v)</code> grouped by stock, sorted descending.</p>
+      <p><b>Validate.</b></p>
+      <ul>
+        <li>Five bars, in this order left to right: <b>Apple, Amazon, Google, Microsoft, Netflix</b> — the sort is on the measure, and row order is what the ordinal domain is.</li>
+        <li>Heights, against the 450 M ceiling: Apple <b>411.3 M</b> (≈91 % of full height), Amazon <b>124.0 M</b>, Google <b>122.6 M</b>, Microsoft <b>52.1 M</b>, Netflix <b>16.3 M</b>.</li>
+        <li>Amazon and Google are 1.1 % apart — the two bars should be all but indistinguishable. If they are visibly different, that is a bug.</li>
+        <li>The y axis carries 5 labels in compact notation (<code>0</code>, <code>100M</code> … <code>450M</code> or the tick algorithm's nearest equivalent) and the x axis carries the five names, unrotated.</li>
+        <li>The figure is 480px wide and half that tall. Nothing is clipped; the leftmost y label is inside the view.</li>
+      </ul>
+    </section>
+  </body>
+</html>

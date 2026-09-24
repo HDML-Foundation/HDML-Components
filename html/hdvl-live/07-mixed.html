@@ -1,0 +1,213 @@
+<!doctype html>
+<!--
+  07 — Mixed chart (bar + line, two y axes), over live data
+
+  ON-PAGE SPEC. What each figure represents technically, and what to
+  check when you look at it, is now VISIBLE CONTENT — the `.spec`
+  block beside each figure. This comment keeps the authoring
+  rationale; the numbers and the checklist live in the page.
+
+  LIVE twin of html/hdvl/07-mixed.html, and the figure this dataset
+  was made for. DUAL AXIS via SIBLING same-channel scales (SPEC
+  §4.2): two y scales over one plot area are peers, not parent and
+  child. V13 keeps a scale's children homogeneous, so ALL widgets
+  live at the tips and the shared x guides sit inside the volume
+  block, placed FIRST so they paint beneath both blocks' marks. DOM
+  order = paint order: the price block comes second, so the line
+  paints over the bars.
+
+  APPLE, 2004–2022. Bars are the year's total share volume; the line
+  is the year's mean close. The two run in OPPOSITE directions and
+  that is the whole point of a dual axis being honest here — the
+  units are shares and dollars, and no single scale can carry both:
+
+    2004   121.8 bn shares    $0.63
+    2008   286.0 bn shares    $5.07     ← the volume peak
+    2013   102.4 bn shares   $16.88
+    2022    22.1 bn shares  $154.84     ← 1/13th the volume, 245× the price
+
+  A reader who takes the two curves as one story will read a
+  collapse; the axes are what stop them. Both are authored from 0,
+  and the right-hand ceiling ($160) is a round number above the
+  2022 mean rather than a derived one, so the crossing point is a
+  property of the data and not of the `nice` algorithm.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>07 — Mixed, bar + line, dual axis (live)</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0; max-width: 780px; }
+
+      hdml-view { width: 100%; height: 360px; }
+      hdml-cartesian-plane { padding: 16px 64px 40px 64px; }
+      hdml-ordinal-scale[channel="x"] { padding: 0 16px; --hdml-bandwidth: 0.6; }
+      hdml-continuous-scale[channel="y"] { padding: 8px 0; }
+
+      hdml-axis[channel="x"] { position: absolute; left: 0; right: 0; bottom: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-axis.volume { position: absolute; top: 0; bottom: 0; left: 0;
+        --hdml-line-width: 1px; --hdml-line-color: #1c8cf4; }
+      hdml-axis.price { position: absolute; top: 0; bottom: 0; left: 100%;
+        --hdml-line-width: 1px; --hdml-line-color: #f59e0b; }
+      hdml-label { --hdml-font-size: 11px; }
+      hdml-label[channel="x"] { position: absolute; left: 0; right: 0; top: 100%; }
+      hdml-label.volume { position: absolute; top: 0; bottom: 0; right: 100%; }
+      hdml-label.price { position: absolute; top: 0; bottom: 0; left: 100%; }
+
+      hdml-bar { --hdml-fill-color: #1c8cf466; }
+      hdml-line { --hdml-line-width: 2px; --hdml-line-color: #f59e0b;
+        --hdml-curve-type: monotone; }
+      hdml-point { --hdml-tick-style: ellipse; --hdml-tick-width: 7px;
+        --hdml-tick-height: 7px; --hdml-fill-color: #ffffff;
+        --hdml-line-width: 2px; --hdml-line-color: #f59e0b; }
+
+      /* ---- validation notes: prose only, no hdml-* selector ---- */
+      .page-intro { max-width: 780px; margin: 0 0 2.5rem; }
+      .page-intro h1 { font-size: 1.4rem; margin: 0 0 0.6rem;
+        letter-spacing: -0.01em; color: #0f172a; }
+      .page-intro p { margin: 0 0 0.7rem; color: #334155;
+        font-size: 14px; line-height: 1.6; }
+      .spec { margin: 1rem 0 0; padding: 0.9rem 1.1rem;
+        border-left: 3px solid #cbd5e1; background: #f8fafc;
+        font-size: 13px; line-height: 1.55; color: #334155; }
+      .spec h3 { margin: 0 0 0.6rem; font-size: 11px; font-weight: 600;
+        letter-spacing: 0.09em; text-transform: uppercase; color: #64748b; }
+      .spec p { margin: 0 0 0.6rem; }
+      .spec b { color: #0f172a; font-weight: 600; }
+      .spec ul { margin: 0; padding-left: 1.15rem; }
+      .spec li { margin: 0.3rem 0; }
+      .spec code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px; background: #e8edf3; padding: 0 0.25em;
+        border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc"
+      login-hint="hdml.github@gmail.com">
+    </hdml-io>
+
+    <!-- ========================================================
+         THE MODEL. One row per (stock, trading day): the five
+         MAANG tables unioned into long form and cast out of the
+         varchar they are stored in. Every numeric column is cast
+         to `double` on purpose — see the type note in the header.
+         ======================================================== -->
+    <hdml-model name="maang_daily">
+      <hdml-table
+        name="p"
+        type="query"
+        description="One row per (stock, trading day), the five MAANG tables unioned and cast."
+        identifier="select
+  s.sym as sym,
+  s.date as d,
+  cast(substr(s.date, 1, 4) as integer) as yr,
+  substr(s.date, 1, 7) || '-01' as ym,
+  format_datetime(cast(s.date as date), 'MMM') as mon,
+  cast(substr(s.date, 6, 2) as integer) as mnum,
+  cast(s.open as double) as o,
+  cast(s.high as double) as h,
+  cast(s.low as double) as l,
+  cast(s.close as double) as c,
+  cast(s.volume as double) as v,
+  cast(s.close as double) * cast(s.volume as double) as dv
+from (
+  select 'Amazon' as sym, date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`amazon`
+  union all select 'Apple', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`apple`
+  union all select 'Google', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`google`
+  union all select 'Microsoft', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`microsoft`
+  union all select 'Netflix', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`netflix`
+) s">
+        <hdml-field name="sym"></hdml-field>
+        <hdml-field name="d"></hdml-field>
+        <hdml-field name="yr"></hdml-field>
+        <hdml-field name="ym"></hdml-field>
+        <hdml-field name="mon"></hdml-field>
+        <hdml-field name="mnum"></hdml-field>
+        <hdml-field name="o"></hdml-field>
+        <hdml-field name="h"></hdml-field>
+        <hdml-field name="l"></hdml-field>
+        <hdml-field name="c"></hdml-field>
+        <hdml-field name="v"></hdml-field>
+        <hdml-field name="dv"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+    <hdml-frame name="aapl_yearly" source="?hdml-model=maang_daily">
+      <hdml-field name="label" type="utf-8" clause="cast(`p_yr` as varchar)"></hdml-field>
+      <hdml-field name="ord" origin="p_yr" aggregation="min"></hdml-field>
+      <hdml-field name="volume" origin="p_v" aggregation="sum"></hdml-field>
+      <hdml-field name="price" origin="p_c" aggregation="avg"></hdml-field>
+      <hdml-filter-by>
+        <hdml-connective operator="and">
+          <hdml-filter type="named" name="equals"
+                       field="`p_sym`" values="'Apple'"></hdml-filter>
+          <hdml-filter type="named" name="greater-equal"
+                       field="`p_yr`" values="2004"></hdml-filter>
+          <hdml-filter type="named" name="less-equal"
+                       field="`p_yr`" values="2022"></hdml-filter>
+        </hdml-connective>
+      </hdml-filter-by>
+      <hdml-group-by><hdml-field name="label"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="ord" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <header class="page-intro">
+      <h1>07 — Mixed: dual axis done as siblings</h1>
+      <p>Two y scales over one plot area, as <b>siblings</b> and not as parent and child. Nesting them would be a different statement entirely. Because a scale's children must be homogeneous (V13 — scales xor widgets, never both), every widget lives at a chain tip, and the shared x guides sit inside the volume block, placed first so they paint beneath both blocks' marks.</p>
+      <p>Which block holds the shared x guides is the author's pick: <code>channel="x"</code> resolves to the one shared x scale from either. DOM order is paint order, so the price block comes second and its line paints over the bars.</p>
+    </header>
+
+    <figure>
+      <figcaption id="cap-mixed">Apple: annual share volume (bars, left axis) and mean
+        close (line, right axis)</figcaption>
+      <hdml-view aria-labelledby="cap-mixed">
+        <hdml-cartesian-plane source="?hdml-frame=aapl_yearly">
+          <hdml-ordinal-scale channel="x" values="label">
+
+            <!-- left axis: volume -->
+            <hdml-continuous-scale channel="y" min="0" values="volume" nice>
+              <!-- shared x guides: any block works (V13) — channel="x"
+                   resolves to the one shared x-scale from either.
+                   First children, so they paint beneath everything. -->
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-label channel="x"></hdml-label>
+
+              <hdml-axis channel="y" class="volume"></hdml-axis>
+              <hdml-label channel="y" class="volume" count="5" format="compact-short"></hdml-label>
+              <hdml-bar x="label" y="volume"></hdml-bar>
+            </hdml-continuous-scale>
+
+            <!-- right axis: price — a sibling, not a child -->
+            <hdml-continuous-scale channel="y" min="0" max="160">
+              <hdml-axis channel="y" class="price"></hdml-axis>
+              <hdml-label channel="y" class="price" count="5"
+                          format="currency/USD precision-integer"></hdml-label>
+              <hdml-line x="label" y="price"></hdml-line>
+              <hdml-point x="label" y="price"></hdml-point>
+            </hdml-continuous-scale>
+
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>Apple: annual volume and mean close</h3>
+        <p><b>Renders.</b> 19 years, 2004–2022. Bars are the year's total share volume on the left axis; the line is the year's mean close on the right.</p>
+        <p><b>Grammar.</b> <code>hdml-ordinal-scale channel="x"</code> with <b>two</b> <code>hdml-continuous-scale channel="y"</code> siblings under it. Left: <code>min="0" values="volume" nice</code>. Right: authored <code>0…160</code>, so the crossing point is a property of the data and not of the tick algorithm. The line block also carries an <code>hdml-point</code>.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>Pale blue bars and an amber line with white-filled amber dots, one dot per year.</li>
+          <li>The two run in <b>opposite directions</b>: volume falls from <b>286.0 bn</b> (2008) to <b>22.1 bn</b> (2022) while the mean close rises from <b>$0.63</b> (2004) to <b>$154.84</b> (2022) — 13× down against 245× up.</li>
+          <li>Two coloured y axes: blue on the left with compact share counts, amber on the right with whole-dollar USD. <b>The axis colours must match the marks they scale.</b></li>
+          <li>The line crosses the bar silhouette somewhere around 2013–2015 — that crossing is meaningless, and the two axes are what tell the reader so.</li>
+          <li>The line and its dots paint <b>over</b> the bars, never behind.</li>
+          <li>The bars' ceiling is derived (from 286.0 bn, rounded out by <code>nice</code>); the line's is the authored 160.</li>
+        </ul>
+      </section>
+    </figure>
+  </body>
+</html>

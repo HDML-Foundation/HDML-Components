@@ -1,0 +1,252 @@
+<!doctype html>
+<!--
+  09 — Polar area, over live data
+
+  ON-PAGE SPEC. What each figure represents technically, and what to
+  check when you look at it, is now VISIBLE CONTENT — the `.spec`
+  block beside each figure. This comment keeps the authoring
+  rationale; the numbers and the checklist live in the page.
+
+  LIVE twin of html/hdvl/09-polar-area.html. Polar area = hdml-arc,
+  NO layout exception: equal angular slices come from the BAND scale
+  on the angle channel (a row-wise band lookup); the value binds to
+  the RADIUS channel through a sqrt scale, so area is honest.
+  Compare 08: value → angle = pie (a layout widget), value → radius
+  = polar area (a plain mark).
+
+  A — SEASONALITY. Total MAANG share volume by calendar month, all
+  five stocks and all 23 years pooled (2000-01-03 … 2023-03-17):
+
+    Jan 423.6bn  Feb 345.6bn  Mar 357.6bn  Apr 351.5bn
+    May 317.0bn  Jun 321.9bn  Jul 323.7bn  Aug 283.3bn
+    Sep 316.8bn  Oct 414.0bn  Nov 332.4bn  Dec 300.9bn
+
+  January and October are the two busy months and August is the
+  quiet one — the rose makes a 1.5× spread legible that a bar chart
+  would make look larger than it is. Note that March carries a 24th
+  partial month and February a 23rd, so the raw totals are not quite
+  comparable; a mean-per-day version would be, and this figure is
+  deliberately the raw one because that caveat is the sort of thing
+  a corpus should force you to notice.
+
+  A's COLOR IS A CONTINUOUS RAMP keyed to the same measure
+  (redundant encoding — honest for a rose), not a 12-month
+  categorical palette: 12 domain values against a smaller palette is
+  palette exhaustion, which is an error, and 12 arbitrary hues would
+  say nothing.
+
+  B keeps the CATEGORICAL form — five stocks fit the palette — over
+  mean daily volume, so the same 25:1 Apple-to-Netflix spread page
+  03 draws as bars appears here as wedge radii. Under a sqrt radius
+  scale that is a 5:1 length ratio, which is exactly the point of
+  the sqrt: the AREAS are 25:1.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>09 — Polar area (live)</title>
+    <script defer src="../../bin/index.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0 0 3rem; max-width: 480px; }
+
+      hdml-view { width: 100%; height: 340px; }
+      hdml-polar-plane { padding: 12px; }
+      /* the 120px gutter exists for A's ramp legend; B has no legend,
+         so it keeps symmetric padding (a centered rose) */
+      figure:first-of-type hdml-polar-plane { padding: 12px 120px 12px 12px; }
+
+      hdml-ordinal-scale[channel="angle"] { --hdml-angle-start: 0deg;
+        --hdml-angle-end: 360deg; --hdml-bandwidth: 1; }
+
+      hdml-grid[channel="radius"] { --hdml-grid-shape: circle;
+        --hdml-line-width: 1px; --hdml-line-style: dotted;
+        --hdml-line-color: #cbd5e1; }
+      hdml-label[channel="radius"] { --hdml-font-size: 10px; }
+      hdml-legend { position: absolute; top: 8px; left: 100%;
+        width: 110px; --hdml-font-size: 11px; }
+      /* A: ramp stops for the continuous color scale */
+      hdml-continuous-scale[channel="color"] {
+        --hdml-color-interpolate: #dbeafe #1c8cf4 #1e3a8a; }
+      /* B: categorical palette — 5 stocks, within the list */
+      hdml-ordinal-scale[channel="color"] { --hdml-palette: #1c8cf4 #f59e0b #10b981
+        #8b5cf6 #ec4899 #14b8a6; }
+
+      /* mark-level hover via a STROKE variant: channel-bound fill wins
+         over --hdml-fill-color and its _hover variant alike (§9), so a
+         hover cue on channel-colored wedges uses what the channel does
+         not own — the outline thickens on the hovered wedge only */
+      hdml-arc { --hdml-line-width: 1px; --hdml-line-color: #ffffff;
+        --hdml-line-width_hover: 2.5px; }
+
+      /* ---- validation notes: prose only, no hdml-* selector ---- */
+      .page-intro { max-width: 780px; margin: 0 0 2.5rem; }
+      .page-intro h1 { font-size: 1.4rem; margin: 0 0 0.6rem;
+        letter-spacing: -0.01em; color: #0f172a; }
+      .page-intro p { margin: 0 0 0.7rem; color: #334155;
+        font-size: 14px; line-height: 1.6; }
+      .spec { margin: 1rem 0 0; padding: 0.9rem 1.1rem;
+        border-left: 3px solid #cbd5e1; background: #f8fafc;
+        font-size: 13px; line-height: 1.55; color: #334155; }
+      .spec h3 { margin: 0 0 0.6rem; font-size: 11px; font-weight: 600;
+        letter-spacing: 0.09em; text-transform: uppercase; color: #64748b; }
+      .spec p { margin: 0 0 0.6rem; }
+      .spec b { color: #0f172a; font-weight: 600; }
+      .spec ul { margin: 0; padding-left: 1.15rem; }
+      .spec li { margin: 0.3rem 0; }
+      .spec code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px; background: #e8edf3; padding: 0 0.25em;
+        border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <hdml-io
+      host="http://127.0.0.1:8888"
+      tenant="tenant-a"
+      mode="oidc"
+      login-hint="hdml.github@gmail.com">
+    </hdml-io>
+
+    <!-- ========================================================
+         THE MODEL. One row per (stock, trading day): the five
+         MAANG tables unioned into long form and cast out of the
+         varchar they are stored in. Every numeric column is cast
+         to `double` on purpose — see the type note in the header.
+         ======================================================== -->
+    <hdml-model name="maang_daily">
+      <hdml-table
+        name="p"
+        type="query"
+        description="One row per (stock, trading day), the five MAANG tables unioned and cast."
+        identifier="select
+  s.sym as sym,
+  s.date as d,
+  cast(substr(s.date, 1, 4) as integer) as yr,
+  substr(s.date, 1, 7) || '-01' as ym,
+  format_datetime(cast(s.date as date), 'MMM') as mon,
+  cast(substr(s.date, 6, 2) as integer) as mnum,
+  cast(s.open as double) as o,
+  cast(s.high as double) as h,
+  cast(s.low as double) as l,
+  cast(s.close as double) as c,
+  cast(s.volume as double) as v,
+  cast(s.close as double) * cast(s.volume as double) as dv
+from (
+  select 'Amazon' as sym, date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`amazon`
+  union all select 'Apple', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`apple`
+  union all select 'Google', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`google`
+  union all select 'Microsoft', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`microsoft`
+  union all select 'Netflix', date, open, high, low, close, volume from `tenant-a_maang`.`maang`.`netflix`
+) s">
+        <hdml-field name="sym"></hdml-field>
+        <hdml-field name="d"></hdml-field>
+        <hdml-field name="yr"></hdml-field>
+        <hdml-field name="ym"></hdml-field>
+        <hdml-field name="mon"></hdml-field>
+        <hdml-field name="mnum"></hdml-field>
+        <hdml-field name="o"></hdml-field>
+        <hdml-field name="h"></hdml-field>
+        <hdml-field name="l"></hdml-field>
+        <hdml-field name="c"></hdml-field>
+        <hdml-field name="v"></hdml-field>
+        <hdml-field name="dv"></hdml-field>
+      </hdml-table>
+    </hdml-model>
+    <!-- A — twelve rows. `mon` is already the short month NAME, which
+         is what a band domain takes; `mnum` is the sort key, because
+         'Apr' &lt; 'Aug' &lt; 'Dec' alphabetically and row order IS the
+         domain. -->
+    <hdml-frame name="by_month" source="?hdml-model=maang_daily">
+      <hdml-field name="label" origin="p_mon"></hdml-field>
+      <hdml-field name="ord" origin="p_mnum" aggregation="min"></hdml-field>
+      <hdml-field name="volume" origin="p_v" aggregation="sum"></hdml-field>
+      <hdml-group-by><hdml-field name="label"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="ord" order="asc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <!-- B — five rows. -->
+    <hdml-frame name="by_sym" source="?hdml-model=maang_daily">
+      <hdml-field name="label" origin="p_sym"></hdml-field>
+      <hdml-field name="volume" origin="p_v" aggregation="avg"></hdml-field>
+      <hdml-group-by><hdml-field name="label"></hdml-field></hdml-group-by>
+      <hdml-sort-by><hdml-field name="volume" order="desc"></hdml-field></hdml-sort-by>
+    </hdml-frame>
+
+    <header class="page-intro">
+      <h1>09 — Polar area: value to radius, not to angle</h1>
+      <p>Page 08 binds the measure to <b>angle</b> and gets a pie, which needs a layout widget. This page binds it to <b>radius</b> and gets a polar area, which needs no layout exception at all: equal angular slices fall out of the band scale on the angle channel, and the mark is an ordinary <code>hdml-arc</code>.</p>
+      <p>Both radius scales are <code>type="sqrt"</code>, so area is proportional to value. That is what makes the wedge lengths look less dramatic than the numbers — and it is correct.</p>
+    </header>
+
+    <figure>
+      <figcaption id="cap-rose">A — total share volume per calendar month (Nightingale
+        rose), colour = the same measure</figcaption>
+      <hdml-view aria-labelledby="cap-rose">
+        <hdml-polar-plane source="?hdml-frame=by_month">
+          <hdml-ordinal-scale channel="angle" values="label">
+            <hdml-continuous-scale type="sqrt" channel="radius" min="0" values="volume" nice>
+              <hdml-continuous-scale channel="color" min="0" values="volume">
+                <hdml-grid channel="radius" count="4"></hdml-grid>
+                <hdml-label channel="radius" count="4" format="compact-short"></hdml-label>
+
+                <!-- angle: string ↔ band (equal slices); radius:
+                     number ↔ sqrt; color: number ↔ ramp — kinds line
+                     up (V2); hdml-legend renders the labeled ramp (§2) -->
+                <hdml-arc angle="label" radius="volume"
+                          color="volume"></hdml-arc>
+
+                <hdml-legend channel="color" count="4" format="compact-short"></hdml-legend>
+              </hdml-continuous-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>A — seasonality, twelve months</h3>
+        <p><b>Renders.</b> Total MAANG share volume by calendar month, all five stocks and all 23 years pooled.</p>
+        <p><b>Grammar.</b> <code>hdml-ordinal-scale channel="angle"</code> (twelve bands, <code>--hdml-bandwidth: 1</code> so wedges touch) → <code>hdml-continuous-scale type="sqrt" channel="radius"</code> → <code>hdml-continuous-scale channel="color"</code> — a <b>continuous ramp keyed to the same measure</b>, which is redundant encoding and honest for a rose. Twelve categories against a smaller palette would be palette exhaustion, and twelve arbitrary hues would say nothing.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>Twelve wedges of equal angular width (30° each), touching, starting at 12 o'clock.</li>
+          <li>Reading clockwise from 12: <b>Jan 423.6, Feb 345.6, Mar 357.6, Apr 351.5, May 317.0, Jun 321.9, Jul 323.7, Aug 283.3, Sep 316.8, Oct 414.0, Nov 332.4, Dec 300.9</b> (bn shares).</li>
+          <li><b>January and October are the two long wedges; August is the shortest.</b> The spread is only 1.5×, so under a sqrt radius the longest wedge is about 1.22× the shortest — subtle, and correct.</li>
+          <li>Colour tracks length: the darkest wedges are January and October, the palest is August. A wedge whose colour disagrees with its length means the two scales are reading different columns.</li>
+          <li>A labelled colour <b>ramp</b> in the gutter — a continuous bar with graduations, not five discrete swatches.</li>
+          <li>Dotted circular gridlines (<code>--hdml-grid-shape: circle</code>), four of them, with compact radius labels.</li>
+          <li>Caveat in the data, not the render: March pools 24 partial-to-complete months and February 23, so the raw totals are not perfectly comparable.</li>
+          <li>Hovering a wedge thickens its white outline — the fill is channel-bound, so the hover cue uses what the channel does not own.</li>
+        </ul>
+      </section>
+    </figure>
+
+    <figure>
+      <figcaption id="cap-stocks">B — categorical variant: mean daily volume per
+        stock</figcaption>
+      <hdml-view aria-labelledby="cap-stocks">
+        <hdml-polar-plane source="?hdml-frame=by_sym">
+          <hdml-ordinal-scale channel="angle" values="label">
+            <hdml-continuous-scale type="sqrt" channel="radius" min="0" max="450000000">
+              <hdml-ordinal-scale channel="color" values="label">
+                <hdml-grid channel="radius" count="4"></hdml-grid>
+                <hdml-arc angle="label" radius="volume" color="label"></hdml-arc>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+      <section class="spec">
+        <h3>B — the categorical variant</h3>
+        <p><b>Renders.</b> Mean daily volume per stock: five wedges, colour by category.</p>
+        <p><b>Grammar.</b> The same chain with an <b>ordinal</b> colour scale instead of a ramp, and an authored radius domain <code>0…450 M</code>. Five categories fit the palette.</p>
+        <p><b>Validate.</b></p>
+        <ul>
+          <li>Five wedges of equal angular width (72° each), one per stock, in descending order of length.</li>
+          <li><b>The 25:1 volume spread must read as roughly a 5:1 radius ratio</b> — that is the sqrt scale doing its job, and it is the check that matters here. Apple 411.3 M against Netflix 16.3 M: Apple's radius should be about five times Netflix's, and its <i>area</i> about 25 times.</li>
+          <li>Apple's wedge reaches ~95.6 % of the outer gridline (√(411.3/450)).</li>
+          <li>Five distinct palette colours, one per wedge.</li>
+          <li>No legend on this figure, and the plane's padding is symmetric — the rose is centred, unlike A which reserves a right gutter.</li>
+        </ul>
+      </section>
+    </figure>
+  </body>
+</html>
