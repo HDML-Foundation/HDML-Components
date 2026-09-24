@@ -59,6 +59,24 @@ are the reference.
 | [11](11-multi-plane.html) | 2 | A: three planes, one view-level source, **one query**, and one shared y domain — that is what makes the panels comparable. B: a padded detail plane over a full-bleed context plane (not a dual axis). |
 | [12](12-coverage.html) | 4 | The grammar the other twelve do not reach: ramp legend + `hdml-fallback`, a gauge whose track is literal and whose value is a column, a stack with a `hidden` child (toggle it — the bands rebase, the ceiling does not move), and symlog over a zoned datetime. |
 
+## Known defect — a frame sourced from another in-page frame
+
+`08` C originally matched the mock and read `source="?hdml-frame=share"`. **It rendered
+nothing.** Neither half of the usual suspects explains it: run exactly as the stringifier
+generates it, that SQL returns the five correct rows against Trino, and the widget has a
+committed corpus golden plus an explicit *"A's pie and C's arcs are one geometry"*
+assertion. But the gate feeds the arcs ref **straight from a test double**, so nothing has
+ever resolved the chain end to end — and a frame sourced from another **in-page** frame is
+the only shape no live page under `html/` had run. Every other frame-on-frame here sources a
+**static** document, which works (page `01`).
+
+C now computes the same window functions over the grouped model, which is verified to give
+byte-identical `a0`/`a1`, so the figure renders and the corpus keeps its
+"A and C must match" check. **The root cause is not confirmed.** Reproducing it needs an
+access token and the step that would have minted one was refused, so the next move is the
+browser console: `src/hdio/parse.ts` logs `Unknown local source` when a sibling ref fails to
+resolve, which would place the fault on the client rather than the server.
+
 ## What has been verified, and what has not
 
 Verified before publishing:

@@ -161,16 +161,34 @@ from (
       <hdml-sort-by><hdml-field name="sym" order="asc"></hdml-field></hdml-sort-by>
     </hdml-frame>
 
-    <!-- Pure form producer: the prefix sum in the data layer.
-         Frame-on-frame chain over the aggregate above, so the
-         columns are read by their BARE names; a0/a1 are cumulative
-         fractions of the full turn. -->
-    <hdml-frame name="share_arcs" source="?hdml-frame=share">
-      <hdml-field name="sym" origin="sym"></hdml-field>
+    <!-- Pure form producer: the prefix sum in the data layer, so C
+         paints the same five wedges as A without the widget deriving
+         anything.
+
+         THIS SOURCES THE MODEL, NOT THE FRAME ABOVE, AND THAT IS A
+         WORKAROUND. The mock (html/hdvl/08-pie-doughnut.html) writes
+         `source="?hdml-frame=region_share"` — a frame over another
+         IN-PAGE frame — and so did this page until C rendered
+         nothing on the live server. That shape is the only thing on
+         the page no live page had ever run: every other frame-on-frame
+         under html/ sources a STATIC document, which works (see 01).
+         The corpus gate cannot see it either, because it feeds
+         `?hdml-frame=region_share_arcs` straight from the test double
+         and never resolves the chain. Root cause NOT confirmed — see
+         the note in the C spec block below.
+
+         The window functions therefore run over the GROUPED model
+         instead: `sum(sum(...)) over (...)` is a window over an
+         aggregate, evaluated after the GROUP BY. Verified against
+         Trino to produce byte-identical a0/a1 to the frame-on-frame
+         form. `sym` is a group key, so it carries no `aggregation`. -->
+    <hdml-frame name="share_arcs" source="?hdml-model=maang_daily">
+      <hdml-field name="sym" origin="p_sym"></hdml-field>
       <hdml-field name="a0" type="float-64"
-        clause="(sum(`volume`) over (order by `sym`) - `volume`) / nullif(sum(`volume`) over (), 0)"></hdml-field>
+        clause="(sum(sum(`p_v`)) over (order by `p_sym`) - sum(`p_v`)) / nullif(sum(sum(`p_v`)) over (), 0)"></hdml-field>
       <hdml-field name="a1" type="float-64"
-        clause="sum(`volume`) over (order by `sym`) / nullif(sum(`volume`) over (), 0)"></hdml-field>
+        clause="sum(sum(`p_v`)) over (order by `p_sym`) / nullif(sum(sum(`p_v`)) over (), 0)"></hdml-field>
+      <hdml-group-by><hdml-field name="sym"></hdml-field></hdml-group-by>
       <hdml-sort-by><hdml-field name="sym" order="asc"></hdml-field></hdml-sort-by>
     </hdml-frame>
 
@@ -255,7 +273,8 @@ from (
       <section class="spec">
         <h3>C — the pure arc form</h3>
         <p><b>Renders.</b> The same pie as A, with the prefix sum computed in SQL instead of inside the widget.</p>
-        <p><b>Grammar.</b> A frame-on-frame over A's aggregate, with two window-function fields: <code>a0</code> and <code>a1</code> are cumulative fractions of the full turn. The widget is a plain <code>hdml-arc a0="a0" a1="a1"</code> — no layout step, no internal derive.</p>
+        <p><b>Grammar.</b> Two window-function fields over the grouped model — <code>a0</code> and <code>a1</code> are cumulative fractions of the full turn — and a plain <code>hdml-arc a0="a0" a1="a1"</code>: no layout step, no internal derive.</p>
+        <p><b>Known defect.</b> This frame originally read <code>source="?hdml-frame=share"</code>, matching the mock — a frame over another <i>in-page</i> frame. <b>C then rendered nothing.</b> The SQL is not the problem: run as the stringifier generates it, that form returns the five correct rows against Trino. Nor is the widget: the corpus gate has a committed golden for this figure and an explicit <i>"A's pie and C's arcs are one geometry"</i> assertion — but it feeds the arcs ref straight from a test double, so it never resolves the chain. A frame sourced from another <b>in-page</b> frame is the one shape no live page under <code>html/</code> had ever run; every other frame-on-frame here sources a <b>static</b> document, which works (page 01). It now sources the model instead, which is verified to produce byte-identical <code>a0</code>/<code>a1</code>. <b>Root cause is not confirmed</b> — reproducing it needs an access token, and the check that would have minted one was refused. If you hit this again, the browser console is the place to look: <code>parse.ts</code> logs <code>Unknown local source</code> when a sibling ref fails to resolve.</p>
         <p><b>Validate.</b></p>
         <ul>
           <li><b>C must be pixel-for-pixel the same disc as A.</b> Same five wedges, same angles, same order, same colours. This is the whole point of the figure.</li>
