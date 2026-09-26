@@ -258,6 +258,44 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
     }
   });
 
+  test("★ text takes R4's outline, and 0 by default", async () => {
+    // ★ 017 R4 on the most surprising of `fillPaint`'s callers, and
+    // the reason the Phase 1 question was put to the founder at all:
+    // a label's node is TEXT, so option (a) makes `--hdml-line-*` a
+    // text outline. That is now a supported surface (SPEC §9's rows
+    // say so), and both halves need an assertion.
+    //
+    // The default half is the one that protects the corpus: twelve
+    // of the thirteen pages carry a label, none of them authors an
+    // outline, and `--hdml-line-width`'s registered initial is
+    // 1.5px — so without the UA rule every one of them would have
+    // grown faux-bold text in `currentColor`.
+    const bare = await mount(page('step="0.05"'));
+    const el = <Element>bare.querySelector("hdml-label");
+    assert.strictEqual(
+      getComputedStyle(el)
+        .getPropertyValue("--hdml-line-width")
+        .trim(),
+      "0px",
+    );
+    for (const node of texts(bare)) {
+      assert.isNotNull(node.fill);
+      assert.isNull(node.stroke);
+      assert.strictEqual(node.strokeWidth, 0);
+    }
+
+    const outlined = await mount(
+      page(
+        'step="0.05"',
+        "--hdml-line-width: 1px; --hdml-line-color: rgb(1, 2, 3)",
+      ),
+    );
+    for (const node of texts(outlined)) {
+      assert.strictEqual(node.stroke, "rgb(1, 2, 3)");
+      assert.strictEqual(node.strokeWidth, 1);
+    }
+  });
+
   test("★ anchor and baseline follow the BOX", async () => {
     // §6.5 derives them from "which edge of its own box the scale's
     // axis runs along", and SPEC §7 gives the tag no `position`

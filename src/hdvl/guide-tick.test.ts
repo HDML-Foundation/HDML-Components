@@ -197,6 +197,55 @@ suite("hdvl/guide-tick — §6.5's repeated glyph", () => {
     }
   });
 
+  test("★ a zero-CSS tick glyph does not stroke", async () => {
+    // ★ 017 R4's safety half on a GUIDE. `guide-tick` is one of
+    // `fillPaint`'s three non-mark callers, and the founder's
+    // decision (option (a)) neutralises `--hdml-line-width` here on
+    // the same terms as on a mark — so a tick that authors no
+    // outline is byte-identical to its pre-R4 self, against a
+    // registered initial of 1.5px that would otherwise have put a
+    // ring round every glyph on ten corpus pages.
+    const view = await mount(page('step="0.05"'));
+    const el = <Element>view.querySelector("hdml-tick");
+    assert.strictEqual(lengthOf(el, "--hdml-line-width"), 0);
+    for (const node of nodesOf(view)) {
+      assert.isNotNull(node.fill);
+      assert.isNull(node.stroke);
+      assert.strictEqual(node.strokeWidth, 0);
+      assert.strictEqual(node.dash, null);
+    }
+  });
+
+  test("★ an authored outline reaches a tick glyph", async () => {
+    // ★ 017 R4's WORKING half on a guide, which is the consequence
+    // of option (a) and is asserted rather than assumed (step 02's
+    // Finding 2): the same UA rule that keeps the glyph clean above
+    // is what makes `--hdml-line-*` a live, supported surface here.
+    // Option (b) would have kept this inert, and the only thing that
+    // can tell the two decisions apart is this test.
+    //
+    // No corpus page authors an outline on a tick, so nothing in the
+    // goldens covers it — this is the whole of its coverage.
+    const view = await mount(
+      page(
+        'step="0.05"',
+        "--hdml-line-width: 2px;" +
+          " --hdml-line-color: rgb(1, 2, 3);" +
+          " --hdml-line-style: dotted",
+      ),
+    );
+    const el = <Element>view.querySelector("hdml-tick");
+    const width = lengthOf(el, "--hdml-line-width");
+    assert.strictEqual(width, 2);
+    for (const node of nodesOf(view)) {
+      assert.strictEqual(node.stroke, "rgb(1, 2, 3)");
+      assert.strictEqual(node.strokeWidth, width);
+      // `dotted` is `[width, width * 2]`, from the one shared
+      // `dashOf` (R12) — the glyph does not get a second pattern.
+      assert.deepEqual(node.dash, [width, width * 2]);
+    }
+  });
+
   test("★ the registered initial is rect, not ellipse", async () => {
     const view = await mount(page('count="3"'));
     const el = tickOf(view);

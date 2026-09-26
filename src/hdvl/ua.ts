@@ -74,6 +74,70 @@ const CLIPPED = [
   .join(",\n");
 
 /**
+ * The eight hosts whose paint comes from `mark.ts`'s `fillPaint`,
+ * and whose `--hdml-line-width` initial is therefore **neutralised
+ * to zero** (017 R4).
+ *
+ * Until R4 a filled widget never stroked, so `--hdml-line-width`'s
+ * registered initial of **`1.5px`** reached nothing. Now that
+ * `fillPaint` reads it, that initial would put an edge on every
+ * glyph, bar, slice, tick, label and legend entry in the corpus that
+ * no author asked for. The fix is one declaration per host here
+ * rather than a change in `properties.ts`: the **registry keeps
+ * `1.5px`**, which is what `mark.ts`'s `strokePaint` hosts —
+ * `hdml-line`, `hdml-rule`, `hdml-axis`, `hdml-grid` — still need,
+ * and they are deliberately **absent** from this list.
+ *
+ * **★ It is a NORMAL declaration, and that is the whole point
+ * (trap 12).** R1's extent two rules below is `!important` because it
+ * locks the author *out*; this exists so the author decides, so any
+ * outer-document `hdml-point { --hdml-line-width: 1px }` beats it by
+ * the ordinary shadow-cascade rule that gives the outer tree normal
+ * declarations. **Neither may become the other.**
+ *
+ * **★ Only the WIDTH is neutralised**, not `--hdml-line-color` or
+ * `--hdml-line-style`. The width alone gates the outline
+ * (`fillPaint` emits no stroke at zero), so the other two keep
+ * inheriting — which is what lets an author theme a whole plane's
+ * outline colour once and turn it on per widget, and what keeps
+ * `schedule.test.ts`'s inherited-`--hdml-line-color` sentinel row
+ * reaching a bar.
+ *
+ * **★ A `:host` declaration beats an INHERITED value**, because
+ * inheritance only applies where the element has no declaration of
+ * its own. So after R4 `--hdml-line-width` set on an *ancestor* —
+ * a `figure`, the view, a plane — no longer reaches a filled widget,
+ * and the width must be set by a selector that matches the widget
+ * itself. `08-pie-doughnut` is correct for this reason and not by
+ * inheritance: it writes `hdml-pie, hdml-arc` as one grouped
+ * selector, so the arc is matched directly.
+ *
+ * **★ `hdml-pie` is the EIGHTH host and is easy to miss**, which is
+ * why it is named here. It has no `fillPaint` call of its own: §6.3
+ * makes a pie's geometry `hdml-arc`'s *"to the node"*, so
+ * `layout-pie` hands its OWN `Measured` to `mark-arc`'s
+ * `sectorScene`, and that one call site therefore serves two hosts.
+ * A grep for `fillPaint(` finds the file, not the host. Leaving it
+ * out put **1.5px** on every unstyled pie, and no corpus golden
+ * could catch it: every page with a pie also declares
+ * `hdml-pie, hdml-arc { --hdml-line-width: 2px }`, so the default
+ * was never the value in force. Measured on all three engines
+ * before it was added.
+ */
+const OUTLINED = [
+  HDVL_TAG_NAMES.POINT,
+  HDVL_TAG_NAMES.BAR,
+  HDVL_TAG_NAMES.ARC,
+  HDVL_TAG_NAMES.AREA,
+  HDVL_TAG_NAMES.PIE,
+  HDVL_TAG_NAMES.TICK,
+  HDVL_TAG_NAMES.LABEL,
+  HDVL_TAG_NAMES.LEGEND,
+]
+  .map((tag) => `:host(${tag})`)
+  .join(",\n");
+
+/**
  * The guides SPEC §3 places **per channel** whose cross-axis extent
  * is the **runtime's** — zero, `!important`, unreachable from the
  * outer tree (017 R1).
@@ -479,6 +543,10 @@ const ELEMENT_CSS = [
   "}",
   "",
   `${CLIPPED} { overflow: hidden }`,
+  "",
+  // 017 R4's neutralised outline default. NORMAL, never
+  // `!important` — see OUTLINED.
+  `${OUTLINED} { --hdml-line-width: 0 }`,
 ].join("\n");
 
 const DOCUMENT_CSS = [

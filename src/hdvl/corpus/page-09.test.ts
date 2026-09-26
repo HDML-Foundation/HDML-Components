@@ -555,8 +555,8 @@ const GOLDEN_A: Scene = {
           fill:
             "color-mix(in oklch, rgb(30, 58, 138) " +
             "12.217194570135748%, rgb(28, 140, 244))",
-          stroke: null,
-          strokeWidth: 0,
+          stroke: "rgb(255, 255, 255)",
+          strokeWidth: 1,
           dash: null,
         },
         {
@@ -571,8 +571,8 @@ const GOLDEN_A: Scene = {
           fill:
             "color-mix(in oklch, rgb(30, 58, 138) " +
             "6.7873303167420795%, rgb(28, 140, 244))",
-          stroke: null,
-          strokeWidth: 0,
+          stroke: "rgb(255, 255, 255)",
+          strokeWidth: 1,
           dash: null,
         },
         {
@@ -587,8 +587,8 @@ const GOLDEN_A: Scene = {
           fill:
             "color-mix(in oklch, rgb(30, 58, 138) " +
             "37.55656108597285%, rgb(28, 140, 244))",
-          stroke: null,
-          strokeWidth: 0,
+          stroke: "rgb(255, 255, 255)",
+          strokeWidth: 1,
           dash: null,
         },
         {
@@ -603,8 +603,8 @@ const GOLDEN_A: Scene = {
           fill:
             "color-mix(in oklch, rgb(30, 58, 138) " +
             "45.70135746606334%, rgb(28, 140, 244))",
-          stroke: null,
-          strokeWidth: 0,
+          stroke: "rgb(255, 255, 255)",
+          strokeWidth: 1,
           dash: null,
         },
         {
@@ -619,8 +619,8 @@ const GOLDEN_A: Scene = {
           fill:
             "color-mix(in oklch, rgb(30, 58, 138) " +
             "71.04072398190044%, rgb(28, 140, 244))",
-          stroke: null,
-          strokeWidth: 0,
+          stroke: "rgb(255, 255, 255)",
+          strokeWidth: 1,
           dash: null,
         },
         {
@@ -635,8 +635,8 @@ const GOLDEN_A: Scene = {
           fill:
             "color-mix(in oklch, rgb(30, 58, 138) " +
             "85.52036199095024%, rgb(28, 140, 244))",
-          stroke: null,
-          strokeWidth: 0,
+          stroke: "rgb(255, 255, 255)",
+          strokeWidth: 1,
           dash: null,
         },
         {
@@ -649,8 +649,8 @@ const GOLDEN_A: Scene = {
           a0: 180,
           a1: 210,
           fill: "rgb(30, 58, 138)",
-          stroke: null,
-          strokeWidth: 0,
+          stroke: "rgb(255, 255, 255)",
+          strokeWidth: 1,
           dash: null,
         },
         {
@@ -665,8 +665,8 @@ const GOLDEN_A: Scene = {
           fill:
             "color-mix(in oklch, rgb(30, 58, 138) " +
             "94.57013574660633%, rgb(28, 140, 244))",
-          stroke: null,
-          strokeWidth: 0,
+          stroke: "rgb(255, 255, 255)",
+          strokeWidth: 1,
           dash: null,
         },
         {
@@ -681,8 +681,8 @@ const GOLDEN_A: Scene = {
           fill:
             "color-mix(in oklch, rgb(30, 58, 138) " +
             "74.6606334841629%, rgb(28, 140, 244))",
-          stroke: null,
-          strokeWidth: 0,
+          stroke: "rgb(255, 255, 255)",
+          strokeWidth: 1,
           dash: null,
         },
         {
@@ -697,8 +697,8 @@ const GOLDEN_A: Scene = {
           fill:
             "color-mix(in oklch, rgb(30, 58, 138) " +
             "57.466063348416284%, rgb(28, 140, 244))",
-          stroke: null,
-          strokeWidth: 0,
+          stroke: "rgb(255, 255, 255)",
+          strokeWidth: 1,
           dash: null,
         },
         {
@@ -713,8 +713,8 @@ const GOLDEN_A: Scene = {
           fill:
             "color-mix(in oklch, rgb(30, 58, 138) " +
             "34.84162895927603%, rgb(28, 140, 244))",
-          stroke: null,
-          strokeWidth: 0,
+          stroke: "rgb(255, 255, 255)",
+          strokeWidth: 1,
           dash: null,
         },
         {
@@ -729,8 +729,8 @@ const GOLDEN_A: Scene = {
           fill:
             "color-mix(in oklch, rgb(30, 58, 138) " +
             "23.076923076923084%, rgb(28, 140, 244))",
-          stroke: null,
-          strokeWidth: 0,
+          stroke: "rgb(255, 255, 255)",
+          strokeWidth: 1,
           dash: null,
         },
       ],
@@ -1382,8 +1382,8 @@ const GOLDEN_B: Scene = {
           a0: 0,
           a1: 72,
           fill: "rgb(28, 140, 244)",
-          stroke: null,
-          strokeWidth: 0,
+          stroke: "rgb(255, 255, 255)",
+          strokeWidth: 1,
           dash: null,
         },
         {
@@ -1396,8 +1396,8 @@ const GOLDEN_B: Scene = {
           a0: 72,
           a1: 144,
           fill: "rgb(245, 158, 11)",
-          stroke: null,
-          strokeWidth: 0,
+          stroke: "rgb(255, 255, 255)",
+          strokeWidth: 1,
           dash: null,
         },
         {
@@ -1410,8 +1410,8 @@ const GOLDEN_B: Scene = {
           a0: 144,
           a1: 216,
           fill: "rgb(16, 185, 129)",
-          stroke: null,
-          strokeWidth: 0,
+          stroke: "rgb(255, 255, 255)",
+          strokeWidth: 1,
           dash: null,
         },
         {
@@ -1424,8 +1424,8 @@ const GOLDEN_B: Scene = {
           a0: 216,
           a1: 288,
           fill: "rgb(139, 92, 246)",
-          stroke: null,
-          strokeWidth: 0,
+          stroke: "rgb(255, 255, 255)",
+          strokeWidth: 1,
           dash: null,
         },
         {
@@ -1438,8 +1438,8 @@ const GOLDEN_B: Scene = {
           a0: 288,
           a1: 360,
           fill: "rgb(236, 72, 153)",
-          stroke: null,
-          strokeWidth: 0,
+          stroke: "rgb(255, 255, 255)",
+          strokeWidth: 1,
           dash: null,
         },
       ],

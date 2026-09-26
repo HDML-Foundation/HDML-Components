@@ -1565,6 +1565,64 @@ zero-box guard in the suite (`base.test.ts`'s *"nothing in the fixture is a 0x0 
 holds, because its fixture carries no positional guide — a fact worth knowing before
 adding one to it.
 
+## A filled widget strokes, and the safety is a UA rule not a `null`
+
+Project 017 R4, implementation step 04. `fillPaint` hard-coded `stroke: null` /
+`strokeWidth: 0` for every filled widget, so the `--hdml-line-*` family reached nothing on
+`hdml-point`, `hdml-bar`, `hdml-arc`, `hdml-area` or `hdml-pie`. **Five of the thirteen
+corpus pages authored an outline and got nothing for it** — `05`/`06`/`07` on `hdml-point`,
+`08`/`09` on `hdml-arc` — and `08-pie-doughnut`'s white slice separators had been written
+and never once painted.
+
+**The old reasoning was right about the hazard and wrong about the remedy.** Its comment
+said a stroke here *"would take `--hdml-line-color`'s initial value and put a visible edge
+on every bar in the corpus that no author asked for and none could turn off"*. Every clause
+of that is still true **of the registry**: `--hdml-line-width` registers `1.5px` and
+`--hdml-line-color` `currentColor`. What was wrong was concluding that the function must
+never stroke, when the initial value can be neutralised **per host** instead.
+
+So `fillPaint` now reads the family — sharing `strokePaint`'s own `dashOf`, not a second
+pattern — and `ua.ts` gained `OUTLINED`, one rule declaring `--hdml-line-width: 0` on every
+host that reaches it. Four things about that rule are load-bearing:
+
+- **It is `0`, and it is NORMAL.** Two rules below it sits R1's `0 !important`, which exists
+  to lock the author *out* of a box. This one exists so the author *decides*, and an
+  outer-document `hdml-point { --hdml-line-width: 1px }` beats it. Three separate tests fail
+  if it ever becomes `!important`, and the negative control was run: all three fail on
+  chromium, firefox and webkit. **No corpus page would notice** — none uses `!important` —
+  which is precisely why the guard is a declaration-level assertion and not a golden.
+- **Only the width.** `--hdml-line-color` and `--hdml-line-style` are left inheriting, so a
+  plane can theme an outline colour once and switch it on per widget — and
+  `schedule.test.ts`'s inherited-`--hdml-line-color` sentinel row keeps reaching a bar.
+- **It is eight hosts, not four**, because `fillPaint` has ten call sites and only four are
+  the marks the requirement named. `hdml-tick`, `hdml-label` and `hdml-legend` paint through
+  it too; leaving them out would have put a 1.5px outline on every tick glyph, every axis
+  label and every legend entry on **twelve of the thirteen** pages. Put to the founder as a
+  design question — scope the stroke to the marks, or neutralise on the guides as well —
+  and **settled as the latter**, which makes `--hdml-line-*` a supported surface on a tick,
+  a label (a *text* outline) and a legend. SPEC §9's rows say so now.
+- **`hdml-pie` is the eighth and has no `fillPaint` call.** §6.3 makes a pie's geometry
+  `hdml-arc`'s *to the node*, so `layout-pie` hands its own `Measured` to `sectorScene` —
+  one call site, two hosts, and a grep for `fillPaint(` finds only the file. Leaving it out
+  gave every unstyled pie a 1.5px outline, and **no corpus golden could catch it**, because
+  every page with a pie declares the width. What caught it was
+  `layout-pie.test.ts`'s *"08-A's pie and 08-C's arc agree, node-wise"* — an equivalence
+  test across two hosts is a per-host-default detector in a way no single-host golden is.
+
+**A zero width emits no outline at all, rather than a zero-width one.** A `stroke` beside
+`strokeWidth: 0` would be paint no renderer draws, and it would move every golden written
+before R4 for a mark whose author asked for nothing. The goldens moved on exactly the five
+pages that authored an outline, and in exactly two fields — `stroke` and `strokeWidth`. No
+geometry moved anywhere: `Paint` is spread into nodes whose coordinates are computed first.
+
+**A bound `color` channel stays the fill, never the outline**, which is where this parts
+company with `strokePaint`. `09-polar-area`'s own comment depends on it: a hover cue on
+channel-coloured wedges uses *"what the channel does not own"*.
+
+The four `_hover` variants remain unread on both halves — `09`'s
+`--hdml-line-width_hover: 2.5px` is still inert. A per-mark hover value needs the renderer
+to know which node is hovered, which `Paint` cannot express; 017 R7 owns it.
+
 ## `hdml-split-by` is published and unimplemented
 
 Found by step 35's manifest check. `HDML_TAG_NAMES` has **33** members — 12 data + 21

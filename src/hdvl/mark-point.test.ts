@@ -471,12 +471,128 @@ suite("hdvl/mark-point — §6.1's glyph", () => {
     assert.notStrictEqual(boxes[0].fill, "red");
   });
 
-  test("it is filled and does not stroke", async () => {
+  test("★ with no author CSS it does not stroke", async () => {
+    // ★ 017 R4's SAFETY HALF, and the claim the whole fix rests on.
+    // `fillPaint` now reads `--hdml-line-*`, so this assertion is no
+    // longer true by construction — it is true because `ua.ts`
+    // neutralises `--hdml-line-width` to `0` on this host, against a
+    // REGISTERED INITIAL of 1.5px. Read that way it is the test that
+    // says no corpus page gained an edge nobody asked for.
+    //
+    // It used to be titled "it is filled and does not stroke" and
+    // meant something stronger: that a filled mark never strokes at
+    // all. That is now false, so the title says which case this is.
     const view = await mount(page("[0, 1]", "[0, 200]"));
+    // The default is the UA sheet's, not the registry's…
+    assert.strictEqual(prop(pointOf(view), "--hdml-line-width"), 0);
     for (const r of rects(view)) {
       assert.isNotNull(r.fill);
+      // …and at zero width there is no outline AT ALL, rather than a
+      // zero-width one: a `stroke` beside `strokeWidth: 0` would be
+      // paint no renderer draws and would move every pre-R4 golden.
       assert.strictEqual(r.stroke, null);
       assert.strictEqual(r.strokeWidth, 0);
+      assert.strictEqual(r.dash, null);
+    }
+  });
+
+  test("★ an authored outline paints, with its dash", async () => {
+    // ★ 017 R4's WORKING HALF. `05`/`06`/`07` all author exactly
+    // this on `hdml-point` and got nothing for it before.
+    //
+    // Every number is read off the COMPUTED PROPERTY, never
+    // transcribed (trap 11): `cssNumber`'s literal fallback is
+    // unreachable, so a transcribed `2` would pass against a runtime
+    // that had stopped reading the property at all.
+    const view = await mount(
+      page(
+        "[0, 1]",
+        "[0, 200]",
+        "--hdml-line-width: 2px;" +
+          " --hdml-line-color: rgb(1, 2, 3);" +
+          " --hdml-line-style: dashed",
+      ),
+    );
+    const point = pointOf(view);
+    const width = prop(point, "--hdml-line-width");
+    assert.strictEqual(width, 2);
+    for (const r of rects(view)) {
+      assert.strictEqual(r.strokeWidth, width);
+      assert.strictEqual(
+        r.stroke,
+        paintProp(point, "--hdml-line-color"),
+      );
+      // ★ The dash is `dashOf`'s, REUSED rather than re-written
+      // (R12): it is a multiple of the stroke width, so a 2px dashed
+      // outline is `[8, 6]` and not a pattern in absolute px. The
+      // multipliers come from the one function `strokePaint` uses.
+      assert.deepEqual(r.dash, [width * 4, width * 3]);
+      // The fill is untouched by any of it.
+      assert.isNotNull(r.fill);
+    }
+  });
+
+  test("★ the outline is never the color channel", async () => {
+    // ★ Where `fillPaint` parts company with `strokePaint`. There a
+    // bound `color` IS the stroke; here it is the FILL, and the
+    // stroke stays `--hdml-line-color` alone — so an outline remains
+    // the author's decision even on a channel-coloured mark.
+    //
+    // `09-polar-area`'s own comment depends on this: "a hover cue on
+    // channel-colored wedges uses what the channel does not own".
+    const view = await mount(html`
+      <hdml-view aria-label="pt" style="width: 400px; height: 200px">
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-continuous-scale channel="x" min="0" max="4">
+            <hdml-continuous-scale channel="y" min="0" max="200">
+              <hdml-ordinal-scale
+                channel="color"
+                values='["North","South"]'
+                style="--hdml-palette: rgb(9, 9, 9) rgb(8, 8, 8)"
+              >
+                <hdml-point
+                  x="[0, 1]"
+                  y="[0, 200]"
+                  color='"North"'
+                  style="--hdml-line-width: 1px;
+                         --hdml-line-color: rgb(1, 2, 3)"
+                ></hdml-point>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    for (const r of rects(view)) {
+      // The channel took the fill…
+      assert.strictEqual(r.fill, "rgb(9, 9, 9)");
+      // …and left the outline alone.
+      assert.strictEqual(r.stroke, "rgb(1, 2, 3)");
+      assert.strictEqual(r.strokeWidth, 1);
+    }
+  });
+
+  test("★ a width alone outlines in currentColor", async () => {
+    // `--hdml-line-color`'s registered initial is `currentColor`,
+    // which MEASURE has already resolved against the element's own
+    // `color` (R16) — so a width-only declaration is a legible
+    // default rather than a `null` stroke at a non-zero width.
+    const view = await mount(
+      page(
+        "[0, 1]",
+        "[0, 200]",
+        "color: rgb(4, 5, 6); --hdml-line-width: 1px",
+      ),
+    );
+    const point = pointOf(view);
+    assert.strictEqual(
+      paintProp(point, "--hdml-line-color"),
+      "rgb(4, 5, 6)",
+    );
+    for (const r of rects(view)) {
+      assert.strictEqual(r.stroke, "rgb(4, 5, 6)");
+      assert.strictEqual(r.strokeWidth, 1);
+      // Solid is the style initial, so no dash.
       assert.strictEqual(r.dash, null);
     }
   });

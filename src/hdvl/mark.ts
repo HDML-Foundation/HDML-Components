@@ -747,34 +747,80 @@ export function strokePaint(
 }
 
 /**
- * The paint of a **filled** mark — `hdml-area`'s band and
- * `hdml-bar`'s rect (§6.1).
+ * The paint of a **filled** widget — `hdml-area`'s band,
+ * `hdml-bar`'s rect, a point's glyph, an arc's sector (§6.1), and
+ * the three fill-painted guides (`hdml-tick`'s glyph,
+ * `hdml-label`'s text, `hdml-legend`'s four parts).
  *
- * This is §6.1's paint sentence read literally, on the two marks it
- * was written for: *a bound `color` channel wins over
- * `--hdml-fill-color` and over its `_hover` variant*. SPEC §9 gives
- * the `--hdml-fill-*` properties to *"filled widgets"* and the
- * `--hdml-line-*` properties to *"stroked"* ones, so this is
- * {@link strokePaint}'s sibling and not a superset of it.
+ * The fill is §6.1's paint sentence read literally: *a bound
+ * `color` channel wins over `--hdml-fill-color` and over its
+ * `_hover` variant*.
  *
- * **A filled mark does not also stroke.** §6.1 gives the area *"one
- * `path`, filled"* and the bar *"one `rect`"*, neither of which
- * mentions an outline, and SPEC §9 registers no property that would
- * control one — a stroke here would take `--hdml-line-color`'s
- * initial value and put a visible edge on every bar in the corpus
- * that no author asked for and none could turn off. `strokeWidth` is
- * therefore `0` and `stroke` is `null`.
+ * ── The outline, 017 R4 ──
+ *
+ * **A filled widget DOES also stroke, and the hazard that once said
+ * otherwise is real and is closed elsewhere.** This function used to
+ * hard-code `stroke: null` / `strokeWidth: 0`, with a correct
+ * argument for its time: `--hdml-line-width`'s registered initial is
+ * **`1.5px`** and `--hdml-line-color`'s is `currentColor`, so a
+ * widget that simply started reading them would *"put a visible edge
+ * on every bar in the corpus that no author asked for and none could
+ * turn off"*. Every clause of that is still true of the **registry**.
+ *
+ * What defuses it is that the initial is **neutralised per element in
+ * the UA sheet** — `ua.ts`'s `OUTLINED` list declares
+ * `--hdml-line-width: 0` on each of the eight hosts that reach this
+ * function — `hdml-pie` among them, via `layout-pie`'s reuse of
+ * `sectorScene` — so the effective default is `0`, no widget gains an
+ * edge nobody asked for, and *"none could turn it off"* inverts:
+ * a **normal** declaration is what any author rule beats. The
+ * registry is untouched, which is what keeps `hdml-line`,
+ * `hdml-rule`, `hdml-axis` and `hdml-grid` — {@link strokePaint}'s
+ * hosts — on `1.5px`.
+ *
+ * Five of the thirteen corpus pages authored an outline on a filled
+ * mark and got nothing for it: `05`/`06`/`07` on `hdml-point`,
+ * `08`/`09` on `hdml-arc`. `08`'s white slice separators are the
+ * clearest case — authored, and never once painted.
+ *
+ * **★ A bound `color` channel is the FILL here, never the stroke**,
+ * which is where this parts company with {@link strokePaint}. There
+ * the series colour *is* the stroke; here the stroke is
+ * `--hdml-line-color` alone, so an outline stays the author's
+ * decision even on a channel-coloured widget. That is what
+ * `09-polar-area`'s comment relies on — *"a hover cue on
+ * channel-colored wedges uses what the channel does not own"*.
+ *
+ * **Neither `_hover` variant is read**, here or in
+ * {@link strokePaint}: a per-mark hover value needs the renderer to
+ * know which node is hovered, which {@link Paint} cannot express.
+ * `09`'s `--hdml-line-width_hover: 2.5px` is therefore still inert,
+ * deliberately — 017 R7 owns it.
  *
  * @param m - The widget's measured snapshot.
  * @param color - The resolved `color`-channel paint, or `null`.
- * @returns The fill paint.
+ * @returns The fill paint, with the outline the author asked for.
  */
 export function fillPaint(m: Measured, color: string | null): Paint {
+  // ★ The `0` is UNREACHABLE and is not the default (trap 11): a
+  // registered property always computes to something, so this
+  // returns the UA sheet's `0` or the author's value, never this
+  // literal. It matches the UA sheet anyway, so the one state that
+  // cannot arise would still be the harmless one.
+  const width = cssNumber(m.props.get("--hdml-line-width"), 0);
+  const style = (m.props.get("--hdml-line-style") ?? "solid").trim();
+  // At zero width there is no outline AT ALL — not a zero-width one.
+  // A `stroke` and a `dash` beside `strokeWidth: 0` would be paint
+  // no renderer draws, and every scene golden written before R4
+  // would move for a mark whose author asked for nothing.
+  const outlined = width > 0;
   return {
     fill: color ?? m.props.get("--hdml-fill-color") ?? null,
-    stroke: null,
-    strokeWidth: 0,
-    dash: null,
+    stroke: outlined
+      ? m.props.get("--hdml-line-color") ?? null
+      : null,
+    strokeWidth: outlined ? width : 0,
+    dash: outlined ? dashOf(style, width) : null,
   };
 }
 

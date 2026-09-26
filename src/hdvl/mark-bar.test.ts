@@ -525,7 +525,12 @@ suite("hdvl/mark-bar — §6.1's band-filling rect", () => {
     // `_hover` variant (SPEC §9 has no state exception).
     assert.notStrictEqual(fill, prop(bar, "--hdml-fill-color"));
     assert.notStrictEqual(fill, prop(bar, "--hdml-fill-color_hover"));
-    // And a filled mark does not also stroke.
+    // ★ And no outline, because this fixture authors no
+    // `--hdml-line-width`: since 017 R4 a filled mark CAN stroke,
+    // and what keeps this one clean is `ua.ts`'s `0` default
+    // standing in for a registered initial of 1.5px. No corpus page
+    // outlines a bar either, so a regression here would be silent
+    // everywhere except this line.
     assert.strictEqual(rects(view)[0].stroke, null);
     assert.strictEqual(rects(view)[0].strokeWidth, 0);
   });

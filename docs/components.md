@@ -570,7 +570,10 @@ test may assert the **low** edge with `strictEqual` and must assert the far one 
 — has no exact edge but `start`.
 
 Both are **filled**, so a bound `color` wins over `--hdml-fill-color` and over its `_hover`
-variant, and neither also strokes: `strokeWidth` is `0` and `stroke` is `null`. A **varying**
+variant. Since **017 R4** a filled mark *also strokes*: `--hdml-line-*` is its **outline**,
+and what keeps an unstyled one clean is the UA sheet's `--hdml-line-width: 0`, not the
+absence of the feature — see [the outline contract](#the---hdml-line--outline-on-a-filled-widget)
+below. A **varying**
 `color` — a column or a literal array — is an **error** on `hdml-area` and `hdml-line`, whose
 single `path` node carries a single paint; it is legal on `hdml-bar`, which resolves a colour
 per row and emits a node per row. See [decisions.md](decisions.md).
@@ -1146,6 +1149,56 @@ The full table of names, syntaxes and initial values is SPEC §9; `properties.ts
 `HDVL_PROPERTIES` so the set can be asserted against without re-deriving it. (Like `./hdql`,
 the `./hdvl` entry re-exports no class or module symbol beyond the vocabulary — the tag
 registrations are its public surface.)
+
+#### The `--hdml-line-*` outline on a filled widget
+
+**017 R4.** SPEC §9 gave the three `--hdml-line-*` properties to *"stroked widgets"*, and
+`fillPaint` honoured that literally: a filled widget hard-coded `stroke: null` /
+`strokeWidth: 0`, so `hdml-point { --hdml-line-width: 1px }` did **nothing**, silently. Five
+corpus pages authored exactly that and got nothing — `08-pie-doughnut`'s white slice
+separators were written and never painted.
+
+`--hdml-line-*` now applies to **every** widget:
+
+| | hosts | what `--hdml-line-*` is | `--hdml-line-width` in force |
+|---|---|---|---|
+| **stroked** (`strokePaint`) | `hdml-line`, `hdml-rule`, `hdml-axis`, `hdml-grid` | the line | the registry's **`1.5px`** |
+| **filled** (`fillPaint`) | `hdml-point`, `hdml-bar`, `hdml-arc`, `hdml-area`, `hdml-pie`, `hdml-tick`, `hdml-label`, `hdml-legend` | an **outline over the fill** | **`0`**, by UA rule |
+
+Five things an author needs from this, and each is a test in `ua.test.ts` or
+`mark-point.test.ts` rather than a promise here:
+
+- **The registry is untouched.** `--hdml-line-width` still registers `1.5px` — the stroked
+  widgets need it. What changes is one UA rule, `ua.ts`'s `OUTLINED`, declaring
+  `--hdml-line-width: 0` on the eight filled hosts. So no widget gains an edge nobody asked
+  for, and `properties.ts` reads the same as before.
+- **That `0` is a *normal* declaration, and an author rule beats it.** `hdml-point
+  { --hdml-line-width: 1px }` from the page wins, on all three engines. It is deliberately
+  **not** the `!important` of R1's cross-axis extent, two rules away in the same sheet: R1
+  locks the author out of a box, this exists so the author decides.
+- **Set the width on a selector that matches the widget, not on an ancestor.** The
+  properties inherit, but inheritance applies only where the element has no declaration of
+  its own — and the UA default is one. `hdml-polar-plane { --hdml-line-width: 2px }` no
+  longer reaches an arc inside it. `08-pie-doughnut` is correct because it writes
+  `hdml-pie, hdml-arc` as one grouped selector, matching both hosts directly.
+- **Only the width is neutralised.** `--hdml-line-color` and `--hdml-line-style` keep
+  inheriting, so a plane *can* theme an outline colour once and switch it on per widget.
+- **A bound `color` channel is the fill, never the outline.** On a stroked widget the series
+  colour *is* the stroke; on a filled one the stroke stays `--hdml-line-color` alone. That
+  is what lets `09-polar-area` use the outline as its hover cue on channel-coloured wedges —
+  *"what the channel does not own"*.
+
+`hdml-pie` is in the filled list and is the easy one to miss: it has **no `fillPaint` call
+of its own**. §6.3 makes a pie's geometry `hdml-arc`'s *to the node*, so `layout-pie` passes
+its own `Measured` to `mark-arc`'s `sectorScene` and that single call site serves two hosts.
+A grep for `fillPaint(` finds the file, not the host.
+
+The dash pattern is `strokePaint`'s own — a multiple of the stroke width, so `dashed` is
+`[w × 4, w × 3]` and `dotted` is `[w, w × 2]`. One function serves both halves.
+
+The four `_hover` variants are still **unimplemented** on both halves:
+`--hdml-line-width_hover: 2.5px` on `09-polar-area` is inert. A per-mark hover value needs
+the renderer to know which node is hovered, which the scene's `Paint` cannot express.
 
 **V12 — *"only registered `--hdml-*` properties appear in page CSS"* — is enforced at
 source, not at runtime**, and could not be otherwise: an unregistered custom property is

@@ -254,7 +254,9 @@ suite("hdvl/mark-area — §6.1's filled band", () => {
                 ],
                 6,
               ),
-              // FILLED, and a filled mark does not also stroke.
+              // FILLED. No outline, because this fixture authors
+              // no `--hdml-line-width` and 017 R4's UA default is
+              // `0` — not because a filled mark cannot stroke.
               fill: paintProp(area, "--hdml-fill-color"),
               stroke: null,
               strokeWidth: 0,
@@ -401,10 +403,59 @@ suite("hdvl/mark-area — §6.1's filled band", () => {
       node.fill,
       prop(area, "--hdml-fill-color_hover"),
     );
-    // …and a filled mark does not also stroke, so the line colour
-    // reaches nothing at all.
+    // ★ …and the authored `--hdml-line-color: blue` above reaches
+    // nothing — but 017 R4 changed WHY, and this assertion survived
+    // its own subject changing underneath it. It is not that a
+    // filled mark cannot stroke; it is that this fixture never set
+    // a WIDTH, and the UA default is `0`. The colour alone buys no
+    // outline.
     assert.strictEqual(node.stroke, null);
     assert.strictEqual(node.strokeWidth, 0);
+  });
+
+  test("★ a width turns the authored line colour on", async () => {
+    // ★ The other half of the assertion above, and the proof that it
+    // is about the width rather than about the mark: the same page,
+    // plus a width, and `blue` arrives. `hdml-area` is outlined by
+    // NO corpus page, so this is the only coverage R4 has on it.
+    const view = await mount(html`
+      <hdml-view
+        aria-label="paint"
+        style="width: 400px; height: 200px"
+      >
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-continuous-scale channel="x" min="0" max="6">
+            <hdml-continuous-scale channel="y" min="0" max="200">
+              <hdml-area
+                x="[0, 3, 6]"
+                y="[50, 100, 200]"
+                style="--hdml-fill-color: red;
+                       --hdml-line-color: rgb(0, 0, 255);
+                       --hdml-line-width: 3px"
+              ></hdml-area>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    const area = areaOf(view);
+    const node = path(view);
+    const width = Number.parseFloat(
+      getComputedStyle(area)
+        .getPropertyValue("--hdml-line-width")
+        .trim(),
+    );
+    assert.strictEqual(width, 3);
+    assert.strictEqual(node.strokeWidth, width);
+    assert.strictEqual(
+      node.stroke,
+      paintProp(area, "--hdml-line-color"),
+    );
+    // The band is still filled — an outline is additive.
+    assert.strictEqual(
+      node.fill,
+      paintProp(area, "--hdml-fill-color"),
+    );
   });
 
   test("bindings() covers the ranged slots too", async () => {

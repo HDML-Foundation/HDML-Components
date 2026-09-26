@@ -19,6 +19,41 @@ import {
 } from "./ua";
 import { HDVL_PROPERTIES } from "./properties";
 
+/**
+ * 017 R4's two halves of the `--hdml-line-width` cascade: the eight
+ * hosts whose paint comes from `fillPaint` and whose initial the UA
+ * sheet neutralises, and the four whose paint comes from
+ * `strokePaint` and which must keep the registry's `1.5px`.
+ *
+ * **`hdml-pie` is in the first list and has no `fillPaint` call of
+ * its own** — `layout-pie` hands its `Measured` to `mark-arc`'s
+ * `sectorScene` (§6.3), so one call site serves two hosts. It was
+ * missing from the first draft of this fix and NO corpus golden
+ * could catch it, because every page with a pie declares the width.
+ * This list is the only thing that does.
+ *
+ * Spelled out here rather than imported from `ua.ts` on purpose:
+ * importing `OUTLINED` would make "the rule covers these hosts" a
+ * tautology over the same array.
+ */
+const OUTLINED_TAGS = [
+  "hdml-point",
+  "hdml-bar",
+  "hdml-arc",
+  "hdml-area",
+  "hdml-pie",
+  "hdml-tick",
+  "hdml-label",
+  "hdml-legend",
+];
+
+const STROKED_TAGS = [
+  "hdml-line",
+  "hdml-rule",
+  "hdml-axis",
+  "hdml-grid",
+];
+
 /** The five box properties the sentinel carries beyond §9's set. */
 const BOX_PROPS = [
   "color",
@@ -524,6 +559,179 @@ suite("hdvl/ua — the element sheet", () => {
     });
     // And the view keeps its own row.
     assert.strictEqual(getComputedStyle(view).position, "relative");
+  });
+
+  test("★ the outline default is zero on eight hosts", async () => {
+    // 017 R4. `--hdml-line-width`'s REGISTERED initial is 1.5px —
+    // `properties.test.ts` still asserts that on a bare div, which
+    // is the positive control saying the registry was not touched.
+    // Here every host that reaches `fillPaint` must read 0 instead,
+    // or the fix puts an edge on every glyph in the corpus.
+    const view = await fixture<HdmlViewElement>(html`
+      <hdml-view style="width: 400px; height: 200px">
+        <hdml-cartesian-plane>
+          <hdml-bar x="a" y="b"></hdml-bar>
+          <hdml-area x="a" y="b"></hdml-area>
+          <hdml-point x="a" y="b"></hdml-point>
+          <hdml-arc x="a" y="b"></hdml-arc>
+          <hdml-tick channel="y"></hdml-tick>
+          <hdml-label channel="y"></hdml-label>
+          <hdml-legend channel="color"></hdml-legend>
+          <hdml-line x="a" y="b"></hdml-line>
+          <hdml-rule y="1"></hdml-rule>
+          <hdml-axis channel="y"></hdml-axis>
+          <hdml-grid channel="y"></hdml-grid>
+        </hdml-cartesian-plane>
+        <hdml-polar-plane>
+          <hdml-pie angle="a"></hdml-pie>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    await settle(view);
+    const widthOf = (tag: string): string =>
+      getComputedStyle(<Element>view.querySelector(tag))
+        .getPropertyValue("--hdml-line-width")
+        .trim();
+
+    for (const tag of OUTLINED_TAGS) {
+      assert.strictEqual(widthOf(tag), "0px", tag);
+    }
+    // ★ THE CONTROL, and without it "every host reads 0px" would be
+    // satisfied by a rule with no host qualification at all. The
+    // four STROKED hosts must still read the registry's initial —
+    // they are the ones that have always drawn a line, and zeroing
+    // them would blank every axis and grid in the corpus.
+    for (const tag of STROKED_TAGS) {
+      assert.strictEqual(widthOf(tag), "1.5px", tag);
+    }
+  });
+
+  test("★ an author beats the outline default", async () => {
+    // ★ R4's cascade claim, the MIRROR IMAGE of R1's
+    // (`★ the extent is out of the outer tree's reach`) and
+    // asserted for the opposite outcome: this declaration is
+    // NORMAL, so the outer tree wins. Trap 12 is exactly this pair
+    // — two rules apart in `ua.ts`, opposite in intent — and a `0`
+    // that quietly became `0 !important` would take the author's
+    // outline away with NO golden moving, because no corpus page
+    // uses `!important`.
+    //
+    // Asserted per engine rather than read from a log (trap 7): the
+    // shadow cascade's normal-declaration direction is a platform
+    // behaviour, and if an engine reversed it R4 would not hold.
+    adoptScratch(
+      "hdml-point { --hdml-line-width: 1px }\n" +
+        "hdml-label { --hdml-line-width: 3px }",
+    );
+    const view = await fixture<HdmlViewElement>(html`
+      <hdml-view style="width: 400px; height: 200px">
+        <hdml-cartesian-plane>
+          <hdml-point x="a" y="b"></hdml-point>
+          <hdml-label channel="y"></hdml-label>
+          <hdml-bar x="a" y="b"></hdml-bar>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    await settle(view);
+    const widthOf = (tag: string): string =>
+      getComputedStyle(<Element>view.querySelector(tag))
+        .getPropertyValue("--hdml-line-width")
+        .trim();
+    assert.strictEqual(widthOf("hdml-point"), "1px");
+    // The founder's option (a): the three fill-painted GUIDES are
+    // neutralised on the same terms, so an author reaches a label's
+    // outline too.
+    assert.strictEqual(widthOf("hdml-label"), "3px");
+    // Unmatched by the author sheet, so still the UA default.
+    assert.strictEqual(widthOf("hdml-bar"), "0px");
+  });
+
+  test("★ the outline default is not important", () => {
+    // The declaration-level half of the test above. The cascade
+    // result already implies it, but only for the engines and the
+    // selector this suite happens to exercise; this reads the
+    // priority off the rule itself, so an `!important` added to
+    // `ua.ts` fails here even if some future selector shadowed the
+    // cascade proof.
+    const rule = Array.from(elementSheet.cssRules).find((r) => {
+      const styleRule = <CSSStyleRule>r;
+      return (
+        typeof styleRule.selectorText === "string" &&
+        styleRule.selectorText.includes(":host(hdml-point)") &&
+        styleRule.style.getPropertyValue("--hdml-line-width") !== ""
+      );
+    });
+    assert.isDefined(rule);
+    const style = (<CSSStyleRule>rule).style;
+    assert.strictEqual(
+      style.getPropertyPriority("--hdml-line-width"),
+      "",
+    );
+    // …and it carries ONLY the width. `--hdml-line-color` and
+    // `--hdml-line-style` are deliberately left inheriting, which
+    // is what lets a plane theme an outline colour once.
+    assert.strictEqual(
+      style.getPropertyValue("--hdml-line-color"),
+      "",
+    );
+    assert.strictEqual(
+      style.getPropertyValue("--hdml-line-style"),
+      "",
+    );
+    // Every one of the seven hosts is in this one rule, and none of
+    // the four stroked ones is.
+    const selector = (<CSSStyleRule>rule).selectorText;
+    for (const tag of OUTLINED_TAGS) {
+      assert.include(selector, `:host(${tag})`, tag);
+    }
+    for (const tag of STROKED_TAGS) {
+      assert.notInclude(selector, `:host(${tag})`, tag);
+    }
+  });
+
+  test("★ an ancestor cannot set a filled outline", async () => {
+    // ★ The consequence R4's own entry got WRONG, asserted rather
+    // than described. `--hdml-line-width` INHERITS (SPEC §9: "every
+    // property inherits"), but inheritance only applies where the
+    // element has no declaration of its own — and the UA default IS
+    // one. So a plane-level width no longer reaches a filled mark,
+    // while the same declaration on a SELECTOR THAT MATCHES it does.
+    //
+    // R4 claimed `08-pie-doughnut` needs nothing because "08 sets
+    // the properties on `hdml-pie, hdml-arc` together and they
+    // inherit". The outcome is right and the mechanism is not: the
+    // arc is matched DIRECTLY by that grouped selector. Had the page
+    // written `hdml-pie` alone, its slice separators would still be
+    // missing after R4.
+    adoptScratch(
+      "hdml-cartesian-plane.themed { --hdml-line-width: 5px }\n" +
+        "hdml-cartesian-plane.themed hdml-area" +
+        " { --hdml-line-width: 5px }",
+    );
+    const view = await fixture<HdmlViewElement>(html`
+      <hdml-view style="width: 400px; height: 200px">
+        <hdml-cartesian-plane class="themed">
+          <hdml-bar x="a" y="b"></hdml-bar>
+          <hdml-area x="a" y="b"></hdml-area>
+          <hdml-line x="a" y="b"></hdml-line>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    await settle(view);
+    const widthOf = (tag: string): string =>
+      getComputedStyle(<Element>view.querySelector(tag))
+        .getPropertyValue("--hdml-line-width")
+        .trim();
+    // The plane itself takes the author's value…
+    assert.strictEqual(widthOf("hdml-cartesian-plane"), "5px");
+    // …a STROKED child inherits it, having no declaration of its
+    // own, which is the positive control saying inheritance is live.
+    assert.strictEqual(widthOf("hdml-line"), "5px");
+    // …and a FILLED child does not, because its UA default is a
+    // declaration.
+    assert.strictEqual(widthOf("hdml-bar"), "0px");
+    // The same page, matching the filled host directly: reached.
+    assert.strictEqual(widthOf("hdml-area"), "5px");
   });
 
   test("a document rule cannot reach a shadow plot", async () => {
