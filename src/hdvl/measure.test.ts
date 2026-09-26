@@ -15,6 +15,7 @@ import { HdmlViewElement } from "./view";
 import { elementsOf } from "./resolve";
 import { measureView } from "./measure";
 import { frameTrace } from "./schedule";
+import { SENTINEL_MARKER } from "./ua";
 
 /**
  * MEASURE (§5.4): **once per element per frame, and no writes.**
@@ -328,6 +329,50 @@ suite("hdvl/measure — the one computed-style pass", () => {
       </hdml-view>
     `);
     await settle(view);
+    assert.isTrue(measured(view, "hdml-bar").sentinel);
+    assert.isFalse(measured(view, "hdml-line").sentinel);
+    assert.isTrue(measured(view, "hdml-area").sentinel);
+  });
+
+  test("so does transition-behavior on its own", async () => {
+    // 017 R6's second spelling, and the one the old check could not
+    // see. A `transition` shorthand clobbers `transition-property`
+    // and so already failed the marker test; `transition-behavior`
+    // alone leaves the marker in place while blinding every
+    // non-interpolable registered property — measured on a live
+    // page on all three engines, W5-silent and fallback-off.
+    //
+    // ★ `hdml-area` is the CONTROL, and it is the reason this is
+    // not a tautology: another `transition-*` longhand must not
+    // trip the check. It is the same element the shorthand test
+    // uses for the same purpose.
+    const view = await fixture<HdmlViewElement>(html`
+      <hdml-view style="width: 400px; height: 200px">
+        <hdml-cartesian-plane>
+          <hdml-bar x="a" y="b"></hdml-bar>
+          <hdml-line
+            x="a"
+            y="b"
+            style="transition-behavior: normal"
+          ></hdml-line>
+          <hdml-area
+            x="a"
+            y="b"
+            style="transition-duration: 300ms"
+          ></hdml-area>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    await settle(view);
+    const line = <HTMLElement>view.querySelector("hdml-line");
+    // The marker survives — which is exactly why the old check
+    // stayed silent here.
+    assert.include(
+      getComputedStyle(line)
+        .transitionProperty.split(",")
+        .map((s) => s.trim()),
+      SENTINEL_MARKER,
+    );
     assert.isTrue(measured(view, "hdml-bar").sentinel);
     assert.isFalse(measured(view, "hdml-line").sentinel);
     assert.isTrue(measured(view, "hdml-area").sentinel);

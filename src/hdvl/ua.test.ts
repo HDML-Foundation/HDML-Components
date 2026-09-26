@@ -197,6 +197,13 @@ suite("hdvl/ua — the element sheet", () => {
       declared.getPropertyValue("transition-duration"),
       "1ms",
     );
+    // The THIRD longhand (017 R6). Without it a transition runs
+    // only on an interpolable property, and fifteen of the
+    // thirty-five registered ones are not.
+    assert.strictEqual(
+      declared.getPropertyValue("transition-behavior"),
+      "allow-discrete",
+    );
     const listed = declared
       .getPropertyValue("transition-property")
       .split(",")
@@ -210,6 +217,19 @@ suite("hdvl/ua — the element sheet", () => {
       assert.include(listed, box);
     }
     assert.strictEqual(listed.length, SENTINEL_PROPERTIES.length);
+  });
+
+  test("the engine supports allow-discrete", () => {
+    // ASSERTED, never trusted. `ua.ts` declares the third longhand
+    // unconditionally and writes no fallback, on the measured claim
+    // that all three engines implement it; and `measure.ts` treats
+    // an EMPTY computed `transition-behavior` as "the engine has
+    // no such property" and falls back to the marker alone. If this
+    // ever fails on one engine, that dead branch has quietly become
+    // the live one there and W5 is no longer detecting anything.
+    assert.isTrue(
+      CSS.supports("transition-behavior", "allow-discrete"),
+    );
   });
 
   test("the sentinel reaches every host", async () => {
@@ -228,6 +248,11 @@ suite("hdvl/ua — the element sheet", () => {
         .map((s) => s.trim());
       assert.include(listed, SENTINEL_MARKER);
       assert.include(listed, "width");
+      assert.strictEqual(
+        getComputedStyle(el).getPropertyValue("transition-behavior"),
+        "allow-discrete",
+        el.localName,
+      );
     }
   });
 
@@ -342,6 +367,11 @@ suite("hdvl/ua — the element sheet", () => {
         .map((s) => s.trim());
       assert.include(listed, SENTINEL_MARKER, el.localName);
       assert.include(listed, "inset", el.localName);
+      assert.strictEqual(
+        getComputedStyle(el).getPropertyValue("transition-behavior"),
+        "allow-discrete",
+        el.localName,
+      );
     }
     assert.isFalse(view.observingFallback);
   });

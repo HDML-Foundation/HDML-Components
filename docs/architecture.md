@@ -500,10 +500,24 @@ generic `:host` rule over every registered property plus `color`, `inset`, `marg
 `padding`, `width` and `height`: a declarative change to any of them fires
 `transitionrun`, which a capturing listener on the view turns into one frame.
 
-It is written as the **longhands** `transition-property` + `transition-duration`,
-never the `transition` shorthand — a shorthand is replaced wholesale by any later
-rule, including one of ours. An author rule that does replace it removes detection
-for that element, so MEASURE also reads `transition-property` back and records
+It is written as the **longhands** `transition-property` + `transition-duration` +
+`transition-behavior`, never the `transition` shorthand — a shorthand is replaced
+wholesale by any later rule, including one of ours.
+
+**`transition-behavior: allow-discrete` is what makes the sentinel cover the whole
+registry.** A transition runs only on an *interpolable* property, and fifteen of the
+thirty-five registered ones are not: the six with syntax `*` and the nine keyword
+lists. Without the third longhand, changing `--hdml-font-family` or
+`--hdml-line-style` schedules nothing, and the element repaints only when some
+interpolable neighbour happens to change too. The two `<color>+` properties are the
+same case in disguise — list interpolation is defined only between lists of equal
+length, so swapping an eight-colour palette for a five-colour one was also silent.
+Measured on a live page with real data on all three engines: **15 of 35 silent
+before, 0 of 35 after**, at no cost in frames — a page's frame count from navigation
+to settle is unchanged (~3 per view across the thirteen live pages).
+
+An author rule that removes any of this removes detection for that element, in
+either of two spellings, so MEASURE reads **both** longhands back and records
 whether the sentinel survived. When it did not, the view logs **W5** once and
 switches on a document-wide `MutationObserver` for itself — so correctness is
 restored without the author knowing the mechanism exists, and the observer's cost

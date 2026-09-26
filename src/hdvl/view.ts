@@ -188,12 +188,16 @@ export class HdmlViewElement extends HdvlElement {
    * Whether the `MutationObserver` fallback is running for this
    * view (§5.6).
    *
-   * It is switched on by W5 — an author `transition` shorthand
-   * replaced the UA sentinel wholesale, so a later stylesheet-driven
-   * `--hdml-*` change would schedule no frame — or unconditionally
-   * by `HDML_CONFIG.paranoidObserver`. Exposed because "the
-   * self-heal happened" is otherwise unobservable from outside, and
-   * a silent self-heal is indistinguishable from a broken one.
+   * It is switched on by W5 — author CSS removed the UA sentinel,
+   * either by replacing it wholesale with the `transition`
+   * shorthand or by setting `transition-behavior` to anything but
+   * `allow-discrete`, so a later stylesheet-driven `--hdml-*`
+   * change would schedule no frame (the second spelling blinds
+   * only the fifteen non-interpolable ones — 017 R6) — or
+   * unconditionally by `HDML_CONFIG.paranoidObserver`. Exposed
+   * because "the self-heal happened" is otherwise unobservable
+   * from outside, and a silent self-heal is indistinguishable from
+   * a broken one.
    */
   public get observingFallback(): boolean {
     return this.fallback !== null;

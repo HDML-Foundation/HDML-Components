@@ -412,4 +412,97 @@ suite("hdvl/schedule — the frame", () => {
     );
     assert.strictEqual(sheeted, 1);
   });
+
+  test("a frame runs for every syntax class", async () => {
+    // 017 R6, and the reason it is a class and not a property.
+    //
+    // A transition runs only on an INTERPOLABLE property, and
+    // `HDVL_PROPERTIES` is not all interpolable: six are `*`, nine
+    // are keyword lists, and the two `<color>+` lists interpolate
+    // only against a list of the SAME LENGTH. Fifteen of the
+    // thirty-five were silently unobserved on all three engines
+    // until `ua.ts` gained `transition-behavior: allow-discrete`.
+    //
+    // ★ The gap this closes is a TESTING gap as much as a runtime
+    // one. `ua.test.ts` asserts the sentinel LISTS every registered
+    // property — completeness of the list, never that being on it
+    // works — and the two tests that drove it both picked an
+    // interpolable property (`<length>` in `platform.test.ts`, the
+    // `<color>` above). So the table below is keyed by SYNTAX
+    // CLASS, not by property: a thirty-sixth registration in an
+    // existing class is covered the moment it is registered, and
+    // one in a NEW class is what should make this test fail.
+    //
+    // ★ And it asserts a FRAME RAN, never that an event fired.
+    // `transitionrun` is the mechanism; the frame is the claim.
+    const probes: [string, string, string, string][] = [
+      ["<length>", "--hdml-line-width", "3px", "9px"],
+      [
+        "<color>",
+        "--hdml-fill-color",
+        "rgb(1, 2, 3)",
+        "rgb(9, 8, 7)",
+      ],
+      ["<number>", "--hdml-bandwidth", "0.25", "0.75"],
+      ["<angle>", "--hdml-angle-start", "10deg", "50deg"],
+      ["*", "--hdml-font-family", "serif", "monospace"],
+      ["keyword", "--hdml-line-style", "solid", "dashed"],
+      // `normal | bold | <integer>` takes both paths: the integer
+      // branch interpolates and always fired, the keyword branch
+      // is discrete and never did.
+      ["mixed keyword", "--hdml-font-weight", "normal", "bold"],
+      ["mixed integer", "--hdml-font-weight", "400", "700"],
+      [
+        "<color>+ same length",
+        "--hdml-palette",
+        "rgb(1, 2, 3) rgb(4, 5, 6)",
+        "rgb(9, 8, 7) rgb(6, 5, 4)",
+      ],
+      [
+        "<color>+ new length",
+        "--hdml-palette",
+        "rgb(1, 2, 3) rgb(4, 5, 6)",
+        "rgb(9, 8, 7)",
+      ],
+    ];
+
+    const [view] = await mount(html`
+      <hdml-view style="width: 400px; height: 200px">
+        <hdml-cartesian-plane>
+          <hdml-bar x="a" y="b"></hdml-bar>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    const bar = <HTMLElement>view.querySelector("hdml-bar");
+
+    // ★ THE ATTRIBUTION GUARD, and without it this whole test is a
+    // false negative. MEASURE requires `allow-discrete` on every
+    // element, so deleting it from `ua.ts` makes W5 fire and turns
+    // the document-wide `MutationObserver` fallback ON — and the
+    // fallback catches an inline `setProperty` perfectly well. Run
+    // against the broken runtime this test passed, 11/11, on all
+    // three engines. What makes each row below evidence about the
+    // SENTINEL is that no other mechanism is running.
+    assert.isFalse(view.observingFallback);
+
+    for (const [klass, name, from, to] of probes) {
+      bar.style.setProperty(name, from);
+      await quiesce(view);
+      // The pair must be a real change, or the row proves nothing
+      // and would pass against a runtime with no sentinel at all.
+      const before = getComputedStyle(bar).getPropertyValue(name);
+      const ran = await frames(view, () => {
+        bar.style.setProperty(name, to);
+      });
+      assert.notStrictEqual(
+        before.trim(),
+        getComputedStyle(bar).getPropertyValue(name).trim(),
+        `${klass}: ${from} -> ${to} changed nothing`,
+      );
+      assert.isAtLeast(ran, 1, klass);
+      assert.isFalse(view.observingFallback, klass);
+      bar.style.removeProperty(name);
+      await quiesce(view);
+    }
+  });
 });

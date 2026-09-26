@@ -264,14 +264,45 @@ export const SENTINEL_MARKER: string = SENTINEL_PROPERTIES[0];
  * is replaced *wholesale* by any later rule of ours, which would
  * silently kill the sentinel for that family and force the fallback
  * observer on. The generic `:host` rule below therefore declares
- * `transition-property` + `transition-duration`, and every step that
- * adds a `:host(...)` rule must keep doing the same.
+ * `transition-property` + `transition-duration` + a THIRD longhand,
+ * `transition-behavior`, and every step that adds a `:host(...)`
+ * rule must keep doing the same.
  *
  * The 1 ms duration is the whole detection mechanism: a
  * `transitionrun` on any listed property is what tells the view a
  * declarative change happened — inline, inherited or
  * stylesheet-driven — which is what retires the PoC's document-wide
  * `MutationObserver`.
+ *
+ * ── The third longhand: `transition-behavior: allow-discrete` ──
+ *
+ * **A transition only runs on an INTERPOLABLE property.** A
+ * registered custom property whose syntax is a keyword list or `*`
+ * is not interpolable, so without this line it fires nothing and a
+ * change to it repaints only when some interpolable neighbour
+ * happens to move as well. Measured on a live page with real data
+ * on all three engines (017 R6): **fifteen of the thirty-five
+ * registered properties were silently unobserved** — the six
+ * `*`-typed (`--hdml-font-family`, `--hdml-curve-bezier-tangents`
+ * and the four `_hover` variants) and the nine keyword lists — and
+ * so were the two `<color>+` properties whenever the new list has a
+ * DIFFERENT LENGTH from the old, because list interpolation is
+ * defined only at equal lengths. `allow-discrete` revives every one
+ * of them, on chromium, firefox and webkit, all of which report
+ * `CSS.supports("transition-behavior", "allow-discrete")`.
+ *
+ * It costs nothing at load and nothing per change: a discrete flip
+ * lands at 50 % of the 1 ms duration (0.5 ms) while the frame runs
+ * at the next `requestAnimationFrame` (~16 ms), so MEASURE always
+ * reads the FINAL value, and the frame count from navigation to
+ * settle is unchanged. **The 1 ms duration that makes the sentinel
+ * cheap is also what makes discrete safe.**
+ *
+ * `ua.test.ts` asserts the support claim rather than trusting it,
+ * and `schedule.test.ts` drives one probe PER SYNTAX CLASS — the
+ * gap that let this survive 1264 tests was that both sentinel tests
+ * picked an interpolable property, under a guard written to assert
+ * only that the sentinel LISTS every registered property.
  *
  * ── The `inset: 0` in the generic rule ──
  *
@@ -319,6 +350,7 @@ const ELEMENT_CSS = [
   "  box-sizing: border-box;",
   `  transition-property: ${SENTINEL_PROPERTIES.join(", ")};`,
   "  transition-duration: 1ms;",
+  "  transition-behavior: allow-discrete;",
   "}",
   "",
   `:host(${VIEW}) {`,

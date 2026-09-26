@@ -70,9 +70,10 @@ export interface Measured {
   /** Every registered `--hdml-*` and `_hover` variant, from
    *  the SAME computed style. */
   props: ReadonlyMap<string, string>;
-  /** false when the author replaced the `transition`
-   *  shorthand and the sentinel is gone (R24). W5's
-   *  trigger, reported by `validate.ts`. */
+  /** false when author CSS removed the change sentinel —
+   *  the `transition` shorthand, or `transition-behavior`
+   *  set to anything but `allow-discrete` (R24, 017 R6).
+   *  W5's trigger, reported by `validate.ts`. */
   sentinel: boolean;
   /**
    * A `url()` form appeared in `clip-path` or `filter`, so the
@@ -138,15 +139,54 @@ function len(value: string, fallback: number): number {
  * detection. The list is compared by exact membership rather than
  * by substring, because `--hdml-line-width` is a prefix of
  * `--hdml-line-width_hover`.
+ *
+ * **Both longhands are checked, because the sentinel needs both.**
+ * `transition-behavior: allow-discrete` is what makes the fifteen
+ * non-interpolable registered properties observable at all (017
+ * R6, and the long note in `ua.ts`). Two author spellings reach
+ * it, and only one of them is the shorthand:
+ *
+ * | author CSS | `transition-property` | detection |
+ * |---|---|---|
+ * | `transition: color 1ms` | clobbered | **gone** — the old case |
+ * | `transition-behavior: normal` | intact | **the fifteen only** |
+ *
+ * Measured on a live page on all three engines: the second row
+ * leaves the marker in place, so a `transition-property`-only check
+ * stays silent while every keyword-list and `*` property goes blind
+ * again — a warning-free regression to exactly the state R6 found.
+ *
+ * The behaviour list is read **at the marker's own index**, cycling
+ * as CSS does when the coordinating lists differ in length, rather
+ * than at index 0: our own declaration is a single value against
+ * forty-one properties, but an author who writes a list is entitled
+ * to have it read positionally.
+ *
+ * An **empty** computed value means the engine does not implement
+ * `transition-behavior` at all, not that an author disabled it.
+ * There the verdict falls back to the marker alone: the fifteen are
+ * unobservable whatever we do, and warning W5 on every element of
+ * every view would blame an author for a platform gap. All three
+ * engines support it, and `ua.test.ts` asserts that rather than
+ * trusting it — which is what keeps this branch from quietly
+ * becoming the live one.
  */
 function sentinelOf(style: CSSStyleDeclaration): boolean {
   const list = style.transitionProperty.split(",");
-  for (const item of list) {
-    if (item.trim() === SENTINEL_MARKER) {
-      return true;
-    }
+  const at = list.findIndex(
+    (item) => item.trim() === SENTINEL_MARKER,
+  );
+  if (at < 0) {
+    return false;
   }
-  return false;
+  const how = style
+    .getPropertyValue("transition-behavior")
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item !== "");
+  return (
+    how.length === 0 || how[at % how.length] === "allow-discrete"
+  );
 }
 
 /**

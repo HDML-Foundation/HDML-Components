@@ -1105,20 +1105,56 @@ of CSS-driven invalidation, at zero cost to pages that never change a style.
 shorthand, so any later rule of ours that used the shorthand form would replace the
 sentinel wholesale and silently kill detection for that family — the hardest class of
 bug to attribute, because the CSS is visibly correct in DevTools. The sheet declares
-`transition-property` + `transition-duration`, and every rule added to it must keep
-doing so.
+`transition-property` + `transition-duration` + `transition-behavior`, and every rule
+added to it must keep doing so.
 
-**The hole is stated rather than hidden.** An *author* `transition` shorthand on a
-display element removes the sentinel the same way:
+**A transition runs only on an interpolable property — and the registry is not all
+interpolable.** That was missed when the sentinel landed and found on the live pages
+in project 017 (R6): changing `--hdml-font-weight` or `--hdml-font-family` in DevTools
+repainted nothing until some *other* property changed. Measured per property on a live
+page with real data, identically on chromium, firefox and webkit:
+
+| class | count | before | after |
+|---|---|---|---|
+| interpolable (`<length>`, `<color>`, `<number>`, `<angle>`, `<length-percentage>`) | 20 | fires | fires |
+| syntax `*` — `--hdml-font-family`, `--hdml-curve-bezier-tangents`, the four `_hover` | 6 | **silent** | fires |
+| keyword lists — `--hdml-line-style`, `--hdml-font-weight`, `--hdml-tick-style`, … | 9 | **silent** | fires |
+| `<color>+` **at a different list length** (`--hdml-palette`, `--hdml-color-interpolate`) | 2 | **silent** | fires |
+
+The fix is one declaration, `transition-behavior: allow-discrete`, and it is free:
+a discrete flip lands at 50 % of the 1 ms duration (0.5 ms) while the frame runs at
+the next `requestAnimationFrame` (~16 ms), so MEASURE always reads the **final**
+value, and the frame count from navigation to settle is unchanged on all thirteen
+live pages. **The 1 ms duration that makes the sentinel cheap is also what makes
+discrete safe.** All three engines report
+`CSS.supports("transition-behavior", "allow-discrete")`, which `ua.test.ts` asserts
+rather than trusts.
+
+**Why 1264 tests missed it.** `ua.test.ts` asserts the sentinel *lists* every
+registered property — completeness of the list, never that being listed works — and
+both tests that drove a change picked an **interpolable** property. The tests are
+therefore now keyed by **syntax class**, not by property, so a thirty-sixth
+registration in an existing class is covered the moment it is registered and one in
+a *new* class is what should fail.
+
+**The hole is stated rather than hidden**, and there are **two** author spellings of
+it, not one:
 
 ```css
-hdml-line { transition: none }              /* detection off */
-hdml-line { transition: opacity 200ms }     /* also off */
-hdml-line { transition-duration: 300ms }    /* still on */
+hdml-line { transition: none }                   /* detection off */
+hdml-line { transition: opacity 200ms }          /* also off */
+hdml-line { transition-duration: 300ms }         /* still on */
+hdml-line { transition-behavior: normal }        /* the fifteen go blind */
 ```
 
-MEASURE already reads a computed-style block per element, so it also reads
-`transition-property` back and records whether the sentinel survived. The fallback
+The fourth row is the one a `transition-property`-only check cannot see: the marker
+survives, so nothing warned while every non-interpolable property went silent again.
+MEASURE already reads a computed-style block per element, so it reads **both**
+longhands back — the behaviour at the marker's own index, cycling as CSS does — and
+records whether the sentinel survived. An *empty* computed `transition-behavior`
+means the engine does not implement the property at all rather than that an author
+disabled it, and there the verdict falls back to the marker alone: blaming an author
+for a platform gap would warn on every element of every view. The fallback
 `MutationObserver` is not deleted — it stays available, **off by default**, as the
 manual `HDML_CONFIG.paranoidObserver` opt-in and as the automatic self-heal for pages
 that actually override.

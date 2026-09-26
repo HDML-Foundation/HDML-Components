@@ -21,6 +21,7 @@ import { subscriptionsOf } from "./subscribe";
 import { diagnosticsOf } from "./validate";
 import type { DiagnosticCode, WarningCode } from "./validate";
 import type { HdvlElement } from "./base";
+import { SENTINEL_MARKER } from "./ua";
 
 /** The one source ref the V2 fixtures subscribe to. */
 const REF = "?hdml-frame=v2";
@@ -470,6 +471,57 @@ suite("hdvl/validate — diagnostics", () => {
       await quiesce(view);
     }
     assert.lengthOf(said("W5"), 1);
+    assert.lengthOf(errs, 0);
+    assert.isFalse(view.matches(":state(error)"));
+    // ★ THE NEGATIVE CONTROL for the widened check (017 R6). W5
+    // now reads `transition-behavior` as well, and this case must
+    // still warn for ITS OWN reason — the shorthand clobbered
+    // `transition-property`, so the marker is gone before the
+    // behaviour is ever looked at. If the widening had somehow
+    // made the marker test unreachable, this assertion is what
+    // would notice.
+    const line = <Element>view.querySelector("hdml-line");
+    assert.notInclude(
+      getComputedStyle(line)
+        .transitionProperty.split(",")
+        .map((s) => s.trim()),
+      SENTINEL_MARKER,
+    );
+  });
+
+  test("W5 — so does transition-behavior alone", async () => {
+    // The spelling the `transition-property`-only check could not
+    // see: the marker survives, and every non-interpolable
+    // `--hdml-*` goes blind with no warning. Measured on a live
+    // page on chromium, firefox and webkit before it was fixed.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="w5b"
+        source="${REF}"
+        style="width: 400px; height: 200px"
+      >
+        <hdml-cartesian-plane>
+          <hdml-ordinal-scale values='["a"]' channel="x">
+            <hdml-continuous-scale min="0" max="1" channel="y">
+              <hdml-line
+                x="a"
+                y="b"
+                style="transition-behavior: normal"
+              ></hdml-line>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    const line = <Element>view.querySelector("hdml-line");
+    assert.include(
+      getComputedStyle(line)
+        .transitionProperty.split(",")
+        .map((s) => s.trim()),
+      SENTINEL_MARKER,
+    );
+    assert.lengthOf(said("W5"), 1);
+    assert.isTrue(view.observingFallback);
     assert.lengthOf(errs, 0);
     assert.isFalse(view.matches(":state(error)"));
   });

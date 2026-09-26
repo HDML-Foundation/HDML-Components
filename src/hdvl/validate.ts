@@ -556,9 +556,13 @@ function noNameMessage(): string {
 }
 
 function sentinelMessage(): string {
+  // Two author spellings reach this, and naming only the shorthand
+  // sent whoever wrote the OTHER one looking for a `transition:`
+  // they never authored (017 R6).
   return (
-    "an author transition shorthand removed the change " +
-    "sentinel — the fallback observer is on for this view"
+    "author CSS removed the change sentinel — a transition " +
+    "shorthand, or transition-behavior other than " +
+    "allow-discrete. The fallback observer is on for this view"
   );
 }
 

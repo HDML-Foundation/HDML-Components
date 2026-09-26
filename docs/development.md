@@ -52,6 +52,16 @@ npx playwright install           # if outside the devcontainer; the devcontainer
 | `npm run manifest` | `cem analyze --litelement --globs 'src/**/*.ts' --exclude 'src/index.ts' 'src/bundle.ts' 'src/testing/**/*.ts' 'src/**/*.test.ts'` (`--exclude` takes multiple values under one flag) | `custom-elements.json` |
 | `npm run build` | `clear && lint && test && compile_all && manifest && check_dist && docs` | release-shaped tree |
 
+**`compile_bin` does not compile TypeScript.** It bundles `esm/bundle.js`, so a `src/`
+edit reaches `bin/index.min.js` only after `compile_esm` has run. `npm run dev` /
+`dev_bin` keep a `tsc --watch` alive and usually hide this — and that is what makes it
+dangerous: when the watcher is not running, or has not caught up, `compile_bin` succeeds,
+prints *Bundle created*, and rebuilds the **previous** `esm/`. Every live-page
+measurement then reports the state of a build you thought you had replaced. Use
+`npm run compile_all`, or `compile_esm && compile_bin`, and **grep the bundle for the
+thing you just changed** before believing a live measurement — `grep -c allow-discrete
+bin/index.min.js` is what caught it once.
+
 **`check_dist`.** It asserts nine things browser tests cannot reach, because wtr runs
 `./tst/**/*.test.js` and never sees `package.json` or the emitted trees: that the `exports`
 map and the `sideEffects` list both match the ones derived from its single `ENTRIES` array;
@@ -579,6 +589,60 @@ html/hdvl-live/03-bar.html  —  3 view(s)
   · cap-horizontal       760x300      31 svg   22 painted  .render-live/chromium/…/01-cap-horizontal.png
   · cap-floating         760x300      41 svg   32 painted  .render-live/chromium/…/02-cap-floating.png
 ```
+
+### The sentinel probe
+
+[scripts/probe-sentinel.mjs](../scripts/probe-sentinel.mjs) measures, **per registered
+`--hdml-*` property**, whether a declarative change actually schedules a frame. It is a
+**dev instrument, not a gate** — the gate is the per-syntax-class test in
+`schedule.test.ts`. It shares `render-live.mjs`'s auth, guard and redaction, and adds no
+dependency.
+
+It exists because the runtime detects a declarative style change with one instrument — a
+1 ms CSS transition over every registered property (§5.6, R24) — and **a transition runs
+only on an interpolable property**. `ua.test.ts` asserts the sentinel *lists* every
+registered property and never that being listed works, and under exactly that guard
+**fifteen of the first thirty-five were silently unobserved** (project 017, R6).
+
+```bash
+HDIO_TENANT_TOKEN=$TT node scripts/probe-sentinel.mjs                      # the 35-row sweep, 01-line
+HDIO_TENANT_TOKEN=$TT node scripts/probe-sentinel.mjs html/hdvl-live/03-bar.html
+HDIO_TENANT_TOKEN=$TT PROBE_BROWSER=webkit node scripts/probe-sentinel.mjs
+HDIO_TENANT_TOKEN=$TT PROBE_LOADS=2 node scripts/probe-sentinel.mjs        # frames at load, all 13 pages
+```
+
+Per property it reports **both** whether `transitionrun` fired and whether a frame ran
+(counted as `hdml-render`, which the view dispatches once per painted frame). Both,
+never one: the event is the mechanism, the frame is the claim.
+
+**The property list is parsed out of [src/hdvl/properties.ts](../src/hdvl/properties.ts),
+never typed into the script**, and probe values are derived from each property's
+*syntax* — so a thirty-sixth property in an existing syntax class needs no edit, for the
+same reason `SENTINEL_PROPERTIES` is built from the registry rather than by hand. Each
+probe sets value A, waits for the page to quiesce, then sets B, so the measured change is
+the same whatever the live page's own CSS declares; a pair that does not move the computed
+value aborts the run rather than reporting a silent property.
+
+`PROBE_LOADS=n` switches to the other half of the measurement: frames from navigation to
+settle, for every live page, n times. A per-change probe cannot see a load-time frame
+storm, and `allow-discrete` can make discrete properties transition from their initial
+values. Measured before and after it landed: **~3 frames per view either way**, on
+thirteen pages and twenty-nine views, on all three engines.
+
+| Variable | Default | |
+|---|---|---|
+| `HDIO_TENANT_TOKEN` | — | **required**, as for `render-live.mjs` |
+| `HDIO_HOST` / `HDIO_TENANT` / `HDIO_ROLE` | `http://127.0.0.1:8888` / `tenant-a` / `admin` | |
+| `PROBE_ORIGIN` | `http://127.0.0.1:8000` | on tenant-a's origin allowlist |
+| `PROBE_BROWSER` | `chromium` | or `firefox`, `webkit` |
+| `PROBE_TIMEOUT_MS` / `PROBE_STABLE_MS` | `30000` / `750` | settle budget and settle window |
+| `PROBE_QUIESCE_MS` / `PROBE_WAIT_MS` | `250` / `400` | no-frame window between probes; how long one probe watches |
+| `PROBE_LOADS` | `0` | > 0 selects the load-frame sweep instead |
+
+**It inherits every failure mode in the list above**, plus one of its own: it refuses to
+report if the view has switched on the `MutationObserver` fallback, because the fallback
+catches an inline `setProperty` perfectly well and every row would then read *revived*
+for a reason that has nothing to do with the sentinel.
 
 ### Live HDVL pages
 
