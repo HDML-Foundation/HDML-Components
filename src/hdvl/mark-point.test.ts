@@ -316,6 +316,52 @@ suite("hdvl/mark-point — §6.1's glyph", () => {
     }
   });
 
+  test("★ the unstyled glyph is a square", async () => {
+    // 017 R9. The two properties register `1px` and `6px` — a
+    // TICK's proportions — so an unsized, unstyled point used to
+    // paint a 1 × 6 vertical sliver. `ua.ts`'s `POINT_GLYPH` makes
+    // it `6px` square on `:host(hdml-point)`.
+    //
+    // Against the COMPUTED properties, never a transcribed `6`
+    // (trap 11): `cssNumber`'s literal fallback is unreachable, so
+    // a hard-coded number would keep passing against a runtime that
+    // had stopped reading the property at all. The `isAbove` pair
+    // is what pins the SQUARENESS to a real default rather than to
+    // two numbers that happen to match.
+    const view = await mount(
+      page("[0, 1, 2, 3]", "[50, 100, 150, 200]"),
+    );
+    const point = pointOf(view);
+    const w = prop(point, "--hdml-tick-width");
+    const h = prop(point, "--hdml-tick-height");
+    assert.strictEqual(w, h);
+    assert.isAbove(w, 1);
+    for (const box of rects(view)) {
+      assert.strictEqual(box.w, w);
+      assert.strictEqual(box.h, h);
+    }
+  });
+
+  test("★ a bound size beats the glyph default", async () => {
+    // R9's third non-mover: `06-bubble` writes neither property and
+    // does not move, because a bound `size` supplies both extents
+    // and the two tick properties are ignored by design. Asserted
+    // with the UA default in force, so the channel is shown to win
+    // rather than merely to agree.
+    const view = await mount(sized("[0, 5, 10]"));
+    const point = pointOf(view);
+    const project = sizeScale(view);
+    const dflt = prop(point, "--hdml-tick-width");
+    const boxes = rects(view);
+    assert.lengthOf(boxes, 3);
+    for (let i = 0; i < 3; i++) {
+      const d = project([0, 5, 10][i]);
+      assert.closeTo(boxes[i].w, d, 1e-9);
+      assert.closeTo(boxes[i].h, d, 1e-9);
+      assert.notStrictEqual(boxes[i].w, dflt);
+    }
+  });
+
   test("★ a bound size resolves through the size SCALE", async () => {
     // R12 + §4.3: --hdml-size-min/-max are the channel's RANGE, read
     // once, in `scale.ts`, from the SIZE SCALE's own snapshot. This

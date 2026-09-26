@@ -87,6 +87,16 @@ interface Extent {
  * `8px` dot would be 16 across. `--hdml-size-min`'s `2px` initial
  * reads the same way: a 2 px dot, not a 4 px one.
  *
+ * **★ Unbound, the extent is `6 × 6` and that is the UA sheet's,
+ * not the registry's** (017 R9). The two properties register `1px`
+ * and `6px` — a *tick's* proportions, since SPEC §9 gives both rows
+ * to `hdml-tick` and `hdml-point` together — so an unstyled point
+ * used to be a **1 × 6 vertical sliver**. `ua.ts`'s `POINT_GLYPH`
+ * declares `6px` square on `:host(hdml-point)` alone, which an
+ * author rule still beats; a tick keeps `1 × 6`. These are
+ * **view-space** extents and stay so whatever 017 R5 decides the
+ * two properties mean along a guide.
+ *
  * **A bound `size` supplies both extents, so the glyph is a
  * circle**, and `--hdml-tick-width/-height` are ignored. The channel
  * is *one* number and there is no second one to keep an authored
@@ -113,8 +123,18 @@ function extentOf(
   row: number,
 ): Extent | null {
   if (size === null) {
+    // ★ BOTH literals are UNREACHABLE (017 trap 11), and since R9
+    // they are `6` rather than `1` and `6` so that the state which
+    // cannot arise would still be the right one. A registered
+    // property always computes to a value, so `m.props.get` never
+    // returns `undefined` here and `cssNumber` never falls back.
+    // The real default is `ua.ts`'s `POINT_GLYPH` — `6px` square on
+    // `:host(hdml-point)`, R9 — and `guide-tick.ts`'s identical
+    // pair keeps `1` and `6` on purpose: that is the REGISTRY's
+    // initial, which is still what a tick reads. The two files
+    // disagree because the two hosts now do.
     return {
-      w: cssNumber(m.props.get("--hdml-tick-width"), 1),
+      w: cssNumber(m.props.get("--hdml-tick-width"), 6),
       h: cssNumber(m.props.get("--hdml-tick-height"), 6),
     };
   }

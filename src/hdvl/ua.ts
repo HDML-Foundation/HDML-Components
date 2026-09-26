@@ -138,6 +138,69 @@ const OUTLINED = [
   .join(",\n");
 
 /**
+ * ★ The glyph extent an **unsized `hdml-point`** takes, in view
+ * space — 017 R9.
+ *
+ * `--hdml-tick-width` / `-height` register **`1px`** and **`6px`**,
+ * right for the host they are named after: a tick is a thin mark on
+ * an axis. A point is a **dot**, and SPEC §9 gives both rows to
+ * `hdml-tick` and `hdml-point` and to nothing else — so a point
+ * with no author CSS and no `size` channel rendered as a **1 × 6
+ * vertical sliver**, recorded as correct in `12-coverage` A's
+ * golden since 016 step 32.
+ *
+ * **6 × 6 squares the height rather than inventing a number.**
+ * `05-scatter` authors `8px` and `07-mixed` `7px`, so an author who
+ * deletes their declaration steps down slightly instead of jumping,
+ * and the only golden field that moves is `rx` — every centre and
+ * every `ry` is untouched, which is what makes the fix legible in a
+ * diff. The `6` here and `--hdml-tick-height`'s registered initial
+ * are the **same value and not the same number**: that one is a
+ * tick's length along its guide, this one is a dot's diameter.
+ *
+ * **★ These are view-space `x` and `y`, deliberately.** R9's
+ * § Interactions pins the point against 017 R5: if R5 makes
+ * `--hdml-tick-width` / `-height` mean *along the guide* and *along
+ * its normal*, those words are meaningless here — a point sits on
+ * no guide and has no normal. Whatever R5 decides for `hdml-tick`,
+ * a point's two extents stay the view's two axes, and this rule
+ * keeps saying so.
+ *
+ * **★ NORMAL, exactly like {@link OUTLINED}.** Trap 12 is about
+ * R1's `0 !important` further up the sheet, which locks the author
+ * *out* of geometry the runtime owns. A glyph's size is the
+ * author's, so this rule and `OUTLINED` — emitted as neighbours at
+ * the foot of the sheet — **agree**, and R1 is the odd one out. An
+ * outer-document `hdml-point { --hdml-tick-width: 4px }` beats this
+ * by the ordinary shadow cascade.
+ *
+ * **★ BOTH properties are declared, and the height's value being a
+ * no-op is the reason to declare it.** A `:host` declaration beats
+ * an **inherited** one (R4's Finding 2), so declaring the width
+ * alone would leave a plane-level `--hdml-tick-height` still
+ * reaching the point while its width came from here — a glyph
+ * assembled from two sources, which is worse than either answer on
+ * its own. Declared together, a point's glyph is square unless a
+ * selector matches the **point itself**. Nothing in the corpus
+ * relies on the inheritance this removes: all four pages that set
+ * either property match `hdml-point` or `hdml-tick` directly.
+ *
+ * **★ `hdml-tick` is deliberately absent, and that IS the
+ * requirement.** This is the first rule on which the two hosts that
+ * share these properties disagree; `guide-tick.ts` keeps `1 × 6`
+ * and `ua.test.ts` asserts the split in both directions, because a
+ * per-host default is invisible to a single-host golden (R4's
+ * Finding 1).
+ */
+const POINT_GLYPH = [
+  `:host(${HDVL_TAG_NAMES.POINT}) {`,
+  "  --hdml-tick-width: 6px;",
+  "  --hdml-tick-height: 6px;",
+  "}",
+  "",
+];
+
+/**
  * The guides SPEC §3 places **per channel** whose cross-axis extent
  * is the **runtime's** — zero, `!important`, unreachable from the
  * outer tree (017 R1).
@@ -547,6 +610,11 @@ const ELEMENT_CSS = [
   // 017 R4's neutralised outline default. NORMAL, never
   // `!important` — see OUTLINED.
   `${OUTLINED} { --hdml-line-width: 0 }`,
+  "",
+  // 017 R9's square glyph for an unsized point — see POINT_GLYPH.
+  // Its neighbour above and it AGREE about being normal; R1's
+  // `!important` is further up and is the exception (trap 12).
+  ...POINT_GLYPH,
 ].join("\n");
 
 const DOCUMENT_CSS = [

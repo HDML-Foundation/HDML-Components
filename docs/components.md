@@ -599,7 +599,23 @@ dots says `--hdml-tick-style: ellipse` explicitly.
 The extent comes from `--hdml-tick-width`/`-height`, or from the `size` channel when bound,
 and **both forms are diameters** — an `ellipse` takes half of each. A bound `size` supplies
 *both* extents, so the glyph is a circle and the two tick properties are ignored: the channel
-is one number and there is no second one to keep an aspect ratio against. The ramp is the
+is one number and there is no second one to keep an aspect ratio against.
+
+**Unsized and unstyled, a point is a `6px` square** — the UA sheet's default, not the
+registry's (017 R9). The two properties register `1px` and `6px`, which is a *tick's*
+proportions: SPEC §9 gives both rows to `hdml-tick` and `hdml-point` together, and the
+initials were chosen for the guide. A point that bound no `size` and declared no CSS
+therefore painted a **1 × 6 vertical sliver**. `ua.ts` now declares `6px` square on
+`:host(hdml-point)` alone — a **normal** declaration any author rule beats, and deliberately
+not the `!important` §3 gives a positional guide's cross-axis extent — while `hdml-tick`
+keeps `1 × 6`. This is the first place the two hosts that share these properties **disagree**
+about them, so it is asserted in both directions rather than left to a golden. Two
+consequences: **a bound `size` still wins**, because the channel replaces both extents before
+either property is read; and, as with R4's outline default, **an ancestor's
+`--hdml-tick-width`/`-height` no longer reaches a point** — a `:host` declaration beats an
+inherited value, so the extent must be set by a selector matching the point itself. Both
+properties are declared for that reason: the width alone would leave a point's glyph assembled
+from a UA width and an inherited height. These are **view-space** extents and stay so. The ramp is the
 **scale's** — `--hdml-size-min`/`-max` are the `size` channel's *range*, read once in
 [scale.ts](../src/hdvl/scale.ts) from the size scale's own box — so the widget calls
 `project()` and interpolates nothing, and a value past the domain projects past
@@ -808,7 +824,11 @@ glyph, `--hdml-tick-style` shapes it (registered initial `rect`, not `ellipse`),
 its declared size and no scene assertion catches it, so the test asserts against the
 *computed property*. Both forms are centred on the same point, so switching the property
 moves nothing. It is **filled**, so `--hdml-fill-color` is its property; that initial is
-`currentColor`, so an unstyled tick paints in the inherited text colour.
+`currentColor`, so an unstyled tick paints in the inherited text colour. **A tick keeps the
+registry's `1px` × `6px`, and since 017 R9 a point does not** — the UA sheet gives
+`:host(hdml-point)` a `6px` square, because the same pair means *a thin mark on an axis* on
+one host and *a dot* on the other. The two defaults are asserted against each other in
+`ua.test.ts`; nothing else in the suite compares the two tags.
 
 **Where a tick's `decorative: true` lives.** §6.5 calls a tick glyph decoration and §5.10
 gives decoration an `aria-hidden` floor — but §2.5 puts `decorative` on the `text` node

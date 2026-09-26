@@ -1505,7 +1505,7 @@ const GOLDEN_A: Scene = {
           i: 0,
           cx: 111.04,
           cy: 63.52,
-          rx: 0.5,
+          rx: 3,
           ry: 3,
           fill:
             "color-mix(in oklch, rgb(30, 58, " +
@@ -1520,7 +1520,7 @@ const GOLDEN_A: Scene = {
           i: 1,
           cx: 173.76,
           cy: 111.04,
-          rx: 0.5,
+          rx: 3,
           ry: 3,
           fill:
             "color-mix(in oklch, rgb(30, 58, " +
@@ -1535,7 +1535,7 @@ const GOLDEN_A: Scene = {
           i: 2,
           cx: 201.2,
           cy: 89.92,
-          rx: 0.5,
+          rx: 3,
           ry: 3,
           fill:
             "color-mix(in oklch, rgb(30, 58, " +
@@ -1550,7 +1550,7 @@ const GOLDEN_A: Scene = {
           i: 3,
           cx: 248.24,
           cy: 153.28,
-          rx: 0.5,
+          rx: 3,
           ry: 3,
           fill:
             "color-mix(in oklch, rgb(28, 140, " +
@@ -1564,7 +1564,7 @@ const GOLDEN_A: Scene = {
           i: 4,
           cx: 291.36,
           cy: 179.68,
-          rx: 0.5,
+          rx: 3,
           ry: 3,
           fill:
             "color-mix(in oklch, rgb(28, 140, " +
@@ -1578,7 +1578,7 @@ const GOLDEN_A: Scene = {
           i: 5,
           cx: 322.72,
           cy: 163.84,
-          rx: 0.5,
+          rx: 3,
           ry: 3,
           fill:
             "color-mix(in oklch, rgb(30, 58, " +
@@ -1593,7 +1593,7 @@ const GOLDEN_A: Scene = {
           i: 6,
           cx: 373.68,
           cy: 221.92,
-          rx: 0.5,
+          rx: 3,
           ry: 3,
           fill:
             "color-mix(in oklch, rgb(28, 140, " +
@@ -1607,7 +1607,7 @@ const GOLDEN_A: Scene = {
           i: 7,
           cx: 420.72,
           cy: 237.76,
-          rx: 0.5,
+          rx: 3,
           ry: 3,
           fill:
             "color-mix(in oklch, rgb(28, 140, " +

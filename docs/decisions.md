@@ -1623,6 +1623,64 @@ The four `_hover` variants remain unread on both halves — `09`'s
 `--hdml-line-width_hover: 2.5px` is still inert. A per-mark hover value needs the renderer
 to know which node is hovered, which `Paint` cannot express; 017 R7 owns it.
 
+## A point's glyph default is the sheet's, and it is 6px square
+
+Project 017 R9, implementation step 05. `--hdml-tick-width` and `--hdml-tick-height` register
+**`1px`** and **`6px`**, and SPEC §9 gives both rows to **`hdml-tick` and `hdml-point`** — one
+pair, two hosts. The initials were chosen for the guide, where a thin mark on an axis is
+right. On a point they are wrong, so an author who bound no `size` and wrote no CSS got a
+**1 × 6 vertical sliver** where a dot belongs. `12-coverage` A — the page whose job is
+**default** coverage — is the one that exposed it, and its golden had carried `rx: 0.5,
+ry: 3` as correct since step 32.
+
+The fix is one `:host(hdml-point)` rule in `ua.ts` declaring **`6px` square**, the same
+mechanism as R4's `--hdml-line-width: 0`: the registry is untouched, because the registry is
+still right for the host these properties are named after. Five things about it are
+deliberate.
+
+- **`6 × 6` squares the existing height rather than inventing a number.** `05-scatter`
+  authors `8px` and `07-mixed` `7px`, so an author who deletes their declaration steps down
+  slightly instead of jumping; and because the height does not change, **`rx` is the only
+  field that moves in any golden** — every centre and every `ry` is untouched, which is what
+  makes the change legible in a diff. The `6` is *not* the tick's `6` in any sense but the
+  numeral: one is a tick's length along its guide, the other a dot's diameter.
+- **It is NORMAL, and three tests fail if it becomes `!important`** — run as a negative
+  control on all three engines. R1's `0 !important` is further up the same sheet and exists
+  to lock the author *out* of geometry the runtime owns; a glyph's size belongs to the
+  author. No corpus page uses `!important`, so a default that silently became one would take
+  every author's glyph size away with **no golden moving** — which is why the guard is a
+  declaration-level `getPropertyPriority` assertion beside the cascade one.
+- **Both properties are declared, and the height's value being a no-op is the reason to
+  declare it.** A `:host` declaration beats an *inherited* value (R4's Finding 2), so
+  declaring the width alone would leave a plane-level `--hdml-tick-height` still reaching the
+  point while its width came from the sheet — a glyph assembled from two sources, worse than
+  either answer. Declared together, a point's extent comes from one place unless a selector
+  matches the point itself. Nothing in the corpus relies on the inheritance this removes: all
+  four pages that set either property match `hdml-point` or `hdml-tick` directly.
+- **`hdml-tick` is absent, and that is the requirement.** This is the first rule on which the
+  two hosts sharing these properties disagree, and **no test compared them before** —
+  `guide-tick.test.ts` and `mark-point.test.ts` never mention each other's tag, so a later
+  step putting the point's default on the tick would have moved no golden and failed nothing.
+  `ua.test.ts`'s *"a point glyph is square, a tick is not"* closes it in both directions; the
+  negative control (the selector widened to `hdml-tick`) fails it on all three engines and
+  fails **nothing in `guide-tick.test.ts`**, which is the measurement rather than the worry.
+  R4's Finding 1 in general form.
+- **The extents are view-space `x` and `y`, and the rule says so.** 017 R5 may make
+  `--hdml-tick-width`/`-height` mean *along the guide* and *along its normal*; those words
+  are meaningless for a point, which sits on no guide and has no normal. Writing the default
+  in view-space terms is what stops R5's re-meaning from silently resizing every dot.
+
+The literal fallbacks in `mark-point.ts` — `cssNumber(m.props.get("--hdml-tick-width"), 1)` —
+were **not** the fix and could not have been: a registered property always computes to a
+value, so the fallback is unreachable (017 trap 11). They now read `6` and say why, so the
+one state that cannot arise would still be the right one; `guide-tick.ts`'s identical pair
+keeps `1` and `6`, which is still the registry's, and both comments name the other file.
+
+**One view moved: `12-coverage` A, eight `rx` values, `0.5` → `3`.** The other three pages
+carrying a point did not move, each for a different reason — `05-scatter` and `07-mixed`
+because an author rule beats a `:host` default, `06-bubble` because a bound `size` channel
+supplies both extents and bypasses the properties entirely.
+
 ## `hdml-split-by` is published and unimplemented
 
 Found by step 35's manifest check. `HDML_TAG_NAMES` has **33** members — 12 data + 21

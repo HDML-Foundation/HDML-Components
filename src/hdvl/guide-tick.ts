@@ -210,6 +210,12 @@ export class HdmlTickElement extends HdvlElement {
     // already rejected anything else — this narrows a string, it
     // does not validate one.
     const style = (m.props.get("--hdml-tick-style") ?? "").trim();
+    // ★ Both literals are UNREACHABLE (017 trap 11) and both match
+    // the REGISTRY's initials, which is what a tick still reads.
+    // `mark-point.ts`'s identical pair reads `6` and `6` since 017
+    // R9 put a `6px`-square UA default on `:host(hdml-point)` —
+    // the two hosts share these properties and, as of R9, disagree
+    // about their defaults. Nothing here changed; this says so.
     const w = cssNumber(m.props.get("--hdml-tick-width"), 1);
     const h = cssNumber(m.props.get("--hdml-tick-height"), 6);
     // A glyph is a FILLED shape, so `--hdml-fill-color` is its
