@@ -57,6 +57,14 @@ function cssNumber(
  * catches it, because both readings are internally consistent. The
  * test therefore asserts against the *computed property*.
  *
+ * **★ And they are DIAMETERS ACROSS x AND y, on every channel.**
+ * 017 R5 considered re-meaning them as an extent *along* the
+ * guide and *across* it, and rejected it: these size a glyph, and
+ * a glyph has a width and a height whichever way its guide runs.
+ * A `y` tick is made visible by a transposed **default** in
+ * `ua.ts`, never by a different reading here — so `w` is across
+ * x below, always, and no caller passes them the other way round.
+ *
  * The `rect` form is **centred** exactly as the ellipse is, so
  * switching `--hdml-tick-style` moves nothing.
  *
@@ -210,12 +218,20 @@ export class HdmlTickElement extends HdvlElement {
     // already rejected anything else — this narrows a string, it
     // does not validate one.
     const style = (m.props.get("--hdml-tick-style") ?? "").trim();
-    // ★ Both literals are UNREACHABLE (017 trap 11) and both match
-    // the REGISTRY's initials, which is what a tick still reads.
+    // ★ Both literals are UNREACHABLE (017 trap 11) and both are
+    // the REGISTRY's initials — which since 017 R5 is what an `x`
+    // tick reads and NOT what a `y` one does: `ua.ts`'s
+    // `tickGlyphRules` gives `:host(hdml-tick[channel="y"])` the
+    // transposed pair, so a y glyph computes `6px` × `1px` here.
     // `mark-point.ts`'s identical pair reads `6` and `6` since 017
-    // R9 put a `6px`-square UA default on `:host(hdml-point)` —
-    // the two hosts share these properties and, as of R9, disagree
-    // about their defaults. Nothing here changed; this says so.
+    // R9's `6px`-square default on `:host(hdml-point)`.
+    //
+    // ★ So these two reads are **view-space on every host and
+    // every channel** — R5 kept the semantic and turned only the
+    // default (a glyph has a width and a height; a point sits on
+    // no guide and could not have a length along one). This file
+    // therefore needs NO channel branch, and the fact that it
+    // needs none is R5's fix shape stated as code.
     const w = cssNumber(m.props.get("--hdml-tick-width"), 1);
     const h = cssNumber(m.props.get("--hdml-tick-height"), 6);
     // A glyph is a FILLED shape, so `--hdml-fill-color` is its

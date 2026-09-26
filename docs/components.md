@@ -607,9 +607,9 @@ proportions: SPEC §9 gives both rows to `hdml-tick` and `hdml-point` together, 
 initials were chosen for the guide. A point that bound no `size` and declared no CSS
 therefore painted a **1 × 6 vertical sliver**. `ua.ts` now declares `6px` square on
 `:host(hdml-point)` alone — a **normal** declaration any author rule beats, and deliberately
-not the `!important` §3 gives a positional guide's cross-axis extent — while `hdml-tick`
-keeps `1 × 6`. This is the first place the two hosts that share these properties **disagree**
-about them, so it is asserted in both directions rather than left to a golden. Two
+not the `!important` §3 gives a positional guide's cross-axis extent — while an **x**
+`hdml-tick` keeps `1 × 6` (a **y** one is `6 × 1` since 017 R5, below). This was the first
+place the hosts that share these properties **disagree** about them, so it is asserted in both directions rather than left to a golden. Two
 consequences: **a bound `size` still wins**, because the channel replaces both extents before
 either property is read; and, as with R4's outline default, **an ancestor's
 `--hdml-tick-width`/`-height` no longer reaches a point** — a `:host` declaration beats an
@@ -760,8 +760,10 @@ placed by **two** declarations and sized by a third you cannot reach:
 :host(hdml-label[channel="y"]) { right: 100%; left: auto; width: 40px }
 ```
 
-An axis is a line and a tick's length is `--hdml-tick-height`; **neither reads its own box
-across its channel**, so a width there was a number nothing consumed. It is `!important`
+An axis is a line, and a tick's length is a **property** rather than a box —
+`--hdml-tick-height` on an x tick and, since 017 R5 transposed the default,
+`--hdml-tick-width` on a y one. **Neither guide reads its own box across its channel**, so a
+width there was a number nothing consumed. It is `!important`
 because for important declarations the **inner** tree wins, which is the only thing that makes
 it enforceable — and because at a zero extent the two placement idioms **converge**:
 `right: 100%` and `left: 0` put the line in the same place. Before the amendment they did not.
@@ -824,11 +826,42 @@ glyph, `--hdml-tick-style` shapes it (registered initial `rect`, not `ellipse`),
 its declared size and no scene assertion catches it, so the test asserts against the
 *computed property*. Both forms are centred on the same point, so switching the property
 moves nothing. It is **filled**, so `--hdml-fill-color` is its property; that initial is
-`currentColor`, so an unstyled tick paints in the inherited text colour. **A tick keeps the
-registry's `1px` × `6px`, and since 017 R9 a point does not** — the UA sheet gives
-`:host(hdml-point)` a `6px` square, because the same pair means *a thin mark on an axis* on
-one host and *a dot* on the other. The two defaults are asserted against each other in
-`ua.test.ts`; nothing else in the suite compares the two tags.
+`currentColor`, so an unstyled tick paints in the inherited text colour. **An x tick keeps the
+registry's `1px` × `6px`; a point has not since 017 R9, and a y tick has not since 017 R5** —
+the UA sheet gives `:host(hdml-point)` a `6px` square, because the same pair means *a thin
+mark on an axis* on one host and *a dot* on the other. All three defaults are asserted
+against each other in `ua.test.ts`; nothing else in the suite compares the two tags.
+
+**★ A `y` tick's default is the `x` one TURNED** (017 R5). The registry's `1px` × `6px` is an
+x tick: a thin stub hanging below its axis. The identical pair on a y tick is a 1 × 6 stub
+lying *along* the vertical axis line it sits on, which swallows it — every corpus page that
+wrote a y tick got an invisible one. The UA sheet therefore emits
+
+```css
+:host(hdml-tick[channel="y"]) { --hdml-tick-width: 6px; --hdml-tick-height: 1px }
+```
+
+**normal**, never `!important`: a glyph's size is the author's, exactly as with R9's point
+and R4's outline, and unlike the cross-axis extent above. Three things about it are worth
+knowing:
+
+- **The properties are still view-space on every host and every channel.** R5 considered
+  re-meaning them as an extent *along* the guide and *across* it and rejected it: they size a
+  **glyph** — a `rect` or an `ellipse`, carrying its own outline since R4 — and a shape has a
+  width and a height whichever way its guide runs. A length *along a guide* would also be
+  meaningless on `hdml-point`, which sits on no guide. So `guide-tick.ts` needs no channel
+  branch, and the fact that it needs none is the fix shape stated as code.
+- **`x` gets no rule, and that asymmetry is deliberate.** An x tick is not broken, so a rule
+  would buy nothing and cost the inheritance below.
+- **An ancestor's `--hdml-tick-*` no longer reaches a `y` tick** — a `:host` declaration beats
+  an inherited one, R9's cost met a second time. It still reaches an **x** tick, which has no
+  declaration of its own. Both halves are asserted, because no golden can see either: no
+  corpus page sets these properties on an ancestor.
+
+The fourteen pages under `html/` that wrote `hdml-tick { --hdml-tick-width: 1px;
+--hdml-tick-height: 6px }` — the x defaults, restated — were fixed by **deleting** those two
+declarations, not by transposing them by hand: with nothing authored, an x tick takes the
+registry and a y tick takes the rule above.
 
 **Where a tick's `decorative: true` lives.** §6.5 calls a tick glyph decoration and §5.10
 gives decoration an `aria-hidden` floor — but §2.5 puts `decorative` on the `text` node

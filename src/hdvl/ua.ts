@@ -201,6 +201,111 @@ const POINT_GLYPH = [
 ];
 
 /**
+ * The registry's initial for one `--hdml-tick-*` extent — the
+ * value {@link tickGlyphRules} transposes.
+ *
+ * **Read from {@link HDVL_PROPERTIES}, never transcribed**, on
+ * {@link SENTINEL_PROPERTIES}'s precedent below. 017 R5's whole
+ * claim is that a `y` tick's glyph is the `x` one TURNED rather
+ * than a second pair of numbers, and reading the registry is what
+ * makes that structural instead of merely commented: change an
+ * initial and the transpose follows it.
+ *
+ * @param axis - Which extent to read.
+ * @returns Its registered initial, as CSS text.
+ */
+function tickInitial(axis: "width" | "height"): string {
+  const def = HDVL_PROPERTIES.find(
+    (p) => p.name === `--hdml-tick-${axis}`,
+  );
+  // Unreachable: `properties.ts` registers both WITH an initial,
+  // and `registry.test.ts` asserts the set. `initialValue` is
+  // optional on the platform's `PropertyDefinition`, so both
+  // halves are checked — a `?? ""` would emit a malformed
+  // declaration in silence, and this cannot.
+  if (def === undefined || def.initialValue === undefined) {
+    throw new Error(`--hdml-tick-${axis} has no initial`);
+  }
+  return def.initialValue;
+}
+
+/**
+ * ★ **017 R5 — a `y` tick's glyph, TRANSPOSED.**
+ *
+ * `--hdml-tick-width` and `-height` stay **view-space on every
+ * host**, and R5 settled that deliberately: they describe a
+ * *glyph* — a `rect` or an `ellipse` per `--hdml-tick-style`,
+ * carrying its own outline since R4 — and a shape has a width and
+ * a height. Re-meaning them *along the guide* and *across it*
+ * would have been meaningless on `hdml-point`, which sits on no
+ * guide, and would have split one pair's meaning across two
+ * hosts. **Only the DEFAULT turns; nothing is re-meant.**
+ *
+ * The registry's `1px` × `6px` is an **x** tick — a thin stub
+ * hanging below its axis. On a `y` tick that same pair is a 1 × 6
+ * stub lying *along* the vertical axis line it sits on, which
+ * swallows it. Transposed, it sticks out of the axis instead.
+ *
+ * **★ Which axis the length runs along is not derived a second
+ * time** (R12). {@link GUIDE_PLACEMENT}'s `cross` already names
+ * the view axis a guide extends across, and {@link PLACED_LINE}'s
+ * comment says why the two are **one fact**: a tick's extent
+ * across its channel is a *property* rather than a box, which is
+ * precisely why R1 zeroes the box there. So `cross` is read, not
+ * restated.
+ *
+ * **★ `x` gets NO rule, and the asymmetry is deliberate.** An x
+ * tick is not broken — the registry's initials are already right
+ * for it — so a rule would buy nothing and cost the inheritance
+ * below. R5 asks for the `y` default; this is exactly that.
+ *
+ * **★ BOTH properties are declared**, for R9's reason met a
+ * second time (step 05's Finding 1): a `:host` declaration beats
+ * an **inherited** one, so declaring the width alone would leave a
+ * plane-level `--hdml-tick-height` still reaching the glyph while
+ * its width came from here — one glyph assembled from two
+ * sources, which is worse than either answer alone.
+ *
+ * **★ Its cost, stated rather than left to be discovered: an
+ * ancestor's `--hdml-tick-*` no longer reaches a `y` tick.** It
+ * still reaches an `x` one, which has no declaration of its own.
+ * `ua.test.ts` asserts both halves, because that asymmetry is
+ * invisible to every golden — no corpus page sets these
+ * properties on an ancestor.
+ *
+ * **★ NORMAL, never `!important`** — {@link OUTLINED} and
+ * {@link POINT_GLYPH}'s family, not R1's (trap 12). A glyph's size
+ * belongs to the author; R1's lock is for geometry the runtime
+ * owns.
+ *
+ * @returns The rule, as sheet lines.
+ */
+function tickGlyphRules(): string[] {
+  const row = GUIDE_PLACEMENT.y;
+  // Unreachable while `y` is a placed channel; a `continue`-shaped
+  // guard rather than a throw, because {@link guideRules} treats a
+  // missing row the same way.
+  if (row === undefined) {
+    return [];
+  }
+  const attr = AXIS_ATTRS_LIST.CHANNEL;
+  const tick = HDVL_TAG_NAMES.TICK;
+  // `cross` is the view axis a `y` guide extends ACROSS, which is
+  // the axis its glyph's LENGTH runs along.
+  const long = row.cross;
+  const thin = long === "width" ? "height" : "width";
+  return [
+    `:host(${tick}[${attr}="y"]) {`,
+    // ★ Each extent takes the OTHER's initial. That is the whole
+    // of R5 as an expression: a transpose, not two new numbers.
+    `  --hdml-tick-${long}: ${tickInitial(thin)};`,
+    `  --hdml-tick-${thin}: ${tickInitial(long)};`,
+    "}",
+    "",
+  ];
+}
+
+/**
  * The guides SPEC §3 places **per channel** whose cross-axis extent
  * is the **runtime's** — zero, `!important`, unreachable from the
  * outer tree (017 R1).
@@ -213,12 +318,15 @@ const POINT_GLYPH = [
  * placed **once**, not per channel (see {@link LEGEND_CSS}).
  *
  * **★ But the three take TWO rules, not one, and the split is
- * load-bearing.** An axis is a line and a tick's length is
- * `--hdml-tick-height`; neither reads its own box **across** its
- * channel, so a gutter extent there is a number nothing consumes
- * and every author idiom can trip over. {@link guideRules} states
- * why the two rules stay split even where their declarations
- * coincide.
+ * load-bearing.** An axis is a line, and a tick's length is a
+ * PROPERTY — `--hdml-tick-height` on an `x` tick and, since 017
+ * R5 transposed the default, `--hdml-tick-width` on a `y` one
+ * (see {@link tickGlyphRules}, which reads that same axis off
+ * `cross` rather than deriving it twice). Neither guide reads its
+ * own box **across** its channel, so a gutter extent there is a
+ * number nothing consumes and every author idiom can trip over.
+ * {@link guideRules} states why the two rules stay split even
+ * where their declarations coincide.
  */
 const PLACED_LINE = [HDVL_TAG_NAMES.AXIS, HDVL_TAG_NAMES.TICK];
 
@@ -615,6 +723,10 @@ const ELEMENT_CSS = [
   // Its neighbour above and it AGREE about being normal; R1's
   // `!important` is further up and is the exception (trap 12).
   ...POINT_GLYPH,
+  // 017 R5's transposed glyph for a `y` tick — see
+  // tickGlyphRules. The third of three per-host / per-channel
+  // default families at this foot, and all three are NORMAL.
+  ...tickGlyphRules(),
 ].join("\n");
 
 const DOCUMENT_CSS = [

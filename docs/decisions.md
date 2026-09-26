@@ -1665,21 +1665,93 @@ deliberate.
   negative control (the selector widened to `hdml-tick`) fails it on all three engines and
   fails **nothing in `guide-tick.test.ts`**, which is the measurement rather than the worry.
   R4's Finding 1 in general form.
-- **The extents are view-space `x` and `y`, and the rule says so.** 017 R5 may make
-  `--hdml-tick-width`/`-height` mean *along the guide* and *along its normal*; those words
-  are meaningless for a point, which sits on no guide and has no normal. Writing the default
-  in view-space terms is what stops R5's re-meaning from silently resizing every dot.
+- **The extents are view-space `x` and `y`, and the rule says so.** Written that way
+  because 017 R5 might have made `--hdml-tick-width`/`-height` mean *along the guide* and
+  *along its normal*, words that are meaningless for a point, which sits on no guide and has
+  no normal. **R5 then decided not to** (next entry), keeping the pair view-space on every
+  host — so this is no longer a point-shaped exception to a guide-shaped rule, it is simply
+  the rule. The precaution cost nothing and is left standing.
 
 The literal fallbacks in `mark-point.ts` — `cssNumber(m.props.get("--hdml-tick-width"), 1)` —
 were **not** the fix and could not have been: a registered property always computes to a
 value, so the fallback is unreachable (017 trap 11). They now read `6` and say why, so the
 one state that cannot arise would still be the right one; `guide-tick.ts`'s identical pair
-keeps `1` and `6`, which is still the registry's, and both comments name the other file.
+keeps `1` and `6`, which is still the registry's — and, since R5, is still what an **x**
+tick reads and no longer what a **y** one does. Both comments name the other file.
 
 **One view moved: `12-coverage` A, eight `rx` values, `0.5` → `3`.** The other three pages
 carrying a point did not move, each for a different reason — `05-scatter` and `07-mixed`
 because an author rule beats a `:host` default, `06-bubble` because a bound `size` channel
 supplies both extents and bypasses the properties entirely.
+
+## A `y` tick's glyph default is the `x` one, turned
+
+Project 017 R5, implementation step 06. `--hdml-tick-width` and `--hdml-tick-height` are
+**view-space diameters** — `width` across x, `height` across y — and their registered
+initials, `1px` and `6px`, describe an **x** tick: a thin stub hanging below its axis. The
+same pair on a **y** tick is a 1 × 6 stub lying *along* the vertical axis line it sits on,
+and it disappears into it. Every page in `html/` that drew a y tick drew an invisible one.
+
+**The fix shape was open by the founder's decision and three shapes were put to them**, not
+two, because 017 R9 had changed the question since R5 was written:
+
+- **(a) channel-relative semantics** — `-height` becomes the extent along the guide's outward
+  normal, `-width` the extent along the guide. No page needs editing. But R9 had just pinned
+  `:host(hdml-point)` to declare the same pair as **view-space `x` and `y`**, in those words,
+  so (a) would have made **one property pair mean two different things on two hosts** — a
+  *semantic* split, not the *default* split R9 shipped, and a larger claim than R5 costed.
+- **(b) transposed defaults, view-space meaning kept** — a `:host(hdml-tick[channel="y"])` UA
+  rule, and the pages edited.
+- **(c) channel-relative semantics under new names** — `--hdml-tick-length` /
+  `--hdml-tick-thickness` on the tick, leaving width/height as the point's. Ends the split
+  instead of documenting it, at the price of two new properties and two deprecated.
+
+**(b) was chosen, on the founder's reasoning:** these properties size a **glyph**, not a
+guide. A tick is a `rect` *or* an `ellipse` (`--hdml-tick-style`) and has carried its own
+outline since R4 — and a shape has a width and a height whichever way its guide runs. A
+length *along a guide* is also meaningless on `hdml-point`. So **the semantic is unambiguous
+exactly because it is view-space, and only the default turns.**
+
+```css
+:host(hdml-tick[channel="y"]) { --hdml-tick-width: 6px; --hdml-tick-height: 1px }
+```
+
+Five things about the rule:
+
+- **Normal, never `!important`** — `OUTLINED` and `POINT_GLYPH`'s family, not R1's (trap 12).
+  A glyph's size is the author's; R1's lock is for geometry the runtime owns. Asserted off
+  the rule with `getPropertyPriority`, because a default that silently became `!important`
+  would take every author's tick size away with **no golden moving**.
+- **The two values are read from `HDVL_PROPERTIES`, not transcribed** — each extent takes the
+  *other's* registered initial. That is R5 as an expression: a transpose, not a second pair
+  of numbers. A test asserts the identity **and** that the two initials differ, without which
+  the transpose would be a tautology that passed on any pair.
+- **Which axis the length runs along is not derived twice** (R12). `GUIDE_PLACEMENT`'s
+  `cross` already names the view axis a guide extends across — and that is the same fact R1
+  rests on: a tick's extent across its channel is a *property* rather than a box, which is
+  *why* R1 zeroes the box there.
+- **`x` gets no rule.** An x tick is not broken, so a rule would buy nothing and cost the
+  inheritance below.
+- **Both properties are declared**, R9's reason met a second time: a `:host` declaration beats
+  an **inherited** one, so a width-only rule would leave a plane-level `--hdml-tick-height`
+  still reaching the glyph while its width came from the sheet.
+
+**The cost, asserted rather than assumed: an ancestor's `--hdml-tick-*` no longer reaches a
+`y` tick.** It still reaches an **x** one. That asymmetry is invisible to every golden — no
+corpus page sets these properties on an ancestor — so `ua.test.ts` asserts both halves in one
+fixture.
+
+**Fourteen pages under `html/` were fixed by a deletion, not a transposition.** All fourteen
+wrote `hdml-tick { --hdml-tick-width: 1px; --hdml-tick-height: 6px }` — the x defaults,
+restated — on the bare tag in the outer document, which **beats a `:host` rule regardless of
+specificity**. So the UA rule alone would have fixed none of them. With the two declarations
+deleted, an x tick takes the registry and a y tick takes the rule. This also makes
+`01-line`'s golden exercise the UA rule end to end rather than a hand-written page rule.
+
+**One view moved: `01-line`, the y tick's five `rect`s** — `x: 71.5 → 69`, `y` up `2.5` on
+each, `w: 1 → 6`, `h: 6 → 1`. No centre moved (`cx`/`cy` are unchanged by a transpose about
+the centre), no other group moved, and `12-coverage` A's **x** tick stayed `1 × 6` in its own
+golden, which is the in-golden control for the per-channel split.
 
 ## `hdml-split-by` is published and unimplemented
 

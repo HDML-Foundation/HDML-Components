@@ -751,26 +751,37 @@ suite("hdvl/ua — the element sheet", () => {
       <hdml-view style="width: 400px; height: 200px">
         <hdml-cartesian-plane>
           <hdml-point x="a" y="b"></hdml-point>
+          <hdml-tick channel="x"></hdml-tick>
           <hdml-tick channel="y"></hdml-tick>
         </hdml-cartesian-plane>
       </hdml-view>
     `);
     await settle(view);
-    const glyph = (tag: string): [string, string] => {
+    const glyph = (sel: string): [string, string] => {
       const style = getComputedStyle(
-        <Element>view.querySelector(tag),
+        <Element>view.querySelector(sel),
       );
       return [
         style.getPropertyValue("--hdml-tick-width").trim(),
         style.getPropertyValue("--hdml-tick-height").trim(),
       ];
     };
+    const tick = (c: string): [string, string] =>
+      glyph(`hdml-tick[channel="${c}"]`);
     // A point is a dot.
     assert.deepEqual(glyph("hdml-point"), ["6px", "6px"]);
-    // ★ THE CONTROL. A tick is a thin mark on an axis and keeps the
-    // registry's `1px` / `6px`, which `properties.test.ts` asserts
-    // on a bare div as the other half of the same claim.
-    assert.deepEqual(glyph("hdml-tick"), ["1px", "6px"]);
+    // ★ THE CONTROL. An x tick is a thin stub below its axis and
+    // keeps the registry's `1px` / `6px`, which
+    // `properties.test.ts` asserts on a bare div as the other half
+    // of the same claim.
+    assert.deepEqual(tick("x"), ["1px", "6px"]);
+    // ★ …and 017 R5 TURNS it on a y tick, without re-meaning the
+    // pair: still a view-space width and height, now 6 across x
+    // and 1 across y, so the stub sticks out of the vertical axis
+    // instead of lying along it. Three host-and-channel cases,
+    // three different pairs, one fixture — and a step that put any
+    // one of the three on another fails here and nowhere else.
+    assert.deepEqual(tick("y"), ["6px", "1px"]);
   });
 
   test("★ an author beats the glyph default", async () => {
@@ -789,14 +800,14 @@ suite("hdvl/ua — the element sheet", () => {
       <hdml-view style="width: 400px; height: 200px">
         <hdml-cartesian-plane>
           <hdml-point x="a" y="b"></hdml-point>
-          <hdml-tick channel="y"></hdml-tick>
+          <hdml-tick channel="x"></hdml-tick>
         </hdml-cartesian-plane>
       </hdml-view>
     `);
     await settle(view);
-    const glyph = (tag: string): [string, string] => {
+    const glyph = (sel: string): [string, string] => {
       const style = getComputedStyle(
-        <Element>view.querySelector(tag),
+        <Element>view.querySelector(sel),
       );
       return [
         style.getPropertyValue("--hdml-tick-width").trim(),
@@ -805,8 +816,12 @@ suite("hdvl/ua — the element sheet", () => {
     };
     // Both extents are the author's, including a non-square one.
     assert.deepEqual(glyph("hdml-point"), ["9px", "3px"]);
-    // Unmatched by the author sheet, so still the registry's.
-    assert.deepEqual(glyph("hdml-tick"), ["1px", "6px"]);
+    // ★ Unmatched by the author sheet AND by any UA rule, so still
+    // the registry's. It is an **x** tick since 017 R5: a y tick
+    // now carries a UA declaration of its own, so it would no
+    // longer be evidence that nothing matched it. R5's own cascade
+    // claim is asserted separately, below.
+    assert.deepEqual(glyph('hdml-tick[channel="x"]'), ["1px", "6px"]);
   });
 
   test("★ the glyph default is not important", () => {
@@ -847,6 +862,122 @@ suite("hdvl/ua — the element sheet", () => {
     );
   });
 
+  test("★ an author beats the y tick default", async () => {
+    // 017 R5's cascade claim, asserted per engine rather than read
+    // from a log (trap 7), and separately from R9's because they
+    // are different rules: R9's is a per-HOST default and this is
+    // a per-CHANNEL one. R5 kept the properties view-space, so an
+    // author who wants a long y tick writes a WIDTH — the same
+    // word they would write for any other box — and must win.
+    adoptScratch(
+      'hdml-tick[channel="y"] { --hdml-tick-width: 12px;' +
+        " --hdml-tick-height: 2px }",
+    );
+    const view = await fixture<HdmlViewElement>(html`
+      <hdml-view style="width: 400px; height: 200px">
+        <hdml-cartesian-plane>
+          <hdml-tick channel="x"></hdml-tick>
+          <hdml-tick channel="y"></hdml-tick>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    await settle(view);
+    const tick = (c: string): [string, string] => {
+      const style = getComputedStyle(
+        <Element>view.querySelector(`hdml-tick[channel="${c}"]`),
+      );
+      return [
+        style.getPropertyValue("--hdml-tick-width").trim(),
+        style.getPropertyValue("--hdml-tick-height").trim(),
+      ];
+    };
+    // The author's, both extents — an outer-tree normal
+    // declaration beats an inner-tree one.
+    assert.deepEqual(tick("y"), ["12px", "2px"]);
+    // ★ THE CONTROL: the author rule is channel-qualified, so the
+    // x tick is untouched. Without it, "the author won" would be
+    // satisfied by a UA rule that had stopped matching anything.
+    assert.deepEqual(tick("x"), ["1px", "6px"]);
+  });
+
+  test("★ the y tick default is not important", () => {
+    // The declaration-level half, exactly as R4's and R9's are. No
+    // corpus page uses `!important`, so a default that silently
+    // became one would take every author's tick size away with NO
+    // golden moving — which is why this reads the priority off the
+    // RULE rather than re-running the cascade above.
+    const rule = Array.from(elementSheet.cssRules).find((r) => {
+      const styleRule = <CSSStyleRule>r;
+      return (
+        typeof styleRule.selectorText === "string" &&
+        styleRule.selectorText.includes("hdml-tick[channel=") &&
+        styleRule.style.getPropertyValue("--hdml-tick-width") !== ""
+      );
+    });
+    assert.isDefined(rule);
+    const style = (<CSSStyleRule>rule).style;
+    for (const name of ["--hdml-tick-width", "--hdml-tick-height"]) {
+      assert.strictEqual(style.getPropertyPriority(name), "", name);
+    }
+    // ★ It is the y TICK alone. R1's rule two hundred lines up
+    // carries the same `hdml-tick[channel="y"]` selector GROUPED
+    // with `hdml-axis` — and is `!important`, because a guide's
+    // box is the runtime's while a glyph's size is the author's
+    // (trap 12). Picking that rule up here, or grouping this one
+    // with the axis, is the edit this catches: an axis has no
+    // glyph and an x tick needs no default.
+    assert.strictEqual(
+      (<CSSStyleRule>rule).selectorText.trim(),
+      ':host(hdml-tick[channel="y"])',
+    );
+    // …and it says nothing about the SHAPE, exactly as R9's does
+    // not: `--hdml-tick-style`'s initial is `rect` on both
+    // channels, so R5 turns a stub, it does not restyle one.
+    assert.strictEqual(
+      style.getPropertyValue("--hdml-tick-style"),
+      "",
+    );
+  });
+
+  test("★ the y default is the registry's pair, turned", () => {
+    // ★ R5's fix shape, asserted as an IDENTITY rather than as two
+    // transcribed numbers. The founder's reasoning for keeping the
+    // properties view-space was that they size a glyph — so a y
+    // tick must be the x tick TURNED, and nothing else. Read `6px`
+    // and `1px` off the rule and this test would pass against a
+    // runtime that had quietly invented a second pair of numbers;
+    // read them off the registry and it cannot.
+    const initial = (axis: string): string => {
+      const def = HDVL_PROPERTIES.find(
+        (d) => d.name === `--hdml-tick-${axis}`,
+      );
+      assert.isDefined(def);
+      return <string>def.initialValue;
+    };
+    const rule = Array.from(elementSheet.cssRules).find((r) => {
+      const styleRule = <CSSStyleRule>r;
+      return (
+        typeof styleRule.selectorText === "string" &&
+        styleRule.selectorText.trim() ===
+          ':host(hdml-tick[channel="y"])'
+      );
+    });
+    assert.isDefined(rule);
+    const style = (<CSSStyleRule>rule).style;
+    // Each extent carries the OTHER's registered initial.
+    assert.strictEqual(
+      style.getPropertyValue("--hdml-tick-width").trim(),
+      initial("height"),
+    );
+    assert.strictEqual(
+      style.getPropertyValue("--hdml-tick-height").trim(),
+      initial("width"),
+    );
+    // ★ …and the two initials DIFFER, without which the transpose
+    // above would be a tautology that passed on any pair at all.
+    assert.notStrictEqual(initial("width"), initial("height"));
+  });
+
   test("★ an ancestor cannot set a point's glyph", async () => {
     // The cost of declaring BOTH properties, asserted rather than
     // assumed — R4's Finding 2, met a second time. A `:host`
@@ -872,6 +1003,7 @@ suite("hdvl/ua — the element sheet", () => {
         <hdml-cartesian-plane class="themed">
           <hdml-point x="a" y="b"></hdml-point>
           <hdml-point class="direct" x="a" y="b"></hdml-point>
+          <hdml-tick channel="x"></hdml-tick>
           <hdml-tick channel="y"></hdml-tick>
         </hdml-cartesian-plane>
       </hdml-view>
@@ -887,10 +1019,19 @@ suite("hdvl/ua — the element sheet", () => {
     };
     // The plane takes the author's value…
     assert.deepEqual(glyph("hdml-cartesian-plane"), ["5px", "5px"]);
-    // …and a TICK inherits it, having no declaration of its own,
-    // which is the positive control saying inheritance is still
-    // live on these two properties.
-    assert.deepEqual(glyph("hdml-tick"), ["5px", "5px"]);
+    // …and an **x** TICK inherits it, having no declaration of its
+    // own, which is the positive control saying inheritance is
+    // still live on these two properties.
+    assert.deepEqual(glyph('hdml-tick[channel="x"]'), ["5px", "5px"]);
+    // ★ …while a **y** tick no longer does, and that is 017 R5's
+    // COST rather than its fix: R5 gave it a `:host` declaration,
+    // and a `:host` declaration beats an inherited value exactly
+    // as the point's does. Asserted here beside the point's
+    // because the two are one mechanism met twice, and because no
+    // golden can see either — no corpus page sets `--hdml-tick-*`
+    // on an ancestor. The asymmetry with the x tick one line up is
+    // the whole of what R5 changed about inheritance.
+    assert.deepEqual(glyph('hdml-tick[channel="y"]'), ["6px", "1px"]);
     // …while the point does NOT: its UA default is a declaration,
     // and inheritance applies only where there is none.
     assert.deepEqual(glyph("hdml-point:not(.direct)"), [
