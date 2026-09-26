@@ -510,6 +510,76 @@ with the IdP and the page's origin (`http://127.0.0.1:8000` under `wds`) must be
   [docs/hdio-client.md](hdio-client.md)) — the value committed in the page is a spent
   dev-tenant code kept only as a shape example. Replace it with a fresh one before use.
 
+### The live-render harness
+
+[scripts/render-live.mjs](../scripts/render-live.mjs) renders the live pages headlessly
+against a running HDIO server, with **real data**, and writes **one PNG per `hdml-view`**
+plus a per-view SVG node count. It exists because the acceptance corpus asserts computed
+geometry and never looks at a pixel, so overflow, clipping, misplacement and font-metric
+drift are invisible to it by construction (project 017, O1). It is a **dev instrument, not
+a gate**: nothing in `npm test` calls it, it needs a live server, and its output is for a
+human to read. It adds no dependency — Playwright is already here, pinned at 1.58.2 through
+`@web/test-runner-playwright`.
+
+```bash
+HDIO_TENANT_TOKEN=$TT node scripts/render-live.mjs                          # all 13 hdvl-live pages
+HDIO_TENANT_TOKEN=$TT node scripts/render-live.mjs html/hdvl-live/03-bar.html
+HDIO_TENANT_TOKEN=$TT RENDER_BROWSER=firefox node scripts/render-live.mjs
+```
+
+PNGs land under `.render-live/<browser>/<page path>/` (gitignored). The exit code is
+non-zero if any page failed to render, any view stayed empty, or any console error, page
+error or HTTP ≥ 400 was seen.
+
+**Auth.** The `html/hdvl-live/` pages are `mode="oidc"` and redirect to a login no headless
+driver can complete. The way in is 006's **handoff**, which `<hdml-io>` reads from
+`?handoff=` on the URL and which **wins over `mode`**. The script mints one single-use
+handoff per page from `POST /private/{tenant}/auth/token {"role":"admin"}`, so the tenant
+token itself never reaches the browser. **Keep the tenant token in the environment — never
+in a file, never in a flag.** Minting one is three calls against the server's own boot
+environment, and HDIO-Server's `hdioctl` is what does it: run the server's launcher with its
+final `exec` line swapped for `exec "$@"` so the system RSA key pair stays in exactly one
+place, then `hdioctl systoken -ttl 30m`, then
+`POST /system/tenants/{tenant}/token` with that system token.
+
+| Variable | Default | |
+|---|---|---|
+| `HDIO_TENANT_TOKEN` | — | **required** |
+| `HDIO_HOST` | `http://127.0.0.1:8888` | |
+| `HDIO_TENANT` / `HDIO_ROLE` | `tenant-a` / `admin` | tenant-a's `access.yml` has `admin` and `guest` |
+| `RENDER_ORIGIN` | `http://127.0.0.1:8000` | on tenant-a's origin allowlist |
+| `RENDER_BROWSER` | `chromium` | or `firefox`, `webkit` |
+| `RENDER_OUT` | `.render-live` | |
+| `RENDER_VIEWPORT` | `1280x900` | rendered at `deviceScaleFactor: 2` |
+| `RENDER_TIMEOUT_MS` / `RENDER_STABLE_MS` | `30000` / `750` | per page; how long every view's node count must hold still |
+
+**It fails loudly, and three of its four failure modes are silent by default.** Each has
+cost a measurement run:
+
+- **A page loaded without a usable handoff does not fail loudly.** `mode="oidc"` navigates
+  away and you measure the server's login page: every `hdml-*` selector returns nothing, no
+  property is registered, and the probe reports a clean, plausible, completely wrong result.
+  The script asserts `location.pathname` is unchanged before reporting anything.
+- **`bin/` is gitignored and built locally.** An un-upgraded page renders boxes at `1200×0`
+  / `0×900`. The script asserts the first `hdml-view` is an instance of the registered
+  class, and says `npm run compile_bin` when it is not.
+- **A view's first paint is not its render.** A view emits an empty `<g data-w>` per widget
+  milliseconds after load, long before data arrives, so *"the `<svg>` has a child"* is true
+  almost immediately. The script waits for **settled**, not painted: every view has at least
+  one node *under* a widget group, and no view's node count has moved for `RENDER_STABLE_MS`.
+- **Any origin but `127.0.0.1:8000` is 403 `origin not in tenant allowlist`**, delivered as
+  the *navigation* response, which looks like a broken page server. Use `127.0.0.1`, never
+  `localhost` — the IPv6 path stalls ~20 s per request through the VS Code port forward.
+
+Reference output, chromium, 2026-09-26 (excerpt):
+
+```
+html/hdvl-live/03-bar.html  —  3 view(s)
+  · cap-vertical         760x300      31 svg   22 painted  .render-live/chromium/…/00-cap-vertical.png
+  · cap-horizontal       760x300      31 svg   22 painted  .render-live/chromium/…/01-cap-horizontal.png
+  · cap-floating         760x300      41 svg   32 painted  .render-live/chromium/…/02-cap-floating.png
+```
+
 ### Live HDVL pages
 
 [html/airbnb/](../html/airbnb/), [html/maang/](../html/maang/),
