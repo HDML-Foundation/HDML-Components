@@ -51,6 +51,7 @@ import { adoptedOf } from "./subscribe";
 import {
   MODIFIERS,
   VALUES_SLOT,
+  angleCollisionOf,
   kindOfColumn,
   looksLikeRef,
   paletteGapOf,
@@ -108,6 +109,7 @@ export type DiagnosticCode =
   | "missing-binding"
   | "channel-guide-fit"
   | "palette-exhausted"
+  | "colliding-angle-bands"
   | "all-rows-dropped"
   | "negative-pie-value"
   | "varying-path-color";
@@ -898,6 +900,18 @@ function paletteMessage(domain: number, palette: number): string {
   return (
     `${domain} color domain values but ${palette} palette ` +
     "colors — add colors to --hdml-palette or shorten the domain"
+  );
+}
+
+function collidingAnglesMessage(
+  domain: number,
+  distinct: number,
+): string {
+  return (
+    `${domain} angle domain values occupy only ${distinct} ` +
+    "distinct angles — an angular sweep of more than one turn, " +
+    "or of none, cannot separate them; set " +
+    "--hdml-angle-start/-end to at most one turn"
   );
 }
 
@@ -2794,6 +2808,54 @@ function checkPalette(el: HdvlElement, out: Finding[]): void {
   );
 }
 
+/**
+ * ★ **017 R8's survivor** — two categories of one ordinal `angle`
+ * scale resolving to the same angle.
+ *
+ * R8 fixed the reachable case by making a whole-turn sweep divide by
+ * `n` (`kernel/scale-band.ts`'s `cyclic`), which is why corpus
+ * `10-radar` draws a hexagon for six metrics instead of a pentagon.
+ * **What the fix cannot reach is a sweep of more than one turn, or of
+ * none**, where the range genuinely visits the same angle twice and
+ * no denominator separates the categories. A W-rule aimed at the
+ * full turn would have been dead on arrival; this is aimed at what
+ * survives. *(Decided 2026-09-26, with the user, at 017 step 07 —
+ * R8's second open question.)*
+ *
+ * **Filed under V2 with its own `DiagnosticCode`**, exactly as
+ * {@link checkPalette} is and for the same reason: §8.3's V2 row is
+ * *"does the delivered data fit this scale"*, and `n` categories that
+ * occupy fewer than `n` angles is an answer of no. So **SPEC §11's
+ * checklist is untouched** — still 20 V-rules and 6 W-rules. The
+ * declined alternative was a new `W7`, which would have amended §11
+ * to add a seventh W-number beside the two 016 shipped uncalled.
+ *
+ * In the binding pass for {@link checkPalette}'s reason as well: a
+ * column-derived angle domain has no size until the frame ran, so
+ * this reads {@link angleCollisionOf} — the scale's own answer off
+ * the frame it last resolved in — and therefore edge-triggers,
+ * blanks the scale, dispatches `hdml-error` through the same path,
+ * and recovers when the author shortens the sweep.
+ */
+function checkAngleCollision(el: HdvlElement, out: Finding[]): void {
+  if (el.family !== "scale") {
+    return;
+  }
+  const hit = angleCollisionOf(el);
+  if (hit === null) {
+    return;
+  }
+  out.push(
+    error(
+      "V2",
+      "colliding-angle-bands",
+      el,
+      collidingAnglesMessage(hit.domain, hit.distinct),
+      "angle",
+    ),
+  );
+}
+
 /** Whether the view has a resolvable accessible name (§5.10). */
 function hasAccessibleName(view: HdmlViewElement): boolean {
   const label = view.getAttribute("aria-label");
@@ -3019,9 +3081,11 @@ export function validateStructure(
  * attribute-only and run in the structural pass beside V1 and V13,
  * V4's local-ref half included, as are all of V14, V16 and V20 —
  * every one of them read off attributes and the resolved scale's
- * **tag**. The **clause** is SPEC §9's palette exhaustion
- * ({@link checkPalette}), which is here because a column-derived
- * domain has no size until the frame ran; V15 is a *behaviour* —
+ * **tag**. **Two clauses** ride along under V2, both because a
+ * column-derived domain has no size until the frame ran: SPEC §9's
+ * palette exhaustion ({@link checkPalette}) and 017 R8's angular
+ * band collision ({@link checkAngleCollision}). V15 is a
+ * *behaviour* —
  * `nice` moving
  * derived endpoints only — and is asserted as one rather than
  * reported, because SPEC says it is *"a no-op, not an error"*.
@@ -3040,6 +3104,7 @@ export function validateBindings(
   for (const el of elements) {
     checkV2(el, found);
     checkPalette(el, found);
+    checkAngleCollision(el, found);
     checkV4Delivery(el, found);
     checkV5(el, found);
     checkV7Rows(el, found);

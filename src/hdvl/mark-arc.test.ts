@@ -205,6 +205,12 @@ function rose(
 }
 
 /**
+ * A partial sweep, for the tests whose subject is §4.4's inclusive
+ * denominator (017 R8 makes a full turn divide by `n` instead).
+ */
+const FAN = "--hdml-angle-end: 180deg";
+
+/**
  * The 200 × 200 polar fixture. Every attribute is always present,
  * empty where the test does not want it — an empty attribute reads
  * as unbound, which is how one helper spells all three radial cases.
@@ -485,14 +491,26 @@ suite("hdvl/mark-arc — §2.5's parameterised sector", () => {
   test("★ a slice is §4.4's band, not a whole step", async () => {
     // ★ The step-26 D1 decision, asserted against §4.4's FORMULA
     // and never against a captured number. The denominator is
-    // `n − 1 + b` and not `n`, so at the initial bandwidth the
-    // slices are 75.79° wide on a 94.74° step — the 20 % gap the
-    // escalation was about — and the last slice's high edge still
-    // lands exactly on the range's own r1.
-    const view = await mount(rose('["a","b","c","d"]'));
+    // `n − 1 + b` and not `n`, so at the initial bandwidth there is
+    // a 20 % gap between slices — the escalation's whole subject —
+    // and the last slice's high edge lands exactly on the range's
+    // own r1.
+    //
+    // ★ **On a PARTIAL sweep, since 017 R8.** This fixture was a
+    // full turn, where `r1` *is* `r0`, so "the last slice's high
+    // edge lands on r1" meant it landed on the FIRST slice's low
+    // edge — R8's defect, one page over from where the founder
+    // found it in `10-radar`. A 180° fan is where the inclusive
+    // denominator is right, so that is what this asserts; the full
+    // turn is the next test. 180 / 3.8 is not exactly
+    // representable, which is why every number here is derived from
+    // the formula rather than written down.
+    const view = await mount(
+      rose('["a","b","c","d"]', "", "", "", FAN),
+    );
     const n = 4;
     const b = 0.8;
-    const step = 360 / (n - 1 + b);
+    const step = 180 / (n - 1 + b);
     const width = b * step;
     const got = rawArcs(view);
     assert.lengthOf(got, n);
@@ -500,9 +518,36 @@ suite("hdvl/mark-arc — §2.5's parameterised sector", () => {
       assert.closeTo(got[k].a0, k * step, 1e-9, `a0 ${k}`);
       assert.closeTo(got[k].a1, k * step + width, 1e-9, `a1 ${k}`);
     }
-    assert.closeTo(got[n - 1].a1, 360, 1e-9, "last high edge");
+    assert.closeTo(got[n - 1].a1, 180, 1e-9, "last high edge");
     // And the gap is real: consecutive slices do NOT touch.
-    assert.isAbove(got[1].a0 - got[0].a1, 18);
+    assert.closeTo(got[1].a0 - got[0].a1, (1 - b) * step, 1e-9);
+    assert.isAbove(got[1].a0 - got[0].a1, 9);
+  });
+
+  test("★ 017 R8: a full turn divides by n, and wraps", async () => {
+    // The same rose on the DEFAULT sweep — the registered initials
+    // are `0deg`/`360deg`, so a full turn needs no declaration,
+    // which is exactly why this was the fixture before R8 and why
+    // the defect was so easy to write. 360 / 4 = 90 and 0.8 · 90 =
+    // 72 are both exact, so this is `strictEqual` throughout.
+    const view = await mount(rose('["a","b","c","d"]'));
+    const got = rawArcs(view);
+    assert.deepEqual(
+      got.map((a) => [a.a0, a.a1]),
+      [
+        [0, 72],
+        [90, 162],
+        [180, 252],
+        [270, 342],
+      ],
+    );
+    // ★ The visible signature R8 predicted, now closed: the gap
+    // ACROSS the 12 o'clock seam is the same as every other gap.
+    // Before R8 the last slice ended on 360 and the seam had no gap
+    // at all, so a rose at any bandwidth below 1 showed one join
+    // tighter than the rest.
+    assert.strictEqual(360 - got[got.length - 1].a1, 18);
+    assert.strictEqual(got[1].a0 - got[0].a1, 18);
   });
 
   test("★ --hdml-bandwidth: 1 tiles the circle exactly", async () => {

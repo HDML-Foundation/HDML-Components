@@ -925,3 +925,150 @@ suite("hdvl/scale — an explicit step keeps its endpoint", () => {
     }
   });
 });
+
+/* -------------------------------------------------------------- */
+/* 017 R8 — cyclicity is DERIVED from the sweep                   */
+/* -------------------------------------------------------------- */
+
+suite("hdvl/scale — a cyclic angle range (017 R8)", () => {
+  const CATS = '["a", "b", "c", "d", "e", "f"]';
+
+  /**
+   * An ordinal angle scale under a polar plane, with the sweep
+   * declared on the scale itself — which is where
+   * `--hdml-angle-start`/`-end` live and where `rangeOf` reads them.
+   */
+  async function sweep(style: string): Promise<HdmlViewElement> {
+    return mount(html`
+      <hdml-view
+        aria-label="sweep"
+        style="width: 200px; height: 200px"
+      >
+        <hdml-polar-plane style="padding: 0">
+          <hdml-ordinal-scale
+            channel="angle"
+            values="${CATS}"
+            style="${style}"
+          >
+            <hdvl-probe></hdvl-probe>
+          </hdml-ordinal-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+  }
+
+  const B0 = "--hdml-bandwidth: 0";
+
+  function centres(view: HdmlViewElement): (number | null)[] {
+    const scale = must(view, "angle");
+    return ["a", "b", "c", "d", "e", "f"].map(
+      (v) => scale.bandOf(v)?.centre ?? null,
+    );
+  }
+
+  test("★ a full turn steps by 360/n, not 360/(n-1+b)", async () => {
+    // R8's whole content, through the public seam: the registered
+    // initials are already `0deg`/`360deg`, so a full turn is the
+    // DEFAULT sweep and needs no declaration.
+    const view = await sweep(B0);
+    assert.deepEqual(centres(view), [0, 60, 120, 180, 240, 300]);
+  });
+
+  test("★ a 180deg fan is unchanged, on its ends", async () => {
+    // The whole case for DERIVING rather than always-cyclic: a
+    // partial sweep SHOULD put its first and last categories on its
+    // own two ends. 180 / 5 = 36 exactly.
+    const view = await sweep(`${B0}; --hdml-angle-end: 180deg`);
+    assert.deepEqual(centres(view), [0, 36, 72, 108, 144, 180]);
+  });
+
+  test("a sweep a degree short of a turn is inclusive", async () => {
+    // The named cost of deriving: 359deg and 360deg place their
+    // categories by different arithmetic, with nothing in the
+    // document saying so. Asserted so the cost is a test.
+    const view = await sweep(`${B0}; --hdml-angle-end: 359deg`);
+    const got = centres(view);
+    assert.strictEqual(got[0], 0);
+    assert.strictEqual(got[5], 359);
+    assert.closeTo(Number(got[1]), 359 / 5, 1e-9);
+  });
+
+  test("a turn in `turn` units is cyclic too", async () => {
+    // `cssAngle` converts, and the derivation tolerates the
+    // conversion — `1turn` must not read as a partial sweep.
+    const view = await sweep(`${B0}; --hdml-angle-end: 1turn`);
+    assert.deepEqual(centres(view), [0, 60, 120, 180, 240, 300]);
+  });
+
+  test("a turn in `rad` units is cyclic too", async () => {
+    // 2pi rad is 359.99999999999994deg through the conversion, which
+    // is why the test is a tolerance and not `% 360 === 0`.
+    const view = await sweep(
+      `${B0}; --hdml-angle-end: 6.283185307179586rad`,
+    );
+    const got = centres(view);
+    got.forEach((at, k) => {
+      assert.closeTo(Number(at), k * 60, 1e-9, `k ${k}`);
+    });
+    // …and NOT the inclusive ladder, which would put k=1 at 72.
+    assert.isBelow(Number(got[1]), 61);
+  });
+
+  test("★ a non-angle channel is never cyclic", async () => {
+    // An ordinal `y` scale over a 360px box is numerically the same
+    // range and must stay inclusive: a box's two edges are two
+    // places. 360 / 5 = 72 — the very number R8 is about.
+    const view = await mount(html`
+      <hdml-view aria-label="y" style="width: 100px; height: 360px">
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-ordinal-scale
+            channel="y"
+            values="${CATS}"
+            style="${B0}"
+          >
+            <hdvl-probe></hdvl-probe>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    const scale = must(view, "y");
+    // §4.3 gives y a bottom → top range, so it descends.
+    assert.strictEqual(scale.bandOf("a")?.centre, 360);
+    assert.strictEqual(scale.bandOf("f")?.centre, 0);
+    assert.strictEqual(scale.bandOf("b")?.centre, 288);
+  });
+
+  test("a continuous angle scale is untouched", async () => {
+    // `cyclic` is a BAND fact; a continuous sweep maps a fraction
+    // and has no denominator to change (corpus 08 and 12 B).
+    const view = await mount(html`
+      <hdml-view
+        aria-label="cont"
+        style="width: 200px; height: 200px"
+      >
+        <hdml-polar-plane style="padding: 0">
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdvl-probe></hdvl-probe>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    const scale = must(view, "angle");
+    assert.isNull(scale.bandOf("a"));
+    assert.strictEqual(scale.project(0), 0);
+    assert.strictEqual(scale.project(1), 360);
+  });
+
+  test("at b = 1 a turn is bit-identical either way", async () => {
+    // Why corpus `09-polar-area` does not move: `n - 1 + 1` is
+    // exactly `n`. Read off the two sweeps that differ only in
+    // whether the derivation fires.
+    const turn = await sweep("--hdml-bandwidth: 1");
+    const fan = await sweep(
+      "--hdml-bandwidth: 1; --hdml-angle-end: 359deg",
+    );
+    assert.deepEqual(centres(turn), [30, 90, 150, 210, 270, 330]);
+    // The fan proves the reading is the same formula, scaled.
+    assert.closeTo(Number(centres(fan)[0]), 359 / 12, 1e-9);
+  });
+});

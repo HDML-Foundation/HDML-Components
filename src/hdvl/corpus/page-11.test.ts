@@ -494,6 +494,12 @@ suite("corpus 11-multi-plane (B, overlay)", () => {
     // the first category lands on the range's start and the last
     // on its end. Correct here because nothing on this page fills
     // a band; on a bar it would stack every rect on a line.
+    //
+    // ★ And correct here because this is an **x** scale, whose two
+    // range ends are two places. 017 R8 makes the same `b = 0`
+    // idiom divide by `n` on a whole-turn **angle** range, where
+    // they are one place and "first on the start, last on the end"
+    // collapses two categories onto one spoke.
     const page = await mountCorpus("11-multi-plane");
     const b = page.views[OVERLAY];
     const ctx = scale(b, ".context hdml-ordinal-scale");

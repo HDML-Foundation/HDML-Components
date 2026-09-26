@@ -53,14 +53,30 @@ import {
  * ★ **This page carries no `hdml-legend`**, so its golden is the
  * whole scene and step 32 adds nothing to it.
  *
- * ★ **Finding 20 is visible here and is not a defect.**
- * `--hdml-bandwidth: 0` over `[0deg, 360deg]` puts the last category
- * on the first — `360deg` *is* `0deg` — so six categories give
- * **five distinct spokes**, `speed` shares `comfort`'s, and the
- * loop's closing segment runs *along* the noon spoke. The page's own
- * comment calls it a feature (*"first == last position closes the
- * turn"*) and §4.4's arithmetic is what produces it. The golden
- * freezes it deliberately; see corpus README finding 20.
+ * ★ **Finding 20 WAS a defect, and 017 R8 closed it.**
+ * 016 recorded this page's five-spoke hexagon as intended
+ * behaviour: `--hdml-bandwidth: 0` over `[0deg, 360deg]` put the
+ * last category on the first — `360deg` *is* `0deg` — so six
+ * categories gave **five distinct spokes**, `speed` shared
+ * `comfort`'s, and the loop's closing segment ran *along* the noon
+ * spoke. The page's own comment called it a feature (*"first ==
+ * last position closes the turn"*), §4.4's arithmetic produced it,
+ * and the golden froze it. The test below was written *"so that a
+ * change to §4.4 would have to come here and argue with it"*.
+ *
+ * **The argument was made and lost.** The founder found it by
+ * looking at the rendered page — *"10-radar renders a radar with 5
+ * angles but 6 categories"* — which is the O1 thesis exactly: 1264
+ * passing tests, one of them asserting the defect by name, and the
+ * chart was still wrong. A whole-turn angular **band** range has
+ * `r1` denoting the same place as `r0`, so §4.4's inclusive
+ * denominator is the wrong one there and `cyclic` divides by `n`
+ * instead. Six metrics now give **six** spokes and a real hexagon.
+ * *(017 R8; decided 2026-09-26, with the user, at step 07.)*
+ *
+ * **What survives is reported, not hidden**: a sweep of more than
+ * one turn, or of none, still collides, and the validator raises
+ * `colliding-angle-bands` under V2. Nothing on this page trips it.
  */
 
 const REF = "?hdml-frame=model_b_scores";
@@ -154,6 +170,11 @@ suite("corpus 10-radar", () => {
     // is why a radar's rings MEET its spokes: the outermost ring
     // sits at the ceiling, so its corners are the spoke ends
     // exactly, with no tolerance.
+    //
+    // ★ Since 017 R8 the six corners are six DISTINCT places, so
+    // this is a hexagon rather than a pentagon drawn with a
+    // duplicated vertex. The identity below held either way —
+    // which is why it could not have caught the defect.
     assert.lengthOf(spokes, METRICS.length);
     const rim = rings[rings.length - 1];
     if (rim.k !== "path") {
@@ -174,20 +195,39 @@ suite("corpus 10-radar", () => {
     assert.deepEqual(corners, ends);
   });
 
-  test("★ finding 20: six categories, five spokes", async () => {
-    // NOT a defect and NOT to be fixed: `--hdml-bandwidth: 0` over
-    // a FULL turn places category k at `k / n` of it, so category
-    // 5 lands on `360deg`, which is `0deg`. The page's comment
-    // states it as the intent. Asserted so that a change to §4.4
-    // would have to come here and argue with it.
+  test("★ R8: six categories, SIX spokes", async () => {
+    // ★ This test is 016's `finding 20` inverted. It asserted five
+    // distinct spokes for six categories and said the defect was
+    // "NOT to be fixed"; 017 R8 fixed it, so the same three
+    // assertions now read the other way and the last one is a
+    // NON-identity. The step is 60°, not 72°.
     const page = await mountCorpus("10-radar");
     const [, spokes] = byTag(goldenOf(page.views[0]), "hdml-grid");
     const ends = spokes.map((n) =>
       n.k === "path" ? JSON.stringify(n.subpaths[0].segments[0]) : "",
     );
     assert.lengthOf(ends, METRICS.length);
-    assert.lengthOf(new Set(ends), METRICS.length - 1);
-    assert.strictEqual(ends[0], ends[ends.length - 1]);
+    assert.lengthOf(new Set(ends), METRICS.length);
+    assert.notStrictEqual(ends[0], ends[ends.length - 1]);
+    // …and the ladder itself, read off the scale's own geometry
+    // rather than off a captured number: every spoke end is the
+    // ceiling away from the pole at `k · 60°`, with 0° at noon and
+    // clockwise (§4.6). Rule 2 binds — these are trig — so 1e-9.
+    spokes.forEach((n, k) => {
+      if (n.k !== "path") {
+        assert.fail("a spoke is a path node");
+        return;
+      }
+      const seg = n.subpaths[0].segments[0];
+      const to = seg.k === "line" ? seg.to : null;
+      if (to === null) {
+        assert.fail("a spoke is one straight segment");
+        return;
+      }
+      const rad = ((k * 60 - 90) * Math.PI) / 180;
+      assert.closeTo(to.x, POLE.x + CEILING * Math.cos(rad), 1e-3);
+      assert.closeTo(to.y, POLE.y + CEILING * Math.sin(rad), 1e-3);
+    });
   });
 
   test("★ two readings of `closed`, side by side", async () => {
@@ -249,14 +289,23 @@ suite("corpus 10-radar", () => {
         (series[0] / 10) * CEILING,
         1e-9,
       );
-      // Finding 20 again, from the data's side: the last row sits
-      // on the first row's spoke, at its own radius.
+      // ★ R8 from the data's side, and this is the half that was
+      // FALSE. It read "the last row sits on the first row's
+      // spoke", asserting `last.x === POLE.x` — true only because
+      // the last category was on noon. The last row now sits on its
+      // OWN spoke, the sixth, at 300°; its radius is unchanged,
+      // which is the point: R8 moved angles and nothing else.
       const last = node.vertices[node.vertices.length - 1];
-      assert.strictEqual(last.x, POLE.x);
+      const r = (series[series.length - 1] / 10) * CEILING;
+      const rad = ((5 * 60 - 90) * Math.PI) / 180;
+      assert.closeTo(last.x, POLE.x + r * Math.cos(rad), 1e-3);
+      assert.closeTo(last.y, POLE.y + r * Math.sin(rad), 1e-3);
+      assert.notStrictEqual(last.x, POLE.x);
+      // …and the radius itself, independently of the angle.
       assert.closeTo(
-        POLE.y - last.y,
-        (series[series.length - 1] / 10) * CEILING,
-        1e-9,
+        Math.hypot(last.x - POLE.x, last.y - POLE.y),
+        r,
+        1e-3,
       );
     });
   });
@@ -378,36 +427,36 @@ const GOLDEN: Scene = {
                 {
                   k: "line",
                   to: {
-                    x: 292.716344,
-                    y: 189.369815,
+                    x: 289.791274,
+                    y: 182.8,
                   },
                 },
                 {
                   k: "line",
                   to: {
-                    x: 280.219813,
-                    y: 227.830185,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 239.780187,
-                    y: 227.830185,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 227.283656,
-                    y: 189.369815,
+                    x: 289.791274,
+                    y: 217.2,
                   },
                 },
                 {
                   k: "line",
                   to: {
                     x: 260,
-                    y: 165.6,
+                    y: 234.4,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 230.208726,
+                    y: 217.2,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 230.208726,
+                    y: 182.8,
                   },
                 },
               ],
@@ -433,36 +482,36 @@ const GOLDEN: Scene = {
                 {
                   k: "line",
                   to: {
-                    x: 325.432688,
-                    y: 178.739631,
+                    x: 319.582548,
+                    y: 165.6,
                   },
                 },
                 {
                   k: "line",
                   to: {
-                    x: 300.439625,
-                    y: 255.660369,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 219.560375,
-                    y: 255.660369,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 194.567312,
-                    y: 178.739631,
+                    x: 319.582548,
+                    y: 234.4,
                   },
                 },
                 {
                   k: "line",
                   to: {
                     x: 260,
-                    y: 131.2,
+                    y: 268.8,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 200.417452,
+                    y: 234.4,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 200.417452,
+                    y: 165.6,
                   },
                 },
               ],
@@ -488,36 +537,36 @@ const GOLDEN: Scene = {
                 {
                   k: "line",
                   to: {
-                    x: 358.149032,
-                    y: 168.109446,
+                    x: 349.373822,
+                    y: 148.4,
                   },
                 },
                 {
                   k: "line",
                   to: {
-                    x: 320.659438,
-                    y: 283.490554,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 199.340562,
-                    y: 283.490554,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 161.850968,
-                    y: 168.109446,
+                    x: 349.373822,
+                    y: 251.6,
                   },
                 },
                 {
                   k: "line",
                   to: {
                     x: 260,
-                    y: 96.8,
+                    y: 303.2,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 170.626178,
+                    y: 251.6,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 170.626178,
+                    y: 148.4,
                   },
                 },
               ],
@@ -543,36 +592,36 @@ const GOLDEN: Scene = {
                 {
                   k: "line",
                   to: {
-                    x: 390.865377,
-                    y: 157.479262,
+                    x: 379.165096,
+                    y: 131.2,
                   },
                 },
                 {
                   k: "line",
                   to: {
-                    x: 340.879251,
-                    y: 311.320738,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 179.120749,
-                    y: 311.320738,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 129.134623,
-                    y: 157.479262,
+                    x: 379.165096,
+                    y: 268.8,
                   },
                 },
                 {
                   k: "line",
                   to: {
                     x: 260,
-                    y: 62.4,
+                    y: 337.6,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 140.834904,
+                    y: 268.8,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 140.834904,
+                    y: 131.2,
                   },
                 },
               ],
@@ -598,36 +647,36 @@ const GOLDEN: Scene = {
                 {
                   k: "line",
                   to: {
-                    x: 423.581721,
-                    y: 146.849077,
+                    x: 408.956369,
+                    y: 114,
                   },
                 },
                 {
                   k: "line",
                   to: {
-                    x: 361.099063,
-                    y: 339.150923,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 158.900937,
-                    y: 339.150923,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 96.418279,
-                    y: 146.849077,
+                    x: 408.956369,
+                    y: 286,
                   },
                 },
                 {
                   k: "line",
                   to: {
                     x: 260,
-                    y: 28,
+                    y: 372,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 111.043631,
+                    y: 286,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 111.043631,
+                    y: 114,
                   },
                 },
               ],
@@ -698,8 +747,8 @@ const GOLDEN: Scene = {
                 {
                   k: "line",
                   to: {
-                    x: 423.581721,
-                    y: 146.849077,
+                    x: 408.956369,
+                    y: 114,
                   },
                 },
               ],
@@ -725,62 +774,8 @@ const GOLDEN: Scene = {
                 {
                   k: "line",
                   to: {
-                    x: 361.099063,
-                    y: 339.150923,
-                  },
-                },
-              ],
-            },
-          ],
-          closed: false,
-          vertices: [],
-          fill: null,
-          stroke: "rgb(203, 213, 225)",
-          strokeWidth: 1,
-          dash: null,
-        },
-        {
-          k: "path",
-          i: -1,
-          subpaths: [
-            {
-              start: {
-                x: 260,
-                y: 200,
-              },
-              segments: [
-                {
-                  k: "line",
-                  to: {
-                    x: 158.900937,
-                    y: 339.150923,
-                  },
-                },
-              ],
-            },
-          ],
-          closed: false,
-          vertices: [],
-          fill: null,
-          stroke: "rgb(203, 213, 225)",
-          strokeWidth: 1,
-          dash: null,
-        },
-        {
-          k: "path",
-          i: -1,
-          subpaths: [
-            {
-              start: {
-                x: 260,
-                y: 200,
-              },
-              segments: [
-                {
-                  k: "line",
-                  to: {
-                    x: 96.418279,
-                    y: 146.849077,
+                    x: 408.956369,
+                    y: 286,
                   },
                 },
               ],
@@ -807,7 +802,61 @@ const GOLDEN: Scene = {
                   k: "line",
                   to: {
                     x: 260,
-                    y: 28,
+                    y: 372,
+                  },
+                },
+              ],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(203, 213, 225)",
+          strokeWidth: 1,
+          dash: null,
+        },
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: {
+                x: 260,
+                y: 200,
+              },
+              segments: [
+                {
+                  k: "line",
+                  to: {
+                    x: 111.043631,
+                    y: 286,
+                  },
+                },
+              ],
+            },
+          ],
+          closed: false,
+          vertices: [],
+          fill: null,
+          stroke: "rgb(203, 213, 225)",
+          strokeWidth: 1,
+          dash: null,
+        },
+        {
+          k: "path",
+          i: -1,
+          subpaths: [
+            {
+              start: {
+                x: 260,
+                y: 200,
+              },
+              segments: [
+                {
+                  k: "line",
+                  to: {
+                    x: 111.043631,
+                    y: 114,
                   },
                 },
               ],
@@ -861,8 +910,8 @@ const GOLDEN: Scene = {
         {
           k: "text",
           i: -1,
-          x: 423.581721,
-          y: 146.849077,
+          x: 408.956369,
+          y: 114,
           text: "efficiency",
           anchor: "start",
           baseline: "bottom",
@@ -881,8 +930,8 @@ const GOLDEN: Scene = {
         {
           k: "text",
           i: -1,
-          x: 361.099063,
-          y: 339.150923,
+          x: 408.956369,
+          y: 286,
           text: "price",
           anchor: "start",
           baseline: "top",
@@ -901,9 +950,29 @@ const GOLDEN: Scene = {
         {
           k: "text",
           i: -1,
-          x: 158.900937,
-          y: 339.150923,
+          x: 260,
+          y: 372,
           text: "range",
+          anchor: "middle",
+          baseline: "top",
+          font: {
+            family: "system-ui",
+            size: 11,
+            weight: "normal",
+            style: "normal",
+          },
+          decorative: false,
+          fill: "rgb(0, 0, 0)",
+          stroke: null,
+          strokeWidth: 0,
+          dash: null,
+        },
+        {
+          k: "text",
+          i: -1,
+          x: 111.043631,
+          y: 286,
+          text: "safety",
           anchor: "end",
           baseline: "top",
           font: {
@@ -921,30 +990,10 @@ const GOLDEN: Scene = {
         {
           k: "text",
           i: -1,
-          x: 96.418279,
-          y: 146.849077,
-          text: "safety",
-          anchor: "end",
-          baseline: "bottom",
-          font: {
-            family: "system-ui",
-            size: 11,
-            weight: "normal",
-            style: "normal",
-          },
-          decorative: false,
-          fill: "rgb(0, 0, 0)",
-          stroke: null,
-          strokeWidth: 0,
-          dash: null,
-        },
-        {
-          k: "text",
-          i: -1,
-          x: 260,
-          y: 28,
+          x: 111.043631,
+          y: 114,
           text: "speed",
-          anchor: "middle",
+          anchor: "end",
           baseline: "bottom",
           font: {
             family: "system-ui",
@@ -1127,36 +1176,36 @@ const GOLDEN: Scene = {
                 {
                   k: "line",
                   to: {
-                    x: 358.149032,
-                    y: 168.109446,
+                    x: 349.373822,
+                    y: 148.4,
                   },
                 },
                 {
                   k: "line",
                   to: {
-                    x: 340.879251,
-                    y: 311.320738,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 209.450468,
-                    y: 269.575462,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 112.776451,
-                    y: 152.164169,
+                    x: 379.165096,
+                    y: 268.8,
                   },
                 },
                 {
                   k: "line",
                   to: {
                     x: 260,
-                    y: 96.8,
+                    y: 286,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 125.939267,
+                    y: 277.4,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 170.626178,
+                    y: 148.4,
                   },
                 },
               ],
@@ -1213,28 +1262,28 @@ const GOLDEN: Scene = {
               i: 0,
             },
             {
-              x: 358.149032,
-              y: 168.109446,
+              x: 349.373822,
+              y: 148.4,
               i: 1,
             },
             {
-              x: 340.879251,
-              y: 311.320738,
+              x: 379.165096,
+              y: 268.8,
               i: 2,
             },
             {
-              x: 209.450468,
-              y: 269.575462,
+              x: 260,
+              y: 286,
               i: 3,
             },
             {
-              x: 112.776451,
-              y: 152.164169,
+              x: 125.939267,
+              y: 277.4,
               i: 4,
             },
             {
-              x: 260,
-              y: 96.8,
+              x: 170.626178,
+              y: 148.4,
               i: 5,
             },
             {
@@ -1304,36 +1353,36 @@ const GOLDEN: Scene = {
                 {
                   k: "line",
                   to: {
-                    x: 358.149032,
-                    y: 168.109446,
+                    x: 349.373822,
+                    y: 148.4,
                   },
                 },
                 {
                   k: "line",
                   to: {
-                    x: 340.879251,
-                    y: 311.320738,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 209.450468,
-                    y: 269.575462,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 112.776451,
-                    y: 152.164169,
+                    x: 379.165096,
+                    y: 268.8,
                   },
                 },
                 {
                   k: "line",
                   to: {
                     x: 260,
-                    y: 96.8,
+                    y: 286,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 125.939267,
+                    y: 277.4,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 170.626178,
+                    y: 148.4,
                   },
                 },
               ],
@@ -1347,28 +1396,28 @@ const GOLDEN: Scene = {
               i: 0,
             },
             {
-              x: 358.149032,
-              y: 168.109446,
+              x: 349.373822,
+              y: 148.4,
               i: 1,
             },
             {
-              x: 340.879251,
-              y: 311.320738,
+              x: 379.165096,
+              y: 268.8,
               i: 2,
             },
             {
-              x: 209.450468,
-              y: 269.575462,
+              x: 260,
+              y: 286,
               i: 3,
             },
             {
-              x: 112.776451,
-              y: 152.164169,
+              x: 125.939267,
+              y: 277.4,
               i: 4,
             },
             {
-              x: 260,
-              y: 96.8,
+              x: 170.626178,
+              y: 148.4,
               i: 5,
             },
           ],
@@ -1408,36 +1457,36 @@ const GOLDEN: Scene = {
                 {
                   k: "line",
                   to: {
-                    x: 377.778839,
-                    y: 161.731335,
+                    x: 367.248586,
+                    y: 138.08,
                   },
                 },
                 {
                   k: "line",
                   to: {
-                    x: 318.637457,
-                    y: 280.707535,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 178.109759,
-                    y: 312.712248,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 135.677892,
-                    y: 159.605298,
+                    x: 346.394694,
+                    y: 249.88,
                   },
                 },
                 {
                   k: "line",
                   to: {
                     x: 260,
-                    y: 81.32,
+                    y: 339.32,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 146.793159,
+                    y: 265.36,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 157.220105,
+                    y: 140.66,
                   },
                 },
               ],
@@ -1494,28 +1543,28 @@ const GOLDEN: Scene = {
               i: 0,
             },
             {
-              x: 377.778839,
-              y: 161.731335,
+              x: 367.248586,
+              y: 138.08,
               i: 1,
             },
             {
-              x: 318.637457,
-              y: 280.707535,
+              x: 346.394694,
+              y: 249.88,
               i: 2,
             },
             {
-              x: 178.109759,
-              y: 312.712248,
+              x: 260,
+              y: 339.32,
               i: 3,
             },
             {
-              x: 135.677892,
-              y: 159.605298,
+              x: 146.793159,
+              y: 265.36,
               i: 4,
             },
             {
-              x: 260,
-              y: 81.32,
+              x: 157.220105,
+              y: 140.66,
               i: 5,
             },
             {
@@ -1585,36 +1634,36 @@ const GOLDEN: Scene = {
                 {
                   k: "line",
                   to: {
-                    x: 377.778839,
-                    y: 161.731335,
+                    x: 367.248586,
+                    y: 138.08,
                   },
                 },
                 {
                   k: "line",
                   to: {
-                    x: 318.637457,
-                    y: 280.707535,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 178.109759,
-                    y: 312.712248,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 135.677892,
-                    y: 159.605298,
+                    x: 346.394694,
+                    y: 249.88,
                   },
                 },
                 {
                   k: "line",
                   to: {
                     x: 260,
-                    y: 81.32,
+                    y: 339.32,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 146.793159,
+                    y: 265.36,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 157.220105,
+                    y: 140.66,
                   },
                 },
               ],
@@ -1628,28 +1677,28 @@ const GOLDEN: Scene = {
               i: 0,
             },
             {
-              x: 377.778839,
-              y: 161.731335,
+              x: 367.248586,
+              y: 138.08,
               i: 1,
             },
             {
-              x: 318.637457,
-              y: 280.707535,
+              x: 346.394694,
+              y: 249.88,
               i: 2,
             },
             {
-              x: 178.109759,
-              y: 312.712248,
+              x: 260,
+              y: 339.32,
               i: 3,
             },
             {
-              x: 135.677892,
-              y: 159.605298,
+              x: 146.793159,
+              y: 265.36,
               i: 4,
             },
             {
-              x: 260,
-              y: 81.32,
+              x: 157.220105,
+              y: 140.66,
               i: 5,
             },
           ],

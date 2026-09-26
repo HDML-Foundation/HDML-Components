@@ -103,7 +103,12 @@ bundle size, and it was taken before a line of the kernel existed.
 - **The band formula.** `step = W / (n − 1 + b)` with every non-band-filling lookup
   resolving to the band **centre**, which is what makes a line's vertices sit on its
   bars' centrelines at any `--hdml-bandwidth`. Deliberately not d3's
-  `paddingInner`/`paddingOuter` model.
+  `paddingInner`/`paddingOuter` model. **The denominator is `n` on a *cyclic* range** —
+  an `angle` channel whose sweep is a whole turn, where `r1` denotes the same place as
+  `r0` — because there "the last band's high edge lands on `r1`" means it lands on the
+  *first* band's low edge. See
+  [§ A whole-turn angular band scale is cyclic](#a-whole-turn-angular-band-scale-is-cyclic-and-it-is-derived)
+  (017 R8).
 - **Three of the eight `--hdml-curve-type` values** do not correspond to a
   `d3.curve*` as registered, and [src/hdvl/kernel/curves.ts](../src/hdvl/kernel/curves.ts)
   now says which. `--hdml-curve-cubic-monotonicity` is a `<number>` 0..1 — a *blend*
@@ -713,6 +718,14 @@ The band comes from `Scale.bandOf` and never from a `360 / n` of the arc's own (
 angular range is `--hdml-angle-start`/`-end` and need be neither a full turn nor ascending,
 and §4.4's denominator is `n − 1 + b` rather than `n`, which is what puts the last slice's
 high edge exactly on the range's own end.
+
+**Amended 2026-09-26 (017 R8, step 07).** That last clause is true of a **partial** sweep
+only. On a whole turn the range's end *is* its start, so the last slice's high edge landing
+on it was the defect rather than the guarantee — a rose below `--hdml-bandwidth: 1` showed
+one join, across 12 o'clock, tighter than all the rest, and a radar at `0` collapsed two
+categories onto one spoke. A cyclic range divides by `n`, which leaves the wrap gap the same
+size as every other gap; at `b = 1` the two denominators coincide, so `09-polar-area`'s solid
+rose is bit-identical and this paragraph's arithmetic is untouched where the page uses it.
 
 ## H7 held for every mark — the polar plane cost zero widget lines
 
@@ -1752,6 +1765,80 @@ deleted, an x tick takes the registry and a y tick takes the rule. This also mak
 each, `w: 1 → 6`, `h: 6 → 1`. No centre moved (`cx`/`cy` are unchanged by a transpose about
 the centre), no other group moved, and `12-coverage` A's **x** tick stayed `1 × 6` in its own
 golden, which is the in-golden control for the per-channel split.
+
+## A whole-turn angular band scale is cyclic, and it is derived
+
+Project 017 R8, implementation step 07. §4.4's denominator `n − 1 + b` puts the first band's
+low edge on `r0` and the last band's high edge on `r1`. **On a range whose two endpoints
+denote the same place that places the last category on the first.** Corpus `10-radar` authors
+six metrics over `[0deg, 360deg]` at `--hdml-bandwidth: 0`; it stepped by `360 / 5 = 72°`,
+`speed` shared `comfort`'s spoke, and the page drew a **pentagon for six metrics** — six
+labels, six grid spokes and six polygon vertices, two of each coincident, saying nothing.
+
+**016 had recorded it as intended behaviour.** It was "finding 20"; the page's own source
+comment called it a feature (*"first == last position closes the turn"*); the golden froze
+it; and `page-10.test.ts` carried a test named `★ finding 20: six categories, five spokes`
+whose comment read *"NOT a defect and NOT to be fixed … asserted so that a change to §4.4
+would have to come here and argue with it"*. The founder found it anyway, by **looking at the
+rendered page**. That is O1's thesis with nothing left to interpret: 1264 passing tests, one
+of them asserting the defect by name, and the chart was still wrong. Meanwhile the **live**
+twin's own visible checklist said *"Six labelled spokes and five polygon rings"* — the page
+had been right about itself all along and only the runtime disagreed.
+
+**Cyclicity is derived, never authored** *(decided 2026-09-26, with the user)*. An `angle`
+channel whose sweep is a non-zero multiple of a whole turn is cyclic; anything less stays
+inclusive, because a 180° fan *should* put its first and last categories on its own two ends.
+Two alternatives were put and declined: an authored `cyclic` attribute, which leaves every
+new radar wrong by default, and derivation plus an `inclusive` opt-out, whose only purpose
+would be to reinstate the defect. **The accepted cost is named**: a page's geometry changes
+when its `--hdml-angle-end` crosses a whole turn, with nothing in the document saying so — a
+359° fan and a 360° one place their categories by different arithmetic. That is R1's trade
+taken a second time, the runtime owning geometry the author cannot see, and it is asserted as
+a test (`scale.test.ts`, *a sweep a degree short of a turn is inclusive*) rather than left as
+a remark.
+
+Three consequences worth having in one place:
+
+- **`kernel/scale-band.ts` takes `cyclic` as a parameter and never looks it up.** The
+  directory is import-free by invariant, so `scale.ts`'s `isCyclic` is the one place that
+  decides, reading `--hdml-angle-start`/`-end` off the same computed style everything else
+  reads. The test is on `|r1 − r0|`, so `reverse` cannot change the answer, and it carries a
+  `3e-9`-turn tolerance because `1turn` and `2π rad` reach it through a unit conversion —
+  `2 * Math.PI` rad is `359.99999999999994°` and must not read as a partial sweep.
+- **At `b = 1` the two denominators are the same number.** `n - 1 + 1` is exactly `n` in
+  IEEE-754 for integer `n`, so `09-polar-area` — which authors `--hdml-bandwidth: 1` on both
+  of its angle scales — is **bit-identical** and did not move, and a cluster's inner
+  subdivision (always `b = 1`, `container.ts`) cannot be affected either way. R8's own
+  "unverified prediction" of a `36.73°` step on that page rested on the `0.8` initial, which
+  the page does not use; the prediction's arithmetic belongs to `mark-arc.test.ts`'s rose
+  fixture, which *was* a full turn and is now a 180° fan for exactly this reason.
+- **A cyclic range never reaches the `n = 1, b = 0` midpoint branch.** Its denominator is `n`
+  and so never zero, and the sole category lands on `r0` — the sweep's own start — where the
+  inclusive branch would give the arbitrary 180°.
+
+**What the fix cannot reach is reported, not hidden.** A sweep of **more than one turn**
+collides under either denominator (720° over six categories is `0/120/240/0/120/240`
+cyclically and `0/144/288/72/216/0` inclusively), and a **zero-length** sweep puts every
+category on one angle. Nothing clamps `--hdml-angle-end`. So a W-rule aimed at the full turn
+would have been dead on arrival, and the diagnostic is aimed at the survivors instead: a new
+`DiagnosticCode` **`colliding-angle-bands`, reported under V2**, on `palette-exhausted`'s
+precedent and for its reason — §8.3's V2 row is the binding pass's *"does the delivered data
+fit this scale"*, and `n` categories that occupy fewer than `n` angles is an answer of no. It
+runs in the binding pass because a column-derived angle domain has no size until the frame
+ran, so it edge-triggers, blanks the scale, dispatches `hdml-error` and recovers when the
+author shortens the sweep. **SPEC §11's checklist is unchanged** — still 20 V-rules and 6
+W-rules; the declined alternative was a `W7`, which would have added a seventh W-number
+beside the two 016 shipped with no caller. `CODES` is now **23**, the first code added since
+step 12 landed the union whole.
+
+**Blast radius, measured rather than inherited.** R8 said *"the corpus goldens for every polar
+page"*. It was **one view**: `08-pie-doughnut` and `12-coverage` B are *continuous* angle
+scales and have no band to divide, `12-coverage` C is a linear ordinal **x** scale, and
+`09-polar-area` is bit-identical at `b = 1`. `10-radar`'s single view re-recorded whole — 153
+coordinate pairs across all eight groups, no node added or removed, no box or extent changed,
+the pole and every radius unchanged — plus **three** `anchor`/`baseline` values, because a
+label's anchoring follows its angle: `range`, now at the 6 o'clock position, anchors `middle`
+where at 216° it anchored `end`.
 
 ## `hdml-split-by` is published and unimplemented
 

@@ -11,17 +11,20 @@
  * implementation. Three things about it are load-bearing and are
  * the three a later reader is most likely to "simplify" away.
  *
- * 1. **The denominator is `n − 1 + b`, not `n`.** At the initial
- *    `--hdml-bandwidth: 0.8` and four categories it is 3.8, not 4 —
- *    a 5 % difference in every position on the axis. The `n` form
- *    would put the first and last band's *centres* half a band in
- *    from the range edges; this form puts the first band's low edge
- *    exactly on `r0` and the last band's high edge exactly on `r1`,
- *    which is what makes 07's line vertices sit on its bars'
- *    centrelines at any bandwidth. It is deliberately **not** the
- *    `paddingInner`/`paddingOuter` padding model the mainstream
- *    charting libraries register; R3's decision entry in
- *    `docs/decisions.md` records why we do not take theirs.
+ * 1. **The denominator is `n − 1 + b`, not `n` — on an INCLUSIVE
+ *    range.** At the initial `--hdml-bandwidth: 0.8` and four
+ *    categories it is 3.8, not 4 — a 5 % difference in every
+ *    position on the axis. The `n` form would put the first and last
+ *    band's *centres* half a band in from the range edges; this form
+ *    puts the first band's low edge exactly on `r0` and the last
+ *    band's high edge exactly on `r1`, which is what makes 07's line
+ *    vertices sit on its bars' centrelines at any bandwidth. It is
+ *    deliberately **not** the `paddingInner`/`paddingOuter` padding
+ *    model the mainstream charting libraries register; R3's decision
+ *    entry in `docs/decisions.md` records why we do not take theirs.
+ *    **`cyclic` takes the denominator to `n`** — see item 4, which
+ *    is the one case where "the last band's high edge lands on `r1`"
+ *    is the wrong answer rather than the right one.
  * 2. **`centre` is what every non-band-filling lookup resolves
  *    to** — line vertices, points, rules, ranged endpoints naming a
  *    category, and tick / label / grid positions alike (§4.4).
@@ -36,7 +39,29 @@
  *    this formula at `b = 1` rather than a second entry point. The
  *    only branch in here is §4.4's own `n = 1, b = 0`, which the
  *    general formula cannot express because its denominator is
- *    zero.
+ *    zero — and which `cyclic` does not need, see item 4.
+ * 4. **`cyclic` is the same formula over `n`, and it is not an
+ *    option the kernel decides.** On a range whose two endpoints
+ *    denote the *same place* — an angular sweep of a whole turn,
+ *    where `360deg` **is** `0deg` — "first band's low edge on `r0`,
+ *    last band's high edge on `r1`" places category `n − 1` on
+ *    category `0`. Six categories over `[0deg, 360deg]` at `b = 0`
+ *    gave `360 / 5 = 72°` and drew a **pentagon for six metrics**
+ *    (017 R8, corpus `10-radar`). `cyclic` divides by `n` instead,
+ *    so every gap — including the one that wraps past `r1` back to
+ *    `r0` — is the same size. **At `b = 1` the two denominators are
+ *    the same number** (`n − 1 + 1` is exactly `n` in IEEE-754 for
+ *    integer `n`), which is why corpus `09-polar-area` is
+ *    bit-identical under both and why a cluster's inner
+ *    subdivision cannot be affected either way.
+ *
+ *    Whether a range is cyclic is **the caller's fact, never a
+ *    lookup**: this directory imports nothing, so `scale.ts` derives
+ *    it from `--hdml-angle-start`/`-end` and passes it in. A
+ *    **multi-turn** sweep stays degenerate under either denominator
+ *    — 720° over six categories collides whichever way it is
+ *    divided — and that survivor is the validator's, not the
+ *    kernel's: it reports it under V2 as `colliding-angle-bands`.
  *
  * **`start` is the LOW edge and `width` is never negative.** §4.3
  * gives `y` a bottom → top range, which is *descending* in §2.7's
@@ -131,27 +156,37 @@ function num(v: number): number {
  *
  * ```
  * step     = W / (n − 1 + b)          W = |r1 − r0|
+ *          = W / n                    when `cyclic`
  * start_k  = k · step                 from the range's own r0
  * width_k  = b · step
  * centre_k = start_k + width_k / 2
- * n = 1 and b = 0 → the range midpoint
+ * n = 1 and b = 0 → the range midpoint (inclusive only)
  * ```
  *
  * At `n = 1` the formula gives `width = b · W / b = W` for **any**
  * `b > 0`, so a lone category always fills the range; `b = 0` is
- * the `0 / 0` that §4.4's last line exists to answer.
+ * the `0 / 0` that §4.4's last line exists to answer. **A cyclic
+ * range never reaches that branch**: its denominator is `n`, so
+ * `n = 1, b = 0` is `W / 1` and the sole category lands on `r0` —
+ * the sweep's own start, which on a full turn is the one place it
+ * can sensibly be, where the inclusive midpoint would be the
+ * arbitrary 180°.
  *
  * Total, and diagnoses nothing: a `k` outside `[0, n)`, an `n`
  * below 1 and a non-finite range all return `null`. §4.7's
  * out-of-domain notice is the **caller's** (steps 20–22, through
  * the validator), exactly as `transform`'s totality is
- * `transform`'s.
+ * `transform`'s. So is cyclicity — see the module comment's item 4.
  *
  * @param k - The slot index, `0 ≤ k < n`.
  * @param n - The number of domain values.
  * @param range - `[r0, r1]`, ascending or descending.
  * @param bandwidth - `--hdml-bandwidth`, already resolved to a
  * number in `[0, 1]`. The kernel never reads a CSS value.
+ * @param cyclic - Whether `r1` denotes the same place as `r0` (an
+ * angular sweep of a whole turn). Decided by the caller; the kernel
+ * imports nothing and cannot look it up. Defaults to `false`, which
+ * is every non-angular channel and every partial sweep.
  * @returns The band, or `null` if there is no such band.
  */
 export function bandOf(
@@ -159,6 +194,7 @@ export function bandOf(
   n: number,
   range: readonly [number, number],
   bandwidth: number,
+  cyclic = false,
 ): Band | null {
   const r0 = range[0];
   const r1 = range[1];
@@ -168,11 +204,12 @@ export function bandOf(
   if (!Number.isFinite(r0) || !Number.isFinite(r1)) {
     return null;
   }
-  if (n === 1 && bandwidth === 0) {
+  if (!cyclic && n === 1 && bandwidth === 0) {
     const mid = num((r0 + r1) / 2);
     return { start: mid, width: 0, centre: mid };
   }
-  const step = Math.abs(r1 - r0) / (n - 1 + bandwidth);
+  const divisor = cyclic ? n : n - 1 + bandwidth;
+  const step = Math.abs(r1 - r0) / divisor;
   const width = bandwidth * step;
   const ascending = r1 >= r0;
   const origin = ascending ? r0 + k * step : r0 - k * step;
@@ -194,6 +231,7 @@ export function bandOf(
  * @param domain - The resolved ordinal domain, in order.
  * @param range - `[r0, r1]`, ascending or descending.
  * @param bandwidth - `--hdml-bandwidth`, already resolved.
+ * @param cyclic - As {@link bandOf}: the caller's fact.
  * @returns The band, or `null` when the value is not in the domain
  * — §4.7's "produces no mark", reported honestly rather than
  * diagnosed here.
@@ -203,9 +241,12 @@ export function bandOfValue(
   domain: readonly string[],
   range: readonly [number, number],
   bandwidth: number,
+  cyclic = false,
 ): Band | null {
   const k = domain.indexOf(value);
-  return k < 0 ? null : bandOf(k, domain.length, range, bandwidth);
+  return k < 0
+    ? null
+    : bandOf(k, domain.length, range, bandwidth, cyclic);
 }
 
 /**

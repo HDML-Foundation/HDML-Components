@@ -64,10 +64,15 @@ suite("hdvl/kernel/scale-band — bandOf", () => {
     assert.strictEqual(76 / 3.8, 20);
   });
 
-  test("the denominator is n − 1 + b, never n", () => {
+  test("the denominator is n − 1 + b on a plain range", () => {
     // The whole of R3's band-model divergence turns on this. With
     // W = 76 and n = 4 the two forms differ by a full pixel per
     // slot: W / (n − 1 + b) is 20, W / n is 19.
+    //
+    // ★ "never n" since 017 R8 means "never n HERE": a cyclic
+    // range takes `n` deliberately, and the cyclic suite below
+    // owns that case. This range is a plain interval and the
+    // default is what it asserts.
     const band = bandOf(1, 4, [0, 76], 0.8) as Band;
     assert.strictEqual(band.start, 20);
     assert.notStrictEqual(band.start, 76 / 4);
@@ -194,6 +199,142 @@ suite("hdvl/kernel/scale-band — bandOf", () => {
       width: 0,
       centre: 0,
     });
+  });
+});
+
+/* -------------------------------------------------------------- */
+/* 017 R8 — a cyclic range divides by n                           */
+/* -------------------------------------------------------------- */
+
+suite("hdvl/kernel/scale-band — cyclic (017 R8)", () => {
+  // `10-radar`'s own numbers: six metrics over [0, 360] at b = 0.
+  // Every expected value is exactly representable (360 / 6 = 60,
+  // 360 / 5 = 72), so rule 1 applies and nothing is closeTo.
+  const TURN: readonly [number, number] = [0, 360];
+
+  test("six categories over a turn step by 60, not 72", () => {
+    const at = (k: number): number | null =>
+      bandOf(k, 6, TURN, 0, true)?.centre ?? null;
+    assert.deepEqual(
+      [0, 1, 2, 3, 4, 5].map(at),
+      [0, 60, 120, 180, 240, 300],
+    );
+  });
+
+  test("★ inclusive puts the last category on the first", () => {
+    // The defect, asserted as the thing the flag turns off. This is
+    // 017 R8's whole content and 016's "finding 20".
+    const inclusive = (k: number): number | null =>
+      bandOf(k, 6, TURN, 0)?.centre ?? null;
+    assert.strictEqual(inclusive(0), 0);
+    assert.strictEqual(inclusive(5), 360);
+    // 360 and 0 are the same angle, so five distinct positions.
+    const all = [0, 1, 2, 3, 4, 5].map(inclusive);
+    assert.deepEqual(all, [0, 72, 144, 216, 288, 360]);
+    assert.lengthOf(new Set(all.map((a) => (a ?? 0) % 360)), 5);
+  });
+
+  test("★ at b = 1 the two denominators are the same number", () => {
+    // Why `09-polar-area` is bit-identical under both, and why a
+    // cluster's inner subdivision cannot be affected: `n - 1 + 1`
+    // is exactly `n` in IEEE-754 for integer n. Asserted with
+    // deepEqual over all three fields, at every k, for two n.
+    [5, 12].forEach((n) => {
+      for (let k = 0; k < n; k++) {
+        assert.deepEqual(
+          bandOf(k, n, TURN, 1, true),
+          bandOf(k, n, TURN, 1, false),
+        );
+      }
+    });
+  });
+
+  test("a cyclic band leaves the same gap after every slot", () => {
+    // The point of dividing by n: the gap that wraps past r1 back
+    // to r0 is the same as every other gap. At b = 0.5 over a turn
+    // with 4 categories, step is 90 and each band is 45 wide.
+    const bands = [0, 1, 2, 3].map((k) =>
+      bandOf(k, 4, TURN, 0.5, true),
+    );
+    assert.deepEqual(
+      bands.map((b) => [b?.start, b?.width]),
+      [
+        [0, 45],
+        [90, 45],
+        [180, 45],
+        [270, 45],
+      ],
+    );
+    // …and the wrap gap: 360 - (270 + 45) = 45, the same as
+    // 90 - 45 between slots 0 and 1.
+    assert.strictEqual(360 - (270 + 45), 90 - 45);
+  });
+
+  test("★ cyclic skips the n = 1, b = 0 midpoint branch", () => {
+    // Inclusive gives the arbitrary 180; cyclic gives the sweep's
+    // own start, which on a full turn is the only place a lone
+    // category can sensibly sit. The branch cannot be reached
+    // because the cyclic denominator is n and never zero.
+    assert.deepEqual(bandOf(0, 1, TURN, 0), {
+      start: 180,
+      width: 0,
+      centre: 180,
+    });
+    assert.deepEqual(bandOf(0, 1, TURN, 0, true), {
+      start: 0,
+      width: 0,
+      centre: 0,
+    });
+  });
+
+  test("cyclic changes nothing about the null cases", () => {
+    assert.isNull(bandOf(-1, 4, TURN, 0, true));
+    assert.isNull(bandOf(4, 4, TURN, 0, true));
+    assert.isNull(bandOf(0, 0, TURN, 0, true));
+    assert.isNull(bandOf(0, 4, [0, Infinity], 0, true));
+  });
+
+  test("a descending cyclic range runs the other way", () => {
+    // `reverse` swaps the pair, and the flag is derived from
+    // |r1 - r0|, so a reversed turn is still cyclic.
+    assert.deepEqual(
+      [0, 1, 2, 3].map(
+        (k) => bandOf(k, 4, [360, 0], 0, true)?.centre,
+      ),
+      [360, 270, 180, 90],
+    );
+  });
+
+  test("★ a 2-turn sweep collides under BOTH divisors", () => {
+    // Why the fix cannot own this case and the validator must:
+    // the range really does pass the same angle twice.
+    const mod = (a: number | undefined): number => (a ?? 0) % 360;
+    const cyc = [0, 1, 2, 3, 4, 5].map(
+      (k) => bandOf(k, 6, [0, 720], 0, true)?.centre,
+    );
+    const inc = [0, 1, 2, 3, 4, 5].map(
+      (k) => bandOf(k, 6, [0, 720], 0)?.centre,
+    );
+    assert.deepEqual(cyc.map(mod), [0, 120, 240, 0, 120, 240]);
+    assert.lengthOf(new Set(cyc.map(mod)), 3);
+    assert.isBelow(new Set(inc.map(mod)).size, 6);
+  });
+
+  test("bandOfValue carries the flag through", () => {
+    const domain = ["a", "b", "c", "d", "e", "f"];
+    assert.strictEqual(
+      bandOfValue("f", domain, TURN, 0, true)?.centre,
+      300,
+    );
+    assert.strictEqual(
+      bandOfValue("f", domain, TURN, 0)?.centre,
+      360,
+    );
+    // Absent means inclusive, which is every non-angular channel.
+    assert.deepEqual(
+      bandOfValue("f", domain, TURN, 0),
+      bandOfValue("f", domain, TURN, 0, false),
+    );
   });
 });
 

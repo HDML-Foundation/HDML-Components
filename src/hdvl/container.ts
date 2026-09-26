@@ -337,6 +337,23 @@ export function bandSlotOf(el: HdvlElement): BandSlot | null {
  * second entry point. `--hdml-bandwidth` still opens the gap
  * between *categories*, on the outer band, where the scale reads it.
  *
+ * **★ The subdivision is never cyclic, and it could not matter if it
+ * were** (017 R8). Two independent reasons, both worth stating
+ * because the second is what makes the first safe to get wrong:
+ *
+ * 1. **Semantically**, the interval subdivided is *one outer band* —
+ *    `[start, start + width]`. Its two edges are two different
+ *    places even when the scale they came from wraps, so the inner
+ *    range is inclusive by construction. A cyclic inner range would
+ *    mean a cluster whose last child sits on its first.
+ * 2. **Arithmetically**, it is a no-op: at `b = 1` the cyclic
+ *    denominator `n` and the inclusive `n − 1 + b` are the **same
+ *    number** — `n - 1 + 1` is exactly `n` in IEEE-754 for integer
+ *    `n` — so this call returns identical bands either way. The
+ *    argument is passed explicitly rather than defaulted so that a
+ *    later reader finds the answer here instead of inferring it from
+ *    a missing parameter.
+ *
  * `project` is re-derived rather than delegated because §4.4 makes
  * an ordinal projection *the band's centre*: leaving it pointing at
  * the outer band would put a clustered `hdml-point` in the middle
@@ -361,6 +378,9 @@ export function subdivide(scale: Scale, slot: BandSlot): Scale {
       slot.count,
       [outer.start, outer.start + outer.width],
       1,
+      // Never cyclic — an outer band's two edges are two places.
+      // A no-op at `b = 1` either way; see the doc comment.
+      false,
     );
   };
   return {

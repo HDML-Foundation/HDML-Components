@@ -57,6 +57,7 @@ const CODES: Readonly<Record<DiagnosticCode, true>> = {
   "missing-binding": true,
   "channel-guide-fit": true,
   "palette-exhausted": true,
+  "colliding-angle-bands": true,
   "all-rows-dropped": true,
   "negative-pie-value": true,
   "varying-path-color": true,
@@ -2122,6 +2123,128 @@ suite("hdvl/validate — diagnostics", () => {
     assert.deepEqual(diagnosticsOf(view), []);
   });
 
+  test("★ 017 R8: a 2-turn sweep collides and errors", async () => {
+    // R8's SURVIVOR. The fix (`kernel/scale-band.ts`'s `cyclic`)
+    // makes a collision impossible on a ONE-turn sweep; a sweep of
+    // two turns really does pass the same angle twice, so no
+    // denominator separates six categories into six angles and the
+    // validator reports it. Filed under **V2** with its own code,
+    // on `palette-exhausted`'s precedent — SPEC §11's checklist is
+    // unchanged. (Decided 2026-09-26, with the user, at 017 step
+    // 07.)
+    const [, view] = await mount(html`
+      <hdml-view aria-label="r8a" style="width: 200px; height: 200px">
+        <hdml-polar-plane>
+          <hdml-ordinal-scale
+            channel="angle"
+            values='["a","b","c","d","e","f"]'
+            style="--hdml-angle-end: 720deg"
+          >
+            <hdml-continuous-scale channel="radius" min="0" max="1">
+              <hdvl-probe id="ok"></hdvl-probe>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    const scale = <Element>view.querySelector("hdml-ordinal-scale");
+    assert.lengthOf(said("V2"), 1);
+    assert.strictEqual(
+      messageOf(said("V2")[0]),
+      "6 angle domain values occupy only 3 distinct angles — an " +
+        "angular sweep of more than one turn, or of none, cannot " +
+        "separate them; set --hdml-angle-start/-end to at most " +
+        "one turn",
+    );
+    assert.isTrue(scale.matches(":state(error)"));
+    assert.strictEqual(errs[0].detail.code, "colliding-angle-bands");
+    assert.strictEqual(errs[0].detail.rule, "V2");
+    assert.strictEqual(errs[0].detail.channel, "angle");
+
+    // …and shortening the sweep to one turn recovers, which is what
+    // makes this a live rule and not a boot-time check.
+    lines.length = 0;
+    errs.length = 0;
+    scale.setAttribute("style", "--hdml-angle-end: 360deg");
+    view.markDirty();
+    await quiesce(view);
+    assert.isFalse(scale.matches(":state(error)"));
+    assert.lengthOf(errs, 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+  });
+
+  test("★ 017 R8: a zero-length sweep collides too", async () => {
+    // The other survivor: start === end puts every category on one
+    // angle. Six values, ONE distinct position.
+    await mount(html`
+      <hdml-view aria-label="r8b" style="width: 200px; height: 200px">
+        <hdml-polar-plane>
+          <hdml-ordinal-scale
+            channel="angle"
+            values='["a","b","c","d","e","f"]'
+            style="--hdml-angle-start: 90deg; --hdml-angle-end: 90deg"
+          >
+            <hdml-continuous-scale channel="radius" min="0" max="1">
+              <hdvl-probe id="ok"></hdvl-probe>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V2"), 1);
+    assert.include(
+      messageOf(said("V2")[0]),
+      "6 angle domain values occupy only 1 distinct angles",
+    );
+  });
+
+  test("★ 017 R8: a one-turn sweep is clean", async () => {
+    // The fix's own negative control, in the validator: `10-radar`'s
+    // exact shape — six categories, a whole turn, point placement —
+    // reports NOTHING. Before R8 it was the same silent wrong chart
+    // the two tests above now catch, and no rule could have been
+    // written for it that the fix does not make dead.
+    const [, view] = await mount(html`
+      <hdml-view aria-label="r8c" style="width: 200px; height: 200px">
+        <hdml-polar-plane>
+          <hdml-ordinal-scale
+            channel="angle"
+            values='["a","b","c","d","e","f"]'
+            style="--hdml-bandwidth: 0"
+          >
+            <hdml-continuous-scale channel="radius" min="0" max="1">
+              <hdvl-probe id="ok"></hdvl-probe>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V2"), 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+    assert.isTrue(paints(okProbe(view).uid));
+  });
+
+  test("★ 017 R8: an ordinal x band is never checked", async () => {
+    // `cyclic` and its diagnostic are BOTH angle-only. A 400px wide
+    // ordinal x scale has the same numbers as a 400deg sweep and
+    // must stay silent: a box's two edges are two places.
+    const [, view] = await mount(html`
+      <hdml-view aria-label="r8d" style="width: 400px; height: 200px">
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-ordinal-scale
+            channel="x"
+            values='["a","b","c","d","e","f"]'
+            style="--hdml-bandwidth: 0"
+          >
+            <hdvl-probe id="ok"></hdvl-probe>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V2"), 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+  });
+
   test("palette — a domain inside the palette is clean", async () => {
     const [, view] = await mount(html`
       <hdml-view aria-label="v9q" style="width: 400px; height: 200px">
@@ -2164,7 +2287,16 @@ suite("hdvl/validate — diagnostics", () => {
     // verdict is `corpus/validator.test.ts`'s `LEDGER`, which is
     // exhaustive over `RuleId`. Both are asserted present here and
     // nowhere raised.
-    assert.lengthOf(Object.keys(CODES), 22);
+    //
+    // ★ **017 step 07 added the twenty-third code and no rule** —
+    // `colliding-angle-bands`, reported under **V2** on
+    // `palette-exhausted`'s precedent (R8's second open question,
+    // decided 2026-09-26 with the user). It is the first code added
+    // since step 12 landed the union whole, and it is deliberately
+    // NOT a new `WarningCode`: a `W7` would have amended SPEC §11's
+    // checklist to add a seventh W-number beside the two above that
+    // have no caller. `WARNINGS` is therefore still seven.
+    assert.lengthOf(Object.keys(CODES), 23);
     // …and the warning space, whose seventh member is V7's rather
     // than a W-rule's (step 27).
     assert.lengthOf(Object.keys(WARNINGS), 7);

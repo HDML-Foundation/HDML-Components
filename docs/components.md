@@ -641,7 +641,11 @@ bar does, `--hdml-bandwidth` is what controls the gap between slices, and a soli
 rose is one `--hdml-bandwidth: 1` declaration on the angle scale. The band comes from
 `Scale.bandOf` and never from a `360 / n` of the arc's own: the angular range is
 `--hdml-angle-start`/`-end` and need be neither a full turn nor ascending, and §4.4's
-denominator is `n − 1 + b`. *(Decided 2026-08-24, with the user, at step 26 — see
+denominator is `n − 1 + b` — **except on a whole turn, where it is `n`**, because there `r1`
+denotes the same place as `r0` and the inclusive form would put the last slice's high edge on
+the first slice's low edge. The two coincide at `--hdml-bandwidth: 1`, so a solid rose is
+unaffected; below it, the gap across the 12 o'clock seam is now the same as every other gap.
+*(Decided 2026-08-24, with the user, at step 26, and amended 2026-09-26 at 017 step 07 — see
 [decisions.md](decisions.md).)* The three radial cases above are unchanged under it.
 
 Both marks are **filled** and neither strokes, and both carry a **per-row `color`** honestly,
@@ -1022,6 +1026,14 @@ chart is two series sharing a colour, and a key makes that *easier* to notice, n
 truer. `paletteColor` returns `null` past the end rather than wrapping, so the entry is
 still rendered, in `--hdml-fill-color` — visibly and uniformly, exactly as the marks
 fall back.
+
+**Colliding angular bands are the same shape of rule** (`colliding-angle-bands`, also
+under **V2**, added at 017 R8). Two categories of an ordinal `angle` scale that resolve to
+the same angle is the same silent wrong chart — a radar with fewer spokes than metrics. R8
+made it impossible on a **whole-turn** sweep by dividing the band formula by `n` there, so
+what this reports is what the arithmetic cannot rescue: a sweep of **more than one turn**,
+which genuinely passes the same angle twice, and a sweep of **none**. Both blank the scale
+and recover when the sweep is shortened.
 
 ### `hdml-pie` — [layout-pie.ts](../src/hdvl/layout-pie.ts)
 

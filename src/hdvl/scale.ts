@@ -145,7 +145,10 @@ export interface Scale {
   project(v: number | string): number | null;
   /** Ordinal only. The band the value occupies, in range
    *  units. `centre` is what every non-band-filling lookup
-   *  resolves to (§4.4). */
+   *  resolves to (§4.4). On an `angle` channel whose sweep is
+   *  a whole turn the bands divide by `n` rather than
+   *  `n − 1 + b`, because `r1` is `r0` — see
+   *  {@link isCyclic} (017 R8). */
   bandOf(v: string): ScaleBand | null;
   /** `color` only: the resolved CSS <color> for a value. */
   paint(v: number | string): string | null;
@@ -767,6 +770,60 @@ function rangeOf(
   }
 }
 
+/**
+ * ★ **017 R8 — cyclicity is DERIVED, never authored.** An `angle`
+ * channel whose sweep is a non-zero multiple of a whole turn has
+ * `r1` denoting the **same place** as `r0`, so §4.4's inclusive
+ * denominator places the last category on the first: `10-radar`'s
+ * six metrics over `[0deg, 360deg]` at `--hdml-bandwidth: 0` stepped
+ * by `360 / 5` and drew a pentagon. `kernel/scale-band.ts` takes
+ * `cyclic` as a parameter and this is the one place that decides it.
+ *
+ * *(Decided 2026-09-26, with the user, at 017 step 07.)* The
+ * alternatives were an authored `cyclic` attribute — which leaves
+ * every new radar wrong by default — and derivation plus an
+ * `inclusive` opt-out, whose only purpose would be to reinstate the
+ * defect. **The accepted cost is that a page's geometry changes when
+ * its `--hdml-angle-end` crosses a whole turn with nothing in the
+ * document saying so**: a 359° fan and a 360° one place their
+ * categories by different arithmetic. That is R1's trade taken
+ * again — the runtime owns the geometry the author cannot see.
+ *
+ * **Only `angle` can be cyclic**, and only an ordinal scale has
+ * bands to collide: `x`, `y` and `radius` are lengths in a box and
+ * `size` is a diameter range, none of which wrap. The test is on
+ * `|r1 − r0|` and so is immune to `reverse`, which swaps the pair.
+ *
+ * **A multi-turn sweep stays degenerate**, deliberately: 720° over
+ * six categories collides under `n` (0/120/240/0/120/240) exactly as
+ * it does under `n − 1 + b`, because the range really does pass the
+ * same angle twice. Naming it non-cyclic would not rescue it, so the
+ * survivor is reported rather than arithmetically hidden — see
+ * {@link angleCollisionOf} and V2's `colliding-angle-bands`.
+ *
+ * @param channel - The channel this scale serves.
+ * @param kind - Its tag's kind.
+ * @param range - The resolved range, already reversed if `reverse`.
+ * @returns Whether the band formula should divide by `n`.
+ */
+function isCyclic(
+  channel: Channel,
+  kind: ScaleKind,
+  range: null | readonly [number, number],
+): boolean {
+  if (channel !== "angle" || kind !== "ordinal" || range === null) {
+    return false;
+  }
+  const turns = Math.abs(range[1] - range[0]) / 360;
+  // A tolerance rather than `% 360 === 0`, because a sweep authored
+  // in `rad` or `grad` reaches here through a unit conversion:
+  // `2 * Math.PI` rad is 359.999999999999994°, which is one turn and
+  // must not be read as a partial one. Below a millionth of a
+  // degree there is no authorable intent to preserve — the scene's
+  // own quantization is six decimals.
+  return turns >= 1 && Math.abs(turns - Math.round(turns)) < 3e-9;
+}
+
 // ---------------------------------------------------------------
 // The Scale object
 // ---------------------------------------------------------------
@@ -852,6 +909,7 @@ function buildScale(
     1,
     Math.max(0, cssNumber(m.props.get("--hdml-bandwidth"), 0.8)),
   );
+  const cyclic = isCyclic(channel, kind, range);
   const spec =
     kind === "continuous" ? specOf(el) : continuousSpec("linear");
   const zone = kind === "datetime" ? zoneOf(el) : null;
@@ -861,7 +919,7 @@ function buildScale(
   const bandAt = (v: string): ScaleBand | null =>
     kind !== "ordinal" || range === null
       ? null
-      : bandOfValue(v, values, range, bandwidth);
+      : bandOfValue(v, values, range, bandwidth, cyclic);
 
   const fraction = (v: number | string): number | null => {
     if (extent === null) {
@@ -1207,6 +1265,99 @@ export function paletteGapOf(el: HdvlElement): PaletteGap | null {
   );
   return values.length > palette.length
     ? { domain: values.length, palette: palette.length }
+    : null;
+}
+
+/** {@link angleCollisionOf}'s answer — both counts, as V2 needs. */
+export interface AngleCollision {
+  /** How many categories the resolved domain holds. */
+  domain: number;
+  /** How many distinct angles they occupy, modulo a turn. */
+  distinct: number;
+}
+
+/**
+ * A whole degree, keyed modulo one turn so that `360` and `0` are
+ * the same slot.
+ *
+ * **Rounded before the modulo, not after.** `359.9999996°` and `0°`
+ * are the same place; taking `% 360` first leaves them 359.9999996
+ * apart and the collision goes unseen, which is the failure mode
+ * this whole check exists to end. Six decimals is the scene's own
+ * quantization, so two positions that survive it as distinct are
+ * distinct in every golden and every pixel.
+ */
+function angleKey(deg: number): number {
+  const q = Math.round(deg * 1e6) % 360_000_000;
+  return q < 0 ? q + 360_000_000 : q;
+}
+
+/**
+ * ★ **017 R8's survivor, as a question**: do two categories of this
+ * ordinal angle scale resolve to the *same angle*?
+ *
+ * R8's fix makes this impossible on a **one-turn** sweep — that is
+ * what `cyclic` is for ({@link isCyclic}) — and leaves it perfectly
+ * possible on the two sweeps the fix cannot help:
+ *
+ * - **a multi-turn sweep.** 720° over six categories is
+ *   `0/120/240/0/120/240` cyclically and `0/144/288/72/216/0`
+ *   inclusively. The range passes the same angle twice, so no
+ *   denominator rescues it. Nothing clamps `--hdml-angle-end`.
+ * - **a zero-length sweep.** `--hdml-angle-start` equal to
+ *   `--hdml-angle-end` puts every category on one angle.
+ *
+ * Both draw a chart with **fewer positions than it has categories**
+ * and say nothing — §1.5's silent wrong chart, and exactly the class
+ * R8 was found in by a human looking at a rendered page rather than
+ * by 1305 passing tests. *(Decided 2026-09-26, with the user, at 017
+ * step 07.)*
+ *
+ * **It is filed under V2 with its own `DiagnosticCode`**, on
+ * {@link paletteGapOf}'s precedent and for the identical reason:
+ * §8.3's V2 row is the binding pass's *"does the delivered data fit
+ * this scale"* question, and `n` categories that fit in fewer than
+ * `n` angles is an answer of no. SPEC §11's checklist is unchanged —
+ * no new W-number, no new V-number — and the alternative considered
+ * and declined was a new `W7`, which would have amended §11 and
+ * joined two `WarningCode`s 016 shipped uncalled.
+ *
+ * **The domain, not the rows.** A repeated *row* is the author's
+ * data and legal; this asks only whether the resolved **domain**'s
+ * distinct values reach distinct angles.
+ *
+ * @param el - A scale element.
+ * @returns Both counts when two categories collide, else `null` —
+ *   including before the scale's first frame, and at `n < 2`, where
+ *   there is nothing to collide with.
+ */
+export function angleCollisionOf(
+  el: HdvlElement,
+): AngleCollision | null {
+  const scale = frames.get(el)?.scale ?? null;
+  if (scale === null) {
+    return null;
+  }
+  if (scale.channel !== "angle" || scale.kind !== "ordinal") {
+    return null;
+  }
+  const values = scale.domain()?.values ?? [];
+  if (values.length < 2) {
+    return null;
+  }
+  const seen = new Set<number>();
+  for (const v of values) {
+    const at = scale.project(v);
+    if (at === null) {
+      // §4.7's own answer, not a collision: an unresolvable value
+      // produces no mark, and counting it as a slot would report a
+      // collision that nothing draws.
+      return null;
+    }
+    seen.add(angleKey(at));
+  }
+  return seen.size < values.length
+    ? { domain: values.length, distinct: seen.size }
     : null;
 }
 

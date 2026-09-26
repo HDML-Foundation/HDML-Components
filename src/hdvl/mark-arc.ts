@@ -184,7 +184,15 @@ function rangedForm(
  * The band comes from `Scale.bandOf`, never from a `360 / n` of its
  * own (R12): the angular range is `--hdml-angle-start`/`-end` and
  * need be neither a full turn nor ascending, and §4.4's denominator
- * is `n − 1 + b` rather than `n`.
+ * is `n − 1 + b` rather than `n` — **unless the sweep IS a whole
+ * turn, where it is `n` after all** (017 R8): there `r1` denotes the
+ * same place as `r0`, so the inclusive form put the last slice's
+ * high edge on the first slice's low edge and left one join, across
+ * 12 o'clock, tighter than all the rest. `09-polar-area` writes
+ * `--hdml-bandwidth: 1`, where the two denominators are the same
+ * number, so the rose is unchanged; the widget reads
+ * `Scale.bandOf` and needed no line either way, which is the whole
+ * point of R12.
  *
  * @param el - The widget.
  * @param scale - The ordinal angle scale.

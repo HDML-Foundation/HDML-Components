@@ -5,9 +5,11 @@
   MOCK — see SPEC.md. Binding modes: literal series + subscription
   series MIXED in one chart (one widget each — multi-source stays
   legal per widget, SPEC §4.5). Shows: point scale on the angle
-  channel (categories at spokes, first == last position closes the
-  turn), linear radius, polygonal grid (--hdml-grid-shape), spokes =
-  angle-channel grid, `closed` on line/area to close the loop.
+  channel (categories at spokes; a whole-turn sweep is CYCLIC, so
+  six categories step by 360/6 and the sixth does NOT land on the
+  first -- 017 R8), linear radius, polygonal grid
+  (--hdml-grid-shape), spokes = angle-channel grid, `closed` on
+  line/area to close the loop.
 
   CORPUS FINDINGS exercised here (see README):
     - `closed` attribute on hdml-line/hdml-area — new, radar needs it.
