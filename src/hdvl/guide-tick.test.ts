@@ -249,7 +249,14 @@ suite("hdvl/guide-tick — §6.5's repeated glyph", () => {
     // SPEC §7: "placement is pure CSS… no `position` attribute".
     const left = await mount(page('count="3"'));
     const box = tickOf(left).getBoundingClientRect();
-    assert.isAbove(box.width, 0, "the tick measured a zero box");
+    // ★ 017 R1 changed what a healthy box looks like here. This
+    // read used to be `isAbove(box.width, 0)` — "the tick measured a
+    // zero box" — and R1 makes a y tick's width zero on purpose, so
+    // that guard would now fail on a CORRECT tick. The distinction it
+    // was reaching for survives, and states R1 rather than
+    // contradicting it: extent ALONG the channel, none ACROSS it.
+    assert.isAbove(box.height, 0, "the tick measured nothing");
+    assert.strictEqual(box.width, 0, "R1: no cross-axis extent");
 
     const across = (v: HdmlViewElement): number[] =>
       nodesOf(v).map((n) => {
@@ -257,11 +264,16 @@ suite("hdvl/guide-tick — §6.5's repeated glyph", () => {
         return r.x + r.w / 2;
       });
     const right = await mount(
-      page('count="3"', "left: 100%; right: auto; width: 40px;"),
+      page('count="3"', "left: 100%; right: auto;"),
     );
-    // The y guide's near edge is its RIGHT one on the left of the
-    // plot and its LEFT one on the right of it, so the crossing
-    // moves and the positions along y do not.
+    // The crossing moves with the BOX, and since R1 that is the
+    // whole of it: a zero-extent box has one edge rather than two,
+    // so `guideEdge`'s near-edge tie-break is no longer what decides
+    // this — which is exactly R1's convergence claim, read from the
+    // tick's side. (The author rule carried a `width: 40px` before
+    // R1; it would now be inert, so it is gone rather than left to
+    // read as if it still did something.) The positions along y do
+    // not move either way.
     const a = across(left)[0];
     const b = across(right)[0];
     assert.isAbove(b, a);

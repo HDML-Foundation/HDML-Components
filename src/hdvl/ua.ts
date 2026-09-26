@@ -74,18 +74,39 @@ const CLIPPED = [
   .join(",\n");
 
 /**
- * The three guides SPEC §3 places **per channel** — an axis, its
- * ticks and its labels all sit in the same gutter, which is the
- * whole point of a gutter. `hdml-grid` is not among them: it runs
- * *across* the plane and is covered already (see
- * {@link GUIDE_PLACEMENT}); `hdml-legend` is not either, because it
- * is placed **once**, not per channel — see {@link LEGEND_CSS}.
+ * The guides SPEC §3 places **per channel** whose cross-axis extent
+ * is the **runtime's** — zero, `!important`, unreachable from the
+ * outer tree (017 R1).
+ *
+ * §3 places three guides per channel: an axis, its ticks and its
+ * labels all sit in the same gutter, which is the whole point of a
+ * gutter. `hdml-grid` is not among them — it runs *across* the plane
+ * and the generic `:host` box rule covers it already (see
+ * {@link GUIDE_PLACEMENT}) — and neither is `hdml-legend`, which is
+ * placed **once**, not per channel (see {@link LEGEND_CSS}).
+ *
+ * **★ But the three take TWO rules, not one, and the split is
+ * load-bearing.** An axis is a line and a tick's length is
+ * `--hdml-tick-height`; neither reads its own box **across** its
+ * channel, so a gutter extent there is a number nothing consumes
+ * and every author idiom can trip over. {@link guideRules} states
+ * why the two rules stay split even where their declarations
+ * coincide.
  */
-const PLACED = [
-  HDVL_TAG_NAMES.AXIS,
-  HDVL_TAG_NAMES.TICK,
-  HDVL_TAG_NAMES.LABEL,
-];
+const PLACED_LINE = [HDVL_TAG_NAMES.AXIS, HDVL_TAG_NAMES.TICK];
+
+/**
+ * The guide that keeps the gutter extent, because it is the only
+ * one with something to lay into it.
+ *
+ * `hdml-label` was **excluded from R1 deliberately**: zeroing its
+ * box would lay its text into nothing. R2 gives it a property
+ * instead of a box and then joins it to {@link PLACED_LINE},
+ * removing this row entirely — but R1 stands alone if R2 is ever
+ * deferred, which is why these are two lists rather than one list
+ * and a flag.
+ */
+const PLACED_RUN = [HDVL_TAG_NAMES.LABEL];
 
 /**
  * ★ SPEC §3's `hdml-legend` row — *"top-right **inside the plot
@@ -157,38 +178,88 @@ const LEGEND_CSS = [
  * attribute selector, so no channel name is written as a literal
  * (R8).
  *
- * **★ Each row resets the opposite offset, and states an extent.**
- * This is not defensive noise and must not be "cleaned up". The
- * generic `:host` rule declares `inset: 0` — four longhands — so
- * `top: 100%` **alone** leaves `bottom: 0` in force, and an
- * absolutely positioned box with both offsets and `height: auto`
- * is over-constrained to a used height of *containerHeight −
- * containerHeight − 0*, i.e. **zero**. A zero-high guide measures
- * as a zero box and every scene it produces is geometry against
- * nothing — and it renders, silently, with no diagnostic. Setting
- * `bottom: auto` alone is not enough either: the box would then
- * shrink-to-fit shadow content whose `.plot` is `height: 100%` of
- * an indefinite height. Hence the third declaration, whose value
- * is the gutter the guide is being placed into.
+ * **★ Each row resets the opposite offset, and states an extent —
+ * and since 017 R1 that extent has TWO cases, not one.** Neither is
+ * defensive noise and neither must be "cleaned up".
  *
- * The corpus pages do not hit any of this, because they were
- * written against no UA sheet at all and set three offsets each.
+ * The shared half first. The generic `:host` rule declares
+ * `inset: 0` — four longhands — so `top: 100%` **alone** leaves
+ * `bottom: 0` in force, and an absolutely positioned box with both
+ * offsets and `height: auto` is over-constrained to a used height of
+ * *containerHeight − containerHeight − 0*, i.e. **zero**. A
+ * zero-high guide measures as a zero box and every scene it produces
+ * is geometry against nothing — and it renders, silently, with no
+ * diagnostic. Setting `bottom: auto` alone is not enough either: the
+ * box would then shrink-to-fit shadow content whose `.plot` is
+ * `height: 100%` of an indefinite height. Hence {@link offsets}
+ * resetting the far offset, and hence an extent being stated at all.
+ *
+ * **Which extent depends on what the guide does with it, which is
+ * the R1 split.**
+ *
+ * - A {@link PLACED_RUN} — `hdml-label` — gets {@link gutter}, the
+ *   very number that sets the plane's padding, because its box is
+ *   where its text lays out.
+ * - A {@link PLACED_LINE} — `hdml-axis`, `hdml-tick` — gets
+ *   **`0 !important`**. Here the *deliberate* zero is the correct
+ *   answer rather than the trap above: a line has no thickness to
+ *   place, so the box across the channel is a number nothing reads.
+ *   Stating it as the gutter is what let an author over-constrain
+ *   the box the other way — `left: 0` against our `right: 100%`
+ *   **and** `width: 40px`, which CSS resolves by dropping `right`,
+ *   putting the axis 40px (a scale's padding more on a real page)
+ *   *inside* the plot. At zero the two idioms **converge**: with no
+ *   extent, `right: 100%` and `left: 0` put the line in the same
+ *   place, so it can no longer be shifted by which offset the author
+ *   reached for. The `!important` is what guarantees the
+ *   convergence, and `guideEdge` is what makes it free — it derives
+ *   the drawn edge as whichever edge of this box is nearer the
+ *   scale's centre, and a zero-extent box's two edges are one
+ *   number, so the tie-break stops being reachable at all.
+ *
+ * The corpus pages do not hit the `auto`-reset trap, because they
+ * were written against no UA sheet at all and set three offsets
+ * each. They hit the extent one — nine of the thirteen write the
+ * `left: 0` idiom above — which is why R1's fix moves their goldens.
  */
-const GUIDE_PLACEMENT: Partial<Record<Channel, readonly string[]>> = {
-  x: [
-    "  top: 100%;",
-    "  bottom: auto;",
-    `  height: ${GUTTER.bottom}px;`,
-  ],
-  y: [
-    "  right: 100%;",
-    "  left: auto;",
-    `  width: ${GUTTER.left}px;`,
-  ],
+const GUIDE_PLACEMENT: Partial<
+  Record<
+    Channel,
+    {
+      /** The near offset, and the far one reset. */
+      readonly offsets: readonly string[];
+      /** The cross-axis extent's property. */
+      readonly cross: "width" | "height";
+      /** {@link PLACED_RUN}'s extent, in px. */
+      readonly gutter: number;
+    }
+  >
+> = {
+  x: {
+    offsets: ["  top: 100%;", "  bottom: auto;"],
+    cross: "height",
+    gutter: GUTTER.bottom,
+  },
+  y: {
+    offsets: ["  right: 100%;", "  left: auto;"],
+    cross: "width",
+    gutter: GUTTER.left,
+  },
 };
 
 /**
- * {@link GUIDE_PLACEMENT} as CSS text.
+ * {@link GUIDE_PLACEMENT} as CSS text — **two rules per channel**.
+ *
+ * **★ The rules stay split even where their declarations coincide,
+ * and that is not cosmetic** (017 R1's second reason). DevTools
+ * attributes a struck-through declaration to whichever selector of a
+ * group it lists **first**, so while one grouped rule carried all
+ * three tags, inspecting a misplaced **axis** pointed the author at
+ * a **label**. Splitting {@link PLACED_LINE} from
+ * {@link PLACED_RUN} makes the Styles pane name the element that is
+ * actually wrong. Merging them back — or emitting the extent as a
+ * second rule over the same group — would put the misdirection
+ * back.
  *
  * @returns The rules, as sheet lines.
  */
@@ -196,14 +267,26 @@ function guideRules(): string[] {
   const attr = AXIS_ATTRS_LIST.CHANNEL;
   const out: string[] = [];
   for (const channel of Object.keys(GUIDE_PLACEMENT)) {
-    const decls = GUIDE_PLACEMENT[<Channel>channel];
-    if (decls === undefined) {
+    const row = GUIDE_PLACEMENT[<Channel>channel];
+    if (row === undefined) {
       continue;
     }
-    const selector = PLACED.map(
-      (tag) => `:host(${tag}[${attr}="${channel}"])`,
-    ).join(",\n");
-    out.push(`${selector} {`, ...decls, "}", "");
+    const selector = (tags: readonly string[]): string =>
+      tags
+        .map((tag) => `:host(${tag}[${attr}="${channel}"])`)
+        .join(",\n");
+    out.push(
+      `${selector(PLACED_LINE)} {`,
+      ...row.offsets,
+      `  ${row.cross}: 0 !important;`,
+      "}",
+      "",
+      `${selector(PLACED_RUN)} {`,
+      ...row.offsets,
+      `  ${row.cross}: ${row.gutter}px;`,
+      "}",
+      "",
+    );
   }
   return out;
 }

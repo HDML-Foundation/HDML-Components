@@ -5,7 +5,7 @@
  */
 
 import { assert, fixture } from "@open-wc/testing";
-import { html } from "lit/static-html.js";
+import { html, unsafeStatic } from "lit/static-html.js";
 import { LitElement } from "lit";
 import "./index";
 import { HdvlElement } from "./base";
@@ -97,24 +97,51 @@ function rectOf(
 }
 
 /**
- * A view carrying one zero-CSS `hdml-axis` on a channel, with the
- * UA plane gutter in force.
+ * A view carrying one zero-CSS positional guide on a channel, with
+ * the UA plane gutter in force.
+ *
+ * The tag is a parameter because 017 R1 split the guides into two
+ * rules: `hdml-axis` and `hdml-tick` take a zero cross-axis extent
+ * the author cannot reach, `hdml-label` keeps the gutter and obeys
+ * the author as before. The same helper has to be able to ask both
+ * halves, or the split is asserted only from the side that changed.
  */
 async function placed(
   channel: "x" | "y",
+  tag: "hdml-axis" | "hdml-tick" | "hdml-label" = "hdml-axis",
 ): Promise<[HdmlViewElement, ReturnType<typeof rectOf>]> {
+  const guide = unsafeStatic(tag);
   const view = await fixture<HdmlViewElement>(html`
     <hdml-view style="width: 400px; height: 200px">
       <hdml-cartesian-plane>
         ${channel === "x"
-          ? html`<hdml-axis channel="x"></hdml-axis>`
-          : html`<hdml-axis channel="y"></hdml-axis>`}
+          ? html`<${guide} channel="x"></${guide}>`
+          : html`<${guide} channel="y"></${guide}>`}
       </hdml-cartesian-plane>
     </hdml-view>
   `);
   await settle(view);
-  const axis = <Element>view.querySelector("hdml-axis");
-  return [view, rectOf(view, axis)];
+  const el = <Element>view.querySelector(tag);
+  return [view, rectOf(view, el)];
+}
+
+/**
+ * The `:host` rule declaring one channel's cross-axis extent for
+ * {@link PLACED_LINE}, found by selector rather than by index.
+ */
+function crossRuleFor(channel: "x" | "y"): CSSStyleRule {
+  const want = `hdml-axis[channel="${channel}"]`;
+  const hit = Array.from(elementSheet.cssRules).find((rule) => {
+    const styleRule = <CSSStyleRule>rule;
+    return (
+      styleRule.selectorText.includes(want) &&
+      styleRule.style.getPropertyPriority(
+        channel === "x" ? "height" : "width",
+      ) === "important"
+    );
+  });
+  assert.isDefined(hit, `no important extent rule for ${channel}`);
+  return <CSSStyleRule>hit;
 }
 
 suite("hdvl/ua — the element sheet", () => {
@@ -311,37 +338,130 @@ suite("hdvl/ua — the element sheet", () => {
     // generic `:host { inset: 0 }`: `top: 100%` alone leaves
     // `bottom: 0` in force, which over-constrains the box to a used
     // height of ZERO — it renders, silently, measuring nothing.
+    //
+    // 017 R1: the AXIS's height is now deliberately zero, which is
+    // the same number for the opposite reason. `bottom: auto` is
+    // still what makes it deliberate — without it the zero would be
+    // the over-constraint above, and the label row next door would
+    // be zero too.
     const [view, box] = await placed("x");
     const axis = <Element>view.querySelector("hdml-axis");
     assert.strictEqual(getComputedStyle(axis).position, "absolute");
-    assert.strictEqual(getComputedStyle(axis).height, "24px");
+    assert.strictEqual(getComputedStyle(axis).height, "0px");
     assert.strictEqual(getComputedStyle(axis).width, "352px");
-    // …and the box that produces: the full plot width, in the
-    // plane's 24px bottom gutter, immediately below the plot.
-    assert.isAbove(box.h, 0);
-    assert.deepEqual(box, { x: 40, y: 176, w: 352, h: 24 });
+    // …and the box that produces: the full plot width, on the
+    // plot's bottom edge, with no thickness to place.
+    assert.deepEqual(box, { x: 40, y: 176, w: 352, h: 0 });
+
+    // The label keeps the gutter, and that is what says the zero
+    // above is the axis rule's and not the over-constraint's.
+    const [, run] = await placed("x", "hdml-label");
+    assert.deepEqual(run, { x: 40, y: 176, w: 352, h: 24 });
   });
 
   test("★ a zero-CSS y guide lands left of the plot", async () => {
+    // 017 R1, the y row. Before it, this box was
+    // `{x: 0, y: 8, w: 40, h: 168}` — 40px of gutter width the
+    // runtime never read and an author could over-constrain.
     const [view, box] = await placed("y");
     const axis = <Element>view.querySelector("hdml-axis");
-    assert.strictEqual(getComputedStyle(axis).width, "40px");
+    assert.strictEqual(getComputedStyle(axis).width, "0px");
     assert.strictEqual(getComputedStyle(axis).height, "168px");
-    assert.isAbove(box.w, 0);
-    assert.deepEqual(box, { x: 0, y: 8, w: 40, h: 168 });
+    assert.deepEqual(box, { x: 40, y: 8, w: 0, h: 168 });
+
+    const [, run] = await placed("y", "hdml-label");
+    assert.deepEqual(run, { x: 0, y: 8, w: 40, h: 168 });
   });
 
-  test("★ an author rule beats it, on both rows", async () => {
+  test("★ a tick takes the axis rule, not the label's", async () => {
+    // R1 covers both lines, and `hdml-tick` is the one whose length
+    // is a property (`--hdml-tick-height`) rather than a box — so
+    // its box across the channel is the clearest case of a number
+    // nothing reads.
+    const [xView, xBox] = await placed("x", "hdml-tick");
+    const [, yBox] = await placed("y", "hdml-tick");
+    assert.deepEqual(xBox, { x: 40, y: 176, w: 352, h: 0 });
+    assert.deepEqual(yBox, { x: 40, y: 8, w: 0, h: 168 });
+    assert.isNotNull(xView.shadowRoot);
+  });
+
+  test("★ the extent is out of the outer tree's reach", async () => {
+    // ★ R1's ENFORCEABILITY, which is a platform claim and is
+    // therefore asserted rather than assumed: for IMPORTANT
+    // declarations the INNER tree wins (CSS Cascade 4's
+    // encapsulation-context criterion, which inverts for
+    // `!important`). Our `:host` rule is the inner tree; the page is
+    // the outer one. If this ever failed on an engine, R1's fix
+    // shape would not hold there and a fallback would be a design
+    // decision, not an implementation one.
+    //
+    // It is also the attribution guard step 02's Finding 2 asks
+    // for: a zero box proves nothing about WHICH declaration made
+    // it zero, and an author's `!important` losing is the only
+    // reading under which ours is the one in force.
+    adoptScratch(
+      'hdml-axis[channel="x"] { height: 40px !important }\n' +
+        'hdml-tick[channel="x"] { height: 40px !important }\n' +
+        'hdml-axis[channel="y"] { width: 40px !important }\n' +
+        'hdml-tick[channel="y"] { width: 40px !important }',
+    );
+    for (const tag of <const>["hdml-axis", "hdml-tick"]) {
+      const [xView, xBox] = await placed("x", tag);
+      const x = <Element>xView.querySelector(tag);
+      assert.strictEqual(getComputedStyle(x).height, "0px", tag);
+      assert.strictEqual(xBox.h, 0, tag);
+      const [yView, yBox] = await placed("y", tag);
+      const y = <Element>yView.querySelector(tag);
+      assert.strictEqual(getComputedStyle(y).width, "0px", tag);
+      assert.strictEqual(yBox.w, 0, tag);
+    }
+    // And the declaration that wins is the one written here, in a
+    // rule of its own that does NOT name the label — R1's second
+    // reason, which is about DevTools and is only checkable as the
+    // shape of the sheet.
+    for (const channel of <const>["x", "y"]) {
+      const rule = crossRuleFor(channel);
+      assert.include(rule.selectorText, "hdml-tick[channel=");
+      assert.notInclude(rule.selectorText, "hdml-label");
+    }
+  });
+
+  test("★ the two offset idioms converge at zero", async () => {
+    // ★ R1's mechanism, asserted directly. With no cross extent,
+    // `right: 100%` (ours) and `left: 0` (what every live page
+    // writes) put the line in the SAME place, so the guide can no
+    // longer be shifted by which offset the author reached for.
+    // Before R1 the second idiom over-constrained the box, CSS
+    // dropped `right`, and the axis landed a gutter's width INSIDE
+    // the plot.
+    const [, base] = await placed("y");
+    adoptScratch('hdml-axis[channel="y"] { left: 0 }');
+    const [, swapped] = await placed("y");
+    assert.deepEqual(swapped, base);
+
+    const [, xBase] = await placed("x");
+    adoptScratch('hdml-axis[channel="x"] { bottom: 0 }');
+    const [, xSwapped] = await placed("x");
+    assert.deepEqual(xSwapped, xBase);
+  });
+
+  test("★ an author rule beats it, on the label", async () => {
     // §3.2's cascade fact, which is the whole reason SPEC §3's
     // defaults are `:host` rules: an outer-document rule matching
     // the element wins, wherever it was written.
+    //
+    // 017 R1 made the axis the EXCEPTION, so this test moved onto
+    // `hdml-label` — which is also the cleanest proof that the split
+    // is real rather than two selectors sharing one rule: the same
+    // declarations, from the same sheet, one reachable and one not.
     adoptScratch(
-      'hdml-axis[channel="x"] { top: 0; height: 12px }\n' +
-        'hdml-axis[channel="y"] { right: auto; left: 0; width: 9px }',
+      'hdml-label[channel="x"] { top: 0; height: 12px }\n' +
+        'hdml-label[channel="y"] { right: auto; left: 0;' +
+        " width: 9px }",
     );
-    const [xView, xBox] = await placed("x");
+    const [xView, xBox] = await placed("x", "hdml-label");
     assert.deepEqual(xBox, { x: 40, y: 8, w: 352, h: 12 });
-    const [yView, yBox] = await placed("y");
+    const [yView, yBox] = await placed("y", "hdml-label");
     assert.deepEqual(yBox, { x: 40, y: 8, w: 9, h: 168 });
     assert.isNotNull(xView.shadowRoot);
     assert.isNotNull(yView.shadowRoot);

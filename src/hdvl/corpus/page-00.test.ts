@@ -6,7 +6,7 @@
 
 import { assert } from "@open-wc/testing";
 import "../index";
-import type { Scene } from "../scene";
+import type { Rect, Scene } from "../scene";
 import {
   ENGINE,
   assertRenders,
@@ -88,6 +88,26 @@ suite("corpus 00-minimal", () => {
     assert.strictEqual(scene.width, W);
     assert.strictEqual(scene.height, H);
 
+    // ★ 017 R1, derived rather than captured: an axis is a LINE, so
+    // its box has the plot's extent along its own channel and NO
+    // extent across it — the x axis on the plot's bottom edge, the y
+    // axis on its left edge. A label still takes the gutter, which is
+    // the half R1 left alone, and the pair is the whole split stated
+    // in numbers this page derives from `W` and `GUTTER` alone.
+    const boxOf = (tag: string): Rect =>
+      scene.groups.filter((g) => g.tag === tag).map((g) => g.box)[0];
+    const boxesOf = (tag: string): Rect[] =>
+      scene.groups.filter((g) => g.tag === tag).map((g) => g.box);
+    assert.deepEqual(boxesOf("hdml-axis"), [
+      { x: PLOT.x, y: PLOT.y + PLOT.h, w: PLOT.w, h: 0 },
+      { x: PLOT.x, y: PLOT.y, w: 0, h: PLOT.h },
+    ]);
+    assert.deepEqual(boxesOf("hdml-label"), [
+      { x: PLOT.x, y: PLOT.y + PLOT.h, w: PLOT.w, h: GUTTER.bottom },
+      { x: 0, y: PLOT.y, w: GUTTER.left, h: PLOT.h },
+    ]);
+    assert.deepEqual(boxOf("hdml-bar"), PLOT);
+
     const bars = scene.groups.filter((g) => g.role === "mark");
     assert.lengthOf(bars, 1);
     const nodes = bars[0].nodes;
@@ -136,7 +156,7 @@ const GOLDEN: Scene = {
       widget: "",
       tag: "hdml-axis",
       role: "guide",
-      box: { x: 40, y: 216, w: 432, h: 24 },
+      box: { x: 40, y: 216, w: 432, h: 0 },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -258,7 +278,7 @@ const GOLDEN: Scene = {
       widget: "",
       tag: "hdml-axis",
       role: "guide",
-      box: { x: 0, y: 8, w: 40, h: 208 },
+      box: { x: 40, y: 8, w: 0, h: 208 },
       opacity: 1,
       filter: "none",
       visibility: "visible",

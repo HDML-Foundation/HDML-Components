@@ -607,7 +607,7 @@ const GOLDEN: Scene = {
         x: 76,
         y: 328,
         w: 542,
-        h: 24,
+        h: 0,
       },
       opacity: 1,
       filter: "none",
@@ -651,7 +651,7 @@ const GOLDEN: Scene = {
       box: {
         x: 76,
         y: 28,
-        w: 40,
+        w: 0,
         h: 300,
       },
       opacity: 1,
@@ -666,14 +666,14 @@ const GOLDEN: Scene = {
           subpaths: [
             {
               start: {
-                x: 116,
+                x: 76,
                 y: 328,
               },
               segments: [
                 {
                   k: "line",
                   to: {
-                    x: 116,
+                    x: 76,
                     y: 28,
                   },
                 },

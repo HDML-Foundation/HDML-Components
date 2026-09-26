@@ -271,7 +271,10 @@ default. The **element sheet** is adopted by every HDVL shadow root as one share
 is host-qualified throughout, so a rule written for the view can never reach a mark; the
 **document sheet** carries only the two `hdml-fallback` rules, because they are the one thing
 that must work on light DOM *before* upgrade. Every default is a `:host` rule, which any
-author rule from the outer document beats.
+author rule from the outer document beats — **with exactly one exception, and it is written
+down in SPEC §3 rather than left to be discovered**: an `hdml-axis`/`hdml-tick`'s **cross-axis
+extent is the runtime's**, declared `!important`, and no author rule reaches it. See
+[the placement contract](#hdml-axis--hdml-grid--guide-axists--guide-gridts) below.
 
 Every display element except the view is `position: absolute; inset: 0; box-sizing:
 border-box` and renders
@@ -722,10 +725,38 @@ radial range's far end, the rim, which is the same rule read on the other channe
 
 **UA placement (SPEC §3).** An x-channel `hdml-axis` / `hdml-tick` / `hdml-label` is placed
 just below the plot (`top: 100%`), a y-channel one just left of it (`right: 100%`), each
-spilling into the plane's gutter — which is what the gutter is for, and why the two take
-their extent (`24px` high, `40px` wide) from the very numbers that set the plane's padding.
-`hdml-grid` needs **no rule of its own**: the generic `:host` box rule is already `inset: 0`,
-which is SPEC §3's grid row verbatim.
+spilling into the plane's gutter — which is what the gutter is for, and why `hdml-label`
+takes its extent (`24px` high, `40px` wide) from the very numbers that set the plane's
+padding. `hdml-grid` needs **no rule of its own**: the generic `:host` box rule is already
+`inset: 0`, which is SPEC §3's grid row verbatim.
+
+**★ A positional guide's cross-axis extent is the runtime's, not yours** (SPEC §3's one
+amendment to the reach rule, 2026-09-26; project 017 R1). `hdml-axis` and `hdml-tick` are
+placed by **two** declarations and sized by a third you cannot reach:
+
+```css
+/* what the sheet emits, per channel */
+:host(hdml-axis[channel="y"]),
+:host(hdml-tick[channel="y"]) { right: 100%; left: auto; width: 0 !important }
+:host(hdml-label[channel="y"]) { right: 100%; left: auto; width: 40px }
+```
+
+An axis is a line and a tick's length is `--hdml-tick-height`; **neither reads its own box
+across its channel**, so a width there was a number nothing consumed. It is `!important`
+because for important declarations the **inner** tree wins, which is the only thing that makes
+it enforceable — and because at a zero extent the two placement idioms **converge**:
+`right: 100%` and `left: 0` put the line in the same place. Before the amendment they did not.
+Writing the natural `hdml-axis[channel="y"] { top: 0; bottom: 0; left: 0 }` met the UA's
+`right: 100%` *and* its `width: 40px`; CSS resolves that over-constraint by **dropping
+`right`**, and the axis landed a gutter's width inside the plot, drawn across the first mark,
+with no diagnostic. Everything else is still yours: both offsets, the extent *along* the
+channel, and **`hdml-label`'s box entirely** — a label needs a box to lay text into, so it
+keeps the gutter and still obeys an author rule.
+
+**The two rules are emitted separately on purpose.** DevTools attributes a struck-through
+declaration to whichever selector of a group it lists **first**, so while all three tags shared
+one rule, inspecting a misplaced *axis* pointed you at a *label*. If you are debugging guide
+placement in the Styles pane, the rule that names your element is the rule that is moving it.
 
 **`box-sizing: border-box` is in that generic rule, and it binds in exactly one place** — an
 element that authors a **size** *and* carries padding. Under `inset: 0` with `width: auto`
@@ -738,9 +769,11 @@ the third panel ran off the edge. An author cannot fix that — §3 makes the gu
 number, so `calc(33.333% - 56px)` hard-codes a value the sheet owns. Each placement rule **resets the opposite offset
 explicitly** (`bottom: auto`, `left: auto`); without that, `inset: 0` would leave the far
 offset in force and over-constrain the box to zero extent — a guide that renders, measures
-nothing, and reports no error. Every rule is `:host(<tag>[channel="…"])`, so it is
+nothing, and reports no error. **That accidental zero and R1's deliberate one are not the same
+zero**: the reset is what keeps them distinguishable, which is why it stays even on the rules
+whose extent is now `0 !important`. Every rule is `:host(<tag>[channel="…"])`, so it is
 host-qualified per tag *and* per channel, and any author rule from the outer document beats
-it.
+it — except the cross-axis extent above.
 
 ### `hdml-tick` · `hdml-label` — [guide-tick.ts](../src/hdvl/guide-tick.ts) · [guide-label.ts](../src/hdvl/guide-label.ts)
 

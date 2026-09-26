@@ -591,7 +591,7 @@ const GOLDEN_A: Scene = {
         x: 80,
         y: 252,
         w: 544,
-        h: 24,
+        h: 0,
       },
       opacity: 1,
       filter: "none",
@@ -635,7 +635,7 @@ const GOLDEN_A: Scene = {
       box: {
         x: 80,
         y: 24,
-        w: 40,
+        w: 0,
         h: 228,
       },
       opacity: 1,
@@ -650,14 +650,14 @@ const GOLDEN_A: Scene = {
           subpaths: [
             {
               start: {
-                x: 120,
+                x: 80,
                 y: 252,
               },
               segments: [
                 {
                   k: "line",
                   to: {
-                    x: 120,
+                    x: 80,
                     y: 24,
                   },
                 },
@@ -1684,7 +1684,7 @@ const GOLDEN_B: Scene = {
         x: 80,
         y: 252,
         w: 544,
-        h: 24,
+        h: 0,
       },
       opacity: 1,
       filter: "none",
@@ -1728,7 +1728,7 @@ const GOLDEN_B: Scene = {
       box: {
         x: 80,
         y: 24,
-        w: 40,
+        w: 0,
         h: 228,
       },
       opacity: 1,
@@ -1743,14 +1743,14 @@ const GOLDEN_B: Scene = {
           subpaths: [
             {
               start: {
-                x: 120,
+                x: 80,
                 y: 252,
               },
               segments: [
                 {
                   k: "line",
                   to: {
-                    x: 120,
+                    x: 80,
                     y: 24,
                   },
                 },
@@ -2757,7 +2757,7 @@ const GOLDEN_C: Scene = {
         x: 80,
         y: 252,
         w: 544,
-        h: 24,
+        h: 0,
       },
       opacity: 1,
       filter: "none",
@@ -2801,7 +2801,7 @@ const GOLDEN_C: Scene = {
       box: {
         x: 80,
         y: 24,
-        w: 40,
+        w: 0,
         h: 228,
       },
       opacity: 1,
@@ -2816,14 +2816,14 @@ const GOLDEN_C: Scene = {
           subpaths: [
             {
               start: {
-                x: 120,
+                x: 80,
                 y: 252,
               },
               segments: [
                 {
                   k: "line",
                   to: {
-                    x: 120,
+                    x: 80,
                     y: 24,
                   },
                 },
@@ -3850,7 +3850,7 @@ const GOLDEN_D: Scene = {
         x: 80,
         y: 252,
         w: 544,
-        h: 24,
+        h: 0,
       },
       opacity: 1,
       filter: "none",
@@ -3894,7 +3894,7 @@ const GOLDEN_D: Scene = {
       box: {
         x: 80,
         y: 24,
-        w: 40,
+        w: 0,
         h: 228,
       },
       opacity: 1,
@@ -3909,14 +3909,14 @@ const GOLDEN_D: Scene = {
           subpaths: [
             {
               start: {
-                x: 120,
+                x: 80,
                 y: 252,
               },
               segments: [
                 {
                   k: "line",
                   to: {
-                    x: 120,
+                    x: 80,
                     y: 24,
                   },
                 },
@@ -5925,7 +5925,7 @@ const GOLDEN_E: Scene = {
         x: 80,
         y: 252,
         w: 544,
-        h: 24,
+        h: 0,
       },
       opacity: 1,
       filter: "none",
@@ -5969,7 +5969,7 @@ const GOLDEN_E: Scene = {
       box: {
         x: 80,
         y: 24,
-        w: 40,
+        w: 0,
         h: 228,
       },
       opacity: 1,
@@ -5984,14 +5984,14 @@ const GOLDEN_E: Scene = {
           subpaths: [
             {
               start: {
-                x: 120,
+                x: 80,
                 y: 252,
               },
               segments: [
                 {
                   k: "line",
                   to: {
-                    x: 120,
+                    x: 80,
                     y: 24,
                   },
                 },

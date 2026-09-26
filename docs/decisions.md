@@ -1499,6 +1499,72 @@ reproducibility entirely — rejected for the same reason as before: the `custom
 pointer would still not resolve for anyone reading the repo, which is the problem being
 fixed.
 
+## A positional guide's cross-axis extent is the runtime's, `!important`
+
+Project 017 R1, implementation step 03. SPEC §3 gave `hdml-axis`, `hdml-tick` and
+`hdml-label` **one** grouped rule per channel, ending in the gutter's extent
+(`height: 24px` on x, `width: 40px` on y). That extent was a number **nothing read**
+on two of the three tags: an axis is a line and has no thickness to place, and a
+tick's length is `--hdml-tick-height`. What it did instead was give every natural
+author idiom something to collide with. Nine of the thirteen corpus pages write
+
+```css
+hdml-axis[channel="y"] { position: absolute; top: 0; bottom: 0; left: 0 }
+```
+
+and `left: 0` met the UA's `right: 100%` **and** its `width: 40px`. An absolutely
+positioned box with `left`, `width` and `right` all non-`auto` is over-constrained,
+which CSS resolves in a left-to-right document by **dropping `right`** — so the axis
+landed a gutter's width *inside* the plot and was drawn across the first mark. On the
+live `03-bar` it sat **56 px** in, through the first bar. It rendered, at the right
+size, with no console error and no diagnostic: the failure is entirely positional,
+which is exactly the class the whole-`Scene` golden corpus cannot see and why 017
+exists.
+
+So `hdml-axis` and `hdml-tick` now take `0 !important` across their channel, in a rule
+of their own, and `hdml-label` keeps the gutter — it lays text into its box, so zeroing
+it would be the bug rather than the fix.
+
+**`!important` is the mechanism, not emphasis.** At a zero cross extent the two
+placement idioms **converge**: `right: 100%` and `left: 0` put the line in the same
+place, so a guide can no longer be shifted by which offset an author reached for. A
+normal declaration would not guarantee that, because for *normal* declarations the outer
+tree wins. For **important** ones the **inner** tree wins (CSS Cascade's
+encapsulation-context criterion, which inverts for `!important`) — our `:host` rule is
+the inner tree — so an author's own `!important` loses too. That is a platform claim the
+whole fix rests on, so `ua.test.ts` **asserts** it on all three engines rather than
+assuming it, in the same spirit as the `CSS.supports` assertion above: an outer-document
+`hdml-axis[channel="y"] { width: 40px !important }` computes to `0px`.
+
+It is also the only exception to *"any author rule from the outer document beats it"*,
+and it is recorded **in SPEC §3 and §7** rather than only here — an author who hits it
+should find it where the placement contract is, not by reading a source comment.
+
+**The two rules stay split even though their offsets coincide**, and that is half the
+value. DevTools attributes a struck-through declaration to whichever selector of a group
+it lists **first**, so while all three tags shared one rule, inspecting a shifted *axis*
+pointed the author at a *label*. Merging them back — or emitting the extent as a second
+rule over the same three-tag group — puts the misdirection back.
+
+**What it cost.** Ten of the thirteen corpus pages moved goldens, and the move has two
+shapes that are worth telling apart: **every** axis/tick group's box loses its cross
+extent, but a **node** moves only where the *drawn edge* moves. `guideEdge` derives the
+drawn edge as whichever edge of the guide's own box is nearer the scale's centre, so on
+a page using the UA idiom (`right: 100%`, no author rule) the near edge was already the
+box's right edge and the line does not move at all — `00-minimal` and all four
+`12-coverage` views re-render **pixel-identical**. It is exactly the pages writing
+`left: 0` whose axis moves, by the gutter's 40 px, back onto the data's edge. A
+zero-extent box also makes that tie-break unreachable, since its two edges are one
+number.
+
+**And it falsified a zero-box guard.** `guide-tick.test.ts` asserted
+`isAbove(box.width, 0)` — *"the tick measured a zero box"* — which after R1 fails on a
+**correct** tick. The distinction it was reaching for survives and now states R1 instead
+of contradicting it: extent **along** the channel, none **across** it. The one other
+zero-box guard in the suite (`base.test.ts`'s *"nothing in the fixture is a 0x0 box"*)
+holds, because its fixture carries no positional guide — a fact worth knowing before
+adding one to it.
+
 ## `hdml-split-by` is published and unimplemented
 
 Found by step 35's manifest check. `HDML_TAG_NAMES` has **33** members — 12 data + 21
