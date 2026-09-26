@@ -690,6 +690,29 @@ no tick algorithm — and a guide **forwards** all three rather than resolving b
 precedence. Writing two of them is V16's error, live since step 24. An attribute present but empty
 reads as absent. On an **ordinal** scale a grid lands on band **centres**, never edges.
 
+**★ `count` is a hint; `step` and `values` are exact** (project 017 R11, 2026-09-26). This
+is the sentence the corpus's own author got wrong, so it is written here rather than left to
+be inferred. `count` is an **upper bound over a quantised reachable set**: §4.8's ladder
+picks a *round* step from `{1, 2, 5} × 10ⁿ` by the classic ceiling rule, so the tick counts a
+given domain can produce are a small fixed set and your number is usually not in it.
+`09-polar-area`'s live radius domain is `0 … 450 B`; its reachable counts are **{1, 3, 5,
+10}** and no `count` yields 4, 6, 7 or 8:
+
+| `count=` | step | ticks |
+|---|---|---|
+| 2 | 500 B | **1** |
+| 3, 4 | 200 B | 3 |
+| 5, 6, 7, 8 | 100 B | 5 |
+| 9 | 50 B | 10 |
+
+**Ask for two gridlines and you get one.** That is within the ceiling rule's letter and it is
+not a bug in the ladder — every nice-number algorithm has a reachable set, d3's included, and
+swapping to d3's thresholds trades undershoot for *overshoot* (nine ticks for a request of
+six). **017 deliberately did not change it**; what it changed is that the ladder is now
+documented and that its sharpest case is no longer silent — see *"A radial guide draws
+nothing at the pole"*, below. **If you need an exact number of lines, write `step=` or
+`values=`.** `05-scatter` does, and says why in the page itself.
+
 `step=`'s multiples are generated over an **integer index range**, and where the step has an
 integer reciprocal (`0.05`, `0.2`, `0.001` — nearly every one an author writes) as `i /
 divisor`, exactly as §4.8's own ladder is. That is not tidiness: `0.35 / 0.05` is
@@ -745,6 +768,33 @@ repeating outward. On the full turn every corpus polar page **but one** writes, 
 **is** `0deg`, so a radial guide lands on the twelve-o'clock spoke. `12-coverage` B is the
 exception — a gauge sweeping `-120deg` to `120deg` — and its angular guide lands on the
 radial range's far end, the rim, which is the same rule read on the other channel.
+
+**★ A radial guide draws nothing at the pole** (SPEC §7's amendment of 2026-09-26; project
+017 R11). A guide repeating along the plane's **second** channel has, at `radius = 0`, a
+position that is not a locus on that axis but the single point every angle shares — so an
+`hdml-grid` there has **no extent** (a zero-radius `arc`, or a polygon whose every corner is
+the pole: a node no zoom can show) and an `hdml-label` there has **no direction** to hang its
+run off, and lands under every mark on the page. Both were emitted anyway until R11;
+`09-polar-area` drew three rings for `count="4"` of which one was invisible, and printed its
+`0B` at the centre underneath the wedges. Both are now **suppressed**, and:
+
+- **it is the projected position, not the domain's first value.** §4.3 gives a radius channel
+  the range `[0, ceiling]`, so a tick *equal to the domain minimum* is what lands on the pole;
+  a ladder that never reaches its own minimum loses nothing, and a `reverse`d radius scale
+  puts its **maximum** there instead and loses that.
+- **`--hdml-inner-radius` is not an exemption.** It supplies `hdml-arc`'s synthetic `r0` and
+  leaves §4.3's range alone, so a doughnut's radius grid still has a tick at the pole.
+- **`hdml-tick` is deliberately unaffected.** Its glyph is *centred* on its point and needs
+  neither extent nor direction, so a dot at the pole is a real, visible mark.
+- **An angular guide is unaffected**, whatever its ticks: `10-radar`'s twelve-o'clock spoke
+  starts *at* the pole by construction, and its first category sits at `0deg`.
+- **If the pole was the grid's only position, it is an error** — the grid draws nothing at
+  all, which is §1.5's silent wrong chart. Filed under **V2** as `radius-grid-at-pole`, on the
+  **grid** (the `count` that produced the ladder is the grid's own) and with the grid as its
+  own error unit, so nothing else on the page stops painting. This is the case the `count`
+  table above ends at: `count="2"` over `09-polar-area`'s domain yields the single tick `{0}`.
+  Suppressing a ring is **not** itself reported — every zero-based radius scale has one at the
+  pole, and a rule that fired there would fire on correct documents.
 
 **UA placement (SPEC §3).** An x-channel `hdml-axis` / `hdml-tick` / `hdml-label` is placed
 just below the plot (`top: 100%`), a y-channel one just left of it (`right: 100%`), each

@@ -231,6 +231,62 @@ export function guidePoint(
 }
 
 /**
+ * ★ **Whether a position on a RADIAL guide's channel is the pole
+ * itself** — 017 R11's cause 2, in one predicate.
+ *
+ * A guide repeating along a plane's **second** channel under a pole
+ * repeats outward along a radius, and its position `0` is not a
+ * locus on that axis: it is the single point every angle shares.
+ * Two of the four guides therefore have nothing to draw there, and
+ * both drew something anyway before R11 —
+ *
+ * - **`hdml-grid`** spans the other channel at each position, and at
+ *   the pole that span has **no extent**. `09-polar-area` emitted
+ *   `M 186 170 A 0 0 0 1 1 186 170 … Z` — a node invisible at any
+ *   zoom — and `10-radar` the polygon spelling of the same thing, a
+ *   closed path whose six corners are all the pole.
+ * - **`hdml-label`** hangs its run off {@link guidePlacement}'s
+ *   outward normal, and at the pole that vector is the zero vector.
+ *   The derivation already **notices** this and answers
+ *   `middle`/`middle` — the truthful answer to a question with no
+ *   direction — and the run then paints on the pole, under every
+ *   mark the chart has.
+ *
+ * **★ `hdml-tick` is deliberately NOT a caller.** Its glyph is
+ * *centred* on its point and needs neither an extent across the
+ * other channel nor a direction to hang off; a dot at the pole is a
+ * real, visible mark at a real position. The rule is about geometry
+ * that degenerates there, not about the value zero.
+ *
+ * **Three conditions, and each excludes a case the corpus has.** A
+ * **pole** excludes every cartesian guide. **Not the plane's first
+ * channel** excludes an *angular* guide, whose `0` is `0deg` —
+ * `10-radar`'s twelve-o'clock spoke and its first angle label, both
+ * of which must survive. And **exactly zero** rather than a
+ * tolerance, because §4.6 puts `radius = 0` on the pole exactly.
+ *
+ * **★ It tests the PROJECTED position and not the domain value**,
+ * which is what makes it narrow. §4.3 gives a radius channel the
+ * range `[0, ceiling]`, so *a tick equal to the domain's minimum*
+ * is the case that lands here — and a ladder that never reaches its
+ * own minimum does not (`min="3"` with a step of 5 puts its first
+ * ring at a real radius, and nothing is dropped). A `reverse`d
+ * radius scale puts its **maximum** on the pole instead, and the
+ * same one test finds it. **`--hdml-inner-radius` is NOT a
+ * counter-example**, though it reads like one: it supplies
+ * `hdml-arc`'s synthetic `r0` and leaves §4.3's range alone, so a
+ * doughnut's radius grid still has a tick at the pole and still
+ * loses it.
+ *
+ * @param guide - The resolved guide.
+ * @param along - A position along its own channel.
+ * @returns Whether that position is the pole.
+ */
+export function atPole(guide: ResolvedGuide, along: number): boolean {
+  return guide.pole !== null && !guide.first && along === 0;
+}
+
+/**
  * The **full ring** a guide draws when its own channel is the
  * angular one — §6.5's *"a full arc"*.
  *

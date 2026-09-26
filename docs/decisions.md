@@ -1840,6 +1840,83 @@ the pole and every radius unchanged — plus **three** `anchor`/`baseline` value
 label's anchoring follows its angle: `range`, now at the 6 o'clock position, anchors `middle`
 where at 216° it anchored `end`.
 
+## A radial guide draws nothing at the pole, and an empty grid says so
+
+Project 017 R11, implementation step 08. A guide repeating along a polar plane's **second**
+channel reaches `radius = 0`, and that position is not a locus on the radius axis — it is the
+one point every angle shares. Two of the four guides had nothing to draw there and drew
+something anyway:
+
+- **`hdml-grid`** spans the other channel at each position, and at the pole that span has
+  **no extent**. `09-polar-area` emitted `M 186 170 A 0 0 0 1 1 186 170 … Z`, and `10-radar`
+  the polygon spelling of the same thing — a closed path whose six corners are all the pole.
+- **`hdml-label`** hangs its run off `guidePlacement`'s outward normal, and at the pole that
+  vector is the zero vector. The derivation already *noticed*, answering `middle`/`middle` —
+  the truthful answer to a question with no direction — and then painted the run anyway.
+
+Found the way 017's other defects were found: by **looking at the rendered page**.
+`09-polar-area` writes `count="4"` and its own live checklist promised *"four of them"*; it
+drew three rings, one of them invisible, and printed `0B` at the centre. The corpus asserted
+all of it as correct, including `10-radar`'s degenerate hexagon, which sat in a committed
+golden on a page R11 never mentions.
+
+**`guide-spec.ts`'s `atPole(guide, along)` is the whole predicate**, and each of its three
+conditions excludes a case the corpus has. A **pole** excludes every cartesian guide. **Not
+the plane's first channel** excludes an *angular* guide, whose `0` is `0deg` — widening it
+there takes `10-radar`'s twelve-o'clock spoke and its first angle label, which the corpus
+proves by failing four `10-radar` tests under exactly that mutation. And **exactly zero**,
+because §4.6 puts `radius = 0` on the pole exactly. Three consequences worth having in one
+place:
+
+- **It tests the projected position, not the domain's first value.** §4.3 gives a radius
+  channel the range `[0, ceiling]`, so a tick *equal to the domain minimum* is what lands
+  there; a ladder that never reaches its own minimum drops nothing, and a `reverse`d radius
+  scale puts its **maximum** on the pole and the same one test finds it.
+- **`--hdml-inner-radius` is not a counter-example**, though it reads like one. It supplies
+  `hdml-arc`'s synthetic `r0` and leaves §4.3's range alone, so a doughnut's radius grid still
+  has a tick at the pole and still loses it.
+- **`hdml-tick` is deliberately not a caller.** Its glyph is *centred* on its point and needs
+  neither an extent across the other channel nor a direction to hang off, so a dot at the pole
+  is a real, visible mark. The rule is about geometry that degenerates there, not about zero.
+
+**Suppress *and* diagnose, and the diagnostic's condition is the interesting half**
+*(decided 2026-09-26, with the user)*. R11 left the shape open — *"suppress it, or emit it and
+diagnose it"* — and the answer was both, with one narrowing. A rule reading *"a ring was
+suppressed"* would fire on `09-polar-area` and `10-radar` **on every frame, on documents that
+are correct**, because every zero-based radius scale on a pole-centred plane has its minimum
+tick at the pole; it would be the only report in the suite that fires on a right chart. The
+condition is therefore *the grid has no ring left*: a new `DiagnosticCode`
+**`radius-grid-at-pole`, reported under V2**, on `colliding-angle-bands`' and
+`palette-exhausted`'s precedent, so **SPEC §11's checklist is unchanged** — still 20 V-rules
+and 6 W-rules, and a `W7` was declined for the second step running. `CODES` is now **24**.
+
+**Its element is the grid and not the scale**, which is where it parts from its two siblings.
+Their fact is a property of the resolved domain alone and holds with or without any consumer;
+this one needs the **`count` the grid itself wrote**, and two grids on one scale can ask for
+different ladders. §3.5 then makes the grid its own error **unit** (a guide has no container
+ancestor), so blanking it is a no-op on a guide that is already empty and **the marks keep
+painting** — which is what makes an *error* proportionate here. It is reported from `scene()`
+during COMPUTE and drained by the binding pass, `all-rows-dropped`'s route, because a
+column-derived radius domain has no ladder until the frame ran.
+
+**What it catches is the cost 017 accepted and left live.** R11's cause 1 — §4.8's ceiling
+ladder making `count` an upper bound over a *quantised* reachable set — was decided at step 02
+as **documentation only**, and its named cost was `count="2"` → zero visible rings. Measured
+on the live page against the real domain `0 … 450 B`, the reachable tick counts are **{1, 3,
+5, 10}**: `count="2"` picks a 500 B step, the ladder yields the single tick `{0}`, and after
+R11 the grid draws nothing at all. The cost stays — `ticks-numeric.ts` is untouched by this
+step — and the silence does not.
+
+**Blast radius, measured rather than inherited.** R11 named five places; the corpus has
+**two pages and three views**. `08-pie-doughnut` declares no guide at all and `12-coverage`
+B's gauge has an *angle* label only. Five nodes were removed and not one moved:
+`09-polar-area` A loses its pole ring and its `0K`, B its pole ring, `10-radar` its degenerate
+hexagon and its `0` — the project's first **structural** golden change, where every move
+before it was coordinates (`page-10`'s `nodeCount` literal, 28 → 26). In pixels it is
+**58 px** on one view: `09-polar-area` is byte-identical, because guides are declared before
+marks and document order is paint order, so its `0B` had been *under* the wedges rather than
+on top of them.
+
 ## `hdml-split-by` is published and unimplemented
 
 Found by step 35's manifest check. `HDML_TAG_NAMES` has **33** members — 12 data + 21

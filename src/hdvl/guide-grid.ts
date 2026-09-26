@@ -18,6 +18,7 @@ import type { ResolvedGuide } from "./guide-spec";
 import { paintSuppressed } from "./subscribe";
 import { strokePaint } from "./mark";
 import {
+  atPole,
   guideGroup,
   guideLine,
   guidePoint,
@@ -25,6 +26,7 @@ import {
   resolveGuide,
   tickSpecOf,
 } from "./guide-spec";
+import { reportRadiusGridAtPole } from "./validate";
 import {
   GRID_ATTRS_LIST,
   HDVL_FAMILIES,
@@ -207,9 +209,25 @@ export class HdmlGridElement extends HdvlElement {
     const radial = guide.pole !== null && !guide.first;
     const shape = (guide.measured.props.get(P_SHAPE) ?? "").trim();
     const nodes: SceneNode[] = [];
+    // ★ 017 R11: how many rings were dropped **for being at the
+    // pole**, which is not the same question as how many nodes are
+    // missing — `ringOf` drops a polygon of under two vertices for
+    // its own, unrelated reason. Counted here, at the one place that
+    // can tell the two apart.
+    let poles = 0;
     // A tick whose value does not project is dropped by `ticksFor`
     // before it is seen here, so §4.7 needs no restatement.
     for (const tick of guide.scale.ticks(tickSpecOf(this))) {
+      // ★ 017 R11's cause 2, hoisted out of `ringOf` so the test
+      // reads once for both of §6.5's shapes: a circle at the pole
+      // is a zero-radius arc and a polygon at the pole is a closed
+      // path of coincident corners, and **both** are a node no zoom
+      // can show. `atPole` is false for every cartesian guide and
+      // for an angular one, so this line is invisible to them.
+      if (atPole(guide, tick.at)) {
+        poles++;
+        continue;
+      }
       const node = radial
         ? ringOf(guide, tick.at, shape, span, paint)
         : guideLine(
@@ -220,6 +238,15 @@ export class HdmlGridElement extends HdvlElement {
       if (node !== null) {
         nodes.push(node);
       }
+    }
+    // ★ And the one case where suppressing it is not enough: the
+    // pole was the grid's ONLY position, so it now draws nothing at
+    // all. See {@link reportRadiusGridAtPole} — deliberately not
+    // *"a ring was suppressed"*, which is true of every zero-based
+    // radius grid ever written and would report both corpus pages
+    // on every frame.
+    if (poles > 0 && nodes.length === 0) {
+      reportRadiusGridAtPole(this);
     }
     return guideGroup(this, guide.measured, nodes);
   }

@@ -20,6 +20,7 @@ import { fillPaint } from "./mark";
 import { localeOf } from "./scale";
 import { formatCompactSet } from "./kernel/format-skeleton";
 import {
+  atPole,
   guideAcross,
   guideGroup,
   guidePlacement,
@@ -211,6 +212,18 @@ export class HdmlLabelElement extends HdvlElement {
     const paint = fillPaint(m, null);
     const nodes: SceneNode[] = [];
     for (let i = 0; i < ticks.length; i++) {
+      // ★ 017 R11's cause 2, the label half. A run at the pole has
+      // no outward normal to hang off — `guidePlacement` already
+      // says so, answering `middle`/`middle` — and it lands on the
+      // one point every angle of the chart shares, under every mark
+      // the page draws. `09-polar-area`'s `0B` was painting there.
+      // The text set is still formatted over ALL the ticks (§4.9's
+      // coherence is a property of the set, and dropping a member
+      // before `textsOf` could change the shared compact prefix),
+      // so this skips the NODE and not the value.
+      if (atPole(guide, ticks[i].at)) {
+        continue;
+      }
       const at = guidePoint(guide, ticks[i].at, across);
       // ★ PER TICK, not once for the set. Under a plane composing
       // in view space every run answers the same — the normal is

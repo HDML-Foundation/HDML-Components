@@ -278,13 +278,20 @@ suite("hdvl/guide-polar — §6.5 about a pole", () => {
     const nodes = groupFor(view, "hdml-grid", "radius").nodes;
     // ★ R12/R18: the radii ARE `scale.ticks(spec)`'s positions.
     const at = ticksOf(view, "radius", { count: 4 }).map((t) => t.at);
-    assert.isAbove(at.length, 0);
-    assert.lengthOf(nodes, at.length);
+    assert.isAbove(at.length, 1);
+    // ★ 017 R11 — **minus the one at the pole.** The ladder still
+    // yields it (the assertion below is on `at`, the scale's own
+    // answer) and the grid no longer draws it: a zero-radius arc
+    // is a node no zoom can show.
+    assert.strictEqual(at[0], 0);
+    const drawn = at.slice(1);
+    assert.lengthOf(nodes, drawn.length);
     nodes.forEach((node, i) => {
       assert.strictEqual(node.k, "arc");
       const ring = <Extract<SceneNode, { k: "arc" }>>node;
-      assert.closeTo(ring.r0, at[i], 1e-9);
-      assert.closeTo(ring.r1, at[i], 1e-9);
+      assert.isAbove(ring.r1, 0);
+      assert.closeTo(ring.r0, drawn[i], 1e-9);
+      assert.closeTo(ring.r1, drawn[i], 1e-9);
       assert.closeTo(ring.a0, 0, 1e-9);
       assert.closeTo(ring.a1, 360, 1e-9);
     });
@@ -310,9 +317,17 @@ suite("hdvl/guide-polar — §6.5 about a pole", () => {
       ),
     );
     const nodes = groupFor(view, "hdml-grid", "radius").nodes;
-    const at = ticksOf(view, "radius", { count: 2 }).map((t) => t.at);
+    const all = ticksOf(view, "radius", { count: 2 }).map(
+      (t) => t.at,
+    );
     const spokes = ticksOf(view, "angle", {}).map((t) => t.at);
     assert.lengthOf(spokes, 6);
+    // ★ 017 R11 covers BOTH of §6.5's shapes from one predicate.
+    // The polygon spelling of a ring at the pole is a closed path
+    // whose every corner is the pole, which is `10-radar`'s
+    // innermost "hexagon" before R11 landed.
+    assert.strictEqual(all[0], 0);
+    const at = all.slice(1);
     assert.lengthOf(nodes, at.length);
     nodes.forEach((node, i) => {
       assert.strictEqual(node.k, "path");
@@ -412,8 +427,15 @@ suite("hdvl/guide-polar — §6.5 about a pole", () => {
         <hdml-label channel="radius" step="25"></hdml-label>
       `),
     );
-    const at = ticksOf(view, "radius", { step: 25 }).map((t) => t.at);
-    assert.isAbove(at.length, 2);
+    const all = ticksOf(view, "radius", { step: 25 }).map(
+      (t) => t.at,
+    );
+    assert.isAbove(all.length, 3);
+    // ★ 017 R11 drops the pole from BOTH, which is what keeps them
+    // in step: the grid loses a ring and the label loses a run, so
+    // the two elements still index the same ladder.
+    assert.strictEqual(all[0], 0);
+    const at = all.slice(1);
     const rings = groupFor(view, "hdml-grid", "radius").nodes;
     const runs = groupFor(view, "hdml-label", "radius").nodes;
     assert.lengthOf(rings, at.length);
@@ -496,6 +518,130 @@ suite("hdvl/guide-polar — §6.5 about a pole", () => {
     noMinusZero(sceneOf(view), "scene");
   });
 
+  test("★ R11: a radius label at the pole is not drawn", async () => {
+    // R11's second half. `guidePlacement` already NOTICES that a
+    // run on the pole has no outward normal — it answers
+    // `middle`/`middle`, the truthful answer to a question with no
+    // direction — and then painted it anyway, on the one point
+    // every angle shares and under every mark on the page.
+    const view = await mount(
+      polar(html`
+        <hdml-label
+          channel="radius"
+          values="[0, 50, 100]"
+        ></hdml-label>
+      `),
+    );
+    const runs = groupFor(view, "hdml-label", "radius").nodes.map(
+      (n) => <Extract<SceneNode, { k: "text" }>>n,
+    );
+    // Three ticks, two runs, and NEITHER of them is the pole.
+    assert.lengthOf(runs, 2);
+    assert.deepEqual(
+      runs.map((r) => r.text),
+      ["50", "100"],
+    );
+    for (const run of runs) {
+      assert.isAbove(Math.hypot(run.x - CX, run.y - CY), 0);
+      assert.notStrictEqual(
+        `${run.anchor}/${run.baseline}`,
+        "middle/middle",
+      );
+    }
+  });
+
+  test("★ R11: a ladder missing its minimum keeps all", async () => {
+    // The rule is about the PROJECTED position, not about the
+    // domain's first value: §4.3 starts a radius range at 0, so a
+    // tick equal to the domain minimum is what lands on the pole.
+    // Here the ladder never produces one — so nothing is dropped,
+    // which is what stops this from being "the innermost ring is
+    // always suppressed".
+    const view = await mount(html`
+      <hdml-view aria-label="off" style="width: 200px; height: 200px">
+        <hdml-polar-plane style="padding: 0">
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-continuous-scale channel="radius" min="3" max="20">
+              <hdml-grid
+                channel="radius"
+                step="5"
+                style="--hdml-grid-shape: circle"
+              ></hdml-grid>
+              <hdml-label channel="radius" step="5"></hdml-label>
+              <hdvl-probe></hdvl-probe>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    const at = ticksOf(view, "radius", { step: 5 }).map((t) => t.at);
+    assert.lengthOf(at, 4);
+    assert.isAbove(at[0], 0);
+    assert.lengthOf(groupFor(view, "hdml-grid", "radius").nodes, 4);
+    assert.lengthOf(groupFor(view, "hdml-label", "radius").nodes, 4);
+  });
+
+  test("★ R11: an ANGULAR guide at zero is untouched", async () => {
+    // The in-suite control for the `!guide.first` condition. A
+    // full-turn angle scale puts its first category at `0deg`, so
+    // dropping the pole test's channel clause would take
+    // `10-radar`'s twelve-o'clock spoke and its first angle label
+    // with it. Both must survive, and a spoke STARTS at the pole
+    // by construction — it spans the radius range.
+    const view = await mount(
+      polar(
+        html`
+          <hdml-grid channel="angle"></hdml-grid>
+          <hdml-label channel="angle"></hdml-label>
+        `,
+        '["a","b","c","d","e","f"]',
+      ),
+    );
+    const spokes = groupFor(view, "hdml-grid", "angle").nodes;
+    const runs = groupFor(view, "hdml-label", "angle").nodes;
+    assert.lengthOf(spokes, 6);
+    assert.lengthOf(runs, 6);
+    const noon = <Extract<SceneNode, { k: "path" }>>spokes[0];
+    // Its low end IS the pole, and it is drawn.
+    near(noon.subpaths[0].start, 0, 0, "noon spoke, pole end");
+    const seg = noon.subpaths[0].segments[0];
+    near(
+      (<Extract<typeof seg, { k: "line" }>>seg).to,
+      0,
+      CEILING,
+      "noon spoke, rim end",
+    );
+    assert.strictEqual(
+      (<Extract<SceneNode, { k: "text" }>>runs[0]).text,
+      "a",
+    );
+  });
+
+  test("★ R11: a tick glyph at the pole IS drawn", async () => {
+    // `hdml-tick` is deliberately not a caller of the pole test. A
+    // glyph is CENTRED on its point and needs neither an extent
+    // across the other channel nor a direction to hang off, so a
+    // dot at the pole is a real, visible mark at a real position.
+    // The rule is about geometry that degenerates there.
+    const view = await mount(
+      polar(html`
+        <hdml-tick
+          channel="radius"
+          values="[0, 50]"
+          style="--hdml-tick-style: ellipse; --hdml-tick-width: 8px;
+                 --hdml-tick-height: 8px"
+        ></hdml-tick>
+      `),
+    );
+    const nodes = groupFor(view, "hdml-tick", "radius").nodes;
+    assert.lengthOf(nodes, 2);
+    const pole = <Extract<SceneNode, { k: "ellipse" }>>nodes[0];
+    assert.closeTo(pole.cx, CX, 1e-9);
+    assert.closeTo(pole.cy, CY, 1e-9);
+    assert.closeTo(pole.rx, 4, 1e-9);
+    noMinusZero(sceneOf(view), "scene");
+  });
+
   test("a polar guide scene survives structuredClone", async () => {
     // R2/R26 over every node kind this step added: an `arc` ring,
     // a closed polygon `path`, and text hung off a normal.
@@ -540,10 +686,11 @@ suite("hdvl/guide-polar — §6.5 about a pole", () => {
       0,
     );
     const rings = groupFor(view, "hdml-grid", "radius").nodes;
-    // `step="1"` over a [0, 100] radius domain: 101 rings, and the
-    // whole scene is those 101 nodes.
-    assert.lengthOf(rings, 101);
-    assert.strictEqual(nodes, 101);
+    // `step="1"` over a [0, 100] radius domain: 101 ticks, of which
+    // the one at the pole is not drawn (017 R11) — so 100 rings,
+    // and the whole scene is those 100 nodes.
+    assert.lengthOf(rings, 100);
+    assert.strictEqual(nodes, 100);
     assert.isBelow(nodes, 20000);
     // Every one of them carries eight vertices and is still one
     // node, so the vertex count never reaches the budget at all.

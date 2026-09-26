@@ -333,7 +333,12 @@ suite("corpus 10-radar", () => {
     const scene = goldenOf(page.views[0]);
     assert.deepEqual(structuredClone(scene), scene);
     assert.deepEqual(negativeZeros(sceneOf(page.views[0])), []);
-    assert.strictEqual(nodeCount(scene), 28);
+    // ★ 017 R11 took TWO nodes off this page, and both were
+    // invisible: the radius grid's innermost "hexagon", whose six
+    // corners were all the pole, and the radius label "0" printed
+    // on that same point under four polygons. 28 -> 26, and the
+    // pixels are unchanged but for the vanished "0".
+    assert.strictEqual(nodeCount(scene), 26);
     assert.isBelow(nodeCount(scene), 20000);
     assert.isFalse(page.views[0].matches(":state(error)"));
   });
@@ -359,61 +364,6 @@ const GOLDEN: Scene = {
       clip: false,
       clipPath: null,
       nodes: [
-        {
-          k: "path",
-          i: -1,
-          subpaths: [
-            {
-              start: {
-                x: 260,
-                y: 200,
-              },
-              segments: [
-                {
-                  k: "line",
-                  to: {
-                    x: 260,
-                    y: 200,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 260,
-                    y: 200,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 260,
-                    y: 200,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 260,
-                    y: 200,
-                  },
-                },
-                {
-                  k: "line",
-                  to: {
-                    x: 260,
-                    y: 200,
-                  },
-                },
-              ],
-            },
-          ],
-          closed: true,
-          vertices: [],
-          fill: null,
-          stroke: "rgb(203, 213, 225)",
-          strokeWidth: 1,
-          dash: null,
-        },
         {
           k: "path",
           i: -1,
@@ -1025,26 +975,6 @@ const GOLDEN: Scene = {
       clip: false,
       clipPath: null,
       nodes: [
-        {
-          k: "text",
-          i: -1,
-          x: 260,
-          y: 200,
-          text: "0",
-          anchor: "middle",
-          baseline: "middle",
-          font: {
-            family: "system-ui",
-            size: 10,
-            weight: "normal",
-            style: "normal",
-          },
-          decorative: false,
-          fill: "rgb(0, 0, 0)",
-          stroke: null,
-          strokeWidth: 0,
-          dash: null,
-        },
         {
           k: "text",
           i: -1,

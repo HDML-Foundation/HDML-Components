@@ -61,6 +61,7 @@ const CODES: Readonly<Record<DiagnosticCode, true>> = {
   "all-rows-dropped": true,
   "negative-pie-value": true,
   "varying-path-color": true,
+  "radius-grid-at-pole": true,
 };
 
 /**
@@ -2173,6 +2174,106 @@ suite("hdvl/validate — diagnostics", () => {
     assert.deepEqual(diagnosticsOf(view), []);
   });
 
+  test("★ 017 R11: a grid with only the pole errors", async () => {
+    // R11's SURVIVOR, and the case 017 deliberately left live.
+    // Cause 1 — §4.8's ceiling ladder makes `count` an upper bound
+    // over a QUANTISED reachable set — was decided at step 02 as
+    // documentation only. Its named cost is this: `count="2"` over
+    // `09-polar-area`'s own domain picks a 500 B step, the ladder
+    // yields the single tick {0}, and suppressing the degenerate
+    // ring at the pole (017 R11's fix) leaves the grid drawing
+    // NOTHING. The cost stays; the silence does not. (Decided
+    // 2026-09-26, with the user, at 017 step 08.)
+    const [, view] = await mount(html`
+      <hdml-view aria-label="r11" style="width: 200px; height: 200px">
+        <hdml-polar-plane>
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-continuous-scale
+              channel="radius"
+              min="0"
+              max="423559121966"
+            >
+              <hdml-grid channel="radius" count="2"></hdml-grid>
+              <hdvl-probe id="ok"></hdvl-probe>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    const grid = <Element>view.querySelector("hdml-grid");
+    assert.lengthOf(said("V2"), 1);
+    assert.strictEqual(
+      messageOf(said("V2")[0]),
+      "its only radius position is the pole, where a ring has " +
+        'no extent — use "step" or "values" to place rings',
+    );
+    assert.strictEqual(errs[0].detail.code, "radius-grid-at-pole");
+    assert.strictEqual(errs[0].detail.rule, "V2");
+    assert.strictEqual(errs[0].detail.channel, "radius");
+
+    // ★ The element AND the unit are the grid — §3.5 gives a guide
+    // with no container ancestor itself — so blanking is a no-op on
+    // a guide that is already empty and the rest of the chain is
+    // untouched. That is the whole reason an ERROR is proportionate
+    // here: nothing else stops painting.
+    assert.isTrue(grid.matches(":state(error)"));
+    const radial = <Element>(
+      view.querySelector('hdml-continuous-scale[channel="radius"]')
+    );
+    assert.isFalse(radial.matches(":state(error)"));
+    assert.isFalse(view.matches(":state(error)"));
+    const found = diagnosticsOf(view).filter(
+      (d) => d.code === "radius-grid-at-pole",
+    );
+    assert.lengthOf(found, 1);
+    assert.strictEqual(found[0].element, grid);
+    assert.strictEqual(found[0].unit, grid);
+
+    // …and a `step` the author can actually reach recovers it,
+    // which is what makes this a live rule and not a boot check.
+    lines.length = 0;
+    errs.length = 0;
+    grid.removeAttribute("count");
+    grid.setAttribute("step", "100000000000");
+    view.markDirty();
+    await quiesce(view);
+    assert.isFalse(grid.matches(":state(error)"));
+    assert.lengthOf(errs, 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+  });
+
+  test("★ 017 R11: a suppressed ring is not a fault", async () => {
+    // ★ The anti-noise claim, asserted rather than argued. EVERY
+    // zero-based radius scale on a pole-centred plane has its
+    // minimum tick at the pole, so a rule reading "a ring was
+    // suppressed" would fire on `09-polar-area` and `10-radar` on
+    // every frame — on documents that are correct. This grid drops
+    // its pole ring and keeps four, and says nothing.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="r11b"
+        style="width: 200px; height: 200px"
+      >
+        <hdml-polar-plane>
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-continuous-scale
+              channel="radius"
+              min="0"
+              max="423559121966"
+            >
+              <hdml-grid channel="radius" count="5"></hdml-grid>
+              <hdvl-probe id="ok"></hdvl-probe>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    const grid = <Element>view.querySelector("hdml-grid");
+    assert.isFalse(grid.matches(":state(error)"));
+    assert.lengthOf(errs, 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+  });
+
   test("★ 017 R8: a zero-length sweep collides too", async () => {
     // The other survivor: start === end puts every category on one
     // angle. Six values, ONE distinct position.
@@ -2296,7 +2397,14 @@ suite("hdvl/validate — diagnostics", () => {
     // NOT a new `WarningCode`: a `W7` would have amended SPEC §11's
     // checklist to add a seventh W-number beside the two above that
     // have no caller. `WARNINGS` is therefore still seven.
-    assert.lengthOf(Object.keys(CODES), 23);
+    //
+    // ★ **017 step 08 added the twenty-fourth, also with no rule**
+    // — `radius-grid-at-pole`, filed under **V2** on the same
+    // precedent (R11's one open question, decided 2026-09-26 with
+    // the user as "suppress AND diagnose"). Its element is the
+    // `hdml-grid` rather than the scale, because the ladder that
+    // produced nothing came from the grid's own `count`.
+    assert.lengthOf(Object.keys(CODES), 24);
     // …and the warning space, whose seventh member is V7's rather
     // than a W-rule's (step 27).
     assert.lengthOf(Object.keys(WARNINGS), 7);

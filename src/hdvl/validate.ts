@@ -88,6 +88,14 @@ import {
  * than a rule finding its code, because the gap it names was found
  * during implementation and not during sequencing. See
  * {@link checkPathColor}.
+ *
+ * **The twenty-third and twenty-fourth are 017's**, and both are
+ * that same exception rather than the rule: `colliding-angle-bands`
+ * (R8, step 07) and `radius-grid-at-pole` (R11, step 08). Each is a
+ * defect found by *looking at a rendered page*, filed under the
+ * existing **V2** so SPEC §11's checklist does not move, and each
+ * reports a chart that would otherwise be wrong in silence. See
+ * {@link checkAngleCollision} and {@link reportRadiusGridAtPole}.
  */
 export type DiagnosticCode =
   | "no-scale-in-scope"
@@ -112,7 +120,8 @@ export type DiagnosticCode =
   | "colliding-angle-bands"
   | "all-rows-dropped"
   | "negative-pie-value"
-  | "varying-path-color";
+  | "varying-path-color"
+  | "radius-grid-at-pole";
 
 /**
  * Warnings are machine-readable too — W5 and W6 in particular are
@@ -900,6 +909,13 @@ function paletteMessage(domain: number, palette: number): string {
   return (
     `${domain} color domain values but ${palette} palette ` +
     "colors — add colors to --hdml-palette or shorten the domain"
+  );
+}
+
+function radiusGridAtPoleMessage(): string {
+  return (
+    "its only radius position is the pole, where a ring has " +
+    'no extent — use "step" or "values" to place rings'
   );
 }
 
@@ -3084,7 +3100,10 @@ export function validateStructure(
  * **tag**. **Two clauses** ride along under V2, both because a
  * column-derived domain has no size until the frame ran: SPEC §9's
  * palette exhaustion ({@link checkPalette}) and 017 R8's angular
- * band collision ({@link checkAngleCollision}). V15 is a
+ * band collision ({@link checkAngleCollision}). A **third**, 017
+ * R11's pole-only radius grid, is drained here rather than checked
+ * here — it is decided in COMPUTE by the grid that met the ladder
+ * ({@link reportRadiusGridAtPole}). V15 is a
  * *behaviour* —
  * `nice` moving
  * derived endpoints only — and is asserted as one rather than
@@ -3205,6 +3224,82 @@ export function reportAllRowsDropped(
   const identity = identityOf(finding);
   for (const seen of memo.computed) {
     if (seen.element === scale && identityOf(seen) === identity) {
+      return;
+    }
+  }
+  memo.computed.push(finding);
+}
+
+/**
+ * ★ **017 R11's survivor** — a radius grid whose only position was
+ * the pole, so that suppressing it leaves the grid drawing nothing.
+ *
+ * R11 fixed the *chart* by suppressing the degenerate node
+ * (`guide-spec.ts`'s `atPole`): a ring at the pole has no extent and
+ * a label there has no direction, and both were emitted anyway.
+ * **What suppression cannot fix is the case where the pole was the
+ * only position there was** — `count="2"` over `09-polar-area`'s
+ * `[0, 423.6 B]` picks a 500 B step, §4.8's ladder yields the single
+ * tick `{0}`, and the author's `hdml-grid` now paints **nothing at
+ * all**. That is §1.5's silent wrong chart, and it is the case 017
+ * deliberately left live: R11's cause 1 (the ceiling ladder makes
+ * `count` an upper bound over a **quantised** reachable set) was
+ * decided at step 02 as documentation only, and its named cost was
+ * exactly this. The cost stays; the **silence** does not.
+ * *(Decided 2026-09-26, with the user, at 017 step 08 — R11's one
+ * open question, answered "suppress **and** diagnose".)*
+ *
+ * **★ Deliberately NOT *"a ring was suppressed"*.** Every zero-based
+ * radius scale on a pole-centred plane has its minimum tick at the
+ * pole, so that condition is true of `09-polar-area` and `10-radar`
+ * on every frame, of documents that are correct. It would be the
+ * only report in the suite that fires on a right chart. The
+ * condition is *the grid has no ring left*, which fires on neither
+ * corpus page and on the pathology alone.
+ *
+ * **Filed under V2 with its own `DiagnosticCode`**, exactly as
+ * {@link checkPalette} and {@link checkAngleCollision} are: §8.3's
+ * V2 row is the binding pass's *"does the delivered data fit this
+ * scale"* question, and a resolved domain whose ladder yields one
+ * position — the one position that cannot be drawn — is an answer of
+ * no. **SPEC §11's checklist is untouched**, still 20 V-rules and 6
+ * W-rules; a `W7` was declined at step 07 and is declined again here
+ * for the same reason.
+ *
+ * **★ The element is the GRID and not the scale**, which is where it
+ * parts company with its two siblings. Their fact is a property of
+ * the resolved domain alone and exists with or without any consumer;
+ * this one needs the **`count` the grid itself wrote**, and two
+ * grids on one scale can ask for different ladders and get different
+ * answers. Two consequences, both wanted: the message names the
+ * element the author must edit, and §3.5 makes the **unit** the grid
+ * too (a guide has no container ancestor), so blanking it is a no-op
+ * on a guide that is already empty and **the marks keep painting**.
+ *
+ * Reported from `scene()` during COMPUTE and drained by the binding
+ * pass, {@link reportAllRowsDropped}'s route and for its reason: a
+ * column-derived radius domain has no ladder until the frame ran. So
+ * it edge-triggers, dispatches `hdml-error` through the same path,
+ * and recovers when the author writes a `step`.
+ *
+ * @param el - The `hdml-grid` that drew no ring.
+ */
+export function reportRadiusGridAtPole(el: HdvlElement): void {
+  const view = resolutionOf(el)?.view;
+  if (view === undefined) {
+    return;
+  }
+  const memo = memoOf(view);
+  const finding = error(
+    "V2",
+    "radius-grid-at-pole",
+    el,
+    radiusGridAtPoleMessage(),
+    "radius",
+  );
+  const identity = identityOf(finding);
+  for (const seen of memo.computed) {
+    if (seen.element === el && identityOf(seen) === identity) {
       return;
     }
   }
