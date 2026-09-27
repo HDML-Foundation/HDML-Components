@@ -276,10 +276,15 @@ suite("hdvl/measure — the one computed-style pass", () => {
     assert.isFalse(measured(view, "hdml-line").clip);
   });
 
-  test("base and _hover come from one style", async () => {
+  test("base and its variants come from one style", async () => {
     // SPEC §9's two-mechanism argument, and the whole reason ONE
     // computed style per element per frame suffices: eleven marks
     // can paint base while one paints hover.
+    //
+    // Since 017 R7's step 09-1 this is a TWO-STATE matrix, so the
+    // negative half below asserts one of each state: a `--hover`
+    // the author did not write and an `--active` nobody has ever
+    // written, both reading back as the empty "no change" sentinel.
     const view = await fixture<HdmlViewElement>(html`
       <hdml-view style="width: 400px; height: 200px">
         <hdml-cartesian-plane>
@@ -287,7 +292,7 @@ suite("hdvl/measure — the one computed-style pass", () => {
             x="a"
             y="b"
             style="color: rgb(1, 2, 3);
-                   --hdml-fill-color_hover: rgb(7, 7, 7)"
+                   --hdml-fill-color--hover: rgb(7, 7, 7)"
           ></hdml-bar>
         </hdml-cartesian-plane>
       </hdml-view>
@@ -299,12 +304,17 @@ suite("hdvl/measure — the one computed-style pass", () => {
       "rgb(1, 2, 3)",
     );
     assert.strictEqual(
-      bar.props.get("--hdml-fill-color_hover")?.trim(),
+      bar.props.get("--hdml-fill-color--hover")?.trim(),
       "rgb(7, 7, 7)",
     );
-    // The other three variants stay the empty "no change" sentinel.
+    // Every other variant stays the empty "no change" sentinel —
+    // asserted in both states, since 09-1 registered sixteen.
     assert.strictEqual(
-      bar.props.get("--hdml-line-color_hover")?.trim(),
+      bar.props.get("--hdml-line-color--hover")?.trim(),
+      "",
+    );
+    assert.strictEqual(
+      bar.props.get("--hdml-fill-color--active")?.trim(),
       "",
     );
   });

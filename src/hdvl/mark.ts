@@ -718,15 +718,15 @@ function dashOf(style: string, width: number): number[] | null {
  * `fill: null`"*).
  *
  * §6.1's paint-resolution sentence — *a bound `color` channel wins
- * over `--hdml-fill-color` and over its `_hover` variant* — is
+ * over `--hdml-fill-color` and over its `--hover` variant* — is
  * written for the filled marks that are its common case. A stroked
  * mark's series colour is its **stroke**, and SPEC §9 gives
  * `--hdml-line-color` to *"stroked widgets"*, so that is what a
  * bound `color` wins over here. Both readings agree on the part
- * that matters: the channel wins. Neither `_hover` variant is read
- * at all — a per-mark hover value needs the renderer to know which
- * node is hovered, which `Paint` cannot express (SPEC §9 routes it
- * through the stroke variants at a later slice).
+ * that matters: the channel wins. No state variant is read at all
+ * — a per-mark hover value needs the renderer to know which node is
+ * hovered, which `Paint` cannot express (SPEC §9 routes it through
+ * the stroke variants at a later slice).
  *
  * @param m - The widget's measured snapshot.
  * @param color - The resolved `color`-channel paint, or `null`.
@@ -754,7 +754,7 @@ export function strokePaint(
  *
  * The fill is §6.1's paint sentence read literally: *a bound
  * `color` channel wins over `--hdml-fill-color` and over its
- * `_hover` variant*.
+ * `--hover` variant*.
  *
  * ── The outline, 017 R4 ──
  *
@@ -791,11 +791,12 @@ export function strokePaint(
  * `09-polar-area`'s comment relies on — *"a hover cue on
  * channel-colored wedges uses what the channel does not own"*.
  *
- * **Neither `_hover` variant is read**, here or in
- * {@link strokePaint}: a per-mark hover value needs the renderer to
- * know which node is hovered, which {@link Paint} cannot express.
- * `09`'s `--hdml-line-width_hover: 2.5px` is therefore still inert,
- * deliberately — 017 R7 owns it.
+ * **No state variant is read**, here or in {@link strokePaint}: a
+ * per-mark hover value needs the renderer to know which node is
+ * hovered, which {@link Paint} cannot express. `09`'s
+ * `--hdml-line-width--hover: 2.5px` is therefore still inert,
+ * deliberately — 017 R7 owns it, and step 09-2 is where it stops
+ * being true.
  *
  * @param m - The widget's measured snapshot.
  * @param color - The resolved `color`-channel paint, or `null`.

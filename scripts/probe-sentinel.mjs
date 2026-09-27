@@ -21,7 +21,7 @@
  *
  * THE PROPERTY LIST IS READ FROM THE REGISTRY SOURCE, never typed
  * here, for the same reason `SENTINEL_PROPERTIES` is built from it:
- * a thirty-sixth registered property must not be able to become
+ * a forty-eighth registered property must not be able to become
  * silently unobserved — including from the instrument that looks.
  * Probe values are derived from each property's **syntax**, so a new
  * property in an existing syntax class needs no edit at all.
@@ -53,7 +53,7 @@
  *                      half of the measurement — `allow-discrete`
  *                      can make discrete properties transition from
  *                      their INITIAL values, and a view holds dozens
- *                      of elements each carrying 35 of them, so a
+ *                      of elements each carrying 47 of them, so a
  *                      load-time frame storm is the risk the
  *                      per-change measurement cannot see.
  *

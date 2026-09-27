@@ -60,7 +60,7 @@
       /* band inner padding is CSS, not an attribute (SPEC §6) */
       hdml-ordinal-scale { --hdml-bandwidth: 0.7; }
 
-      hdml-bar { --hdml-fill-color: #1c8cf4; --hdml-fill-color_hover: #0f6ac2; }
+      hdml-bar { --hdml-fill-color: #1c8cf4; --hdml-fill-color--hover: #0f6ac2; }
       figure.floating hdml-bar { --hdml-fill-color: #f59e0b; }
 
       /* ---- validation notes: prose only, no hdml-* selector ---- */
@@ -196,7 +196,7 @@ from (
           <li>Bars occupy 70 % of their band, with visible gutters either side.</li>
           <li>The ceiling is derived from the data and rounded up, so Apple's bar stops just short of the top rather than touching it.</li>
           <li>Five dotted horizontal gridlines, aligned with the five y labels.</li>
-          <li>Hovering a bar darkens it (<code>--hdml-fill-color_hover</code>).</li>
+          <li>Hovering a bar darkens it (<code>--hdml-fill-color--hover</code>).</li>
         </ul>
       </section>
     </figure>

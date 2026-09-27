@@ -549,7 +549,7 @@ const SENTINEL_BOX = [
  * Every property whose change schedules a frame (§5.6, R24).
  *
  * **Built from {@link HDVL_PROPERTIES}, never by hand** — a
- * thirty-sixth registered property must not be able to become
+ * forty-eighth registered property must not be able to become
  * silently unobserved.
  */
 export const SENTINEL_PROPERTIES: readonly string[] = [
@@ -598,16 +598,34 @@ export const SENTINEL_MARKER: string = SENTINEL_PROPERTIES[0];
  * registered custom property whose syntax is a keyword list or `*`
  * is not interpolable, so without this line it fires nothing and a
  * change to it repaints only when some interpolable neighbour
- * happens to move as well. Measured on a live page with real data
- * on all three engines (017 R6): **fifteen of the thirty-five
- * registered properties were silently unobserved** — the six
- * `*`-typed (`--hdml-font-family`, `--hdml-curve-bezier-tangents`
- * and the four `_hover` variants) and the nine keyword lists — and
- * so were the two `<color>+` properties whenever the new list has a
- * DIFFERENT LENGTH from the old, because list interpolation is
- * defined only at equal lengths. `allow-discrete` revives every one
- * of them, on chromium, firefox and webkit, all of which report
+ * happens to move as well.
+ *
+ * **★ The measurement below is HISTORY and its numbers are not the
+ * registry's.** It was taken on a live page with real data on all
+ * three engines at 017 R6, when the registry held **thirty-five**
+ * properties; R7 took it to forty-seven at step 09-1, and 47 was
+ * never measured. The count is therefore left as measured and
+ * marked, never renumbered — only the variant *names* are respelled
+ * for R7's `--` separator.
+ *
+ * Measured (017 R6): **fifteen of the then-thirty-five registered
+ * properties were silently unobserved** — the six `*`-typed
+ * (`--hdml-font-family`, `--hdml-curve-bezier-tangents` and the four
+ * `--hover` paint variants that existed then) and the nine keyword
+ * lists — and so were the two `<color>+` properties whenever the new
+ * list has a DIFFERENT LENGTH from the old, because list
+ * interpolation is defined only at equal lengths. `allow-discrete`
+ * revives every one of them, on chromium, firefox and webkit, all of
+ * which report
  * `CSS.supports("transition-behavior", "allow-discrete")`.
+ *
+ * **What R7 added is covered by the same declaration, and that was
+ * measured rather than argued.** The twelve new state variants are
+ * all syntax `*`, so they land in the class the R6 measurement found
+ * silent and `allow-discrete` revives — and re-running the sweep at
+ * step 09-1 reported **47 registered · 47 schedule a frame · 0
+ * silent**, with all sixteen variants firing. Nothing in the
+ * mechanism is per-property.
  *
  * It costs nothing at load and nothing per change: a discrete flip
  * lands at 50 % of the 1 ms duration (0.5 ms) while the frame runs

@@ -417,11 +417,14 @@ suite("hdvl/schedule — the frame", () => {
     // 017 R6, and the reason it is a class and not a property.
     //
     // A transition runs only on an INTERPOLABLE property, and
-    // `HDVL_PROPERTIES` is not all interpolable: six are `*`, nine
-    // are keyword lists, and the two `<color>+` lists interpolate
-    // only against a list of the SAME LENGTH. Fifteen of the
-    // thirty-five were silently unobserved on all three engines
-    // until `ua.ts` gained `transition-behavior: allow-discrete`.
+    // `HDVL_PROPERTIES` is not all interpolable: eighteen are `*`,
+    // nine are keyword lists, and the two `<color>+` lists
+    // interpolate only against a list of the SAME LENGTH. Fifteen
+    // of the THEN-thirty-five were silently unobserved on all three
+    // engines until `ua.ts` gained
+    // `transition-behavior: allow-discrete` (R6's measurement, left
+    // as measured; R7's step 09-1 took the registry to 47 and every
+    // one of its twelve new variants is `*`-typed).
     //
     // ★ The gap this closes is a TESTING gap as much as a runtime
     // one. `ua.test.ts` asserts the sentinel LISTS every registered
@@ -429,7 +432,7 @@ suite("hdvl/schedule — the frame", () => {
     // works — and the two tests that drove it both picked an
     // interpolable property (`<length>` in `platform.test.ts`, the
     // `<color>` above). So the table below is keyed by SYNTAX
-    // CLASS, not by property: a thirty-sixth registration in an
+    // CLASS, not by property: a forty-eighth registration in an
     // existing class is covered the moment it is registered, and
     // one in a NEW class is what should make this test fail.
     //

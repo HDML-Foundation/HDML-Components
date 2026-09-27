@@ -287,7 +287,7 @@ suite("hdvl/mark-line — §6.1's stroked path", () => {
                   y="[0, 50, 100, 150]"
                   color='"North"'
                   style="--hdml-fill-color: red;
-                         --hdml-fill-color_hover: lime;
+                         --hdml-fill-color--hover: lime;
                          --hdml-line-color: blue"
                 ></hdml-line>
               </hdml-ordinal-scale>
@@ -300,13 +300,13 @@ suite("hdvl/mark-line — §6.1's stroked path", () => {
     const palette = splitColorList(prop(line, "--hdml-palette"));
     const stroke = path(view).stroke;
     // §6.1: the channel wins — over `--hdml-fill-color` and its
-    // `_hover` variant (SPEC §9 has no state exception), and over
+    // `--hover` variant (SPEC §9 has no state exception), and over
     // the stroke colour a stroked mark would otherwise take.
     assert.strictEqual(stroke, palette[0]);
     assert.notStrictEqual(stroke, prop(line, "--hdml-fill-color"));
     assert.notStrictEqual(
       stroke,
-      prop(line, "--hdml-fill-color_hover"),
+      prop(line, "--hdml-fill-color--hover"),
     );
     assert.notStrictEqual(stroke, prop(line, "--hdml-line-color"));
   });

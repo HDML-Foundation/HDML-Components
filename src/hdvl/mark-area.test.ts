@@ -385,7 +385,7 @@ suite("hdvl/mark-area — §6.1's filled band", () => {
                   y="[50, 100, 200]"
                   color='"North"'
                   style="--hdml-fill-color: red;
-                         --hdml-fill-color_hover: lime;
+                         --hdml-fill-color--hover: lime;
                          --hdml-line-color: blue"
                 ></hdml-area>
               </hdml-ordinal-scale>
@@ -397,11 +397,11 @@ suite("hdvl/mark-area — §6.1's filled band", () => {
     const area = areaOf(view);
     const node = path(view);
     // §6.1: the channel wins — over `--hdml-fill-color` AND over its
-    // `_hover` variant (SPEC §9 has no state exception).
+    // `--hover` variant (SPEC §9 has no state exception).
     assert.notStrictEqual(node.fill, prop(area, "--hdml-fill-color"));
     assert.notStrictEqual(
       node.fill,
-      prop(area, "--hdml-fill-color_hover"),
+      prop(area, "--hdml-fill-color--hover"),
     );
     // ★ …and the authored `--hdml-line-color: blue` above reaches
     // nothing — but 017 R4 changed WHY, and this assertion survived

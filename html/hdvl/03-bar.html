@@ -6,7 +6,7 @@
   direct static source). Shows: orientation DERIVED from which channel
   resolves to the band scale (one hdml-bar tag, no orientation
   attribute); floating bars via bound y0/y1; hover state styling via
-  the _hover suffix convention.
+  the --hover suffix convention.
 -->
 <html lang="en">
   <head>
@@ -37,7 +37,7 @@
       /* band inner padding is CSS, not an attribute (SPEC §6) */
       hdml-ordinal-scale { --hdml-bandwidth: 0.7; }
 
-      hdml-bar { --hdml-fill-color: #1c8cf4; --hdml-fill-color_hover: #0f6ac2; }
+      hdml-bar { --hdml-fill-color: #1c8cf4; --hdml-fill-color--hover: #0f6ac2; }
       figure.floating hdml-bar { --hdml-fill-color: #f59e0b; }
     </style>
   </head>

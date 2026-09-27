@@ -569,7 +569,7 @@ test may assert the **low** edge with `strictEqual` and must assert the far one 
 3's tolerance. `04-grouped-stacked` — `W = 544`, twelve categories, `--hdml-bandwidth: 0.75`
 — has no exact edge but `start`.
 
-Both are **filled**, so a bound `color` wins over `--hdml-fill-color` and over its `_hover`
+Both are **filled**, so a bound `color` wins over `--hdml-fill-color` and over its `--hover`
 variant. Since **017 R4** a filled mark *also strokes*: `--hdml-line-*` is its **outline**,
 and what keeps an unstyled one clean is the UA sheet's `--hdml-line-width: 0`, not the
 absence of the feature — see [the outline contract](#the---hdml-line--outline-on-a-filled-widget)
@@ -1252,8 +1252,9 @@ resolved scale, its own box and its computed style.
 
 ### The `--hdml-*` registry
 
-All chart appearance is CSS custom properties, and the **complete 35-property registry** —
-31 base properties plus the four `_hover` paint variants — is registered with
+All chart appearance is CSS custom properties, and the **complete 47-property registry** —
+31 base properties plus the **sixteen state variants** (the eight presentation-attribute
+properties × `{hover, active}`, 017 R7) — is registered with
 `CSS.registerProperty` at import time
 ([`src/hdvl/properties.ts`](../src/hdvl/properties.ts)). Every one of them **inherits**, which
 is what makes plane-level scoping and theme-at-the-view work. Registration is guarded
@@ -1311,9 +1312,12 @@ A grep for `fillPaint(` finds the file, not the host.
 The dash pattern is `strokePaint`'s own — a multiple of the stroke width, so `dashed` is
 `[w × 4, w × 3]` and `dotted` is `[w, w × 2]`. One function serves both halves.
 
-The four `_hover` variants are still **unimplemented** on both halves:
-`--hdml-line-width_hover: 2.5px` on `09-polar-area` is inert. A per-mark hover value needs
+The sixteen state variants are still **unimplemented** on both halves:
+`--hdml-line-width--hover: 2.5px` on `09-polar-area` is inert. A per-mark hover value needs
 the renderer to know which node is hovered, which the scene's `Paint` cannot express.
+**017 R7's step 09-1 renamed and expanded the registry and deliberately left the mechanism
+inert**; step 09-2 lands the generator that reads it, and corrects the `Paint` sentence
+above — which R7 measured to be false.
 
 **V12 — *"only registered `--hdml-*` properties appear in page CSS"* — is enforced at
 source, not at runtime**, and could not be otherwise: an unregistered custom property is
@@ -1321,7 +1325,7 @@ perfectly legal to the platform and simply never reaches an element, so from ins
 element there is nothing to see. Since step 34 `scripts/check-dist.mjs` reads
 `properties.ts` — the registry itself, never a second list — and checks every `--hdml-*`
 token in each corpus page's `<style>` bodies and inline `style=` attributes against it, the
-four `_hover` variants included. **V11** is source-time for the mirror reason (a data
+sixteen state variants included. **V11** is source-time for the mirror reason (a data
 element is inert in the display half) and is checked in the same place, against
 `@hdml/types`: known tags, published attributes on data elements, and the `{table}_{field}`
 compound on every `origin`/`field` inside a **model**-sourced frame.

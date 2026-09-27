@@ -11,11 +11,12 @@
  * style**, and it reads it **once per element per frame**, writing
  * nothing. That is §5.4 made mechanical rather than promised: one
  * `getComputedStyle` yields the box-level properties, the font, every
- * registered `--hdml-*` the element reads *and* its `_hover`
- * variant — which is the whole of SPEC §9's two-mechanism argument,
- * because base and hover values are simultaneously readable from one
- * computed style. Measured cost is ~10–25 µs per element, which is
- * why no per-property caching is specified; do not add any.
+ * registered `--hdml-*` the element reads *and* its `--hover` /
+ * `--active` variants — which is the whole of SPEC §9's
+ * two-mechanism argument, because base and state values are
+ * simultaneously readable from one computed style. Measured cost is
+ * ~10–25 µs per element, which is why no per-property caching is
+ * specified; do not add any.
  *
  * Two values are resolved here rather than passed through:
  * `currentcolor` (R16 — chromium and firefox compute the literal,
@@ -67,8 +68,8 @@ export interface Measured {
    *  resolve every `currentcolor` below (R16). */
   color: string;
   font: SceneFont;
-  /** Every registered `--hdml-*` and `_hover` variant, from
-   *  the SAME computed style. */
+  /** Every registered `--hdml-*` and its `--hover` / `--active`
+   *  variants, from the SAME computed style. */
   props: ReadonlyMap<string, string>;
   /** false when author CSS removed the change sentinel —
    *  the `transition` shorthand, or `transition-behavior`
@@ -138,7 +139,7 @@ function len(value: string, fallback: number): number {
  * a display element replaces our declaration wholesale and removes
  * detection. The list is compared by exact membership rather than
  * by substring, because `--hdml-line-width` is a prefix of
- * `--hdml-line-width_hover`.
+ * `--hdml-line-width--hover`.
  *
  * **Both longhands are checked, because the sentinel needs both.**
  * `transition-behavior: allow-discrete` is what makes the fifteen
@@ -159,8 +160,8 @@ function len(value: string, fallback: number): number {
  * The behaviour list is read **at the marker's own index**, cycling
  * as CSS does when the coordinating lists differ in length, rather
  * than at index 0: our own declaration is a single value against
- * forty-one properties, but an author who writes a list is entitled
- * to have it read positionally.
+ * fifty-three properties, but an author who writes a list is
+ * entitled to have it read positionally.
  *
  * An **empty** computed value means the engine does not implement
  * `transition-behavior` at all, not that an author disabled it.

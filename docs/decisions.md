@@ -1125,12 +1125,15 @@ added to it must keep doing so.
 interpolable.** That was missed when the sentinel landed and found on the live pages
 in project 017 (R6): changing `--hdml-font-weight` or `--hdml-font-family` in DevTools
 repainted nothing until some *other* property changed. Measured per property on a live
-page with real data, identically on chromium, firefox and webkit:
+page with real data, identically on chromium, firefox and webkit — **against the
+then-thirty-five-property registry**, which 017 R7's step 09-1 took to forty-seven; the
+counts below are left as measured, and the twelve properties R7 added are all `*`-typed,
+so they join the row this declaration already revives:
 
 | class | count | before | after |
 |---|---|---|---|
 | interpolable (`<length>`, `<color>`, `<number>`, `<angle>`, `<length-percentage>`) | 20 | fires | fires |
-| syntax `*` — `--hdml-font-family`, `--hdml-curve-bezier-tangents`, the four `_hover` | 6 | **silent** | fires |
+| syntax `*` — `--hdml-font-family`, `--hdml-curve-bezier-tangents`, the four `--hover` paint variants of the day | 6 | **silent** | fires |
 | keyword lists — `--hdml-line-style`, `--hdml-font-weight`, `--hdml-tick-style`, … | 9 | **silent** | fires |
 | `<color>+` **at a different list length** (`--hdml-palette`, `--hdml-color-interpolate`) | 2 | **silent** | fires |
 
@@ -1146,7 +1149,7 @@ rather than trusts.
 **Why 1264 tests missed it.** `ua.test.ts` asserts the sentinel *lists* every
 registered property — completeness of the list, never that being listed works — and
 both tests that drove a change picked an **interpolable** property. The tests are
-therefore now keyed by **syntax class**, not by property, so a thirty-sixth
+therefore now keyed by **syntax class**, not by property, so a forty-eighth
 registration in an existing class is covered the moment it is registered and one in
 a *new* class is what should fail.
 
@@ -1632,8 +1635,8 @@ geometry moved anywhere: `Paint` is spread into nodes whose coordinates are comp
 company with `strokePaint`. `09-polar-area`'s own comment depends on it: a hover cue on
 channel-coloured wedges uses *"what the channel does not own"*.
 
-The four `_hover` variants remain unread on both halves — `09`'s
-`--hdml-line-width_hover: 2.5px` is still inert. A per-mark hover value needs the renderer
+The sixteen state variants remain unread on both halves — `09`'s
+`--hdml-line-width--hover: 2.5px` is still inert. A per-mark hover value needs the renderer
 to know which node is hovered, which `Paint` cannot express; 017 R7 owns it.
 
 ## A point's glyph default is the sheet's, and it is 6px square
@@ -1916,6 +1919,71 @@ before it was coordinates (`page-10`'s `nodeCount` literal, 28 → 26). In pixel
 **58 px** on one view: `09-polar-area` is byte-identical, because guides are declared before
 marks and document order is paint order, so its `0B` had been *under* the wedges rather than
 on top of them.
+
+## Interaction-state variants are named `--hover`, and 09-1 left them inert
+
+Project 017 R7, implementation step 09-1. The registry's four `_hover` properties became
+**sixteen `--hover` / `--active` variants** and the registry went from 35 to **47**. Nothing
+reads them yet, and that is the intended end state of this step.
+
+**The separator is `--`, on the founder's call.** `_` was rejected outright
+(*"i don't like `_` in the name"*) and `--hdml-fill-color--hover` was probed valid on all
+three engines before being adopted. Two alternatives were live and both lose something the
+doubled dash keeps: `-hover` puts nothing in the name that marks the boundary, so a variant
+is indistinguishable from a base property by shape; and `--hdml-hover-fill-color` sorts by
+**state** instead of by property, scattering each property's family in a devtools panel.
+`--` sorts them adjacent — `--hdml-fill-color`, `--hdml-fill-color--active`,
+`--hdml-fill-color--hover` — and is the modifier idiom authors already know from BEM. The
+rename broke nothing, because all four old names were inert: only declarations that never
+did anything changed spelling.
+
+**Eight properties carry variants, and the boundary is architectural rather than budgetary.**
+The founder's answer on scope was *"we can add everything, but if it expensive we can cut"*;
+no cut was needed, because a generated state rule can only override what the renderer writes
+as a **presentation attribute** per node. That is exactly `stroke-width`, `stroke`,
+`stroke-dasharray`, `fill` and the four `font-*` — so `--hdml-line-width`, `--hdml-line-color`,
+`--hdml-line-style`, `--hdml-fill-color` and the four `--hdml-font-*`. The other 23 are not
+state-variable **and cannot be made so by this mechanism**: every geometry property is
+resolved in COMPUTE and baked into the scene, where no CSS rule can reach it, and the three
+palette properties are channel-colour *sources* resolved into per-node fills. Registering a
+ninth would add a property nothing can ever read — R7's own defect, repeated. Two of the
+eight carry a caveat that is documented rather than fixed: `--hdml-font-size` and
+`--hdml-font-weight` change text **metrics**, but text position and label boxes are measured
+in MEASURE and baked in COMPUTE, so a state variant paints larger text at the base position
+and can overflow its box. They are for emphasis, not for resizing.
+
+**Two states in v1, not four.** The founder's first instinct was to ship all four
+(*"it doesn't cost too much"*), and it was then measured that two of them would be **inert on
+arrival**: `:focus` can never match, because SVG shapes are not focusable and making them so
+needs `tabindex` per datum, which puts N tab stops in document order — an a11y regression; and
+`selected` is **not a CSS pseudo-class at all**, so it needs a selection model (what selects,
+single or multi, and an event) rather than a paint variant. Registering all four would have
+added sixteen properties nothing reads instead of eight. `hover` and `active` ship;
+`focus` and `selected` are documented for v2, and the generator takes a **state list** so
+they are a data change plus their own machinery.
+
+**This step deliberately shipped the input half alone.** The registry, every count that named
+35, and the four page declarations moved together; the generator that emits `${sel}` /
+`${sel}:hover` / `${sel}:active` into a constructed sheet is step 09-2. Splitting it that way
+is what makes the rename provable on its own terms — **zero goldens moved**, predicted first
+and then measured, because a renamed inert declaration cannot change a scene and no scene
+consumer changed. The cost of the expansion was measured at the same time: `./hdvl` grew
+**409.2 kB → 412.4 kB** minified (+3.2 kB, 0.8 %) and the frame count from navigation to
+settle is **unchanged**, so the 1.3× `getPropertyValue` harvest R7 flagged as a risk is not
+one. The fallback R7 named — skipping the variant harvest for elements whose generated rules
+are empty — is therefore **not implemented**, on the rule that a mitigation for a cost nobody
+measured is speculation.
+
+**One recorded number was deliberately not renumbered.** `ua.ts`'s R6 note
+(*"fifteen of the thirty-five registered properties were silently unobserved"*) is a
+**measurement**, not a count, and 47 was never measured — so it was reworded as history
+(*"the then-thirty-five"*) rather than updated, on the precedent this repo had already set
+twice in exactly those words. The same sentence appears in `ua.test.ts`, `schedule.test.ts`,
+`docs/architecture.md` and this file's own R6 table, and all five were treated identically.
+What keeps the claim *true* is that all twelve added properties are syntax `*`, so they land
+in the class `allow-discrete` already revives — and that was **measured, not argued**: the
+sentinel sweep re-run at 09-1 reports **47 registered · 47 schedule a frame · 0 silent**,
+all sixteen variants included. Nothing in the sentinel is per-property.
 
 ## `hdml-split-by` is published and unimplemented
 

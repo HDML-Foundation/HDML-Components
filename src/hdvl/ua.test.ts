@@ -261,7 +261,9 @@ suite("hdvl/ua — the element sheet", () => {
     );
     // The THIRD longhand (017 R6). Without it a transition runs
     // only on an interpolable property, and fifteen of the
-    // thirty-five registered ones are not.
+    // THEN-thirty-five registered ones were not (R6's measurement,
+    // left as measured; the registry is 47 since R7's step 09-1,
+    // whose twelve new `*`-typed variants this same line covers).
     assert.strictEqual(
       declared.getPropertyValue("transition-behavior"),
       "allow-discrete",
@@ -270,7 +272,7 @@ suite("hdvl/ua — the element sheet", () => {
       .getPropertyValue("transition-property")
       .split(",")
       .map((s) => s.trim());
-    // Built from HDVL_PROPERTIES, never by hand: a thirty-sixth
+    // Built from HDVL_PROPERTIES, never by hand: a forty-eighth
     // registered property must not be able to go unobserved.
     for (const def of HDVL_PROPERTIES) {
       assert.include(listed, def.name);

@@ -9,7 +9,7 @@ import "./index";
 import { HDVL_PROPERTIES, registerProperties } from "./properties";
 
 /**
- * SPEC §9's registry — complete at thirty-five, and intact after a
+ * SPEC §9's registry — complete at forty-seven, and intact after a
  * double registration (step-plan H5).
  *
  * Every name and initial below is **hardcoded** off SPEC §9. Read
@@ -55,18 +55,50 @@ const EXPECTED: [string, null | string][] = [
   ["--hdml-angle-end", "360deg"],
   ["--hdml-inner-radius", "0%"],
   ["--hdml-grid-shape", "circle"],
-  ["--hdml-line-width_hover", null],
-  ["--hdml-line-color_hover", null],
-  ["--hdml-line-style_hover", null],
-  ["--hdml-fill-color_hover", null],
+  ["--hdml-line-width--hover", null],
+  ["--hdml-line-width--active", null],
+  ["--hdml-line-color--hover", null],
+  ["--hdml-line-color--active", null],
+  ["--hdml-line-style--hover", null],
+  ["--hdml-line-style--active", null],
+  ["--hdml-fill-color--hover", null],
+  ["--hdml-fill-color--active", null],
+  ["--hdml-font-family--hover", null],
+  ["--hdml-font-family--active", null],
+  ["--hdml-font-size--hover", null],
+  ["--hdml-font-size--active", null],
+  ["--hdml-font-weight--hover", null],
+  ["--hdml-font-weight--active", null],
+  ["--hdml-font-style--hover", null],
+  ["--hdml-font-style--active", null],
 ];
 
-/** The four "no change in that state" sentinels (SPEC §9). */
-const HOVER = [
-  "--hdml-line-width_hover",
-  "--hdml-line-color_hover",
-  "--hdml-line-style_hover",
-  "--hdml-fill-color_hover",
+/**
+ * The sixteen "no change in that state" sentinels (SPEC §9, 017 R7)
+ * — the eight presentation-attribute properties × `{hover, active}`.
+ *
+ * Hardcoded off SPEC §9 like everything else here. Derived from
+ * `HDVL_PROPERTIES` it would assert nothing, and the point of the
+ * list is that **only these eight** carry variants: a ninth would
+ * register a property no generated rule can ever reach.
+ */
+const VARIANTS = [
+  "--hdml-line-width--hover",
+  "--hdml-line-width--active",
+  "--hdml-line-color--hover",
+  "--hdml-line-color--active",
+  "--hdml-line-style--hover",
+  "--hdml-line-style--active",
+  "--hdml-fill-color--hover",
+  "--hdml-fill-color--active",
+  "--hdml-font-family--hover",
+  "--hdml-font-family--active",
+  "--hdml-font-size--hover",
+  "--hdml-font-size--active",
+  "--hdml-font-weight--hover",
+  "--hdml-font-weight--active",
+  "--hdml-font-style--hover",
+  "--hdml-font-style--active",
 ];
 
 let probe: null | HTMLElement = null;
@@ -87,8 +119,8 @@ suite("hdvl/properties", () => {
     probe = null;
   });
 
-  test("the registry is exactly SPEC §9's 35", () => {
-    assert.lengthOf(HDVL_PROPERTIES, 35);
+  test("the registry is exactly SPEC §9's 47", () => {
+    assert.lengthOf(HDVL_PROPERTIES, 47);
     assert.deepEqual(
       HDVL_PROPERTIES.map((p) => p.name),
       EXPECTED.map(([name]) => name),
@@ -106,7 +138,7 @@ suite("hdvl/properties", () => {
   test("the sentinels carry no initial value", () => {
     // With syntax `*`, an OMITTED initialValue is the platform's
     // own spelling of "empty"; `""` is not equivalent everywhere.
-    for (const name of HOVER) {
+    for (const name of VARIANTS) {
       const def = HDVL_PROPERTIES.find((p) => p.name === name);
       assert.isDefined(def);
       assert.strictEqual(def?.syntax, "*");
@@ -144,14 +176,14 @@ suite("hdvl/properties", () => {
     assert.lengthOf(found, 2, value);
   });
 
-  test("the four hover variants are empty", () => {
-    for (const name of HOVER) {
+  test("the sixteen state variants are empty", () => {
+    for (const name of VARIANTS) {
       assert.strictEqual(valueOf(name), "", name);
     }
     assert.strictEqual(valueOf("--hdml-curve-bezier-tangents"), "");
   });
 
-  test("re-registering leaves all 35 intact", () => {
+  test("re-registering leaves all 47 intact", () => {
     // H5: `CSS.registerProperty` throws InvalidModificationError on
     // a duplicate, so a page that loads two builds registers twice.
     // With a LOOP-level try/catch the first duplicate would abort

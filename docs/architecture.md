@@ -482,7 +482,8 @@ Two consequences are load-bearing:
 [src/hdvl/measure.ts](../src/hdvl/measure.ts) calls `getComputedStyle` **once per
 element per frame** and nowhere else in `src/hdvl/`. One call yields the box-level
 properties, the font, every registered `--hdml-*` the element reads **and** its
-`_hover` variant — which is why one pass suffices for a hover model at all. Measured
+`--hover` / `--active` variants — which is why one pass suffices for a hover model at
+all. Measured
 over a nineteen-element view: ~0.3–0.7 ms for the whole pass, so no per-property
 caching is specified.
 
@@ -506,14 +507,16 @@ wholesale by any later rule, including one of ours.
 
 **`transition-behavior: allow-discrete` is what makes the sentinel cover the whole
 registry.** A transition runs only on an *interpolable* property, and fifteen of the
-thirty-five registered ones are not: the six with syntax `*` and the nine keyword
-lists. Without the third longhand, changing `--hdml-font-family` or
+**then-thirty-five** registered ones were not: the six with syntax `*` and the nine
+keyword lists. *(The numbers in this paragraph are R6's measurement, left as measured.
+017 R7's step 09-1 took the registry to **47**; all twelve properties it added are
+`*`-typed, so they fall in the class this declaration already revives.)* Without the third longhand, changing `--hdml-font-family` or
 `--hdml-line-style` schedules nothing, and the element repaints only when some
 interpolable neighbour happens to change too. The two `<color>+` properties are the
 same case in disguise — list interpolation is defined only between lists of equal
 length, so swapping an eight-colour palette for a five-colour one was also silent.
-Measured on a live page with real data on all three engines: **15 of 35 silent
-before, 0 of 35 after**, at no cost in frames — a page's frame count from navigation
+Measured on a live page with real data on all three engines: **15 of the then-35
+silent before, 0 of 35 after**, at no cost in frames — a page's frame count from navigation
 to settle is unchanged (~3 per view across the thirteen live pages).
 
 An author rule that removes any of this removes detection for that element, in

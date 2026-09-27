@@ -511,7 +511,7 @@ suite("hdvl/mark-bar — §6.1's band-filling rect", () => {
                   y="[50, 100]"
                   color='"North"'
                   style="--hdml-fill-color: red;
-                         --hdml-fill-color_hover: lime"
+                         --hdml-fill-color--hover: lime"
                 ></hdml-bar>
               </hdml-ordinal-scale>
             </hdml-continuous-scale>
@@ -522,9 +522,12 @@ suite("hdvl/mark-bar — §6.1's band-filling rect", () => {
     const bar = barOf(view);
     const fill = rects(view)[0].fill;
     // §6.1: the channel wins — over `--hdml-fill-color` AND over its
-    // `_hover` variant (SPEC §9 has no state exception).
+    // `--hover` variant (SPEC §9 has no state exception).
     assert.notStrictEqual(fill, prop(bar, "--hdml-fill-color"));
-    assert.notStrictEqual(fill, prop(bar, "--hdml-fill-color_hover"));
+    assert.notStrictEqual(
+      fill,
+      prop(bar, "--hdml-fill-color--hover"),
+    );
     // ★ And no outline, because this fixture authors no
     // `--hdml-line-width`: since 017 R4 a filled mark CAN stroke,
     // and what keeps this one clean is `ua.ts`'s `0` default

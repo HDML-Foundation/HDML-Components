@@ -33,24 +33,49 @@ const CURVE_TYPES =
   "cardinal | catmull-rom | monotone | step";
 
 /**
- * SPEC §9's registry, complete at thirty-five: thirty-one base
- * properties plus the four `_hover` paint variants.
+ * SPEC §9's registry, complete at forty-seven: thirty-one base
+ * properties plus the sixteen **state variants** — the eight
+ * presentation-attribute properties × `{hover, active}`.
  *
  * **Completeness is deliberate, not premature.** The three
- * `--hdml-legend-*` properties and the four `_hover` variants have
- * no reader until Slices E and H, but V12's premise — *every
- * `--hdml-*` in page CSS is registered* — is untestable while any
- * member is missing, and V12 gates the corpus. A property
- * registered "when its reader arrives" also falls back to
- * unregistered-custom-property semantics meanwhile: no syntax, no
- * initial value, and no transition, which would silently exclude it
- * from the frame sentinel.
+ * `--hdml-legend-*` properties had no reader until Slice H, and the
+ * sixteen state variants have none until 017 R7's generator (step
+ * 09-2), but V12's premise — *every `--hdml-*` in page CSS is
+ * registered* — is untestable while any member is missing, and V12
+ * gates the corpus. A property registered "when its reader arrives"
+ * also falls back to unregistered-custom-property semantics
+ * meanwhile: no syntax, no initial value, and no transition, which
+ * would silently exclude it from the frame sentinel.
  *
- * The four `_hover` variants and `--hdml-curve-bezier-tangents`
+ * ── Why exactly eight carry variants (017 R7) ──
+ *
+ * The boundary is **architectural, not budgetary**: a generated
+ * state rule can only override what the renderer writes as a
+ * **presentation attribute** per node, and that is exactly these
+ * eight — `stroke-width`, `stroke`, `stroke-dasharray`, `fill` and
+ * the four `font-*`. Every other registered property is either
+ * geometry, which COMPUTE bakes into the scene where no CSS rule can
+ * reach it, or a channel-colour *source* resolved into per-node
+ * fills. Adding a variant to one of those would register a property
+ * nothing can ever read — which is the defect R7 exists to close,
+ * not to repeat.
+ *
+ * ── The separator is `--`, on the founder's call (017 R7) ──
+ *
+ * `--hdml-fill-color--hover`, not `_hover`. The doubled dash is
+ * unmistakably a separator rather than part of a name, and it keeps
+ * a property and its variants adjacent when sorted.
+ *
+ * ── The initial is OMITTED, never `""` ──
+ *
+ * The sixteen state variants and `--hdml-curve-bezier-tangents`
  * **omit `initialValue`** rather than passing `""`. Their SPEC
- * initial is the empty "no change" sentinel, and with syntax `*` an
- * omitted initial is the platform's own spelling of that; `""` is
- * not equivalent on every engine.
+ * initial is the empty "no change in that state" sentinel, and with
+ * syntax `*` an omitted initial is the platform's own spelling of
+ * that; `""` is not equivalent on every engine. **Nothing may fall
+ * back to a literal here** — a registered property always computes
+ * to its initial value, so a literal default in a reader's second
+ * argument is unreachable code.
  */
 export const HDVL_PROPERTIES: readonly PropertyDefinition[] = [
   {
@@ -239,22 +264,82 @@ export const HDVL_PROPERTIES: readonly PropertyDefinition[] = [
     initialValue: "circle",
   },
   {
-    name: "--hdml-line-width_hover",
+    name: "--hdml-line-width--hover",
     syntax: "*",
     inherits: true,
   },
   {
-    name: "--hdml-line-color_hover",
+    name: "--hdml-line-width--active",
     syntax: "*",
     inherits: true,
   },
   {
-    name: "--hdml-line-style_hover",
+    name: "--hdml-line-color--hover",
     syntax: "*",
     inherits: true,
   },
   {
-    name: "--hdml-fill-color_hover",
+    name: "--hdml-line-color--active",
+    syntax: "*",
+    inherits: true,
+  },
+  {
+    name: "--hdml-line-style--hover",
+    syntax: "*",
+    inherits: true,
+  },
+  {
+    name: "--hdml-line-style--active",
+    syntax: "*",
+    inherits: true,
+  },
+  {
+    name: "--hdml-fill-color--hover",
+    syntax: "*",
+    inherits: true,
+  },
+  {
+    name: "--hdml-fill-color--active",
+    syntax: "*",
+    inherits: true,
+  },
+  {
+    name: "--hdml-font-family--hover",
+    syntax: "*",
+    inherits: true,
+  },
+  {
+    name: "--hdml-font-family--active",
+    syntax: "*",
+    inherits: true,
+  },
+  {
+    name: "--hdml-font-size--hover",
+    syntax: "*",
+    inherits: true,
+  },
+  {
+    name: "--hdml-font-size--active",
+    syntax: "*",
+    inherits: true,
+  },
+  {
+    name: "--hdml-font-weight--hover",
+    syntax: "*",
+    inherits: true,
+  },
+  {
+    name: "--hdml-font-weight--active",
+    syntax: "*",
+    inherits: true,
+  },
+  {
+    name: "--hdml-font-style--hover",
+    syntax: "*",
+    inherits: true,
+  },
+  {
+    name: "--hdml-font-style--active",
     syntax: "*",
     inherits: true,
   },

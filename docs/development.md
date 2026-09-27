@@ -602,10 +602,12 @@ It exists because the runtime detects a declarative style change with one instru
 1 ms CSS transition over every registered property (§5.6, R24) — and **a transition runs
 only on an interpolable property**. `ua.test.ts` asserts the sentinel *lists* every
 registered property and never that being listed works, and under exactly that guard
-**fifteen of the first thirty-five were silently unobserved** (project 017, R6).
+**fifteen of the first thirty-five were silently unobserved** (project 017, R6). The
+registry is **47** since R7's step 09-1, and every one of the twelve properties it added
+is `*`-typed — the class that measurement found silent.
 
 ```bash
-HDIO_TENANT_TOKEN=$TT node scripts/probe-sentinel.mjs                      # the 35-row sweep, 01-line
+HDIO_TENANT_TOKEN=$TT node scripts/probe-sentinel.mjs                      # the 47-row sweep, 01-line
 HDIO_TENANT_TOKEN=$TT node scripts/probe-sentinel.mjs html/hdvl-live/03-bar.html
 HDIO_TENANT_TOKEN=$TT PROBE_BROWSER=webkit node scripts/probe-sentinel.mjs
 HDIO_TENANT_TOKEN=$TT PROBE_LOADS=2 node scripts/probe-sentinel.mjs        # frames at load, all 13 pages
@@ -617,7 +619,7 @@ never one: the event is the mechanism, the frame is the claim.
 
 **The property list is parsed out of [src/hdvl/properties.ts](../src/hdvl/properties.ts),
 never typed into the script**, and probe values are derived from each property's
-*syntax* — so a thirty-sixth property in an existing syntax class needs no edit, for the
+*syntax* — so a forty-eighth property in an existing syntax class needs no edit, for the
 same reason `SENTINEL_PROPERTIES` is built from the registry rather than by hand. Each
 probe sets value A, waits for the page to quiesce, then sets B, so the measured change is
 the same whatever the live page's own CSS declares; a pair that does not move the computed
