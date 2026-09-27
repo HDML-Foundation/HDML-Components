@@ -573,3 +573,35 @@ export function textsOf(scene: Scene): string[] {
   }
   return out;
 }
+
+/**
+ * The **state sheet** a view generated this frame, as rule text.
+ *
+ * `states.ts` is the one reader of SPEC §9's sixteen state variants,
+ * and it writes a constructed sheet rather than anything a `Scene`
+ * can hold — so a page's `--hdml-fill-color--hover` is **invisible
+ * to every golden in this directory**, in both directions. Before
+ * this helper, a corpus page's state declaration was checked by
+ * `check-dist`'s V12 for its *spelling* and by nothing at all for
+ * its *effect*: a variant authored on a host whose paint cannot say
+ * it — `fill` on a stroked `hdml-line`, or any paint a bound `color`
+ * channel owns — is legal CSS, passes V12, and does nothing. That is
+ * exactly the class both of 017's false `<li>` promises came from,
+ * so a page that claims a state cue asserts the rule through this.
+ *
+ * The state sheet is the **last** adopted one by construction:
+ * `HdvlElement` prepends `elementSheet` and `view.ts` appends this,
+ * so an author's state rule beats the UA defaults.
+ *
+ * @param view - A mounted view.
+ * @returns The sheet's rules, newline-joined; `""` when empty.
+ */
+export function stateSheetOf(view: HdmlViewElement): string {
+  const sheets = view.shadowRoot?.adoptedStyleSheets ?? [];
+  const last = sheets[sheets.length - 1];
+  return last === undefined
+    ? ""
+    : Array.from(last.cssRules)
+        .map((r) => r.cssText)
+        .join("\n");
+}

@@ -5,8 +5,9 @@
   MOCK — see SPEC.md. Binding modes: subscription (local frame +
   direct static source). Shows: orientation DERIVED from which channel
   resolves to the band scale (one hdml-bar tag, no orientation
-  attribute); floating bars via bound y0/y1; hover state styling via
-  the --hover suffix convention.
+  attribute); floating bars via bound y0/y1; PER-DATUM interaction
+  states via the --hover and --active suffix convention, both on the
+  same property and visibly distinct from each other.
 -->
 <html lang="en">
   <head>
@@ -37,8 +38,22 @@
       /* band inner padding is CSS, not an attribute (SPEC §6) */
       hdml-ordinal-scale { --hdml-bandwidth: 0.7; }
 
-      hdml-bar { --hdml-fill-color: #1c8cf4; --hdml-fill-color--hover: #0f6ac2; }
-      figure.floating hdml-bar { --hdml-fill-color: #f59e0b; }
+      /* Per DATUM, not per element: a bar is one mark, so the pointer
+         picks out one of the five. The two states are a ladder —
+         #1c8cf4 base, darker on hover, darker still while held — and
+         :active is emitted AFTER :hover, so it wins while both hold.
+         Both are the FILL because nothing here binds `color`; a
+         channel-bound widget would have to cue with the outline
+         instead (see 09-polar-area). */
+      hdml-bar { --hdml-fill-color: #1c8cf4; --hdml-fill-color--hover: #0f6ac2;
+        --hdml-fill-color--active: #0b3d6f; }
+      /* The state variants cascade exactly as the base one does, so
+         a figure that overrides the base must override the ladder
+         too — otherwise C's amber bars turn BLUE on hover, which is
+         what this page did between 09-2 and 09-4. */
+      figure.floating hdml-bar { --hdml-fill-color: #f59e0b;
+        --hdml-fill-color--hover: #c27808;
+        --hdml-fill-color--active: #8a5205; }
     </style>
   </head>
   <body>

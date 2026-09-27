@@ -518,6 +518,28 @@ order-pinning clause is silent on `12-C`: with no effective `source` there is no
 resolve. `04-grouped-stacked` reaches the same silence from the other side, by declaring an
 `hdml-sort-by` — and the gate confirms both from the document rather than assuming them.
 
+#### ★ A state variant on a page is checked in ONE copy, and in one way
+
+Two asymmetries meet on the corpus pages, and between them they decide where an
+interaction-state declaration has to be authored.
+
+**`check-dist.mjs`'s `CORPUS_DIR` is `html/hdvl`.** V11 and V12 read that directory and
+nothing else, so a `--hdml-*` name written on a **mock** page is checked against the registry
+at build time and the *same* name on its `html/hdvl-live/` twin is checked by nothing. A
+variant authored only on the live twin ships misspelt and inert. **Author every new
+`--hdml-*` declaration on the mock twin as well** — 017's step 09-4 is the first change for
+which that mattered.
+
+**And V12 checks the *spelling*, never the *effect*.** A variant is legal CSS and the
+element cannot see it: `--hdml-fill-color--hover` on an `hdml-line` passes V12 and does
+nothing, because a stroked host's `fill` is structurally `null` and `states.ts` suppresses it
+(and so does a bound `color` channel, SPEC §10). No golden can see that either — the sheet is
+not a `Scene` — which is exactly how project 017 ended up with two pages promising a hover cue
+in prose that the runtime never painted. `corpus.ts`'s **`stateSheetOf(view)`** is what closes
+it: the three pages that author a state (`01-line`, `02-area`, `03-bar`) assert the generated
+rule, so a declaration authored where the mechanism cannot deliver it fails the gate instead
+of shipping as prose.
+
 ## Lint
 
 ```bash

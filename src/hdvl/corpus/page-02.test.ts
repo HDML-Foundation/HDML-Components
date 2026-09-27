@@ -7,12 +7,14 @@
 import { assert } from "@open-wc/testing";
 import "../index";
 import type { Scene } from "../scene";
+import type { HdvlElement } from "../base";
 import {
   ENGINE,
   assertRenders,
   goldenOf,
   mountCorpus,
   nodeCount,
+  stateSheetOf,
   stripText,
 } from "../../testing/corpus";
 import { subscriptionsOf } from "../subscribe";
@@ -93,6 +95,32 @@ suite("corpus 02-area", () => {
     assert.lengthOf(node.vertices, 12);
     const lower = node.vertices.slice(6);
     assert.strictEqual(new Set(lower.map((v) => v.y)).size, 1);
+  });
+
+  test("a FILLED whole-series mark cues with its fill", async () => {
+    // 01-line's counterpart, and the contrast the two pages exist to
+    // draw: same granularity — one node for the row set — opposite
+    // hit area. A filled mark is hovered anywhere inside it, so the
+    // fill itself is a cue the reader can land on; on 01-line the
+    // same granularity has to be aimed at a 2px stroke.
+    //
+    // It is also the case a width variant could NOT have made: this
+    // page declares no `--hdml-line-color`, so R4's opt-in outline
+    // leaves the base `stroke` at `none` and a `stroke-width` state
+    // would have painted nothing at all.
+    const page = await mountCorpus("02-area");
+    const views = Array.from(page.root.querySelectorAll("hdml-view"));
+    for (let i = 0; i < 2; i++) {
+      const area = <HdvlElement>views[i].querySelector("hdml-area");
+      const text = stateSheetOf(page.views[i]);
+      assert.lengthOf(text.split("\n"), 1);
+      assert.include(text, `data-w="${area.uid}"`);
+      assert.include(text, ":hover");
+      assert.match(text, /fill:\s*rgb\(74,\s*154,\s*232\)/);
+      // Nothing here is stroked-and-stated, so no dash is re-derived
+      // and no width is emitted — the rule is one declaration.
+      assert.notInclude(text, "stroke");
+    }
   });
 
   test("the golden holds on every engine", async () => {

@@ -7,6 +7,7 @@
 import { assert } from "@open-wc/testing";
 import "../index";
 import type { Scene } from "../scene";
+import type { HdvlElement } from "../base";
 import { FakeIo, mountFakeIo } from "../../testing/FakeIo";
 import {
   ENGINE,
@@ -16,6 +17,7 @@ import {
   nodeCount,
   numberCol,
   result,
+  stateSheetOf,
   stringCol,
   stripText,
 } from "../../testing/corpus";
@@ -130,6 +132,80 @@ suite("corpus 03-bar", () => {
     assert.isAbove(new Set(bars.map((r) => r.y)).size, 1);
     assert.isAbove(new Set(bars.map((r) => r.y + r.h)).size, 1);
     bars.forEach((r) => assert.isAbove(r.h, 0));
+  });
+
+  /** One state rule's `fill` value. */
+  function fillOf(rule: string): string {
+    return /fill:\s*([^;}]+)/.exec(rule)?.[1].trim() ?? "";
+  }
+
+  test("hover and active are two rules, per datum", async () => {
+    // The only page in the corpus that authors `--active`, and the
+    // only place the v1 state list is complete on a real document.
+    // Both states are the FILL, because nothing here binds `color`:
+    // a channel-bound widget would lose that paint to SPEC §10 and
+    // have to cue with the outline instead (09-polar-area does).
+    const page = await mountCorpus("03-bar");
+    const views = Array.from(page.root.querySelectorAll("hdml-view"));
+    for (let i = 0; i < 3; i++) {
+      const bar = <HdvlElement>views[i].querySelector("hdml-bar");
+      const rules = stateSheetOf(page.views[i]).split("\n");
+      assert.lengthOf(rules, 2);
+      for (const rule of rules) {
+        assert.include(rule, `data-w="${bar.uid}"`);
+      }
+      // ★ The EMISSION ORDER is the cascade, and it is observable:
+      // `:active` is written after `:hover`, so two rules of equal
+      // specificity resolve to the held colour while both hold.
+      assert.include(rules[0], ":hover");
+      assert.include(rules[1], ":active");
+    }
+  });
+
+  test("a state variant cascades like its base", async () => {
+    // ★ The wart 09-4 found. `figure.floating` overrides the base
+    // fill for view C, and between 09-2 and 09-4 it overrode nothing
+    // else — so C's amber bars took A's BLUE hover. Nothing could
+    // see it: the goldens hold only the base paint, and C's spec
+    // block claims no state. A variant is an ordinary custom
+    // property, so a figure that re-bases must re-ladder.
+    const page = await mountCorpus("03-bar");
+    const rules = [0, 1, 2].map((i) =>
+      stateSheetOf(page.views[i]).split("\n"),
+    );
+    // A and B share one ladder; C has its own, and both differ from
+    // every base.
+    assert.match(rules[0][0], /rgb\(15,\s*106,\s*194\)/);
+    assert.match(rules[0][1], /rgb\(11,\s*61,\s*111\)/);
+    assert.deepEqual(rules[1].map(fillOf), rules[0].map(fillOf));
+    assert.match(rules[2][0], /rgb\(194,\s*120,\s*8\)/);
+    assert.match(rules[2][1], /rgb\(138,\s*82,\s*5\)/);
+  });
+
+  test("each figure's three fills are all DIFFERENT", async () => {
+    // A page claiming a distinction a reader cannot see would be the
+    // false `<li>` class over again. The base is the SCENE's and the
+    // two states are the SHEET's, so the comparison spans both — the
+    // only assertion in this directory that does.
+    const page = await mountCorpus("03-bar");
+    for (let i = 0; i < 3; i++) {
+      const base = goldenOf(page.views[i]).groups.filter(
+        (g) => g.tag === "hdml-bar",
+      )[0].nodes[0].fill;
+      const rules = stateSheetOf(page.views[i]).split("\n");
+      const fills = [
+        String(base),
+        fillOf(rules[0]),
+        fillOf(rules[1]),
+      ];
+      // ★ Each of the three must EXIST before three can be distinct.
+      // Without this clause the assertion survives a missing rule —
+      // `fillOf(undefined)` is `""`, which is a third value — and the
+      // 09-4 control that drops `active` from `HDVL_STATES` passed it
+      // vacuously.
+      fills.forEach((f) => assert.notStrictEqual(f, ""));
+      assert.lengthOf([...new Set(fills)], 3, fills.join(" | "));
+    }
   });
 
   test("the goldens hold on every engine", async () => {

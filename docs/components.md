@@ -1404,11 +1404,32 @@ filled mark — a bar, a point, a wedge, an area — is hovered anywhere inside 
 `hdml-line` and `hdml-rule`, whose node is stroked with `fill: none`, are hovered **on the
 stroke only**. A series drawn at the initial `--hdml-line-width: 1.5px` is therefore a 1.5 px
 target, and an author who wants a whole-series hover cue to be comfortable to reach should
-say so with the width. It is the one place the granularity R7 defines — *the mark is the
+say so with the width. **And a DASHED series is narrower still: a gap paints nothing, so it
+hits nothing.** Measured on the live `01-line` at step 09-4 — 120 of 120 sampled centreline
+points on the solid series respond, **74 of 120** on the dashed one, against a dash duty cycle
+of `8 / (8 + 6)`; `isPointInStroke` and `ShadowRoot.elementFromPoint` agree with each other at
+67 of 120 and both honour the dash pattern. A dashed line is a legitimate thing to give a
+hover cue, but it is a **discontinuous** target, and a page that says *"hover the series"*
+should not imply otherwise. It is the one place the granularity R7 defines — *the mark is the
 element*, for `line` and `area` — meets a fact about hit areas rather than about paint, and
 it is what makes `hdml-area`'s whole-series hover easy and `hdml-line`'s precise. Both are
 exercised under real OS-level pointer input by
 [src/hdvl/states-pointer.test.ts](../src/hdvl/states-pointer.test.ts) (step 09-3).
+
+**Three corpus pages author the mechanism, and each one is a different case** (step 09-4).
+`01-line` gives `hdml-line` a `--hdml-line-width--hover`: the mark **is** the series, so the
+whole polyline responds, and the cue is the width because a stroked mark is a 2 px target —
+widening it is both the signal and what makes it easy to keep. Its dashed second series shows
+the derived `stroke-dasharray` re-generating at the state width. `02-area` is the same
+granularity with the opposite hit area — `hdml-area` is filled, so `--hdml-fill-color--hover`
+is reachable anywhere inside the band, and it is the case a width variant could *not* have
+made, since the page declares no `--hdml-line-color` and R4's outline is opt-in. `03-bar` is
+the per-datum case and the only page that authors `--active`, a three-step fill ladder whose
+held colour wins while both states hold. **A state variant is an ordinary custom property**, so
+`03-bar`'s `figure.floating` rule overrides the whole ladder and not only the base — override
+the base alone and those bars change hue under the pointer, which is what the page did between
+steps 09-2 and 09-4. All three assert the generated rule through `corpus.ts`'s
+`stateSheetOf`, because no `Scene` golden can see a sheet.
 
 ## Authoring example
 

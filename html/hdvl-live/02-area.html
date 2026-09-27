@@ -72,7 +72,15 @@
       hdml-label[channel="x"] { position: absolute; left: 0; right: 0; top: 100%; }
       hdml-label[channel="y"] { position: absolute; top: 0; bottom: 0; right: 100%; }
 
-      hdml-area { --hdml-fill-color: #7ebcf6; --hdml-curve-type: natural; }
+      /* The mark IS the series here, exactly as on 01-line — but this
+         one is FILLED, so it is hovered anywhere inside the band and
+         the cue can be the fill itself. That is the whole contrast
+         between the two pages: same granularity, opposite hit area.
+         hdml-area declares no --hdml-line-color, so a WIDTH variant
+         would paint nothing (R4 made the outline opt-in and the base
+         stroke is none) — which is why the cue is the fill. */
+      hdml-area { --hdml-fill-color: #7ebcf6; --hdml-curve-type: natural;
+        --hdml-fill-color--hover: #4a9ae8; }
       hdml-line {
         --hdml-line-width: 2px;
         --hdml-line-color: #1c8cf4;
@@ -233,6 +241,7 @@ from (
           <li>The lowest point is <b>August 2021 at 2.49 M</b>; the whole of 2021 sits in a 2.5–7.4 M trough.</li>
           <li>January 2022 steps up to <b>12.08 M</b> before the April spike.</li>
           <li><code>natural</code> curve: the outline is smooth, and because a natural spline overshoots it may dip slightly below zero between low points. That is the curve, not a bug.</li>
+          <li><b>Hover the band and the whole fill darkens</b> (<code>--hdml-fill-color--hover</code>). An <code>hdml-area</code> is <b>one</b> mark for the whole series, so there is nothing per-month to pick out — and because it is <b>filled</b>, anywhere inside the band works. That is the contrast with <code>01-line</code>, where the same granularity has to be aimed at a stroke. The blue line riding the top edge is painted after the area and carries no state of its own, so the topmost pixels hit the line instead.</li>
         </ul>
       </section>
     </figure>
@@ -271,6 +280,7 @@ from (
           <li><b>2003 is a one-year dip</b> to <code>100M-300M</code> inside an otherwise flat 2000–2004 run at <code>300M-600M</code>. Easy to miss, and a good test of band placement.</li>
           <li>A dashed red rule across the <code>300M-600M</code> band.</li>
           <li>Four y labels, bottom to top: <code>under 100M</code>, <code>100M-300M</code>, <code>300M-600M</code>, <code>over 600M</code>. The band strings are authored twice — in the scale's literal <code>values</code> and in the SQL <code>case</code> — so a mismatch shows up as an empty chart, not a warning.</li>
+          <li>The same <b>whole-series hover</b> as A, on a staircase: the fill darkens as one shape, every step included, because the band is one mark.</li>
         </ul>
       </section>
     </figure>

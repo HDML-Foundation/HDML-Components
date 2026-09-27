@@ -60,8 +60,22 @@
       /* band inner padding is CSS, not an attribute (SPEC §6) */
       hdml-ordinal-scale { --hdml-bandwidth: 0.7; }
 
-      hdml-bar { --hdml-fill-color: #1c8cf4; --hdml-fill-color--hover: #0f6ac2; }
-      figure.floating hdml-bar { --hdml-fill-color: #f59e0b; }
+      /* Per DATUM, not per element: a bar is one mark, so the pointer
+         picks out one of the five. The two states are a ladder —
+         #1c8cf4 base, darker on hover, darker still while held — and
+         :active is emitted AFTER :hover, so it wins while both hold.
+         Both are the FILL because nothing here binds `color`; a
+         channel-bound widget would have to cue with the outline
+         instead (see 09-polar-area). */
+      hdml-bar { --hdml-fill-color: #1c8cf4; --hdml-fill-color--hover: #0f6ac2;
+        --hdml-fill-color--active: #0b3d6f; }
+      /* The state variants cascade exactly as the base one does, so
+         a figure that overrides the base must override the ladder
+         too — otherwise C's amber bars turn BLUE on hover, which is
+         what this page did between 09-2 and 09-4. */
+      figure.floating hdml-bar { --hdml-fill-color: #f59e0b;
+        --hdml-fill-color--hover: #c27808;
+        --hdml-fill-color--active: #8a5205; }
 
       /* ---- validation notes: prose only, no hdml-* selector ---- */
       .page-intro { max-width: 780px; margin: 0 0 2.5rem; }
@@ -197,6 +211,7 @@ from (
           <li>The ceiling is derived from the data and rounded up, so Apple's bar stops just short of the top rather than touching it.</li>
           <li>Five dotted horizontal gridlines, aligned with the five y labels.</li>
           <li>Hovering a bar darkens it (<code>--hdml-fill-color--hover</code>).</li>
+          <li><b>Press and hold a bar and it darkens further</b> (<code>--hdml-fill-color--active</code>). Three distinct fills — base, hover, held — and the held one wins while the pointer is both over the bar and down, because <code>:active</code> is emitted after <code>:hover</code>. This is <b>per datum</b>: only the bar under the pointer moves, and it is the only page in the corpus that authors <code>--active</code>.</li>
         </ul>
       </section>
     </figure>
@@ -262,6 +277,7 @@ from (
           <li><b>2023 is a partial year</b> — the data stops at 2023-03-17 — so its bar (<b>124.17 → 157.38</b>) is shorter than 2022's. That is the data, not a rendering fault.</li>
           <li>The trend is monotone upward apart from 2016 (<b>22.37 → 29.67</b>), which sits below 2015's top.</li>
           <li>y labels are whole-dollar USD; five of them; nothing exceeds the authored 200 ceiling.</li>
+          <li><b>The hover and held cues here are AMBER, not A's blue.</b> A state variant is an ordinary custom property, so <code>figure.floating</code> overrides the whole ladder and not just the base — override only the base and these orange bars would turn blue under the pointer.</li>
         </ul>
       </section>
     </figure>

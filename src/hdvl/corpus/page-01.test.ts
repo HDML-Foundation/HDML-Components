@@ -7,6 +7,7 @@
 import { assert } from "@open-wc/testing";
 import "../index";
 import type { Scene } from "../scene";
+import type { HdvlElement } from "../base";
 import { FakeIo, mountFakeIo } from "../../testing/FakeIo";
 import {
   ENGINE,
@@ -16,6 +17,7 @@ import {
   nodeCount,
   numberCol,
   result,
+  stateSheetOf,
   stripText,
 } from "../../testing/corpus";
 import { subscriptionsOf } from "../subscribe";
@@ -128,6 +130,70 @@ suite("corpus 01-line", () => {
     const lines = scene.groups.filter((g) => g.tag === "hdml-line");
     assert.isNull(lines[0].nodes[0].dash);
     assert.isNotNull(lines[1].nodes[0].dash);
+  });
+
+  /** The one rule naming a widget's `uid`, or `""`. */
+  function ruleFor(text: string, el: HdvlElement): string {
+    return (
+      text
+        .split("\n")
+        .find((r) => r.includes(`data-w="${el.uid}"`)) ?? ""
+    );
+  }
+
+  test("the hover cue is a rule, not a scene", async () => {
+    // The page's whole-series claim, as a gate. `hdml-line` emits ONE
+    // node for the row set, so the selector that reaches a bar
+    // reaches a series — and the cue is the WIDTH, because a stroked
+    // mark is hovered on its stroke only.
+    const page = await mountCorpus("01-line");
+    const lines = Array.from(
+      page.root.querySelectorAll<HdvlElement>("hdml-line"),
+    );
+    assert.lengthOf(lines, 2);
+    const text = stateSheetOf(page.views[0]);
+    // EXACTLY two rules: the two lines' `:hover`. Nothing else on
+    // this page declares a variant — `hdml-rule`, the other stroked
+    // mark here, deliberately does not.
+    assert.lengthOf(text.split("\n"), 2);
+    for (const line of lines) {
+      const rule = ruleFor(text, line);
+      assert.notStrictEqual(rule, "", "no rule for a line");
+      assert.include(rule, ":hover");
+      assert.match(rule, /stroke-width:\s*5px/);
+      // ★ The stroked suppression, on a real page for the first
+      // time: `strokePaint` returns `fill: null` unconditionally, so
+      // a fill may never be emitted for one — and no golden can see
+      // that, because the scene's `fill` stays `null` either way.
+      assert.notMatch(rule, /(^|[^-])fill:/);
+    }
+  });
+
+  test("a width state RE-DERIVES the dashed pattern", async () => {
+    // `stroke-dasharray` is derived from style x width, so the
+    // dashed forecast must not keep gaps computed for 2px while it
+    // paints at 5px: dashOf("dashed", 5) is [20, 15]. The solid line
+    // gets `none`, because a state that moved either input has to be
+    // able to switch a base attribute OFF.
+    const page = await mountCorpus("01-line");
+    const lines = Array.from(
+      page.root.querySelectorAll<HdvlElement>("hdml-line"),
+    );
+    const text = stateSheetOf(page.views[0]);
+    assert.match(ruleFor(text, lines[0]), /stroke-dasharray:\s*none/);
+    // ★ The pattern's SERIALIZATION is engine-dependent: the
+    // generator writes `20 15` and chromium reads it back as
+    // `20, 15`. The numbers are the claim, the separator is not.
+    assert.match(
+      ruleFor(text, lines[1]),
+      /stroke-dasharray:\s*20(px)?[,\s]\s*15(px)?/,
+    );
+    // The BASE pattern is the scene's, and the state does not move
+    // it — which is the golden-blindness restated per page.
+    const groups = goldenOf(page.views[0]).groups.filter(
+      (g) => g.tag === "hdml-line",
+    );
+    assert.deepEqual(groups[1].nodes[0].dash, [8, 6]);
   });
 
   test("the golden holds on every engine", async () => {

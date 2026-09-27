@@ -8,6 +8,10 @@
     - literal arrays (numbers, strings, ISO date strings)
     - numeric scalar constant (y0="0")
     - string scalar constant (y0='"seed"', hdml-rule y='"growth"')
+  Also shows the WHOLE-SERIES interaction state on a FILLED mark, the
+  counterpart of 01-line's stroked one: hdml-area emits one node for
+  the whole row set, and because it is filled it is hovered ANYWHERE
+  inside the band rather than on an edge.
 -->
 <html lang="en">
   <head>
@@ -35,7 +39,15 @@
       hdml-label[channel="x"] { position: absolute; left: 0; right: 0; top: 100%; }
       hdml-label[channel="y"] { position: absolute; top: 0; bottom: 0; right: 100%; }
 
-      hdml-area { --hdml-fill-color: #7ebcf6; --hdml-curve-type: natural; }
+      /* The mark IS the series here, exactly as on 01-line — but this
+         one is FILLED, so it is hovered anywhere inside the band and
+         the cue can be the fill itself. That is the whole contrast
+         between the two pages: same granularity, opposite hit area.
+         hdml-area declares no --hdml-line-color, so a WIDTH variant
+         would paint nothing (R4 made the outline opt-in and the base
+         stroke is none) — which is why the cue is the fill. */
+      hdml-area { --hdml-fill-color: #7ebcf6; --hdml-curve-type: natural;
+        --hdml-fill-color--hover: #4a9ae8; }
       hdml-line { 
         --hdml-line-width: 2px; 
         --hdml-line-color: #1c8cf4;

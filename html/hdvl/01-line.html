@@ -8,7 +8,9 @@
     - numeric scalar constant (the target rule)
   Also shows: two sources in one chart (one widget each), dashed
   styling via CSS, domain precedence (scale column subscription wins
-  over widget union).
+  over widget union), and the WHOLE-SERIES interaction state — an
+  hdml-line is one mark, so `--hdml-line-width--hover` restyles the
+  series a pointer is on, and only that one.
 -->
 <html lang="en">
   <head>
@@ -41,8 +43,19 @@
       hdml-label[channel="y"] { position: absolute; top: 0; bottom: 0; right: 100%; }
 
       /* Marks */
+      /* The mark IS the series here: hdml-line emits ONE node for the
+         whole row set, so the hover variant restyles the series a
+         pointer is on. It is the WIDTH rather than the colour because
+         a stroked mark is hovered on its stroke only (SVG's
+         visiblePainted default), so a 2px series is a 2px target —
+         widening it is both the cue and what makes it easy to keep.
+         A DASHED series is narrower still: a gap paints nothing and
+         therefore hits nothing, so it is a target on its dashes only.
+         The dashed .forecast line matches this selector too, and its
+         stroke-dasharray is DERIVED from style x width, so the
+         pattern regenerates with the new width. */
       hdml-line { --hdml-line-width: 2px; --hdml-line-color: #1c8cf4;
-        --hdml-curve-type: linear; }
+        --hdml-curve-type: linear; --hdml-line-width--hover: 5px; }
       hdml-line.forecast { --hdml-line-color: #94a3b8; --hdml-line-style: dashed; }
       hdml-rule { --hdml-line-width: 1px; --hdml-line-style: dashed;
         --hdml-line-color: #dc2626; }
