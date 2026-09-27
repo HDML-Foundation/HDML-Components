@@ -45,10 +45,16 @@ const FALLBACK = HDVL_TAG_NAMES.FALLBACK;
  * the view edge"*.
  *
  * It is a named object rather than four numbers in a string
- * because the **guide placement rules below take their extent from
- * the same members**. A gutter and a guide box that disagreed would
- * either clip the guide at the view edge or leave dead space under
- * the plot, and neither is visible in a scene assertion.
+ * because it is read in **three** places that must agree: the
+ * plane's own `padding`, {@link LEGEND_CSS}'s inset, and — until
+ * 017 R2 — the extent of the guide placement rules below. R2 took
+ * the third away: every placed guide's cross-axis extent is now
+ * `0 !important` and reads nothing from here. What still has to
+ * hold is that the padding leaves room for the runs the guides
+ * paint into it, and **no scene assertion can see that** — a guide
+ * clipped at the view edge measures the same box as one with room
+ * to spare. `11-multi-plane` is where the gutter's size is
+ * load-bearing (see {@link ELEMENT_CSS}).
  */
 const GUTTER = { top: 8, right: 8, bottom: 24, left: 40 };
 
@@ -308,7 +314,7 @@ function tickGlyphRules(): string[] {
 /**
  * The guides SPEC §3 places **per channel** whose cross-axis extent
  * is the **runtime's** — zero, `!important`, unreachable from the
- * outer tree (017 R1).
+ * outer tree (017 R1, extended to `hdml-label` by R2).
  *
  * §3 places three guides per channel: an axis, its ticks and its
  * labels all sit in the same gutter, which is the whole point of a
@@ -317,31 +323,32 @@ function tickGlyphRules(): string[] {
  * {@link GUIDE_PLACEMENT}) — and neither is `hdml-legend`, which is
  * placed **once**, not per channel (see {@link LEGEND_CSS}).
  *
- * **★ But the three take TWO rules, not one, and the split is
- * load-bearing.** An axis is a line, and a tick's length is a
- * PROPERTY — `--hdml-tick-height` on an `x` tick and, since 017
- * R5 transposed the default, `--hdml-tick-width` on a `y` one
- * (see {@link tickGlyphRules}, which reads that same axis off
- * `cross` rather than deriving it twice). Neither guide reads its
- * own box **across** its channel, so a gutter extent there is a
- * number nothing consumes and every author idiom can trip over.
- * {@link guideRules} states why the two rules stay split even
- * where their declarations coincide.
- */
-const PLACED_LINE = [HDVL_TAG_NAMES.AXIS, HDVL_TAG_NAMES.TICK];
-
-/**
- * The guide that keeps the gutter extent, because it is the only
- * one with something to lay into it.
+ * **★ All three are LINES, and the name says which fact it is.**
+ * None of the three reads its own box **across** its channel. An
+ * axis is a line. A tick's length is a PROPERTY —
+ * `--hdml-tick-height` on an `x` tick and, since 017 R5 transposed
+ * the default, `--hdml-tick-width` on a `y` one (see
+ * {@link tickGlyphRules}, which reads that same axis off `cross`
+ * rather than deriving it twice). And a label's box supplies
+ * exactly **one** number, `guideAcross`'s `across`, because
+ * `guide-label.ts` never calls `ctx.measureText` — the run carries
+ * an `anchor` and a `baseline` and the renderer does the placing.
+ * So a gutter extent is, on every one of the three, a number
+ * nothing consumes and every author idiom can trip over.
  *
- * `hdml-label` was **excluded from R1 deliberately**: zeroing its
- * box would lay its text into nothing. R2 gives it a property
- * instead of a box and then joins it to {@link PLACED_LINE},
- * removing this row entirely — but R1 stands alone if R2 is ever
- * deferred, which is why these are two lists rather than one list
- * and a flag.
+ * **★ `hdml-label` was in a second list until 017 R2, and the
+ * reason given for it was never true.** The comment said zeroing
+ * the box *"would lay its text into nothing"*; there was no layout
+ * there to lose. R1 left the label alone out of caution rather
+ * than necessity, and R2 removed the second list. The label's box
+ * is now what R2 calls it: *the invisible line its text follows*.
+ * {@link guideRules} states why the three still take a rule each.
  */
-const PLACED_RUN = [HDVL_TAG_NAMES.LABEL];
+const PLACED_LINE = [
+  HDVL_TAG_NAMES.AXIS,
+  HDVL_TAG_NAMES.TICK,
+  HDVL_TAG_NAMES.LABEL,
+];
 
 /**
  * ★ SPEC §3's `hdml-legend` row — *"top-right **inside the plot
@@ -429,33 +436,34 @@ const LEGEND_CSS = [
  * `height: 100%` of an indefinite height. Hence {@link offsets}
  * resetting the far offset, and hence an extent being stated at all.
  *
- * **Which extent depends on what the guide does with it, which is
- * the R1 split.**
+ * **And since 017 R2 there is only ONE extent**, which is the
+ * second case: every {@link PLACED_LINE} gets **`0 !important`**.
+ * Here the *deliberate* zero is the correct answer rather than the
+ * trap above — a line has no thickness to place, so the box across
+ * the channel is a number nothing reads. Stating it as the gutter
+ * is what let an author over-constrain the box the other way —
+ * `left: 0` against our `right: 100%` **and** `width: 40px`, which
+ * CSS resolves by dropping `right`, putting the guide 40px (a
+ * scale's padding more on a real page) *inside* the plot. At zero
+ * the two idioms **converge**: with no extent, `right: 100%` and
+ * `left: 0` put the line in the same place, so it can no longer be
+ * shifted by which offset the author reached for. The `!important`
+ * is what guarantees the convergence, and `guideEdge` is what makes
+ * it free — it derives the drawn edge as whichever edge of this box
+ * is nearer the scale's centre, and a zero-extent box's two edges
+ * are one number, so the tie-break stops being reachable at all.
  *
- * - A {@link PLACED_RUN} — `hdml-label` — gets {@link gutter}, the
- *   very number that sets the plane's padding, because its box is
- *   where its text lays out.
- * - A {@link PLACED_LINE} — `hdml-axis`, `hdml-tick` — gets
- *   **`0 !important`**. Here the *deliberate* zero is the correct
- *   answer rather than the trap above: a line has no thickness to
- *   place, so the box across the channel is a number nothing reads.
- *   Stating it as the gutter is what let an author over-constrain
- *   the box the other way — `left: 0` against our `right: 100%`
- *   **and** `width: 40px`, which CSS resolves by dropping `right`,
- *   putting the axis 40px (a scale's padding more on a real page)
- *   *inside* the plot. At zero the two idioms **converge**: with no
- *   extent, `right: 100%` and `left: 0` put the line in the same
- *   place, so it can no longer be shifted by which offset the author
- *   reached for. The `!important` is what guarantees the
- *   convergence, and `guideEdge` is what makes it free — it derives
- *   the drawn edge as whichever edge of this box is nearer the
- *   scale's centre, and a zero-extent box's two edges are one
- *   number, so the tie-break stops being reachable at all.
+ * **★ The lock is the EXTENT and nothing else.** Both offsets stay
+ * the author's, which is why R2 ships no `--hdml-label-offset`:
+ * distance from the axis is expressed by moving the line, and
+ * `top: calc(100% + 8px)` still does exactly that.
  *
  * The corpus pages do not hit the `auto`-reset trap, because they
  * were written against no UA sheet at all and set three offsets
  * each. They hit the extent one — nine of the thirteen write the
- * `left: 0` idiom above — which is why R1's fix moves their goldens.
+ * `left: 0` idiom above on an axis or a tick — which is why R1's
+ * fix moved their goldens. **No page writes it on a label**, so
+ * R2's half of the lock is proved by `ua.test.ts` alone.
  */
 const GUIDE_PLACEMENT: Partial<
   Record<
@@ -465,36 +473,53 @@ const GUIDE_PLACEMENT: Partial<
       readonly offsets: readonly string[];
       /** The cross-axis extent's property. */
       readonly cross: "width" | "height";
-      /** {@link PLACED_RUN}'s extent, in px. */
-      readonly gutter: number;
     }
   >
 > = {
   x: {
     offsets: ["  top: 100%;", "  bottom: auto;"],
     cross: "height",
-    gutter: GUTTER.bottom,
   },
   y: {
     offsets: ["  right: 100%;", "  left: auto;"],
     cross: "width",
-    gutter: GUTTER.left,
   },
 };
 
 /**
- * {@link GUIDE_PLACEMENT} as CSS text — **two rules per channel**.
+ * {@link GUIDE_PLACEMENT} as CSS text — **one rule per tag per
+ * channel**, so six rules, all now carrying the same three
+ * declarations.
  *
- * **★ The rules stay split even where their declarations coincide,
- * and that is not cosmetic** (017 R1's second reason). DevTools
- * attributes a struck-through declaration to whichever selector of a
- * group it lists **first**, so while one grouped rule carried all
- * three tags, inspecting a misplaced **axis** pointed the author at
- * a **label**. Splitting {@link PLACED_LINE} from
- * {@link PLACED_RUN} makes the Styles pane name the element that is
- * actually wrong. Merging them back — or emitting the extent as a
- * second rule over the same group — would put the misdirection
- * back.
+ * **★ Identical declarations are emitted separately on purpose, and
+ * that is not cosmetic** (017 R1's second reason, generalised by
+ * R2). DevTools attributes a struck-through declaration to
+ * whichever selector of a group it lists **first**, so a grouped
+ * rule makes the Styles pane blame an element the author is not
+ * looking at. R1 found that with one rule over all three tags:
+ * inspecting a misplaced **axis** pointed the author at a
+ * **label**.
+ *
+ * R1 fixed it half way — two rules, but `hdml-axis` and
+ * `hdml-tick` still shared one, so a misplaced **tick** still
+ * pointed at an **axis**. R2 removes the second list, and merging
+ * what is left into one group of three would put R1's misdirection
+ * straight back. So the answer is neither list: **a rule per tag**,
+ * which costs three declarations a channel and makes the Styles
+ * pane able to name only the element that is actually wrong. It is
+ * also assertable as a shape — *no placement rule names more than
+ * one tag* — where *"this one rule omits `hdml-label`"* was only
+ * ever a statement about the list that happened to exist.
+ *
+ * **★ One cost, and it is a lookup cost rather than a cascade
+ * one.** `:host(hdml-tick[channel="y"])` is now written **twice**
+ * in this sheet — here for the extent, and in
+ * {@link tickGlyphRules} for R5's transposed glyph default. Two
+ * rules with one selector are ordinary CSS and cascade by order,
+ * so nothing renders differently; what breaks is any code that
+ * finds a rule *by its selector text*, which silently gets this
+ * one because `guideRules` is spliced first. `ua.test.ts` asks
+ * every such lookup what a rule DECLARES.
  *
  * @returns The rules, as sheet lines.
  */
@@ -506,22 +531,15 @@ function guideRules(): string[] {
     if (row === undefined) {
       continue;
     }
-    const selector = (tags: readonly string[]): string =>
-      tags
-        .map((tag) => `:host(${tag}[${attr}="${channel}"])`)
-        .join(",\n");
-    out.push(
-      `${selector(PLACED_LINE)} {`,
-      ...row.offsets,
-      `  ${row.cross}: 0 !important;`,
-      "}",
-      "",
-      `${selector(PLACED_RUN)} {`,
-      ...row.offsets,
-      `  ${row.cross}: ${row.gutter}px;`,
-      "}",
-      "",
-    );
+    for (const tag of PLACED_LINE) {
+      out.push(
+        `:host(${tag}[${attr}="${channel}"]) {`,
+        ...row.offsets,
+        `  ${row.cross}: 0 !important;`,
+        "}",
+        "",
+      );
+    }
   }
   return out;
 }

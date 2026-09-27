@@ -797,26 +797,30 @@ run off, and lands under every mark on the page. Both were emitted anyway until 
   pole, and a rule that fired there would fire on correct documents.
 
 **UA placement (SPEC §3).** An x-channel `hdml-axis` / `hdml-tick` / `hdml-label` is placed
-just below the plot (`top: 100%`), a y-channel one just left of it (`right: 100%`), each
-spilling into the plane's gutter — which is what the gutter is for, and why `hdml-label`
-takes its extent (`24px` high, `40px` wide) from the very numbers that set the plane's
-padding. `hdml-grid` needs **no rule of its own**: the generic `:host` box rule is already
+just below the plot (`top: 100%`), a y-channel one just left of it (`right: 100%`), and the
+**runs they paint** spill into the plane's gutter — which is what the gutter is for. None of
+the three takes an *extent* from it: since 017 R2 all three are lines (below).
+`hdml-grid` needs **no rule of its own**: the generic `:host` box rule is already
 `inset: 0`, which is SPEC §3's grid row verbatim.
 
 **★ A positional guide's cross-axis extent is the runtime's, not yours** (SPEC §3's one
-amendment to the reach rule, 2026-09-26; project 017 R1). `hdml-axis` and `hdml-tick` are
+amendment to the reach rule, 2026-09-26 for the axis and the tick, project 017 R1; extended
+to the label 2026-09-27, R2). Each of the three is
 placed by **two** declarations and sized by a third you cannot reach:
 
 ```css
-/* what the sheet emits, per channel */
-:host(hdml-axis[channel="y"]),
-:host(hdml-tick[channel="y"]) { right: 100%; left: auto; width: 0 !important }
-:host(hdml-label[channel="y"]) { right: 100%; left: auto; width: 40px }
+/* what the sheet emits — one rule per tag, per channel */
+:host(hdml-axis[channel="y"])  { right: 100%; left: auto; width: 0 !important }
+:host(hdml-tick[channel="y"])  { right: 100%; left: auto; width: 0 !important }
+:host(hdml-label[channel="y"]) { right: 100%; left: auto; width: 0 !important }
 ```
 
-An axis is a line, and a tick's length is a **property** rather than a box —
+An axis is a line; a tick's length is a **property** rather than a box —
 `--hdml-tick-height` on an x tick and, since 017 R5 transposed the default,
-`--hdml-tick-width` on a y one. **Neither guide reads its own box across its channel**, so a
+`--hdml-tick-width` on a y one; and a label's box supplies exactly **one** number, the edge
+its run hangs off, because `hdml-label` never calls `measureText` — the run carries an
+`anchor` and a `baseline` and the renderer does the placing. **No guide reads its own box
+across its channel**, so a
 width there was a number nothing consumed. It is `!important`
 because for important declarations the **inner** tree wins, which is the only thing that makes
 it enforceable — and because at a zero extent the two placement idioms **converge**:
@@ -824,14 +828,22 @@ it enforceable — and because at a zero extent the two placement idioms **conve
 Writing the natural `hdml-axis[channel="y"] { top: 0; bottom: 0; left: 0 }` met the UA's
 `right: 100%` *and* its `width: 40px`; CSS resolves that over-constraint by **dropping
 `right`**, and the axis landed a gutter's width inside the plot, drawn across the first mark,
-with no diagnostic. Everything else is still yours: both offsets, the extent *along* the
-channel, and **`hdml-label`'s box entirely** — a label needs a box to lay text into, so it
-keeps the gutter and still obeys an author rule.
+with no diagnostic. **Everything else is still yours: both offsets, and the extent *along*
+the channel.** `hdml-label[channel="x"] { top: calc(100% + 8px) }` still moves the line
+wherever you want it — which is why there is no `--hdml-label-offset`: distance from the axis
+is expressed by moving the line, and a property for the same distance would be a second
+mechanism for one thing.
 
-**The two rules are emitted separately on purpose.** DevTools attributes a struck-through
+R1 exempted `hdml-label` on the grounds that *"a label needs a box to lay text into"*. **That
+was never true of this element** — see `measureText` above — and R2 corrected it. Collapsing
+the box moved no text on any page: `guideEdge` already returned the edge nearer the scale's
+centre, which is the edge the collapse leaves behind.
+
+**The six rules are emitted separately on purpose.** DevTools attributes a struck-through
 declaration to whichever selector of a group it lists **first**, so while all three tags shared
 one rule, inspecting a misplaced *axis* pointed you at a *label*. If you are debugging guide
-placement in the Styles pane, the rule that names your element is the rule that is moving it.
+placement in the Styles pane, the rule that names your element is the rule that is moving it —
+and since R2 that is a rule naming **only** your element.
 
 **`box-sizing: border-box` is in that generic rule, and it binds in exactly one place** — an
 element that authors a **size** *and* carries padding. Under `inset: 0` with `width: auto`
@@ -1290,7 +1302,7 @@ Five things an author needs from this, and each is a test in `ua.test.ts` or
   for, and `properties.ts` reads the same as before.
 - **That `0` is a *normal* declaration, and an author rule beats it.** `hdml-point
   { --hdml-line-width: 1px }` from the page wins, on all three engines. It is deliberately
-  **not** the `!important` of R1's cross-axis extent, two rules away in the same sheet: R1
+  **not** the `!important` of R1's cross-axis extent, a few rules away in the same sheet: R1
   locks the author out of a box, this exists so the author decides.
 - **Set the width on a selector that matches the widget, not on an ancestor.** The
   properties inherit, but inheritance applies only where the element has no declaration of

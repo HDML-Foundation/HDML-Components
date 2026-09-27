@@ -1539,7 +1539,9 @@ exists.
 
 So `hdml-axis` and `hdml-tick` now take `0 !important` across their channel, in a rule
 of their own, and `hdml-label` keeps the gutter — it lays text into its box, so zeroing
-it would be the bug rather than the fix.
+it would be the bug rather than the fix. *(**That last clause was false when it was
+written**, and project 017 R2 corrected it on 2026-09-27 — see the next entry.
+`hdml-label` now takes the same `0 !important`, and the rules are emitted one per tag.)*
 
 **`!important` is the mechanism, not emphasis.** At a zero cross extent the two
 placement idioms **converge**: `right: 100%` and `left: 0` put the line in the same
@@ -1560,7 +1562,8 @@ should find it where the placement contract is, not by reading a source comment.
 value. DevTools attributes a struck-through declaration to whichever selector of a group
 it lists **first**, so while all three tags shared one rule, inspecting a shifted *axis*
 pointed the author at a *label*. Merging them back — or emitting the extent as a second
-rule over the same three-tag group — puts the misdirection back.
+rule over the same three-tag group — puts the misdirection back. *(R2 took that
+argument at its word and finished it: one rule per tag. Next entry.)*
 
 **What it cost.** Ten of the thirteen corpus pages moved goldens, and the move has two
 shapes that are worth telling apart: **every** axis/tick group's box loses its cross
@@ -1580,6 +1583,66 @@ of contradicting it: extent **along** the channel, none **across** it. The one o
 zero-box guard in the suite (`base.test.ts`'s *"nothing in the fixture is a 0x0 box"*)
 holds, because its fixture carries no positional guide — a fact worth knowing before
 adding one to it.
+
+## A label's box is a line too, and the placement rules are one per tag
+
+Project 017 R2, implementation step 10-2 — the second of R2's four parts, and the one that
+finishes R1 above.
+
+**`hdml-label` joins the zero-cross-extent rule.** R1 excluded it, and the reason it gave —
+zeroing the box *"would lay its text into nothing"* — **was never true of this element**.
+[`guide-label.ts`](../src/hdvl/guide-label.ts) does not call `ctx.measureText`: the `text`
+node it emits carries an `anchor` and a `baseline` and the renderer does the placing. The box
+supplies exactly **one** number, `guideAcross`'s `across`. There was no layout there to lose,
+and R1 held the tag back out of caution rather than necessity.
+
+**The lock is the extent and nothing else.** Both offsets stay the author's, which is why R2
+ships no `--hdml-label-offset` — distance from the axis is expressed by moving the line, and a
+property for the same distance would be a second mechanism for one thing.
+`hdml-label[channel="x"] { top: calc(100% + 8px) }` still moves it; `{ height: 12px }` does
+not. Both halves are `ua.test.ts` tests, and they have to be: **no corpus page writes the
+over-constraining idiom on a label** — every cartesian page writes the non-over-constrained
+`left: 0; right: 0; top: 100%` form — so a green suite proves nothing about the lock's reach
+on its own. An over-broad R1 that locked the offsets too was measured to be caught by
+**exactly one** test in the repo, the new *★ an author still moves the label's line*.
+
+**It cost ten pages their label boxes and moved no text at all.** Forty-five box literals over
+ten of the thirteen corpus pages; `08-pie-doughnut` has no label, and `09-polar-area` /
+`10-radar` are polar, where `guideAcross` takes the `pole !== null` branch and never reads a
+box. Not one `text` node's coordinates changed on any page, because `guideEdge` returns the
+edge of the box nearer the scale's centre and collapsing the extent leaves exactly that edge
+behind. The thirteen live pages re-render **29/29 byte-identical** against a same-session
+pre-build.
+
+**And the rules are now emitted one per tag — six, not two.** This was a real decision, taken
+rather than inherited. R1's second reason is a DevTools fact: a struck-through declaration is
+attributed to whichever selector of a group is listed **first**, so a grouped rule blames an
+element the author is not looking at. Three options were on the table:
+
+| option | why not / why |
+|---|---|
+| one group of three, the literal reading of the merge | puts back exactly the misdirection R1 split apart, and would mean deleting the note that warns against it |
+| **one rule per tag** | ✅ taken. R1's own position is *"the rules stay split even where their declarations coincide"* — and the offsets already coincided — so this is R1's argument applied consistently rather than a new one. It also **generalises** it: `hdml-axis` and `hdml-tick` shared a rule until now, so a misplaced *tick* pointed at an *axis* |
+| two lists, both emitting `0 !important` | preserves the split with no behavioural difference, but `PLACED_LINE` / `PLACED_RUN` would name a distinction that no longer exists |
+
+It buys a stronger invariant than the one it replaces. `ua.test.ts` asserted *"the extent rule
+does not name `hdml-label`"* — a fact about which of two lists a tag was in. It now asserts
+*no placement rule names more than one tag*, which is a fact about what the author is shown
+and survives a fourth placed guide.
+
+**One cost, and it is a lookup cost rather than a cascade one.**
+`:host(hdml-tick[channel="y"])` is now written **twice** in the element sheet — once here for
+the extent, once in `tickGlyphRules` for R5's transposed glyph default. Two rules with one
+selector are ordinary CSS and cascade by order, so nothing renders differently; what breaks is
+code that finds a rule *by its selector text*, which silently gets the placement rule because
+`guideRules` is spliced first. It broke R5's own test at this step, which had been written
+when that selector was unique. Every such lookup now asks what a rule **declares**.
+
+**Bundle.** `./hdvl` went **414.3 → 414.2 kB**. The prediction was flat-or-larger, reasoning
+from the emitted CSS — six extra declarations a channel. That was the wrong artifact: the CSS
+is *generated at runtime*, so what ships is the generator, and the generator lost a `selector`
+closure, a `.map`, a `.join`, the `PLACED_RUN` array and two `gutter` fields. **A UA-sheet
+change's bundle cost is the cost of the generator, not of the CSS it generates.**
 
 ## A filled widget strokes, and the safety is a UA rule not a `null`
 

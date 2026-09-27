@@ -88,12 +88,19 @@ suite("corpus 00-minimal", () => {
     assert.strictEqual(scene.width, W);
     assert.strictEqual(scene.height, H);
 
-    // ★ 017 R1, derived rather than captured: an axis is a LINE, so
-    // its box has the plot's extent along its own channel and NO
-    // extent across it — the x axis on the plot's bottom edge, the y
-    // axis on its left edge. A label still takes the gutter, which is
-    // the half R1 left alone, and the pair is the whole split stated
-    // in numbers this page derives from `W` and `GUTTER` alone.
+    // ★ 017 R1 and R2, derived rather than captured: a placed
+    // guide is a LINE, so its box has the plot's extent along its
+    // own channel and NO extent across it — the x guides on the
+    // plot's bottom edge, the y guides on its left edge, in numbers
+    // this page derives from `W` and `GUTTER` alone.
+    //
+    // R1 zeroed the axis and left the label on the gutter
+    // (`h: 24` / `w: 40`, at `x: 0`); R2 brought the label to the
+    // same line, because its box supplies one number — the edge its
+    // run hangs off — and never lays text out. Nothing in the
+    // golden below moved with it: `guideEdge` already returned the
+    // edge nearer the scale's centre, and that is the edge the
+    // collapse leaves behind.
     const boxOf = (tag: string): Rect =>
       scene.groups.filter((g) => g.tag === tag).map((g) => g.box)[0];
     const boxesOf = (tag: string): Rect[] =>
@@ -103,9 +110,11 @@ suite("corpus 00-minimal", () => {
       { x: PLOT.x, y: PLOT.y, w: 0, h: PLOT.h },
     ]);
     assert.deepEqual(boxesOf("hdml-label"), [
-      { x: PLOT.x, y: PLOT.y + PLOT.h, w: PLOT.w, h: GUTTER.bottom },
-      { x: 0, y: PLOT.y, w: GUTTER.left, h: PLOT.h },
+      { x: PLOT.x, y: PLOT.y + PLOT.h, w: PLOT.w, h: 0 },
+      { x: PLOT.x, y: PLOT.y, w: 0, h: PLOT.h },
     ]);
+    // …which is to say: the same two boxes as the axis.
+    assert.deepEqual(boxesOf("hdml-label"), boxesOf("hdml-axis"));
     assert.deepEqual(boxOf("hdml-bar"), PLOT);
 
     const bars = scene.groups.filter((g) => g.role === "mark");
@@ -185,7 +194,7 @@ const GOLDEN: Scene = {
       widget: "",
       tag: "hdml-label",
       role: "guide",
-      box: { x: 40, y: 216, w: 432, h: 24 },
+      box: { x: 40, y: 216, w: 432, h: 0 },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -311,7 +320,7 @@ const GOLDEN: Scene = {
       widget: "",
       tag: "hdml-label",
       role: "guide",
-      box: { x: 0, y: 8, w: 40, h: 208 },
+      box: { x: 40, y: 8, w: 0, h: 208 },
       opacity: 1,
       filter: "none",
       visibility: "visible",
