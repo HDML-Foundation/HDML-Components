@@ -1371,7 +1371,7 @@ Five properties of the mechanism are worth knowing, because each is a decision:
 - **A rule may only emit what the widget's own paint can say.** A stroked host —
   `hdml-line`, `hdml-rule`, `hdml-axis`, `hdml-grid` — has `fill: null` unconditionally, so
   `fill` is never emitted for one; and a widget binding the `color` channel loses whichever
-  paint that channel resolves into, which is SPEC §10's rule (*"channel-bound paint wins over
+  paint that channel resolves into, which is SPEC §9's rule (*"channel-bound paint wins over
   `--hdml-fill-color` and its state variants alike"*) applied where the variants now land.
   `09-polar-area` was authored on exactly that: its hover cue is the **outline**, *"what the
   channel does not own"*. `hdml-legend` is a stated exception — it binds `channel="color"`,
@@ -1385,11 +1385,43 @@ Five properties of the mechanism are worth knowing, because each is a decision:
   `stroke-width` alone on a dashed line would thicken it while keeping gaps computed for the
   old width — a wrong picture with no error, which no scene golden could ever show.
 
-**`hover` and `active` are v1; `focus` and `selected` are v2** — not for cost, but because
-neither has a browser state to hang a rule on today: SVG shapes are not focusable, so
-`:focus` can never match, and `selected` is not a CSS pseudo-class at all and needs a
-selection *model*. The generator takes a **state list**, so adding either is a row plus its
-own machinery.
+#### `focus` and `selected` are v2, and not for cost
+
+**`hover` and `active` are the v1 state list.** `focus` and `selected` are defined in
+SPEC §9 and deliberately unregistered, and the reason is **not** budget — the founder's
+answer on scope was *"we can add everything, but if it expensive we can cut"*, and nothing
+was cut. It is that neither has a browser state to hang a generated rule on today, so
+registering them would ship **inert properties**, which is the exact defect 017 R7 was
+opened to close. Sixteen more of them, in place of the four it found.
+
+**`focus` — an SVG shape is not focusable, so `:focus` can never match.** The generator
+would emit a perfectly valid rule that no node ever satisfies. Making it real is not a
+generator change at all: it needs a focusable node per datum, and the naive spelling —
+`tabindex="0"` on every mark — puts **N tab stops in document order** on a chart with N
+data points, which is an accessibility **regression** and not a feature. The real shape is
+a roving-focus model: one tab stop for the widget, arrow keys moving a virtual cursor
+within it, and `aria-activedescendant` or an equivalent carrying the announcement. That is
+the keyboard-navigation model SPEC §10 already defers to v2 *"together with the
+keyboard-navigation/a11y model they depend on"*, and `focus` waits for it because it is a
+**consequence** of that model rather than an input to it.
+
+**`selected` — it is not a CSS pseudo-class at all.** There is no browser state named
+*selected* on an arbitrary element, so unlike the other three there is nothing for a
+generated rule to key off. It needs a selection **model** first, and the model is where all
+the questions are: what selects a mark (a click, an API call, both), whether selection is
+single or multi, whether it survives a data change, what event announces it, and whether
+the state lives on the element or in the host application. Those are product decisions with
+a data model behind them, and a paint variant is the last and smallest part of the answer.
+The likely implementation is a `:state(selected)` custom state on the node, set by whatever
+that model decides — at which point the generator emits for it like any other row.
+
+**What makes both cheap when they come**: `states.ts` generates from a **state list**
+([`HDVL_STATES`](../src/hdvl/states.ts)), iterating `${base}--${state}` over the eight
+properties. Adding a state is **one row in that array plus its own machinery** — for
+`focus`, the roving-focus model; for `selected`, the selection model — and no change to the
+generator, the harvest, the registry's shape, or the eight-property boundary. `properties.ts`
+derives the variants from the same two lists, so the registry follows the array. That is the
+flexibility the state list exists for, and the reason the v1 cut costs the v2 work nothing.
 
 Two caveats are documented rather than fixed. `--hdml-font-size` and `--hdml-font-weight`
 change text **metrics**, but text position and label boxes are measured in MEASURE and baked

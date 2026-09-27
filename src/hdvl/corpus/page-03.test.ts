@@ -143,7 +143,7 @@ suite("corpus 03-bar", () => {
     // The only page in the corpus that authors `--active`, and the
     // only place the v1 state list is complete on a real document.
     // Both states are the FILL, because nothing here binds `color`:
-    // a channel-bound widget would lose that paint to SPEC §10 and
+    // a channel-bound widget would lose that paint to SPEC §9 and
     // have to cue with the outline instead (09-polar-area does).
     const page = await mountCorpus("03-bar");
     const views = Array.from(page.root.querySelectorAll("hdml-view"));

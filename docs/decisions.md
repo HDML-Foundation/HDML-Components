@@ -1999,7 +1999,7 @@ all sixteen variants included. Nothing in the sentinel is per-property.
 Project 017 R7, implementation step 09-2. The output half.
 [`src/hdvl/states.ts`](../src/hdvl/states.ts) turns a frame's snapshot into
 `g[data-w="{uid}"] > *:hover` / `…:active` rules and the view adopts them on its own shadow
-root. **This is what dissolves SPEC §10's *"irreplaceable"* argument at its root**: §10 is
+root. **This is what dissolves SPEC §9's *"irreplaceable"* argument at its root**: §9 is
 right that base and state values must be simultaneously readable from one computed style, and
 right that a `:state()` rule on the element cannot express per-mark — its unstated leap was
 that the runtime must therefore *choose*. It does not. It emits both rules; the browser
@@ -2024,7 +2024,7 @@ assumption. Depending on `data-i` would tie the mechanism to the **index** it ex
 not need.
 
 **A rule may only emit what the widget's own paint can say**, which is two suppressions
-rather than one. SPEC §10's channel rule is the expected one: a widget binding `color` loses
+rather than one. SPEC §9's channel rule is the expected one: a widget binding `color` loses
 whichever paint that channel resolves into, so `09-polar-area`'s hover cue stays the
 **outline**, *"what the channel does not own"*. The one this step found is that **a stroked
 host has no fill at all** — `strokePaint` returns `fill: null` unconditionally — so
@@ -2068,6 +2068,64 @@ proves both the cascade and the per-group scoping. That last claim had been a sc
 since step 09 and is now a regression guard. Only `:hover` and `:active` themselves need real
 pointer input, and nothing in the 29-view corpus moves one — which is why they are their own
 step.
+
+### The harvest was measured four times and the fallback is not implemented — step 09-5
+
+R7 named one risk against the registry going from 35 to 47: `measure.ts` harvests **every**
+registered property per element per frame, so the variants are ~1.3× the base harvest. It
+also named a fallback — *skip the variant harvest for elements whose generated rules are
+empty* — and required the cost be measured before the mitigation was built. It was measured
+at every step of the slice, and it is a cost that does not exist:
+
+| step | frames per view | sentinel sweep |
+|---|---|---|
+| 09-1 (registry, nothing reads it) | 3.03 | 47 registered · 47 schedule a frame · 0 silent |
+| 09-2 (generator live) | 3.03 | 47 · 47 · 0 |
+| 09-3 (pointer gate) | 3.03 | 47 · 47 · 0 |
+| 09-4 (three pages author it) | **3.00** — 174 frames over 29 views × 2 loads | 47 · 47 · 0 |
+
+Across the 13 live pages at 47 properties, against **~3 at 35 properties** measured at step
+02. The 0.03 is **two frames across 58 view-loads** and it moved **down**, which is the wrong
+direction for a cost; no step of the slice added a frame. The sentinel sweep is
+byte-identical for four consecutive steps, so all sixteen variants land in the class
+`transition-behavior: allow-discrete` already revives and none of them is silent.
+
+**The fallback is therefore deliberately NOT implemented**, and that is a decision with
+evidence rather than an omission: a mitigation for a cost nobody has measured is speculation,
+and it would buy a per-element predicate and a second code path against a number that did not
+move. It is recorded here so a later reader finds the measurement rather than the gap. If the
+harvest ever does become hot — a much larger page, or a state list grown past two — the
+fallback is still the right shape, and `states.ts`'s per-widget emptiness check is already
+the predicate it would key off.
+
+### A mark's HIT AREA is a `docs/` fact, not a SPEC one — step 09-5
+
+Step 09-3 established *a mark is hovered where it paints*, and 09-4 sharpened it to **the
+painted parts of** its stroke, having measured a dashed series responding at 74 of 120
+sampled centreline points against 120 of 120 on its solid sibling. The question 09-5 settled
+is **where that belongs**, because it reads like an authoring contract and it is not one.
+
+It stays in [§ Interaction states](components.md#interaction-states-are-generated-rules) and
+is deliberately **not** added to SPEC. The fact is a property of *this renderer*: nothing in
+`src/` sets `pointer-events`, so every node keeps the SVG default `visiblePainted`. SPEC
+describes a renderer-neutral vocabulary — 016 built the scene behind a swappable renderer
+seam precisely so it would stay one — and a renderer that set `pointer-events: all`, or a
+canvas one doing its own hit-testing, would make a dashed line a continuous target without
+violating a single line of the spec. Writing the hit area into SPEC would promote an
+implementation property to a contract and then require every future renderer to reproduce it.
+What SPEC already says is the part that *is* contractual: hit-testing feeds the pointer events
+and is *"never the CSS box, which is the whole plot area"*.
+
+### SPEC's interaction-state prose is §9, and five years of citations said §10 — step 09-5
+
+Recorded because the mistake was load-bearing enough to reach the code. The *"irreplaceable"*
+paragraph, the channel rule and the v1/v2 deferral all live in **SPEC §9** (CSS
+custom-property registry). **§10** is *Events, DOM interface, and accessibility (sketch)* and
+owns the pointer events, the `index`, the absent `series` field and the a11y floor. The
+citation drifted one section down in 017 R7's own entry and was then copied into `states.ts`,
+`mark.ts`, `mark-bar.test.ts`, `states.test.ts`, `states-pointer.test.ts`, `page-03.test.ts`,
+this file and two others. All are corrected; the §10 citations that remain — events, `index`,
+`role="img"` — were checked one at a time and are right.
 
 ## `hdml-split-by` is published and unimplemented
 

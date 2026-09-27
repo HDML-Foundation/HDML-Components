@@ -750,7 +750,7 @@ export function dashOf(
  * asks it to: `states.ts` emits a `:hover` and an `:active` rule
  * over `g[data-w] > *` and the browser applies whichever matches,
  * per node. So this function resolves the **base** paint and
- * nothing else — and SPEC §10's channel rule is honoured there, by
+ * nothing else — and SPEC §9's channel rule is honoured there, by
  * suppressing the paint property a bound channel owns.
  *
  * @param m - The widget's measured snapshot.

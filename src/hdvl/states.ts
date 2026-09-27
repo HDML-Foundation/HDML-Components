@@ -5,7 +5,7 @@
  */
 
 /**
- * SPEC §9/§10's **interaction states**, generated (017 R7, step
+ * SPEC §9's **interaction states**, generated (017 R7, step
  * 09-2).
  *
  * `properties.ts` registers sixteen state variants — the eight
@@ -19,8 +19,8 @@
  * g[data-w="{uid}"] > *:active { … }
  * ```
  *
- * That is what dissolves §10's *"irreplaceable"* argument at its
- * root. §10 is right that base and state values must be
+ * That is what dissolves §9's *"irreplaceable"* argument at its
+ * root. §9 is right that base and state values must be
  * **simultaneously** readable from one computed style — eleven marks
  * paint base while one paints hover — and right that a `:state()`
  * rule on the element cannot express per-mark. Its unstated leap was
@@ -73,7 +73,7 @@
  * because the scene's `fill` stays `null`. `fill` is therefore never
  * emitted for {@link strokePaint}'s four hosts.
  *
- * **2. SPEC §10's channel rule.** *"Channel-bound paint wins over
+ * **2. SPEC §9's channel rule.** *"Channel-bound paint wins over
  * `--hdml-fill-color` and its state variants alike … hovering a
  * channel-colored mark is styled through properties the channel does
  * not own — the stroke variants."* That sentence is live and
@@ -298,7 +298,7 @@ function declarationsOf(input: StateInput, state: string): string[] {
   for (const [base, attribute] of DIRECT) {
     if (input.suppress.has(attribute)) {
       // Either the host has no such paint at all (a stroked widget
-      // has no fill), or SPEC §10's channel rule owns it. Both are
+      // has no fill), or SPEC §9's channel rule owns it. Both are
       // argued at the head of this module.
       continue;
     }

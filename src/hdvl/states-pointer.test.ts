@@ -520,7 +520,7 @@ suite("hdvl/states — the two suppressions, under a pointer", () => {
   });
 
   test("a channel fill holds, its outline moves", async () => {
-    // SPEC §10, as DOM rather than as rule text: channel-bound paint
+    // SPEC §9, as DOM rather than as rule text: channel-bound paint
     // wins over `--hdml-fill-color` AND its state variants alike, so
     // the hover cue must use what the channel does not own. The width
     // variant moving in the same assertion is what proves the pointer

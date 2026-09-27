@@ -535,7 +535,7 @@ suite("hdvl/mark-bar — §6.1's band-filling rect", () => {
     // now, so the clause needed a second half or it would have kept
     // passing while saying nothing: the variant does not reach the
     // SCENE (above) **and** it does not reach the DOM either
-    // (below), because SPEC §10's channel rule wins over a state
+    // (below), because SPEC §9's channel rule wins over a state
     // variant exactly as it wins over the base. This fixture's only
     // declared variant is the fill, so the generated sheet is empty.
     assert.strictEqual(stateSheetOf(view), "");

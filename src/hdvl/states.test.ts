@@ -126,8 +126,17 @@ suite("hdvl/states — the generated rule text", () => {
   });
 
   test("a hover-only widget emits no :active rule", () => {
-    // The state LIST is real, not decoration: negative control 1
-    // deletes `active` from it and this line is what objects.
+    // A widget that declares one state gets one rule — the state
+    // list is read per widget, not assumed.
+    //
+    // ★ This assertion CANNOT witness the state list itself, and its
+    // earlier comment claimed it could. Measured at step 09-5: with
+    // `active` dropped from `HDVL_STATES` the suite fails seven
+    // tests and this is not one of them, because `notInclude(text,
+    // ":active")` is trivially true once nothing can emit `:active`.
+    // A negative assertion is witnessed by the two that name both
+    // states — *hover and active are separate rules* and
+    // *HDVL_STATES is hover then active* — never by itself.
     const text = stateRules([
       input({ [`${P}fill-color--hover`]: "lime" }),
     ]);
@@ -226,7 +235,7 @@ suite("hdvl/states — the generated rule text", () => {
 
 suite("hdvl/states — what a host may not state-vary", () => {
   test("a channel-owned fill is out, its outline is in", () => {
-    // SPEC §10: channel-bound paint wins over `--hdml-fill-color`
+    // SPEC §9: channel-bound paint wins over `--hdml-fill-color`
     // AND its state variants alike. `09-polar-area` is authored on
     // exactly this — a hover cue on channel-coloured wedges uses
     // what the channel does not own.

@@ -533,7 +533,7 @@ which that mattered.
 **And V12 checks the *spelling*, never the *effect*.** A variant is legal CSS and the
 element cannot see it: `--hdml-fill-color--hover` on an `hdml-line` passes V12 and does
 nothing, because a stroked host's `fill` is structurally `null` and `states.ts` suppresses it
-(and so does a bound `color` channel, SPEC §10). No golden can see that either — the sheet is
+(and so does a bound `color` channel, SPEC §9). No golden can see that either — the sheet is
 not a `Scene` — which is exactly how project 017 ended up with two pages promising a hover cue
 in prose that the runtime never painted. `corpus.ts`'s **`stateSheetOf(view)`** is what closes
 it: the three pages that author a state (`01-line`, `02-area`, `03-bar`) assert the generated
