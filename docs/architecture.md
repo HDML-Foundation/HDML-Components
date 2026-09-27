@@ -459,6 +459,18 @@ The end of the frame counts what COMPUTE produced twice: **mark** nodes decide
 `:state(empty)`, and **every** node is measured against the 20 000-node budget, which
 warns (W4) and keeps rendering — it never decimates and never truncates.
 
+**PAINT has a second output since 017 R7's step 09-2, and it is CSS rather than nodes.**
+[`states.ts`](../src/hdvl/states.ts) turns the frame's snapshot into
+`g[data-w="{uid}"] > *:hover` / `…:active` rules and the view adopts them on its own shadow
+root, so SPEC §9's sixteen state variants are applied **by the browser, per node**, with no
+JavaScript at interaction time and no per-node index. It reads only `Measured.props`, which
+MEASURE has already harvested from the one computed style it takes, so it adds **no style
+read** to the frame; and `replaceSync` runs only when the text changed, which is also what
+makes a `transitionrun` feedback loop structurally impossible rather than argued. Nothing
+about the three phases moves: the generator writes no box, no scene and no node, which is why
+every whole-`Scene` golden is blind to it. See
+[components.md § Interaction states](components.md#interaction-states-are-generated-rules).
+
 ### The resolution index
 
 [src/hdvl/resolve.ts](../src/hdvl/resolve.ts) answers *"who is my scale?"* **once per

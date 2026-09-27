@@ -38,9 +38,10 @@ const CURVE_TYPES =
  * presentation-attribute properties × `{hover, active}`.
  *
  * **Completeness is deliberate, not premature.** The three
- * `--hdml-legend-*` properties had no reader until Slice H, and the
- * sixteen state variants have none until 017 R7's generator (step
- * 09-2), but V12's premise — *every `--hdml-*` in page CSS is
+ * `--hdml-legend-*` properties had no reader until Slice H and the
+ * sixteen state variants had none until 017 R7's generator in
+ * `states.ts` (step 09-2), and in both cases the registry came
+ * first: V12's premise — *every `--hdml-*` in page CSS is
  * registered* — is untestable while any member is missing, and V12
  * gates the corpus. A property registered "when its reader arrives"
  * also falls back to unregistered-custom-property semantics

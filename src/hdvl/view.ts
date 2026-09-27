@@ -31,6 +31,9 @@ import {
   unregisterView,
 } from "./resolve";
 import { FrameLoop, createFrameLoop, runFrame } from "./schedule";
+import type { Measured } from "./measure";
+import type { StateInput } from "./states";
+import { stateRules, suppressedOf } from "./states";
 import {
   EventQueue,
   HDML_RENDER,
@@ -111,6 +114,31 @@ export class HdmlViewElement extends HdvlElement {
   private fallback: MutationObserver | null = null;
 
   private readonly observed = new Set<Element>();
+
+  /**
+   * ★ 017 R7's **state sheet** — the output half of SPEC §9's state
+   * variants, adopted on this view's shadow root and rewritten from
+   * each frame's snapshot by {@link applyStateSheet}.
+   *
+   * One instance per view, created here rather than shared like
+   * `ua.ts`'s two sheets, because its text is a function of *this*
+   * view's widgets.
+   */
+  private readonly stateSheet = new CSSStyleSheet();
+
+  /**
+   * The text {@link stateSheet} currently holds, so a frame that
+   * changed nothing re-parses nothing.
+   *
+   * It is also a **structural guard against a frame loop**: the
+   * sentinel is a `:host` declaration inside each display element's
+   * own shadow root, and the `<g>` children a generated rule matches
+   * carry no `transition` at all, so no `transitionrun` can reach
+   * `onTransition` from here. Comparing before writing means that
+   * argument does not have to be re-made every time the sheet gains
+   * a property.
+   */
+  private stateText = "";
 
   private readonly loop: FrameLoop = createFrameLoop(() => {
     this.frame();
@@ -408,6 +436,27 @@ export class HdmlViewElement extends HdvlElement {
     return html`<slot></slot><svg></svg>`;
   }
 
+  /**
+   * @override
+   *
+   * ★ **APPENDS** 017 R7's state sheet, where `HdvlElement`
+   * *prepends* the shared `elementSheet`. The two are opposite on
+   * purpose: the UA defaults must lose to a subclass's own `static
+   * styles`, and a state rule the author asked for must **win** over
+   * them. Nothing in `elementSheet` paints an `<svg>` child today,
+   * so the order is not load-bearing yet — appending is what keeps
+   * it from becoming load-bearing later.
+   */
+  protected createRenderRoot(): HTMLElement | DocumentFragment {
+    const root = super.createRenderRoot();
+    const shadow = <ShadowRoot>(<unknown>root);
+    shadow.adoptedStyleSheets = [
+      ...shadow.adoptedStyleSheets,
+      this.stateSheet,
+    ];
+    return root;
+  }
+
   /** Creates and mounts the renderer, at most once per connection. */
   private mountRenderer(): Renderer | null {
     if (this.renderer !== null) {
@@ -443,6 +492,12 @@ export class HdmlViewElement extends HdvlElement {
       measureText: (text, font) => renderer.measureText(text, font),
       render: (scene) => renderer.render(scene),
     });
+    // ★ 017 R7's state rules, from the snapshot the frame just
+    // took. It runs after PAINT because the nodes a rule matches
+    // must exist, and because it writes no scene and no box — a
+    // constructed sheet is the whole of its output, which is why
+    // every whole-`Scene` golden is blind to it.
+    this.applyStateSheet(elements, result.measured);
     // §8.2's BINDING pass, over the scales COMPUTE just resolved
     // and the deliveries they adopted. It runs here rather than
     // inside COMPUTE because both halves of V2 read what the frame
@@ -492,6 +547,49 @@ export class HdmlViewElement extends HdvlElement {
     this.events.push(this, outward(HDML_RENDER));
     this.events.flush();
     this.clearDirty();
+  }
+
+  /**
+   * Rewrites the state sheet from one frame's snapshot (017 R7).
+   *
+   * **Per frame, not per change**, and the choice is deliberate: the
+   * inputs are `Measured.props`, which MEASURE has already harvested
+   * for every element from the one computed style it reads anyway
+   * (all forty-seven properties, since step 09-1), so building the
+   * text costs a walk over data already in hand and **no new style
+   * read**. A per-change path would need its own invalidation route
+   * into a mechanism whose only route is the frame — R24's sentinel
+   * already fires a frame for exactly these properties.
+   *
+   * `replaceSync` is called **only when the text changed**, so the
+   * common case — no widget declaring a state — is one string
+   * comparison against `""`.
+   *
+   * @param elements - The frame's display elements, document order.
+   * @param measured - The frame's snapshot.
+   */
+  private applyStateSheet(
+    elements: readonly HdvlElement[],
+    measured: ReadonlyMap<HdvlElement, Measured>,
+  ): void {
+    const inputs: StateInput[] = [];
+    for (const el of elements) {
+      const m = measured.get(el);
+      if (m === undefined) {
+        continue;
+      }
+      inputs.push({
+        uid: el.uid,
+        props: m.props,
+        suppress: suppressedOf(el),
+      });
+    }
+    const text = stateRules(inputs);
+    if (text === this.stateText) {
+      return;
+    }
+    this.stateText = text;
+    this.stateSheet.replaceSync(text);
   }
 
   /** The surface's viewport rect, read fresh per event (§5.7). */

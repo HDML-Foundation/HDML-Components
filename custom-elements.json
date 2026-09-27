@@ -3198,7 +3198,7 @@
               "description": "The widget's slot."
             }
           ],
-          "description": "SPEC §7's *\"anonymous inner band scale\"* — the same `Scale`, with\n§4.4's band taken **inside** the outer one.\n\n**★ R19: `bandOf(k, n, …, 1)`, and no arithmetic here.** The\ninner bandwidth is `1` because §6.4 gives the subdivision no\nauthorable gap, and `b` is an ordinary parameter of the one band\nformula — so a cluster is that formula at `b = 1` rather than a\nsecond entry point. `--hdml-bandwidth` still opens the gap\nbetween *categories*, on the outer band, where the scale reads it.\n\n`project` is re-derived rather than delegated because §4.4 makes\nan ordinal projection *the band's centre*: leaving it pointing at\nthe outer band would put a clustered `hdml-point` in the middle\nof the group while its bar sat in a slot."
+          "description": "SPEC §7's *\"anonymous inner band scale\"* — the same `Scale`, with\n§4.4's band taken **inside** the outer one.\n\n**★ R19: `bandOf(k, n, …, 1)`, and no arithmetic here.** The\ninner bandwidth is `1` because §6.4 gives the subdivision no\nauthorable gap, and `b` is an ordinary parameter of the one band\nformula — so a cluster is that formula at `b = 1` rather than a\nsecond entry point. `--hdml-bandwidth` still opens the gap\nbetween *categories*, on the outer band, where the scale reads it.\n\n**★ The subdivision is never cyclic, and it could not matter if it\nwere** (017 R8). Two independent reasons, both worth stating\nbecause the second is what makes the first safe to get wrong:\n\n1. **Semantically**, the interval subdivided is *one outer band* —\n   `[start, start + width]`. Its two edges are two different\n   places even when the scale they came from wraps, so the inner\n   range is inclusive by construction. A cyclic inner range would\n   mean a cluster whose last child sits on its first.\n2. **Arithmetically**, it is a no-op: at `b = 1` the cyclic\n   denominator `n` and the inclusive `n − 1 + b` are the **same\n   number** — `n - 1 + 1` is exactly `n` in IEEE-754 for integer\n   `n` — so this call returns identical bands either way. The\n   argument is passed explicitly rather than defaulted so that a\n   later reader finds the answer here instead of inferring it from\n   a missing parameter.\n\n`project` is re-derived rather than delegated because §4.4 makes\nan ordinal projection *the band's centre*: leaving it pointing at\nthe outer band would put a clustered `hdml-point` in the middle\nof the group while its bar sat in a slot."
         },
         {
           "kind": "function",
@@ -4571,6 +4571,32 @@
         },
         {
           "kind": "function",
+          "name": "atPole",
+          "return": {
+            "type": {
+              "text": ""
+            }
+          },
+          "parameters": [
+            {
+              "name": "guide",
+              "type": {
+                "text": "ResolvedGuide"
+              },
+              "description": "The resolved guide."
+            },
+            {
+              "name": "along",
+              "type": {
+                "text": "number"
+              },
+              "description": "A position along its own channel."
+            }
+          ],
+          "description": "★ **Whether a position on a RADIAL guide's channel is the pole\nitself** — 017 R11's cause 2, in one predicate.\n\nA guide repeating along a plane's **second** channel under a pole\nrepeats outward along a radius, and its position `0` is not a\nlocus on that axis: it is the single point every angle shares.\nTwo of the four guides therefore have nothing to draw there, and\nboth drew something anyway before R11 —\n\n- **`hdml-grid`** spans the other channel at each position, and at\n  the pole that span has **no extent**. `09-polar-area` emitted\n  `M 186 170 A 0 0 0 1 1 186 170 … Z` — a node invisible at any\n  zoom — and `10-radar` the polygon spelling of the same thing, a\n  closed path whose six corners are all the pole.\n- **`hdml-label`** hangs its run off guidePlacement's\n  outward normal, and at the pole that vector is the zero vector.\n  The derivation already **notices** this and answers\n  `middle`/`middle` — the truthful answer to a question with no\n  direction — and the run then paints on the pole, under every\n  mark the chart has.\n\n**★ `hdml-tick` is deliberately NOT a caller.** Its glyph is\n*centred* on its point and needs neither an extent across the\nother channel nor a direction to hang off; a dot at the pole is a\nreal, visible mark at a real position. The rule is about geometry\nthat degenerates there, not about the value zero.\n\n**Three conditions, and each excludes a case the corpus has.** A\n**pole** excludes every cartesian guide. **Not the plane's first\nchannel** excludes an *angular* guide, whose `0` is `0deg` —\n`10-radar`'s twelve-o'clock spoke and its first angle label, both\nof which must survive. And **exactly zero** rather than a\ntolerance, because §4.6 puts `radius = 0` on the pole exactly.\n\n**★ It tests the PROJECTED position and not the domain value**,\nwhich is what makes it narrow. §4.3 gives a radius channel the\nrange `[0, ceiling]`, so *a tick equal to the domain's minimum*\nis the case that lands here — and a ladder that never reaches its\nown minimum does not (`min=\"3\"` with a step of 5 puts its first\nring at a real radius, and nothing is dropped). A `reverse`d\nradius scale puts its **maximum** on the pole instead, and the\nsame one test finds it. **`--hdml-inner-radius` is NOT a\ncounter-example**, though it reads like one: it supplies\n`hdml-arc`'s synthetic `r0` and leaves §4.3's range alone, so a\ndoughnut's radius grid still has a tick at the pole and still\nloses it."
+        },
+        {
+          "kind": "function",
           "name": "guideRing",
           "return": {
             "type": {
@@ -4787,6 +4813,14 @@
           "name": "guidePoint",
           "declaration": {
             "name": "guidePoint",
+            "module": "src/hdvl/guide-spec.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "atPole",
+          "declaration": {
+            "name": "atPole",
             "module": "src/hdvl/guide-spec.ts"
           }
         },
@@ -5708,9 +5742,14 @@
                 "text": "number"
               },
               "description": "`--hdml-bandwidth`, already resolved to a\nnumber in `[0, 1]`. The kernel never reads a CSS value."
+            },
+            {
+              "name": "cyclic",
+              "default": "false",
+              "description": "Whether `r1` denotes the same place as `r0` (an\nangular sweep of a whole turn). Decided by the caller; the kernel\nimports nothing and cannot look it up. Defaults to `false`, which\nis every non-angular channel and every partial sweep."
             }
           ],
-          "description": "§4.4's band geometry for slot `k` of `n`.\n\n```\nstep     = W / (n − 1 + b)          W = |r1 − r0|\nstart_k  = k · step                 from the range's own r0\nwidth_k  = b · step\ncentre_k = start_k + width_k / 2\nn = 1 and b = 0 → the range midpoint\n```\n\nAt `n = 1` the formula gives `width = b · W / b = W` for **any**\n`b > 0`, so a lone category always fills the range; `b = 0` is\nthe `0 / 0` that §4.4's last line exists to answer.\n\nTotal, and diagnoses nothing: a `k` outside `[0, n)`, an `n`\nbelow 1 and a non-finite range all return `null`. §4.7's\nout-of-domain notice is the **caller's** (steps 20–22, through\nthe validator), exactly as `transform`'s totality is\n`transform`'s."
+          "description": "§4.4's band geometry for slot `k` of `n`.\n\n```\nstep     = W / (n − 1 + b)          W = |r1 − r0|\n         = W / n                    when `cyclic`\nstart_k  = k · step                 from the range's own r0\nwidth_k  = b · step\ncentre_k = start_k + width_k / 2\nn = 1 and b = 0 → the range midpoint (inclusive only)\n```\n\nAt `n = 1` the formula gives `width = b · W / b = W` for **any**\n`b > 0`, so a lone category always fills the range; `b = 0` is\nthe `0 / 0` that §4.4's last line exists to answer. **A cyclic\nrange never reaches that branch**: its denominator is `n`, so\n`n = 1, b = 0` is `W / 1` and the sole category lands on `r0` —\nthe sweep's own start, which on a full turn is the one place it\ncan sensibly be, where the inclusive midpoint would be the\narbitrary 180°.\n\nTotal, and diagnoses nothing: a `k` outside `[0, n)`, an `n`\nbelow 1 and a non-finite range all return `null`. §4.7's\nout-of-domain notice is the **caller's** (steps 20–22, through\nthe validator), exactly as `transform`'s totality is\n`transform`'s. So is cyclicity — see the module comment's item 4."
         },
         {
           "kind": "function",
@@ -5748,6 +5787,11 @@
                 "text": "number"
               },
               "description": "`--hdml-bandwidth`, already resolved."
+            },
+            {
+              "name": "cyclic",
+              "default": "false",
+              "description": "As {@link bandOf}: the caller's fact.\n * "
             }
           ],
           "description": "bandOf, addressed by domain **value** rather than index.\n\nThis is the shape step 18's `Scale.bandOf(v)` hands out, so the\nvalue → index mapping has exactly one implementation (R12)."
@@ -9028,6 +9072,32 @@
         },
         {
           "kind": "function",
+          "name": "dashOf",
+          "return": {
+            "type": {
+              "text": ""
+            }
+          },
+          "parameters": [
+            {
+              "name": "style",
+              "type": {
+                "text": "string"
+              },
+              "description": "`--hdml-line-style`'s computed keyword."
+            },
+            {
+              "name": "width",
+              "type": {
+                "text": "number"
+              },
+              "description": "The stroke width the pattern scales with."
+            }
+          ],
+          "description": "`--hdml-line-style` → a dash pattern, in CSS px.\n\n**SPEC §9 names the three keywords and no numbers**, so the\npattern is this runtime's convention. It is expressed as a\nmultiple of the stroke width rather than in absolute px, so a\n`3px` emphasis line dashes proportionally instead of turning into\na nearly-solid one — the same reason a browser's own `dashed`\nborder scales with `border-width`.\n\n**★ Exported since 017 R7's step 09-2, for one reason: the\npattern is DERIVED, so it has two callers that must not\ndisagree.** `states.ts` regenerates `stroke-dasharray` for a\nstate that changes either input, and a second copy of\n`[w × 4, w × 3]` there would let a dashed line thicken on hover\nwhile keeping gaps computed for the old width — silently, since\nno scene and no golden can see a generated rule."
+        },
+        {
+          "kind": "function",
           "name": "strokePaint",
           "return": {
             "type": {
@@ -9050,7 +9120,7 @@
               "description": "The resolved `color`-channel paint, or `null`."
             }
           ],
-          "description": "The paint of a **stroked** mark (§6.1: `hdml-line` is *\"stroked,\n`fill: null`\"*).\n\n§6.1's paint-resolution sentence — *a bound `color` channel wins\nover `--hdml-fill-color` and over its `_hover` variant* — is\nwritten for the filled marks that are its common case. A stroked\nmark's series colour is its **stroke**, and SPEC §9 gives\n`--hdml-line-color` to *\"stroked widgets\"*, so that is what a\nbound `color` wins over here. Both readings agree on the part\nthat matters: the channel wins. Neither `_hover` variant is read\nat all — a per-mark hover value needs the renderer to know which\nnode is hovered, which `Paint` cannot express (SPEC §9 routes it\nthrough the stroke variants at a later slice)."
+          "description": "The paint of a **stroked** mark (§6.1: `hdml-line` is *\"stroked,\n`fill: null`\"*).\n\n§6.1's paint-resolution sentence — *a bound `color` channel wins\nover `--hdml-fill-color` and over its `--hover` variant* — is\nwritten for the filled marks that are its common case. A stroked\nmark's series colour is its **stroke**, and SPEC §9 gives\n`--hdml-line-color` to *\"stroked widgets\"*, so that is what a\nbound `color` wins over here. Both readings agree on the part\nthat matters: the channel wins.\n\n**★ No state variant is read HERE, and the reason is not that\n`Paint` cannot express one — it is that the runtime does not\nchoose.** `NodeBase extends Paint`, so every scene node already\ncarries its own paint and its own `i`; the sentence this replaced\nclaimed the type was the obstacle and was measured false at 017\nR7. What is true of the **scene** is that it holds one value per\nnode, and a state needs two simultaneously. The mechanism never\nasks it to: `states.ts` emits a `:hover` and an `:active` rule\nover `g[data-w] > *` and the browser applies whichever matches,\nper node. So this function resolves the **base** paint and\nnothing else — and SPEC §10's channel rule is honoured there, by\nsuppressing the paint property a bound channel owns."
         },
         {
           "kind": "function",
@@ -9076,7 +9146,7 @@
               "description": "The resolved `color`-channel paint, or `null`."
             }
           ],
-          "description": "The paint of a **filled** mark — `hdml-area`'s band and\n`hdml-bar`'s rect (§6.1).\n\nThis is §6.1's paint sentence read literally, on the two marks it\nwas written for: *a bound `color` channel wins over\n`--hdml-fill-color` and over its `_hover` variant*. SPEC §9 gives\nthe `--hdml-fill-*` properties to *\"filled widgets\"* and the\n`--hdml-line-*` properties to *\"stroked\"* ones, so this is\nstrokePaint's sibling and not a superset of it.\n\n**A filled mark does not also stroke.** §6.1 gives the area *\"one\n`path`, filled\"* and the bar *\"one `rect`\"*, neither of which\nmentions an outline, and SPEC §9 registers no property that would\ncontrol one — a stroke here would take `--hdml-line-color`'s\ninitial value and put a visible edge on every bar in the corpus\nthat no author asked for and none could turn off. `strokeWidth` is\ntherefore `0` and `stroke` is `null`."
+          "description": "The paint of a **filled** widget — `hdml-area`'s band,\n`hdml-bar`'s rect, a point's glyph, an arc's sector (§6.1), and\nthe three fill-painted guides (`hdml-tick`'s glyph,\n`hdml-label`'s text, `hdml-legend`'s four parts).\n\nThe fill is §6.1's paint sentence read literally: *a bound\n`color` channel wins over `--hdml-fill-color` and over its\n`--hover` variant*.\n\n── The outline, 017 R4 ──\n\n**A filled widget DOES also stroke, and the hazard that once said\notherwise is real and is closed elsewhere.** This function used to\nhard-code `stroke: null` / `strokeWidth: 0`, with a correct\nargument for its time: `--hdml-line-width`'s registered initial is\n**`1.5px`** and `--hdml-line-color`'s is `currentColor`, so a\nwidget that simply started reading them would *\"put a visible edge\non every bar in the corpus that no author asked for and none could\nturn off\"*. Every clause of that is still true of the **registry**.\n\nWhat defuses it is that the initial is **neutralised per element in\nthe UA sheet** — `ua.ts`'s `OUTLINED` list declares\n`--hdml-line-width: 0` on each of the eight hosts that reach this\nfunction — `hdml-pie` among them, via `layout-pie`'s reuse of\n`sectorScene` — so the effective default is `0`, no widget gains an\nedge nobody asked for, and *\"none could turn it off\"* inverts:\na **normal** declaration is what any author rule beats. The\nregistry is untouched, which is what keeps `hdml-line`,\n`hdml-rule`, `hdml-axis` and `hdml-grid` — strokePaint's\nhosts — on `1.5px`.\n\nFive of the thirteen corpus pages authored an outline on a filled\nmark and got nothing for it: `05`/`06`/`07` on `hdml-point`,\n`08`/`09` on `hdml-arc`. `08`'s white slice separators are the\nclearest case — authored, and never once painted.\n\n**★ A bound `color` channel is the FILL here, never the stroke**,\nwhich is where this parts company with strokePaint. There\nthe series colour *is* the stroke; here the stroke is\n`--hdml-line-color` alone, so an outline stays the author's\ndecision even on a channel-coloured widget. That is what\n`09-polar-area`'s comment relies on — *\"a hover cue on\nchannel-colored wedges uses what the channel does not own\"*.\n\n**No state variant is read**, here or in strokePaint —\nand since 017 R7's step 09-2 that is **not** because\nPaint cannot express one. It carries a full per-node\npaint already. It is because the runtime **does not choose**:\n`states.ts` emits both rules and the browser applies the one that\nmatches, so the scene stays the base paint and the variants reach\nthe DOM as CSS. `09`'s `--hdml-line-width--hover: 2.5px` is\ntherefore **live**, through a generated rule rather than through\nthis function."
         },
         {
           "kind": "function",
@@ -9294,6 +9364,14 @@
           "name": "reportDrops",
           "declaration": {
             "name": "reportDrops",
+            "module": "src/hdvl/mark.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "dashOf",
+          "declaration": {
+            "name": "dashOf",
             "module": "src/hdvl/mark.ts"
           }
         },
@@ -9966,8 +10044,8 @@
           "type": {
             "text": "readonly PropertyDefinition[]"
           },
-          "default": "[ { name: \"--hdml-line-width\", syntax: \"<length>\", inherits: true, initialValue: \"1.5px\", }, { name: \"--hdml-line-color\", syntax: \"<color>\", inherits: true, initialValue: \"currentColor\", }, { name: \"--hdml-line-style\", syntax: \"solid | dashed | dotted\", inherits: true, initialValue: \"solid\", }, { name: \"--hdml-fill-color\", syntax: \"<color>\", inherits: true, initialValue: \"currentColor\", }, { name: \"--hdml-font-family\", syntax: \"*\", inherits: true, initialValue: \"system-ui\", }, { name: \"--hdml-font-size\", syntax: \"<length>\", inherits: true, initialValue: \"11px\", }, { name: \"--hdml-font-weight\", syntax: \"normal | bold | <integer>\", inherits: true, initialValue: \"normal\", }, { name: \"--hdml-font-style\", syntax: \"normal | italic\", inherits: true, initialValue: \"normal\", }, { name: \"--hdml-tick-style\", syntax: \"rect | ellipse\", inherits: true, initialValue: \"rect\", }, { name: \"--hdml-tick-width\", syntax: \"<length>\", inherits: true, initialValue: \"1px\", }, { name: \"--hdml-tick-height\", syntax: \"<length>\", inherits: true, initialValue: \"6px\", }, { name: \"--hdml-curve-type\", syntax: CURVE_TYPES, inherits: true, initialValue: \"linear\", }, { name: \"--hdml-curve-basis-beta\", syntax: \"<number>\", inherits: true, initialValue: \"1\", }, { name: \"--hdml-curve-bezier-tangents\", syntax: \"*\", inherits: true, }, { name: \"--hdml-curve-cardinal-tension\", syntax: \"<number>\", inherits: true, initialValue: \"0\", }, { name: \"--hdml-curve-catmull-rom-alpha\", syntax: \"<number>\", inherits: true, initialValue: \"0.5\", }, { name: \"--hdml-curve-cubic-monotonicity\", syntax: \"<number>\", inherits: true, initialValue: \"1\", }, { name: \"--hdml-curve-step-change\", syntax: \"start | middle | end\", inherits: true, initialValue: \"middle\", }, { name: \"--hdml-bandwidth\", syntax: \"<number>\", inherits: true, initialValue: \"0.8\", }, { name: \"--hdml-palette\", syntax: \"<color>+\", inherits: true, initialValue: PALETTE, }, { name: \"--hdml-color-interpolate\", syntax: \"<color>+\", inherits: true, initialValue: \"#1c2b6b #7ee3d0\", }, { name: \"--hdml-color-interpolate-space\", syntax: \"srgb | srgb-linear | hsl | oklab | oklch\", inherits: true, initialValue: \"oklch\", }, { name: \"--hdml-legend-direction\", syntax: \"column | row\", inherits: true, initialValue: \"column\", }, { name: \"--hdml-legend-swatch-size\", syntax: \"<length>\", inherits: true, initialValue: \"10px\", }, { name: \"--hdml-legend-gap\", syntax: \"<length>\", inherits: true, initialValue: \"4px\", }, { name: \"--hdml-size-min\", syntax: \"<length>\", inherits: true, initialValue: \"2px\", }, { name: \"--hdml-size-max\", syntax: \"<length>\", inherits: true, initialValue: \"12px\", }, { name: \"--hdml-angle-start\", syntax: \"<angle>\", inherits: true, initialValue: \"0deg\", }, { name: \"--hdml-angle-end\", syntax: \"<angle>\", inherits: true, initialValue: \"360deg\", }, { name: \"--hdml-inner-radius\", syntax: \"<length-percentage>\", inherits: true, initialValue: \"0%\", }, { name: \"--hdml-grid-shape\", syntax: \"circle | polygon\", inherits: true, initialValue: \"circle\", }, { name: \"--hdml-line-width_hover\", syntax: \"*\", inherits: true, }, { name: \"--hdml-line-color_hover\", syntax: \"*\", inherits: true, }, { name: \"--hdml-line-style_hover\", syntax: \"*\", inherits: true, }, { name: \"--hdml-fill-color_hover\", syntax: \"*\", inherits: true, }, ]",
-          "description": "SPEC §9's registry, complete at thirty-five: thirty-one base\nproperties plus the four `_hover` paint variants.\n\n**Completeness is deliberate, not premature.** The three\n`--hdml-legend-*` properties and the four `_hover` variants have\nno reader until Slices E and H, but V12's premise — *every\n`--hdml-*` in page CSS is registered* — is untestable while any\nmember is missing, and V12 gates the corpus. A property\nregistered \"when its reader arrives\" also falls back to\nunregistered-custom-property semantics meanwhile: no syntax, no\ninitial value, and no transition, which would silently exclude it\nfrom the frame sentinel.\n\nThe four `_hover` variants and `--hdml-curve-bezier-tangents`\n**omit `initialValue`** rather than passing `\"\"`. Their SPEC\ninitial is the empty \"no change\" sentinel, and with syntax `*` an\nomitted initial is the platform's own spelling of that; `\"\"` is\nnot equivalent on every engine."
+          "default": "[ { name: \"--hdml-line-width\", syntax: \"<length>\", inherits: true, initialValue: \"1.5px\", }, { name: \"--hdml-line-color\", syntax: \"<color>\", inherits: true, initialValue: \"currentColor\", }, { name: \"--hdml-line-style\", syntax: \"solid | dashed | dotted\", inherits: true, initialValue: \"solid\", }, { name: \"--hdml-fill-color\", syntax: \"<color>\", inherits: true, initialValue: \"currentColor\", }, { name: \"--hdml-font-family\", syntax: \"*\", inherits: true, initialValue: \"system-ui\", }, { name: \"--hdml-font-size\", syntax: \"<length>\", inherits: true, initialValue: \"11px\", }, { name: \"--hdml-font-weight\", syntax: \"normal | bold | <integer>\", inherits: true, initialValue: \"normal\", }, { name: \"--hdml-font-style\", syntax: \"normal | italic\", inherits: true, initialValue: \"normal\", }, { name: \"--hdml-tick-style\", syntax: \"rect | ellipse\", inherits: true, initialValue: \"rect\", }, { name: \"--hdml-tick-width\", syntax: \"<length>\", inherits: true, initialValue: \"1px\", }, { name: \"--hdml-tick-height\", syntax: \"<length>\", inherits: true, initialValue: \"6px\", }, { name: \"--hdml-curve-type\", syntax: CURVE_TYPES, inherits: true, initialValue: \"linear\", }, { name: \"--hdml-curve-basis-beta\", syntax: \"<number>\", inherits: true, initialValue: \"1\", }, { name: \"--hdml-curve-bezier-tangents\", syntax: \"*\", inherits: true, }, { name: \"--hdml-curve-cardinal-tension\", syntax: \"<number>\", inherits: true, initialValue: \"0\", }, { name: \"--hdml-curve-catmull-rom-alpha\", syntax: \"<number>\", inherits: true, initialValue: \"0.5\", }, { name: \"--hdml-curve-cubic-monotonicity\", syntax: \"<number>\", inherits: true, initialValue: \"1\", }, { name: \"--hdml-curve-step-change\", syntax: \"start | middle | end\", inherits: true, initialValue: \"middle\", }, { name: \"--hdml-bandwidth\", syntax: \"<number>\", inherits: true, initialValue: \"0.8\", }, { name: \"--hdml-palette\", syntax: \"<color>+\", inherits: true, initialValue: PALETTE, }, { name: \"--hdml-color-interpolate\", syntax: \"<color>+\", inherits: true, initialValue: \"#1c2b6b #7ee3d0\", }, { name: \"--hdml-color-interpolate-space\", syntax: \"srgb | srgb-linear | hsl | oklab | oklch\", inherits: true, initialValue: \"oklch\", }, { name: \"--hdml-legend-direction\", syntax: \"column | row\", inherits: true, initialValue: \"column\", }, { name: \"--hdml-legend-swatch-size\", syntax: \"<length>\", inherits: true, initialValue: \"10px\", }, { name: \"--hdml-legend-gap\", syntax: \"<length>\", inherits: true, initialValue: \"4px\", }, { name: \"--hdml-size-min\", syntax: \"<length>\", inherits: true, initialValue: \"2px\", }, { name: \"--hdml-size-max\", syntax: \"<length>\", inherits: true, initialValue: \"12px\", }, { name: \"--hdml-angle-start\", syntax: \"<angle>\", inherits: true, initialValue: \"0deg\", }, { name: \"--hdml-angle-end\", syntax: \"<angle>\", inherits: true, initialValue: \"360deg\", }, { name: \"--hdml-inner-radius\", syntax: \"<length-percentage>\", inherits: true, initialValue: \"0%\", }, { name: \"--hdml-grid-shape\", syntax: \"circle | polygon\", inherits: true, initialValue: \"circle\", }, { name: \"--hdml-line-width--hover\", syntax: \"*\", inherits: true, }, { name: \"--hdml-line-width--active\", syntax: \"*\", inherits: true, }, { name: \"--hdml-line-color--hover\", syntax: \"*\", inherits: true, }, { name: \"--hdml-line-color--active\", syntax: \"*\", inherits: true, }, { name: \"--hdml-line-style--hover\", syntax: \"*\", inherits: true, }, { name: \"--hdml-line-style--active\", syntax: \"*\", inherits: true, }, { name: \"--hdml-fill-color--hover\", syntax: \"*\", inherits: true, }, { name: \"--hdml-fill-color--active\", syntax: \"*\", inherits: true, }, { name: \"--hdml-font-family--hover\", syntax: \"*\", inherits: true, }, { name: \"--hdml-font-family--active\", syntax: \"*\", inherits: true, }, { name: \"--hdml-font-size--hover\", syntax: \"*\", inherits: true, }, { name: \"--hdml-font-size--active\", syntax: \"*\", inherits: true, }, { name: \"--hdml-font-weight--hover\", syntax: \"*\", inherits: true, }, { name: \"--hdml-font-weight--active\", syntax: \"*\", inherits: true, }, { name: \"--hdml-font-style--hover\", syntax: \"*\", inherits: true, }, { name: \"--hdml-font-style--active\", syntax: \"*\", inherits: true, }, ]",
+          "description": "SPEC §9's registry, complete at forty-seven: thirty-one base\nproperties plus the sixteen **state variants** — the eight\npresentation-attribute properties × `{hover, active}`.\n\n**Completeness is deliberate, not premature.** The three\n`--hdml-legend-*` properties had no reader until Slice H and the\nsixteen state variants had none until 017 R7's generator in\n`states.ts` (step 09-2), and in both cases the registry came\nfirst: V12's premise — *every `--hdml-*` in page CSS is\nregistered* — is untestable while any member is missing, and V12\ngates the corpus. A property registered \"when its reader arrives\"\nalso falls back to unregistered-custom-property semantics\nmeanwhile: no syntax, no initial value, and no transition, which\nwould silently exclude it from the frame sentinel.\n\n── Why exactly eight carry variants (017 R7) ──\n\nThe boundary is **architectural, not budgetary**: a generated\nstate rule can only override what the renderer writes as a\n**presentation attribute** per node, and that is exactly these\neight — `stroke-width`, `stroke`, `stroke-dasharray`, `fill` and\nthe four `font-*`. Every other registered property is either\ngeometry, which COMPUTE bakes into the scene where no CSS rule can\nreach it, or a channel-colour *source* resolved into per-node\nfills. Adding a variant to one of those would register a property\nnothing can ever read — which is the defect R7 exists to close,\nnot to repeat.\n\n── The separator is `--`, on the founder's call (017 R7) ──\n\n`--hdml-fill-color--hover`, not `_hover`. The doubled dash is\nunmistakably a separator rather than part of a name, and it keeps\na property and its variants adjacent when sorted.\n\n── The initial is OMITTED, never `\"\"` ──\n\nThe sixteen state variants and `--hdml-curve-bezier-tangents`\n**omit `initialValue`** rather than passing `\"\"`. Their SPEC\ninitial is the empty \"no change in that state\" sentinel, and with\nsyntax `*` an omitted initial is the platform's own spelling of\nthat; `\"\"` is not equivalent on every engine. **Nothing may fall\nback to a literal here** — a registered property always computes\nto its initial value, so a literal default in a reader's second\nargument is unreachable code."
         },
         {
           "kind": "function",
@@ -11444,6 +11522,25 @@
         },
         {
           "kind": "function",
+          "name": "angleCollisionOf",
+          "return": {
+            "type": {
+              "text": ""
+            }
+          },
+          "parameters": [
+            {
+              "name": "el",
+              "type": {
+                "text": "HdvlElement"
+              },
+              "description": "A scale element."
+            }
+          ],
+          "description": "★ **017 R8's survivor, as a question**: do two categories of this\nordinal angle scale resolve to the *same angle*?\n\nR8's fix makes this impossible on a **one-turn** sweep — that is\nwhat `cyclic` is for (isCyclic) — and leaves it perfectly\npossible on the two sweeps the fix cannot help:\n\n- **a multi-turn sweep.** 720° over six categories is\n  `0/120/240/0/120/240` cyclically and `0/144/288/72/216/0`\n  inclusively. The range passes the same angle twice, so no\n  denominator rescues it. Nothing clamps `--hdml-angle-end`.\n- **a zero-length sweep.** `--hdml-angle-start` equal to\n  `--hdml-angle-end` puts every category on one angle.\n\nBoth draw a chart with **fewer positions than it has categories**\nand say nothing — §1.5's silent wrong chart, and exactly the class\nR8 was found in by a human looking at a rendered page rather than\nby 1305 passing tests. *(Decided 2026-09-26, with the user, at 017\nstep 07.)*\n\n**It is filed under V2 with its own `DiagnosticCode`**, on\npaletteGapOf's precedent and for the identical reason:\n§8.3's V2 row is the binding pass's *\"does the delivered data fit\nthis scale\"* question, and `n` categories that fit in fewer than\n`n` angles is an answer of no. SPEC §11's checklist is unchanged —\nno new W-number, no new V-number — and the alternative considered\nand declined was a new `W7`, which would have amended §11 and\njoined two `WarningCode`s 016 shipped uncalled.\n\n**The domain, not the rows.** A repeated *row* is the author's\ndata and legal; this asks only whether the resolved **domain**'s\ndistinct values reach distinct angles."
+        },
+        {
+          "kind": "function",
           "name": "chainScaleOf",
           "return": {
             "type": {
@@ -11612,6 +11709,14 @@
         },
         {
           "kind": "js",
+          "name": "angleCollisionOf",
+          "declaration": {
+            "name": "angleCollisionOf",
+            "module": "src/hdvl/scale.ts"
+          }
+        },
+        {
+          "kind": "js",
           "name": "chainScaleOf",
           "declaration": {
             "name": "chainScaleOf",
@@ -11771,6 +11876,102 @@
           "declaration": {
             "name": "runFrame",
             "module": "src/hdvl/schedule.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "src/hdvl/states.ts",
+      "declarations": [
+        {
+          "kind": "variable",
+          "name": "HDVL_STATES",
+          "type": {
+            "text": "readonly string[]"
+          },
+          "default": "[\"hover\", \"active\"]",
+          "description": "The v1 state list (SPEC §9, amended 017 R7).\n\n**A list, not two hard-coded branches**, which is the flexibility\nthe founder asked for: `focus` and `selected` are deferred to v2\nnot for cost but because neither has a browser state to hang a\nrule on today — SVG shapes are not focusable and `selected` is not\na pseudo-class at all — so adding either is a row here plus its\nown machinery, never a rewrite of this module."
+        },
+        {
+          "kind": "function",
+          "name": "suppressedOf",
+          "return": {
+            "type": {
+              "text": ""
+            }
+          },
+          "parameters": [
+            {
+              "name": "el",
+              "type": {
+                "text": "HdvlElement"
+              },
+              "description": "The widget."
+            }
+          ],
+          "description": "The presentation attributes a widget may **not** state-vary — the\none DOM read this module makes.\n\nBoth rules are argued at the head of this module. A stroked host\nloses `fill` outright; a widget binding `color` loses whichever\npaint that channel resolves into.\n\n**The channel predicate is the ATTRIBUTE, not the resolved\ncolour.** `channelColor` additionally needs a colour scale in\nscope, and a binding with no scale is **V1 `no-scale-in-scope`, an\nerror** — so the only documents this over-suppresses on are ones\nthat already report an error and paint nothing. Reading the\nattribute also keeps this free of the frame context, which is what\nlets stateRules stay a pure function of the snapshot.\n\n**`hdml-legend` is a deliberate exception.** It binds\n`channel=\"color\"`, not `color`, so nothing is suppressed for it —\nand its swatches *are* scale-painted while its two text runs are\nnot. One selector cannot tell those nodes apart, and a legend's\n`--hdml-fill-color--hover` reaching a swatch is a reasonable\nreading of the author's intent rather than a defect. Recorded here\nso it is a decision instead of an oversight."
+        },
+        {
+          "kind": "variable",
+          "name": "STATE_PROPERTIES",
+          "type": {
+            "text": "readonly string[]"
+          },
+          "default": "[ ...DIRECT.map(([base]) => base), \"--hdml-line-style\", ]",
+          "description": "The **eight** base properties this module can state-vary —\nDIRECT's seven plus `--hdml-line-style`.\n\nExported for one reason: it is the only thing that makes R7's\neight-property boundary **enforced** rather than remembered. The\nboundary is otherwise structural-but-silent — `measure.ts` harvests\nthe registry, so a ninth entry added here would look for a variant\nnobody registered, `props.get` would return `undefined`, and the\ngenerator would emit nothing at all. Nothing would fail; the\nproperty would simply never work, which is exactly the defect R7\nexists to close. `states.test.ts` closes it by asserting this list\nagainst `HDVL_PROPERTIES` in both directions."
+        },
+        {
+          "kind": "function",
+          "name": "stateRules",
+          "return": {
+            "type": {
+              "text": ""
+            }
+          },
+          "parameters": [
+            {
+              "name": "inputs",
+              "type": {
+                "text": "readonly StateInput[]"
+              },
+              "description": "One entry per measured widget."
+            }
+          ],
+          "description": "The state sheet's whole text — the generator.\n\n**Pure**: a function of the snapshot and nothing else, so the rule\ntext is assertable without a DOM, a pointer or a renderer. That is\nthe cheap half of R7's evidence; the other half needs a real\npointer (step 09-3).\n\nA widget with no state variant set contributes **nothing** — not\nan empty rule — so an unstyled view's sheet is the empty string\nand the common case costs one string comparison per frame."
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "HDVL_STATES",
+          "declaration": {
+            "name": "HDVL_STATES",
+            "module": "src/hdvl/states.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "suppressedOf",
+          "declaration": {
+            "name": "suppressedOf",
+            "module": "src/hdvl/states.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "STATE_PROPERTIES",
+          "declaration": {
+            "name": "STATE_PROPERTIES",
+            "module": "src/hdvl/states.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "stateRules",
+          "declaration": {
+            "name": "stateRules",
+            "module": "src/hdvl/states.ts"
           }
         }
       ]
@@ -12176,7 +12377,7 @@
             "text": "readonly string[]"
           },
           "default": "[ ...HDVL_PROPERTIES.map((def) => def.name), ...SENTINEL_BOX, ]",
-          "description": "Every property whose change schedules a frame (§5.6, R24).\n\n**Built from HDVL_PROPERTIES, never by hand** — a\nthirty-sixth registered property must not be able to become\nsilently unobserved."
+          "description": "Every property whose change schedules a frame (§5.6, R24).\n\n**Built from HDVL_PROPERTIES, never by hand** — a\nforty-eighth registered property must not be able to become\nsilently unobserved."
         },
         {
           "kind": "variable",
@@ -12336,7 +12537,7 @@
               "description": "The frame's outward-event queue (§5.11)."
             }
           ],
-          "description": "The **binding pass** (§8.2) — on adopted data and the resolved\nscales, run once per frame.\n\n**Three rules and one clause, each here by necessity.** Both\nhalves of\n**V2** need what the frame produced: the delivered kind is\n`Delivery.type`, and §4.5's `log`-domain clause is checked *after*\ndomain resolution. **V4**'s runtime half needs a `kind:\"absent\"`\ndelivery, which is the seam's own answer to *\"that column is not\nin the result set\"*. **V5** counts *delivered* rows, which is what\n§8.3's *\"against `rows`\"* means. V3, V8, V9, V10, V18 and V19 are\nattribute-only and run in the structural pass beside V1 and V13,\nV4's local-ref half included, as are all of V14, V16 and V20 —\nevery one of them read off attributes and the resolved scale's\n**tag**. The **clause** is SPEC §9's palette exhaustion\n(checkPalette), which is here because a column-derived\ndomain has no size until the frame ran; V15 is a *behaviour* —\n`nice` moving\nderived endpoints only — and is asserted as one rather than\nreported, because SPEC says it is *\"a no-op, not an error\"*."
+          "description": "The **binding pass** (§8.2) — on adopted data and the resolved\nscales, run once per frame.\n\n**Three rules and one clause, each here by necessity.** Both\nhalves of\n**V2** need what the frame produced: the delivered kind is\n`Delivery.type`, and §4.5's `log`-domain clause is checked *after*\ndomain resolution. **V4**'s runtime half needs a `kind:\"absent\"`\ndelivery, which is the seam's own answer to *\"that column is not\nin the result set\"*. **V5** counts *delivered* rows, which is what\n§8.3's *\"against `rows`\"* means. V3, V8, V9, V10, V18 and V19 are\nattribute-only and run in the structural pass beside V1 and V13,\nV4's local-ref half included, as are all of V14, V16 and V20 —\nevery one of them read off attributes and the resolved scale's\n**tag**. **Two clauses** ride along under V2, both because a\ncolumn-derived domain has no size until the frame ran: SPEC §9's\npalette exhaustion (checkPalette) and 017 R8's angular\nband collision (checkAngleCollision). A **third**, 017\nR11's pole-only radius grid, is drained here rather than checked\nhere — it is decided in COMPUTE by the grid that met the ladder\n(reportRadiusGridAtPole). V15 is a\n*behaviour* —\n`nice` moving\nderived endpoints only — and is asserted as one rather than\nreported, because SPEC says it is *\"a no-op, not an error\"*."
         },
         {
           "kind": "function",
@@ -12396,6 +12597,25 @@
             }
           ],
           "description": "§4.7's all-drop clause: *\"If every row drops, the **scale**\nerrors (an all-drop is a mistyped column far more often than a\nfilter).\"*\n\nReported from a widget's `scene()` during COMPUTE and folded into\nthe binding pass that runs immediately after the frame, so it\nedge-triggers, dispatches `hdml-error` and lands `:state(error)`\nthrough exactly the same path every other error does. The\n**scale** is the element and, by §3.5, its own unit.\n\nIt is filed under **V2**, whose §8.3 row is the binding pass's\n*\"does the delivered data fit this scale\"* question — an all-drop\nis the strongest possible answer of *no*, and `all-rows-dropped`\nis already its own code."
+        },
+        {
+          "kind": "function",
+          "name": "reportRadiusGridAtPole",
+          "return": {
+            "type": {
+              "text": "void"
+            }
+          },
+          "parameters": [
+            {
+              "name": "el",
+              "type": {
+                "text": "HdvlElement"
+              },
+              "description": "The `hdml-grid` that drew no ring."
+            }
+          ],
+          "description": "★ **017 R11's survivor** — a radius grid whose only position was\nthe pole, so that suppressing it leaves the grid drawing nothing.\n\nR11 fixed the *chart* by suppressing the degenerate node\n(`guide-spec.ts`'s `atPole`): a ring at the pole has no extent and\na label there has no direction, and both were emitted anyway.\n**What suppression cannot fix is the case where the pole was the\nonly position there was** — `count=\"2\"` over `09-polar-area`'s\n`[0, 423.6 B]` picks a 500 B step, §4.8's ladder yields the single\ntick `{0}`, and the author's `hdml-grid` now paints **nothing at\nall**. That is §1.5's silent wrong chart, and it is the case 017\ndeliberately left live: R11's cause 1 (the ceiling ladder makes\n`count` an upper bound over a **quantised** reachable set) was\ndecided at step 02 as documentation only, and its named cost was\nexactly this. The cost stays; the **silence** does not.\n*(Decided 2026-09-26, with the user, at 017 step 08 — R11's one\nopen question, answered \"suppress **and** diagnose\".)*\n\n**★ Deliberately NOT *\"a ring was suppressed\"*.** Every zero-based\nradius scale on a pole-centred plane has its minimum tick at the\npole, so that condition is true of `09-polar-area` and `10-radar`\non every frame, of documents that are correct. It would be the\nonly report in the suite that fires on a right chart. The\ncondition is *the grid has no ring left*, which fires on neither\ncorpus page and on the pathology alone.\n\n**Filed under V2 with its own `DiagnosticCode`**, exactly as\ncheckPalette and checkAngleCollision are: §8.3's\nV2 row is the binding pass's *\"does the delivered data fit this\nscale\"* question, and a resolved domain whose ladder yields one\nposition — the one position that cannot be drawn — is an answer of\nno. **SPEC §11's checklist is untouched**, still 20 V-rules and 6\nW-rules; a `W7` was declined at step 07 and is declined again here\nfor the same reason.\n\n**★ The element is the GRID and not the scale**, which is where it\nparts company with its two siblings. Their fact is a property of\nthe resolved domain alone and exists with or without any consumer;\nthis one needs the **`count` the grid itself wrote**, and two\ngrids on one scale can ask for different ladders and get different\nanswers. Two consequences, both wanted: the message names the\nelement the author must edit, and §3.5 makes the **unit** the grid\ntoo (a guide has no container ancestor), so blanking it is a no-op\non a guide that is already empty and **the marks keep painting**.\n\nReported from `scene()` during COMPUTE and drained by the binding\npass, reportAllRowsDropped's route and for its reason: a\ncolumn-derived radius domain has no ladder until the frame ran. So\nit edge-triggers, dispatches `hdml-error` through the same path,\nand recovers when the author writes a `step`."
         },
         {
           "kind": "function",
@@ -12557,6 +12777,14 @@
         },
         {
           "kind": "js",
+          "name": "reportRadiusGridAtPole",
+          "declaration": {
+            "name": "reportRadiusGridAtPole",
+            "module": "src/hdvl/validate.ts"
+          }
+        },
+        {
+          "kind": "js",
           "name": "reportNegativePieValue",
           "declaration": {
             "name": "reportNegativePieValue",
@@ -12698,6 +12926,24 @@
             },
             {
               "kind": "field",
+              "name": "stateSheet",
+              "privacy": "private",
+              "readonly": true,
+              "default": "new CSSStyleSheet()",
+              "description": "★ 017 R7's **state sheet** — the output half of SPEC §9's state\nvariants, adopted on this view's shadow root and rewritten from\neach frame's snapshot by applyStateSheet.\n\nOne instance per view, created here rather than shared like\n`ua.ts`'s two sheets, because its text is a function of *this*\nview's widgets."
+            },
+            {
+              "kind": "field",
+              "name": "stateText",
+              "type": {
+                "text": "string"
+              },
+              "privacy": "private",
+              "default": "\"\"",
+              "description": "The text stateSheet currently holds, so a frame that\nchanged nothing re-parses nothing.\n\nIt is also a **structural guard against a frame loop**: the\nsentinel is a `:host` declaration inside each display element's\nown shadow root, and the `<g>` children a generated rule matches\ncarry no `transition` at all, so no `transitionrun` can reach\n`onTransition` from here. Comparing before writing means that\nargument does not have to be re-made every time the sheet gains\na property."
+            },
+            {
+              "kind": "field",
               "name": "loop",
               "type": {
                 "text": "FrameLoop"
@@ -12770,7 +13016,7 @@
                 "text": "boolean"
               },
               "privacy": "public",
-              "description": "Whether the `MutationObserver` fallback is running for this\nview (§5.6).\n\nIt is switched on by W5 — an author `transition` shorthand\nreplaced the UA sentinel wholesale, so a later stylesheet-driven\n`--hdml-*` change would schedule no frame — or unconditionally\nby `HDML_CONFIG.paranoidObserver`. Exposed because \"the\nself-heal happened\" is otherwise unobservable from outside, and\na silent self-heal is indistinguishable from a broken one.",
+              "description": "Whether the `MutationObserver` fallback is running for this\nview (§5.6).\n\nIt is switched on by W5 — author CSS removed the UA sentinel,\neither by replacing it wholesale with the `transition`\nshorthand or by setting `transition-behavior` to anything but\n`allow-discrete`, so a later stylesheet-driven `--hdml-*`\nchange would schedule no frame (the second spelling blinds\nonly the fifteen non-interpolable ones — 017 R6) — or\nunconditionally by `HDML_CONFIG.paranoidObserver`. Exposed\nbecause \"the self-heal happened\" is otherwise unobservable\nfrom outside, and a silent self-heal is indistinguishable from\na broken one.",
               "readonly": true
             },
             {
@@ -12881,6 +13127,33 @@
                 }
               },
               "description": "One frame: MEASURE → COMPUTE → PAINT, then `clearDirty()`."
+            },
+            {
+              "kind": "method",
+              "name": "applyStateSheet",
+              "privacy": "private",
+              "return": {
+                "type": {
+                  "text": "void"
+                }
+              },
+              "parameters": [
+                {
+                  "name": "elements",
+                  "type": {
+                    "text": "readonly HdvlElement[]"
+                  },
+                  "description": "The frame's display elements, document order."
+                },
+                {
+                  "name": "measured",
+                  "type": {
+                    "text": "ReadonlyMap<HdvlElement, Measured>"
+                  },
+                  "description": "The frame's snapshot."
+                }
+              ],
+              "description": "Rewrites the state sheet from one frame's snapshot (017 R7).\n\n**Per frame, not per change**, and the choice is deliberate: the\ninputs are `Measured.props`, which MEASURE has already harvested\nfor every element from the one computed style it reads anyway\n(all forty-seven properties, since step 09-1), so building the\ntext costs a walk over data already in hand and **no new style\nread**. A per-change path would need its own invalidation route\ninto a mechanism whose only route is the frame — R24's sentinel\nalready fires a frame for exactly these properties.\n\n`replaceSync` is called **only when the text changed**, so the\ncommon case — no widget declaring a state — is one string\ncomparison against `\"\"`."
             },
             {
               "kind": "method",

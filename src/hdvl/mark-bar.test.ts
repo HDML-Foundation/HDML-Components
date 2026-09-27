@@ -13,6 +13,7 @@ import {
   installSceneRecorder,
   restoreRenderers,
   sceneOf,
+  stateSheetOf,
 } from "../testing/scene-of";
 import { HdmlViewElement } from "./view";
 import { HdmlBarElement } from "./mark-bar";
@@ -522,12 +523,22 @@ suite("hdvl/mark-bar — §6.1's band-filling rect", () => {
     const bar = barOf(view);
     const fill = rects(view)[0].fill;
     // §6.1: the channel wins — over `--hdml-fill-color` AND over its
-    // `--hover` variant (SPEC §9 has no state exception).
+    // `--hover` variant.
     assert.notStrictEqual(fill, prop(bar, "--hdml-fill-color"));
     assert.notStrictEqual(
       fill,
       prop(bar, "--hdml-fill-color--hover"),
     );
+    // ★ NARROWED at 017 R7's step 09-2. The `--hover` clause above
+    // used to hold because SPEC §9 had no state exception — the
+    // sixteen variants were registered and unread. They are read
+    // now, so the clause needed a second half or it would have kept
+    // passing while saying nothing: the variant does not reach the
+    // SCENE (above) **and** it does not reach the DOM either
+    // (below), because SPEC §10's channel rule wins over a state
+    // variant exactly as it wins over the base. This fixture's only
+    // declared variant is the fill, so the generated sheet is empty.
+    assert.strictEqual(stateSheetOf(view), "");
     // ★ And no outline, because this fixture authors no
     // `--hdml-line-width`: since 017 R4 a filled mark CAN stroke,
     // and what keeps this one clean is `ua.ts`'s `0` default

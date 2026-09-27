@@ -180,3 +180,30 @@ export function sceneOf(
   const digits = options?.precision;
   return digits === undefined ? last : <Scene>quantize(last, digits);
 }
+
+/**
+ * The text of 017 R7's **state sheet** on a view (step 09-2).
+ *
+ * The sheet is the **last** entry in the view's
+ * `adoptedStyleSheets`, by construction: `HdvlElement` *prepends*
+ * `ua.ts`'s `elementSheet` and `HdmlViewElement` *appends* this one,
+ * so a state rule the author asked for beats the UA defaults.
+ *
+ * It lives here rather than in three test files because the generated
+ * rules are the only observable output of the mechanism, and a scene
+ * assertion is structurally blind to them — which is exactly why
+ * `mark-bar` / `mark-area` / `mark-line`'s channel tests needed it.
+ *
+ * @param view - The view.
+ * @returns The rules as text, `""` when no widget declares a state.
+ */
+export function stateSheetOf(view: HdmlViewElement): string {
+  const sheets = view.shadowRoot?.adoptedStyleSheets ?? [];
+  const last = sheets[sheets.length - 1];
+  if (last === undefined) {
+    return "";
+  }
+  return Array.from(last.cssRules)
+    .map((rule) => rule.cssText)
+    .join("\n");
+}

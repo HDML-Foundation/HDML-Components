@@ -705,8 +705,23 @@ function cssNumber(
  * `3px` emphasis line dashes proportionally instead of turning into
  * a nearly-solid one — the same reason a browser's own `dashed`
  * border scales with `border-width`.
+ *
+ * **★ Exported since 017 R7's step 09-2, for one reason: the
+ * pattern is DERIVED, so it has two callers that must not
+ * disagree.** `states.ts` regenerates `stroke-dasharray` for a
+ * state that changes either input, and a second copy of
+ * `[w × 4, w × 3]` there would let a dashed line thicken on hover
+ * while keeping gaps computed for the old width — silently, since
+ * no scene and no golden can see a generated rule.
+ *
+ * @param style - `--hdml-line-style`'s computed keyword.
+ * @param width - The stroke width the pattern scales with.
+ * @returns The pattern in CSS px, or `null` for solid.
  */
-function dashOf(style: string, width: number): number[] | null {
+export function dashOf(
+  style: string,
+  width: number,
+): number[] | null {
   if (style === "dashed") {
     return [width * 4, width * 3];
   }
@@ -723,10 +738,20 @@ function dashOf(style: string, width: number): number[] | null {
  * mark's series colour is its **stroke**, and SPEC §9 gives
  * `--hdml-line-color` to *"stroked widgets"*, so that is what a
  * bound `color` wins over here. Both readings agree on the part
- * that matters: the channel wins. No state variant is read at all
- * — a per-mark hover value needs the renderer to know which node is
- * hovered, which `Paint` cannot express (SPEC §9 routes it through
- * the stroke variants at a later slice).
+ * that matters: the channel wins.
+ *
+ * **★ No state variant is read HERE, and the reason is not that
+ * `Paint` cannot express one — it is that the runtime does not
+ * choose.** `NodeBase extends Paint`, so every scene node already
+ * carries its own paint and its own `i`; the sentence this replaced
+ * claimed the type was the obstacle and was measured false at 017
+ * R7. What is true of the **scene** is that it holds one value per
+ * node, and a state needs two simultaneously. The mechanism never
+ * asks it to: `states.ts` emits a `:hover` and an `:active` rule
+ * over `g[data-w] > *` and the browser applies whichever matches,
+ * per node. So this function resolves the **base** paint and
+ * nothing else — and SPEC §10's channel rule is honoured there, by
+ * suppressing the paint property a bound channel owns.
  *
  * @param m - The widget's measured snapshot.
  * @param color - The resolved `color`-channel paint, or `null`.
@@ -791,12 +816,15 @@ export function strokePaint(
  * `09-polar-area`'s comment relies on — *"a hover cue on
  * channel-colored wedges uses what the channel does not own"*.
  *
- * **No state variant is read**, here or in {@link strokePaint}: a
- * per-mark hover value needs the renderer to know which node is
- * hovered, which {@link Paint} cannot express. `09`'s
- * `--hdml-line-width--hover: 2.5px` is therefore still inert,
- * deliberately — 017 R7 owns it, and step 09-2 is where it stops
- * being true.
+ * **No state variant is read**, here or in {@link strokePaint} —
+ * and since 017 R7's step 09-2 that is **not** because
+ * {@link Paint} cannot express one. It carries a full per-node
+ * paint already. It is because the runtime **does not choose**:
+ * `states.ts` emits both rules and the browser applies the one that
+ * matches, so the scene stays the base paint and the variants reach
+ * the DOM as CSS. `09`'s `--hdml-line-width--hover: 2.5px` is
+ * therefore **live**, through a generated rule rather than through
+ * this function.
  *
  * @param m - The widget's measured snapshot.
  * @param color - The resolved `color`-channel paint, or `null`.

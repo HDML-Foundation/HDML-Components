@@ -14,6 +14,7 @@ import {
   restoreRenderers,
   roundDeep,
   sceneOf,
+  stateSheetOf,
 } from "../testing/scene-of";
 import { HdmlViewElement } from "./view";
 import { HdmlAreaElement } from "./mark-area";
@@ -397,12 +398,18 @@ suite("hdvl/mark-area — §6.1's filled band", () => {
     const area = areaOf(view);
     const node = path(view);
     // §6.1: the channel wins — over `--hdml-fill-color` AND over its
-    // `--hover` variant (SPEC §9 has no state exception).
+    // `--hover` variant.
     assert.notStrictEqual(node.fill, prop(area, "--hdml-fill-color"));
     assert.notStrictEqual(
       node.fill,
       prop(area, "--hdml-fill-color--hover"),
     );
+    // ★ NARROWED at 017 R7's step 09-2 — see `mark-bar.test.ts`'s
+    // twin of this line. The variants are read now, so "the channel
+    // wins" has to be asserted where they land: the generated sheet.
+    // An `hdml-area` bound to `color` suppresses the fill variant,
+    // and the fill is the only variant here.
+    assert.strictEqual(stateSheetOf(view), "");
     // ★ …and the authored `--hdml-line-color: blue` above reaches
     // nothing — but 017 R4 changed WHY, and this assertion survived
     // its own subject changing underneath it. It is not that a

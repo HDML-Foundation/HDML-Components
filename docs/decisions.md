@@ -1635,9 +1635,14 @@ geometry moved anywhere: `Paint` is spread into nodes whose coordinates are comp
 company with `strokePaint`. `09-polar-area`'s own comment depends on it: a hover cue on
 channel-coloured wedges uses *"what the channel does not own"*.
 
-The sixteen state variants remain unread on both halves — `09`'s
-`--hdml-line-width--hover: 2.5px` is still inert. A per-mark hover value needs the renderer
-to know which node is hovered, which `Paint` cannot express; 017 R7 owns it.
+The sixteen state variants are **read since 017 R7's step 09-2**, and what used to stand here
+— *"a per-mark hover value needs the renderer to know which node is hovered, which `Paint`
+cannot express"* — was false as a **reason**, which R7 measured. `NodeBase extends Paint`, so
+every scene node already carries a full per-node paint and its own `i`. The mechanism never
+needed the type to reach further, because **the runtime does not choose**: `states.ts` emits a
+`:hover` and an `:active` rule and the browser applies whichever matches, per node. `09`'s
+`--hdml-line-width--hover: 2.5px` is live. This function still reads no variant, and that is
+now a statement about *where* the variants land rather than about what `Paint` can hold.
 
 ## A point's glyph default is the sheet's, and it is 6px square
 
@@ -1920,11 +1925,15 @@ before it was coordinates (`page-10`'s `nodeCount` literal, 28 → 26). In pixel
 marks and document order is paint order, so its `0B` had been *under* the wedges rather than
 on top of them.
 
-## Interaction-state variants are named `--hover`, and 09-1 left them inert
+## Interaction-state variants are named `--hover`, and the runtime generates the rules
 
-Project 017 R7, implementation step 09-1. The registry's four `_hover` properties became
-**sixteen `--hover` / `--active` variants** and the registry went from 35 to **47**. Nothing
-reads them yet, and that is the intended end state of this step.
+Project 017 R7, implementation steps 09-1 and 09-2 — the **input** half and the **output**
+half, in that order and in two commits.
+
+Step 09-1: the registry's four `_hover` properties became **sixteen `--hover` / `--active`
+variants** and the registry went from 35 to **47**, with *nothing reading them* — which was
+that step's intended end state, and is no longer the tree's. The generator that reads them
+is § The generator, below.
 
 **The separator is `--`, on the founder's call.** `_` was rejected outright
 (*"i don't like `_` in the name"*) and `--hdml-fill-color--hover` was probed valid on all
@@ -1984,6 +1993,81 @@ What keeps the claim *true* is that all twelve added properties are syntax `*`, 
 in the class `allow-discrete` already revives — and that was **measured, not argued**: the
 sentinel sweep re-run at 09-1 reports **47 registered · 47 schedule a frame · 0 silent**,
 all sixteen variants included. Nothing in the sentinel is per-property.
+
+### The generator — step 09-2
+
+Project 017 R7, implementation step 09-2. The output half.
+[`src/hdvl/states.ts`](../src/hdvl/states.ts) turns a frame's snapshot into
+`g[data-w="{uid}"] > *:hover` / `…:active` rules and the view adopts them on its own shadow
+root. **This is what dissolves SPEC §10's *"irreplaceable"* argument at its root**: §10 is
+right that base and state values must be simultaneously readable from one computed style, and
+right that a `:state()` rule on the element cannot express per-mark — its unstated leap was
+that the runtime must therefore *choose*. It does not. It emits both rules; the browser
+applies the matching one per node, natively, with **no per-node index** (so `i: -1` guides
+come along free) and **no frame per `pointermove`**. The mechanism is the PoC's
+`getSvgStyles`, raised by the founder, with one deliberate departure.
+
+**No BASE rule is emitted, and that is the departure.** The PoC wrote four rules, base
+included, because it had no per-node paint to write. This renderer does: `applyPaint` stamps
+`fill` / `stroke` / `stroke-width` / `stroke-dasharray` on every node, and those values are
+§6.1's **resolved** paint — channel first. Re-deriving a base rule from `--hdml-fill-color`
+would therefore have **inverted §6.1 on every channel-coloured widget**, since any CSS rule
+beats a presentation attribute, and **flattened a group whose nodes legitimately differ**,
+since `mark-bar` resolves a fill per row. Not writing one is also exactly what keeps R7's
+*"the base paint stays in the `Scene`, untouched"* true — and with it all 29 whole-`Scene`
+goldens, which moved by **zero**, predicted and then proved.
+
+**The selector is `g[data-w] > *`, not `> [data-i]`.** The two match the same set —
+`paintNodes` appends every node as a direct child and `applyClip` puts clip paths in
+`<defs>`, so a group has no other children — and `> *` is `hitOf`'s own structural
+assumption. Depending on `data-i` would tie the mechanism to the **index** it explicitly does
+not need.
+
+**A rule may only emit what the widget's own paint can say**, which is two suppressions
+rather than one. SPEC §10's channel rule is the expected one: a widget binding `color` loses
+whichever paint that channel resolves into, so `09-polar-area`'s hover cue stays the
+**outline**, *"what the channel does not own"*. The one this step found is that **a stroked
+host has no fill at all** — `strokePaint` returns `fill: null` unconditionally — so
+`--hdml-fill-color--hover` on an `hdml-line` would have filled the series path on hover, a
+state no base state can express and one **no scene golden could ever have shown**, because
+the scene's `fill` stays `null`. It was found by resolving `mark-line.test.ts`'s status-quo
+assertion rather than by reading the spec, which is the argument for narrowing those tests
+instead of deleting them. `hdml-legend` is a stated exception: it binds `channel="color"`,
+not `color`, and one selector cannot separate its scale-painted swatches from its text runs.
+
+**★ `stroke-dasharray` is derived, so `dashOf` was exported rather than copied.** The pattern
+is a function of `--hdml-line-style` **×** `--hdml-line-width`, so a state that changes either
+input must re-derive it; `none` is emitted rather than omitted when a state turns the dash
+off, because the base node carries an attribute to override. A second copy of `[w × 4, w × 3]`
+in the generator would have let a dashed line thicken on hover while keeping gaps computed for
+the old width — **silently, since no scene and no golden can see a generated rule.** One
+function, two callers, is the whole mitigation.
+
+**The sheet is rewritten per frame, and `replaceSync` runs only when the text changed.** The
+inputs are `Measured.props`, which MEASURE harvests from the one computed style it reads
+anyway, so the generator costs a walk over data already in hand and **no new style read** —
+measured at **3.03 frames per view** across the 13 live pages, byte-identical to 09-1's, and
+**47 registered · 47 schedule a frame · 0 silent** unchanged. A per-change path would have
+needed its own invalidation route into a mechanism whose only route is the frame, which R24's
+sentinel already provides for exactly these properties. Comparing the text before writing it
+also makes a frame loop **structurally** impossible rather than argued: the sentinel is a
+`:host` declaration inside each display element's own shadow root, and the `<g>` children a
+generated rule matches carry no `transition` at all.
+
+**The sheet is APPENDED where `ua.ts`'s is prepended.** `HdvlElement.createRenderRoot`
+prepends `elementSheet` so a subclass's own `static styles` beat the UA defaults; the view
+appends the state sheet so a state rule the author asked for beats **them**. Nothing in
+`elementSheet` paints an `<svg>` child today, so the order is not load-bearing yet —
+appending is what stops it becoming load-bearing later.
+
+**Evidence is split, deliberately.** The rule **text** is asserted against a pure
+`(snapshot) → CSS` function, with no DOM, pointer or renderer in the picture; the **cascade**
+— *a CSS rule in an adopted constructed sheet beats an SVG presentation attribute* — is
+asserted against a real `<svg>`, and needed **no pointer**, because a non-pseudo selector
+proves both the cascade and the per-group scoping. That last claim had been a scratchpad probe
+since step 09 and is now a regression guard. Only `:hover` and `:active` themselves need real
+pointer input, and nothing in the 29-view corpus moves one — which is why they are their own
+step.
 
 ## `hdml-split-by` is published and unimplemented
 

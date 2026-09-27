@@ -16,6 +16,7 @@ import {
   restoreRenderers,
   roundDeep,
   sceneOf,
+  stateSheetOf,
 } from "../testing/scene-of";
 import { HdmlViewElement } from "./view";
 import { HdmlLineElement } from "./mark-line";
@@ -300,8 +301,8 @@ suite("hdvl/mark-line — §6.1's stroked path", () => {
     const palette = splitColorList(prop(line, "--hdml-palette"));
     const stroke = path(view).stroke;
     // §6.1: the channel wins — over `--hdml-fill-color` and its
-    // `--hover` variant (SPEC §9 has no state exception), and over
-    // the stroke colour a stroked mark would otherwise take.
+    // `--hover` variant, and over the stroke colour a stroked mark
+    // would otherwise take.
     assert.strictEqual(stroke, palette[0]);
     assert.notStrictEqual(stroke, prop(line, "--hdml-fill-color"));
     assert.notStrictEqual(
@@ -309,6 +310,15 @@ suite("hdvl/mark-line — §6.1's stroked path", () => {
       prop(line, "--hdml-fill-color--hover"),
     );
     assert.notStrictEqual(stroke, prop(line, "--hdml-line-color"));
+    // ★ NARROWED at 017 R7's step 09-2, and this is the twin that
+    // found the step's extra finding. A stroked mark's `fill` is
+    // `null` UNCONDITIONALLY, so `--hdml-fill-color--hover` on an
+    // `hdml-line` must not reach the DOM either — a generated
+    // `fill: lime` would fill the series path on hover, a state no
+    // base state can express and one no scene golden could show,
+    // since the scene's `fill` stays `null` (asserted below).
+    assert.strictEqual(stateSheetOf(view), "");
+    assert.isNull(path(view).fill);
   });
 
   test("unbound, the stroke is --hdml-line-color", async () => {

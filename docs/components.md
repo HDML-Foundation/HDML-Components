@@ -1312,12 +1312,18 @@ A grep for `fillPaint(` finds the file, not the host.
 The dash pattern is `strokePaint`'s own — a multiple of the stroke width, so `dashed` is
 `[w × 4, w × 3]` and `dotted` is `[w, w × 2]`. One function serves both halves.
 
-The sixteen state variants are still **unimplemented** on both halves:
-`--hdml-line-width--hover: 2.5px` on `09-polar-area` is inert. A per-mark hover value needs
-the renderer to know which node is hovered, which the scene's `Paint` cannot express.
-**017 R7's step 09-1 renamed and expanded the registry and deliberately left the mechanism
-inert**; step 09-2 lands the generator that reads it, and corrects the `Paint` sentence
-above — which R7 measured to be false.
+The sixteen state variants are **live since 017 R7's step 09-2**, and the sentence that used
+to stand here — *"a per-mark hover value needs the renderer to know which node is hovered,
+which the scene's `Paint` cannot express"* — was false as a **reason**. `NodeBase extends
+Paint`, so every scene node has carried a full per-node paint, and its own `i`, since Slice
+B. What is true of the scene is only that it holds **one** value per node where a state needs
+two at once — and the runtime never asks it to, because **the runtime does not choose**. It
+emits both rules and the browser applies whichever matches, per node:
+[`src/hdvl/states.ts`](../src/hdvl/states.ts) generates
+`g[data-w="{uid}"] > *:hover` and `…:active` from the widget's harvested variants and the
+view adopts the result on its own shadow root. `09-polar-area`'s
+`--hdml-line-width--hover: 2.5px` is therefore live. See
+[§ Interaction states](#interaction-states-are-generated-rules).
 
 **V12 — *"only registered `--hdml-*` properties appear in page CSS"* — is enforced at
 source, not at runtime**, and could not be otherwise: an unregistered custom property is
@@ -1329,6 +1335,68 @@ sixteen state variants included. **V11** is source-time for the mirror reason (a
 element is inert in the display half) and is checked in the same place, against
 `@hdml/types`: known tags, published attributes on data elements, and the `{table}_{field}`
 compound on every `origin`/`field` inside a **model**-sourced frame.
+
+#### Interaction states are generated rules
+
+Project 017 R7, implementation step 09-2. SPEC §9 registers **sixteen state variants** — the
+eight presentation-attribute properties × `{hover, active}`, spelled with a doubled dash
+(`--hdml-fill-color--hover`) — and [`src/hdvl/states.ts`](../src/hdvl/states.ts) is the half
+that reads them. **The runtime never chooses a value per node. It emits both rules and the
+browser chooses**, per node, natively:
+
+```css
+g[data-w="{uid}"] > *:hover  { fill: …; stroke-width: … }
+g[data-w="{uid}"] > *:active { … }
+```
+
+The text is built from `Measured.props` — the same single `getComputedStyle` per element per
+frame MEASURE already takes — and adopted on the **view's** shadow root, *appended* so a
+state rule the author asked for beats `ua.ts`'s defaults. `replaceSync` runs only when the
+text changed, so a view nobody styled costs one string comparison per frame.
+
+Five properties of the mechanism are worth knowing, because each is a decision:
+
+- **No per-node index is needed, so guides come along for free.** The selector matches
+  whatever node the pointer is over, so a widget's `i` is irrelevant — and every guide node
+  is `i: -1`. A design that had put a hovered index in the scene could not have reached a
+  tick or a label at all.
+- **No frame runs per `pointermove`.** Zero JavaScript at interaction time.
+- **No BASE rule is emitted**, and that is load-bearing. The renderer writes the base paint
+  as a **presentation attribute** per node, and that value is §6.1's *resolved* one — channel
+  first. A base rule re-derived from `--hdml-fill-color` would invert §6.1 on every
+  channel-coloured widget (any CSS rule beats a presentation attribute) and flatten a group
+  whose nodes legitimately differ, since `mark-bar` resolves a fill **per row**. It is also
+  what keeps the base paint in the `Scene` untouched, and with it all 29 whole-`Scene`
+  goldens.
+- **A rule may only emit what the widget's own paint can say.** A stroked host —
+  `hdml-line`, `hdml-rule`, `hdml-axis`, `hdml-grid` — has `fill: null` unconditionally, so
+  `fill` is never emitted for one; and a widget binding the `color` channel loses whichever
+  paint that channel resolves into, which is SPEC §10's rule (*"channel-bound paint wins over
+  `--hdml-fill-color` and its state variants alike"*) applied where the variants now land.
+  `09-polar-area` was authored on exactly that: its hover cue is the **outline**, *"what the
+  channel does not own"*. `hdml-legend` is a stated exception — it binds `channel="color"`,
+  not `color`, and one selector cannot separate its scale-painted swatches from its text
+  runs.
+- **★ `stroke-dasharray` is DERIVED and is regenerated.** The dash pattern is not a property
+  an author sets: `dashOf` computes it from `--hdml-line-style` **×** `--hdml-line-width`
+  (`dashed` = `[w × 4, w × 3]`, `dotted` = `[w, w × 2]`). A state that changes *either* input
+  therefore re-derives it, and `none` is emitted rather than omitted when the state turns the
+  dash off, because the base node carries an attribute that has to be overridden. Emitting
+  `stroke-width` alone on a dashed line would thicken it while keeping gaps computed for the
+  old width — a wrong picture with no error, which no scene golden could ever show.
+
+**`hover` and `active` are v1; `focus` and `selected` are v2** — not for cost, but because
+neither has a browser state to hang a rule on today: SVG shapes are not focusable, so
+`:focus` can never match, and `selected` is not a CSS pseudo-class at all and needs a
+selection *model*. The generator takes a **state list**, so adding either is a row plus its
+own machinery.
+
+Two caveats are documented rather than fixed. `--hdml-font-size` and `--hdml-font-weight`
+change text **metrics**, but text position and label boxes are measured in MEASURE and baked
+in COMPUTE, so a state variant paints larger text at the base position and can overflow its
+box — they are for emphasis, not for resizing. And a **width** variant alone paints nothing
+on a filled host that set no `--hdml-line-color`, because R4 made the outline opt-in and the
+base `stroke` is then `none`; the author sets both, as `09-polar-area` does.
 
 ## Authoring example
 
