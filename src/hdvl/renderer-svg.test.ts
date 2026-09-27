@@ -90,6 +90,31 @@ function gOf(root: ShadowRoot, uid: string): SVGGElement {
   return <SVGGElement>root.querySelector(`g[data-w="${uid}"]`);
 }
 
+/** One `text` node, defaulted — 017 R2's step 10-1. */
+function run(
+  over: Partial<Extract<SceneNode, { k: "text" }>>,
+): SceneNode {
+  return {
+    ...NO_PAINT,
+    k: "text",
+    i: 0,
+    x: 12,
+    y: 14,
+    text: "North",
+    anchor: "middle",
+    baseline: "top",
+    font: FONT,
+    rotate: 0,
+    decorative: false,
+    ...over,
+  };
+}
+
+/** The single `<text>` the default widget painted. */
+function textOf(root: ShadowRoot): SVGTextElement {
+  return <SVGTextElement>gOf(root, "w1").firstChild;
+}
+
 function dOf(root: ShadowRoot, uid: string): string {
   const path = <SVGPathElement>gOf(root, uid).querySelector("path");
   return <string>path.getAttribute("d");
@@ -352,6 +377,7 @@ suite("hdvl/renderer-svg — the renderer contract", () => {
       anchor: "middle",
       baseline: "top",
       font: FONT,
+      rotate: 0,
       decorative: false,
       ...over,
     });
@@ -376,6 +402,7 @@ suite("hdvl/renderer-svg — the renderer contract", () => {
             text({
               anchor: "end",
               baseline: "bottom",
+              rotate: 0,
               decorative: true,
             }),
           ],
@@ -388,6 +415,51 @@ suite("hdvl/renderer-svg — the renderer contract", () => {
       "alphabetic",
     );
     assert.strictEqual(el.getAttribute("aria-hidden"), "true");
+  });
+
+  // ── 017 R2, step 10-1 ─────────────────────────────────────────
+  test("a rotated run turns about its own anchor point", () => {
+    // R2's angle is SCENE data, so the renderer is the only place it
+    // becomes a `transform` — and the pivot is the point
+    // `guidePoint` returned, NOT the view origin. That is what makes
+    // `end` + `-45deg` land a label's tail on its own tick instead
+    // of swinging it across the plane.
+    const { r, root } = mounted();
+    r.render(
+      scene([group({ nodes: [run({ x: 40, y: 7, rotate: -45 })] })]),
+    );
+    assert.strictEqual(
+      textOf(root).getAttribute("transform"),
+      "rotate(-45 40 7)",
+    );
+  });
+
+  test("an unrotated run writes no transform at all", () => {
+    // An identity `rotate(0 x y)` would be valid SVG and useless: it
+    // is 365 corpus nodes of DOM noise, and its ABSENCE is what
+    // leaves every pre-R2 assertion in this file true.
+    const { r, root } = mounted();
+    r.render(scene([group({ nodes: [run({})] })]));
+    assert.isNull(textOf(root).getAttribute("transform"));
+  });
+
+  test("a reused run drops a stale transform", () => {
+    // ★ `paintNodes` patches `entry.els[j]` whenever the kind is
+    // unchanged, so without the explicit `removeAttribute` a run
+    // that STOPS rotating stays rotated for the life of the view.
+    // Asserting element identity is what makes this a reuse test:
+    // on a fresh element the null would pass vacuously.
+    const { r, root } = mounted();
+    r.render(scene([group({ nodes: [run({ rotate: 30 })] })]));
+    const before = textOf(root);
+    assert.strictEqual(
+      before.getAttribute("transform"),
+      "rotate(30 12 14)",
+    );
+    r.render(scene([group({ nodes: [run({ rotate: 0 })] })]));
+    const after = textOf(root);
+    assert.strictEqual(after, before, "the element was replaced");
+    assert.isNull(after.getAttribute("transform"));
   });
 
   test("an author string never becomes markup", () => {
@@ -409,6 +481,7 @@ suite("hdvl/renderer-svg — the renderer contract", () => {
               anchor: "start",
               baseline: "top",
               font: FONT,
+              rotate: 0,
               decorative: false,
             },
           ],

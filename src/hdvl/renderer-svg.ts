@@ -386,6 +386,24 @@ function applyText(
   el.setAttribute("font-size", `${num(node.font.size)}px`);
   el.setAttribute("font-weight", node.font.weight);
   el.setAttribute("font-style", node.font.style);
+  // ★ 017 R2. An identity rotation is written as NO attribute, and
+  // the `else` is **not** tidiness: `paintNodes` reuses
+  // `entry.els[j]` whenever the kind is unchanged, so a run that
+  // stops rotating would keep a stale `transform` forever. Same
+  // shape, same reason, as `aria-hidden` below.
+  //
+  // The pivot is the run's OWN anchor point — `(node.x, node.y)`, the
+  // point `guidePoint` returned — not the view origin. That is what
+  // makes R2's `end` + `-45deg` land every label's tail on its tick
+  // and line the ends up along the axis.
+  if (node.rotate === 0) {
+    el.removeAttribute("transform");
+  } else {
+    el.setAttribute(
+      "transform",
+      `rotate(${num(node.rotate)} ${num(node.x)} ${num(node.y)})`,
+    );
+  }
   if (node.decorative) {
     el.setAttribute("aria-hidden", "true");
   } else {

@@ -283,6 +283,9 @@ function keyNodes(
         anchor: "start",
         baseline: "middle",
         font: m.font,
+        // A legend entry's name is never rotated (017 R2): the flow
+        // that lays it out is horizontal by construction.
+        rotate: 0,
         // ★ The name is what the reader is told, so it is real
         // text: selectable, copyable, and not `aria-hidden` (§5.10).
         decorative: false,
@@ -393,6 +396,9 @@ function rampNodes(
       // the one axis fact this element has.
       anchor: flow.horizontal ? "middle" : "start",
       baseline: flow.horizontal ? "top" : "middle",
+      // A ramp's value labels follow the bar's axis, unrotated
+      // (017 R2).
+      rotate: 0,
       font: m.font,
       decorative: false,
       ...paint,

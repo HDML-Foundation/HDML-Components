@@ -146,6 +146,28 @@ export type SceneNode =
       baseline: "top" | "middle" | "bottom";
       font: SceneFont;
       /**
+       * The run's clockwise rotation in **degrees**, about its own
+       * anchor point — `0` for an unrotated run (017 R2).
+       *
+       * ★ **Degrees, because `arc`'s `a0`/`a1` are degrees** (§4.6),
+       * and a radian here would be a second unit for one concept.
+       *
+       * ★ **Scene data, never a CSS `transform`.** SPEC §13 makes an
+       * author `transform` on a display element unsupported, and
+       * `measure.ts` says why — every box is the view's content-box
+       * origin and *"nothing here compensates for one."* That is
+       * about the **measured box**. This is the placement of a run
+       * the renderer paints on the view's surface: the host box
+       * stays untransformed and MEASURE never sees it, so the angle
+       * is renderer-neutral in the same way `d` and `arcToD` are.
+       *
+       * ★ **It reserves no space** (R2's stated boundary). The
+       * runtime does not measure a rotated run's extents and grow
+       * the layout to fit; deepening the plane's padding is the
+       * author's.
+       */
+      rotate: number;
+      /**
        * true = decoration, pruned from a11y and from text
        * selection (§6.6).
        */

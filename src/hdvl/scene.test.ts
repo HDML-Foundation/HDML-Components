@@ -111,6 +111,7 @@ function everyKind(): SceneNode[] {
       anchor: "middle",
       baseline: "top",
       font: FONT,
+      rotate: 0,
       decorative: true,
     },
   ];
