@@ -53,9 +53,12 @@
       hdml-axis.price { position: absolute; top: 0; bottom: 0; left: 100%;
         --hdml-line-width: 1px; --hdml-line-color: #f59e0b; }
       hdml-label { --hdml-font-size: 11px; }
-      hdml-label[channel="x"] { position: absolute; left: 0; right: 0; top: 100%; }
-      hdml-label.volume { position: absolute; top: 0; bottom: 0; right: 100%; }
-      hdml-label.price { position: absolute; top: 0; bottom: 0; left: 100%; }
+      /* The right-hand y axis is the AUTHOR's placement, not one of
+         the two gutters SPEC §3 names, so the UA clearance cannot
+         reach it: with the run centred on its tick (017 R2) this
+         page supplies the clearance itself. */
+      hdml-label.price { position: absolute; top: 0; bottom: 0;
+        left: calc(100% + 20px); }
 
       hdml-bar { --hdml-fill-color: #1c8cf466; }
       hdml-line { --hdml-line-width: 2px; --hdml-line-color: #f59e0b;

@@ -296,43 +296,59 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
     }
   });
 
-  test("★ anchor and baseline follow the BOX", async () => {
-    // §6.5 derives them from "which edge of its own box the scale's
-    // axis runs along", and SPEC §7 gives the tag no `position`
-    // attribute — so this is the derivation under a moved box, not
-    // four cases keyed on the channel.
+  test("★ a cartesian run is CENTRED on its tick", async () => {
+    // ★ 017 R2's corrected placement model, and the test it
+    // replaced is the evidence for why it is one model rather
+    // than four rows: this used to assert `middle`/`top`,
+    // `middle`/`bottom`, `end`/`middle` and `start`/`middle` over
+    // these same four fixtures — a derivation from "which edge of
+    // its own box the scale's axis runs along". The founder
+    // replaced it with one sentence: "a label's text is centred
+    // on the tick, horizontally AND vertically."
+    //
+    // ★ So the claim here is an INVARIANCE, not four answers.
+    // All four fixtures move the box across its channel — below
+    // the line, above it, left of it, right of it — and the run
+    // is `middle`/`middle` in every one. A derivation that came
+    // back on the cartesian branch would fail this on the second
+    // fixture, not on the first.
+    //
+    // Clearance from the axis is the LABEL's own position and
+    // lives in `ua.ts` (`LABEL_CLEARANCE`), which is why moving
+    // the box here moves the run and changes nothing about how it
+    // hangs. The polar derivation, which survives, is asserted in
+    // `guide-polar.test.ts` — including that a radius label is
+    // NOT `middle`/`middle`, which is this step's negative
+    // control and already lived there.
+    const centred = { anchor: "middle", baseline: "middle" };
     const below = await mount(xPage(""));
-    for (const node of texts(below, "x")) {
-      assert.strictEqual(node.anchor, "middle");
-      assert.strictEqual(node.baseline, "top");
-    }
-
     const above = await mount(
       xPage("top: auto; bottom: 100%; height: 24px"),
     );
-    for (const node of texts(above, "x")) {
-      assert.strictEqual(node.anchor, "middle");
-      assert.strictEqual(node.baseline, "bottom");
+    const left = await mount(page('count="3"'));
+    const right = await mount(
+      page('count="3"', "left: 100%; right: auto; width: 40px;"),
+    );
+    for (const node of [
+      ...texts(below, "x"),
+      ...texts(above, "x"),
+      ...texts(left),
+      ...texts(right),
+    ]) {
+      assert.strictEqual(node.anchor, centred.anchor);
+      assert.strictEqual(node.baseline, centred.baseline);
     }
-    // Only the crossing moved: the positions ALONG x are unmoved.
+    // …and the box still decides WHERE, on the crossing axis
+    // alone: the positions ALONG x are unmoved by moving the
+    // line across it.
     assert.deepEqual(
       texts(above, "x").map((n) => n.x),
       texts(below, "x").map((n) => n.x),
     );
-
-    const left = await mount(page('count="3"'));
-    for (const node of texts(left)) {
-      assert.strictEqual(node.anchor, "end");
-      assert.strictEqual(node.baseline, "middle");
-    }
-
-    const right = await mount(
-      page('count="3"', "left: 100%; right: auto; width: 40px;"),
+    assert.notDeepEqual(
+      texts(above, "x").map((n) => n.y),
+      texts(below, "x").map((n) => n.y),
     );
-    for (const node of texts(right)) {
-      assert.strictEqual(node.anchor, "start");
-      assert.strictEqual(node.baseline, "middle");
-    }
   });
 
   test("★ ONE shared compact prefix over the set", async () => {

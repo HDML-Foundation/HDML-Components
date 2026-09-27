@@ -695,7 +695,7 @@ const GOLDEN: Scene = {
       role: "guide",
       box: {
         x: 76,
-        y: 328,
+        y: 340,
         w: 542,
         h: 0,
       },
@@ -709,10 +709,10 @@ const GOLDEN: Scene = {
           k: "text",
           i: -1,
           x: 76,
-          y: 328,
+          y: 340,
           text: "0K",
           anchor: "middle",
-          baseline: "top",
+          baseline: "middle",
           font: {
             family: "system-ui",
             size: 11,
@@ -730,10 +730,10 @@ const GOLDEN: Scene = {
           k: "text",
           i: -1,
           x: 245.375,
-          y: 328,
+          y: 340,
           text: "0.5K",
           anchor: "middle",
-          baseline: "top",
+          baseline: "middle",
           font: {
             family: "system-ui",
             size: 11,
@@ -751,10 +751,10 @@ const GOLDEN: Scene = {
           k: "text",
           i: -1,
           x: 414.75,
-          y: 328,
+          y: 340,
           text: "1K",
           anchor: "middle",
-          baseline: "top",
+          baseline: "middle",
           font: {
             family: "system-ui",
             size: 11,
@@ -772,10 +772,10 @@ const GOLDEN: Scene = {
           k: "text",
           i: -1,
           x: 584.125,
-          y: 328,
+          y: 340,
           text: "1.5K",
           anchor: "middle",
-          baseline: "top",
+          baseline: "middle",
           font: {
             family: "system-ui",
             size: 11,
@@ -796,7 +796,7 @@ const GOLDEN: Scene = {
       tag: "hdml-label",
       role: "guide",
       box: {
-        x: 76,
+        x: 56,
         y: 28,
         w: 0,
         h: 300,
@@ -810,10 +810,10 @@ const GOLDEN: Scene = {
         {
           k: "text",
           i: -1,
-          x: 76,
+          x: 56,
           y: 278,
           text: "20%",
-          anchor: "end",
+          anchor: "middle",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -831,10 +831,10 @@ const GOLDEN: Scene = {
         {
           k: "text",
           i: -1,
-          x: 76,
+          x: 56,
           y: 178,
           text: "30%",
-          anchor: "end",
+          anchor: "middle",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -852,10 +852,10 @@ const GOLDEN: Scene = {
         {
           k: "text",
           i: -1,
-          x: 76,
+          x: 56,
           y: 78,
           text: "40%",
-          anchor: "end",
+          anchor: "middle",
           baseline: "middle",
           font: {
             family: "system-ui",

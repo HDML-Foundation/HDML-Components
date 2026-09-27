@@ -428,104 +428,117 @@ export interface Placement {
 }
 
 /**
- * How far off an axis a component must be to count as pointing
- * along it.
+ * How far off the radius a component must be to count as
+ * pointing along it.
  *
- * The normal is compared **relative to its own magnitude**, because
- * the polar one is a radius long and the cartesian one is a unit
- * vector. `cos(π / 2)` is `6.1e-17`, so a three-o'clock tick's
- * vertical component is that fraction of its radius — fifteen
- * orders of magnitude under this — while the smallest angle an
- * author can distinguish is nine orders of magnitude over it.
+ * The normal is compared **relative to its own magnitude**,
+ * because a polar normal is a radius long and that radius is the
+ * plane's rather than a unit. `cos(π / 2)` is `6.1e-17`, so a
+ * three-o'clock tick's vertical component is that fraction of its
+ * radius — fifteen orders of magnitude under this — while the
+ * smallest angle an author can distinguish is nine orders of
+ * magnitude over it.
  */
 const ALONG_AXIS = 1e-6;
 
 /**
- * ★ **The outward normal at a point** — the direction a guide's
- * glyphs hang, and the whole of §6.5's placement derivation.
+ * ★ **The outward normal at a point on a ring** — the direction a
+ * polar guide's glyphs hang, and since 017 R2 the whole of what
+ * is left of §6.5's placement derivation.
  *
- * Under a plane composing in view space it is **constant and
- * axis-aligned**: the guide runs along one view axis, so it hangs
- * across the other, away from the plot — `(0, ±1)` for a guide on
- * the plane's first channel and `(±1, 0)` for one on its second.
- * That single zero component is *why* §6.5's four cartesian rows
- * each carry a `middle`.
+ * It is **radial**: the point itself, less the pole. A ring's
+ * text faces out of the circle at every tick, so the vector turns
+ * per tick.
  *
- * Under a plane composing about a pole it is **radial**: the point
- * itself, less the pole. A ring's text faces out of the circle at
- * every tick, so the vector varies per tick where the cartesian one
- * does not — which is the whole difference between the two, stated
- * once.
+ * **A plane composing in view space has no normal here at all**,
+ * and that is R2's correction rather than an omission. Until then
+ * this function had a second branch hanging a cartesian run away
+ * from the scale's centre; R2 replaced it with a model that reads
+ * no direction — the run is centred on the tick in both
+ * dimensions, and clearance from the axis is the LABEL's own
+ * position. See {@link guidePlacement}, which answers a flat
+ * plane directly and never calls this.
  *
- * @param guide - The resolved guide.
- * @param at - The point its glyph sits on.
- * @param across - The coordinate {@link guideAcross} returned.
+ * @param pole - The plane's pole.
+ * @param at - The point the glyph sits on.
  * @returns The outward direction. Not normalised.
  */
-function normalOf(
-  guide: ResolvedGuide,
-  at: Point,
-  across: number,
-): Point {
-  if (guide.pole !== null) {
-    return { x: at.x - guide.pole.x, y: at.y - guide.pole.y };
-  }
-  const box = guide.scaleBox;
-  const centre = guide.first ? box.y + box.h / 2 : box.x + box.w / 2;
-  // A guide whose box overlaps the scale's centre exactly resolves
-  // to the high side, the tie-break `guideEdge` takes and for the
-  // same reason: one answer beats two equal distances.
-  const away = across >= centre ? 1 : -1;
-  return guide.first ? { x: 0, y: away } : { x: away, y: 0 };
+function normalOf(pole: Point, at: Point): Point {
+  return { x: at.x - pole.x, y: at.y - pole.y };
 }
 
 /**
- * ★ §6.5's *"anchor and baseline derived from which edge of its own
- * box the scale's axis runs along"*, generalised to any plane.
+ * ★ Where a text run is pinned relative to its own point (§6.5).
  *
- * **This is a derivation and must stay one.** SPEC §7 gives the tag
- * no `position` attribute, so cases keyed on the channel would be
- * the authored placement the spec forbids, merely spelled in
- * TypeScript — and would silently stop tracking a box that CSS
- * moved.
+ * **Two planes, two answers, and only one of them is derived.**
+ *
+ * **A plane composing in view space** answers `middle`/`middle`,
+ * flat — 017 R2's corrected placement model: *"a label's text is
+ * centred on the tick, horizontally and vertically, so the centre
+ * of the run sits on the same point of the axis as the tick
+ * does."* Clearance from the axis is **the label's position**,
+ * which `ua.ts`'s `GUIDE_PLACEMENT` gives it and the author
+ * overrides — never a direction computed here.
+ *
+ * ★ **It is answered directly, and NOT by feeding a zero vector
+ * through the polar arithmetic below.** A zero vector resolves to
+ * the same pair — it is the path an at-pole tick already takes —
+ * and it would be a mechanism wearing a derivation's clothes.
+ * There is nothing to derive: the answer depends on neither the
+ * guide, nor the point, nor the box.
+ *
+ * **A plane composing about a pole** keeps the derivation, on the
+ * founder's call: a polar label's {@link guideAcross} takes the
+ * `pole !== null` branch and never reads its box, so *"move the
+ * label"* has nothing to move on a ring, and centring those runs
+ * on the rim would put them over the outer marks with no author
+ * remedy.
+ *
+ * ★ **That remaining half is a derivation and must stay one.**
+ * SPEC §7 gives the tag no `position` attribute, so cases keyed
+ * on the channel would be the authored placement the spec
+ * forbids, merely spelled in TypeScript. The warning is more
+ * load-bearing now than when it covered both planes, not less:
+ * what is left is exactly the branch a later reader would be
+ * tempted to case on.
  *
  * **One predicate: the per-axis sign of the outward normal.** The
  * text hangs off its point in the direction {@link normalOf}
  * returns, so a component pointing at higher coordinates runs the
  * text on (`start` across x, `top` down y), one pointing at lower
- * coordinates runs it back (`end`, `bottom`), and a component that
- * points along neither leaves the run **centred** on its tick.
+ * coordinates runs it back (`end`, `bottom`), and a component
+ * that points along neither leaves the run **centred** on its
+ * tick.
  *
  * | Guide | Sits | Normal | anchor | baseline |
  * |---|---|---|---|---|
- * | 1st channel, flat | below it | `(0, +)` | `middle` | `top` |
- * | 1st channel, flat | above it | `(0, −)` | `middle` | `bottom` |
- * | 2nd channel, flat | left of it | `(−, 0)` | `end` | `middle` |
- * | 2nd channel, flat | right of it | `(+, 0)` | `start` | `middle` |
  * | either, polar | 12 o'clock | `(0, −)` | `middle` | `bottom` |
  * | either, polar | 3 o'clock | `(+, 0)` | `start` | `middle` |
  * | either, polar | 4:30 | `(+, +)` | `start` | `top` |
+ * | either, flat | anywhere | *(none)* | `middle` | `middle` |
  *
  * *("flat" is a plane composing in view space, "polar" one
  * composing about a pole — neither is a class this file can see.)*
  *
- * The four cartesian rows are the ones §6.5 names, unchanged since
- * step 24; the polar rows are the same rule met by a vector that
- * turns. A tick **on** the pole has no direction at all and
- * resolves to `middle`/`middle`, which is the truthful answer
- * rather than a guarded one.
+ * The four cartesian rows §6.5 named are **gone**, not moved: R2
+ * replaced them with the single flat row above. A tick **on** the
+ * pole still has no direction at all and resolves to
+ * `middle`/`middle`, which is the truthful answer rather than a
+ * guarded one — and it is now the same answer a flat plane gives,
+ * reached by a different route.
  *
  * @param guide - The resolved guide.
  * @param at - The point the run sits on.
- * @param across - The coordinate {@link guideAcross} returned.
  * @returns The anchor and baseline for that run.
  */
 export function guidePlacement(
   guide: ResolvedGuide,
   at: Point,
-  across: number,
 ): Placement {
-  const n = normalOf(guide, at, across);
+  if (guide.pole === null) {
+    return { anchor: "middle", baseline: "middle" };
+  }
+  const n = normalOf(guide.pole, at);
   const edge = ALONG_AXIS * Math.hypot(n.x, n.y);
   return {
     anchor: n.x > edge ? "start" : n.x < -edge ? "end" : "middle",

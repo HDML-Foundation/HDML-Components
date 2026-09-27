@@ -679,7 +679,9 @@ scale a range taken from *that scale's* content box, the same rule `hdml-rule` f
 the two measured boxes by [guide-spec.ts](../src/hdvl/guide-spec.ts). Below the plot that is
 the top edge; above it, the bottom one. Nothing is authored — SPEC §7 gives the tag no
 `position` attribute — so moving the guide with one CSS rule moves the line with it.
-`hdml-label` reuses the identical derivation for its anchor and baseline.
+`hdml-label` reuses the identical derivation for **where its line sits**; since 017 R2 its
+`anchor`/`baseline` are no longer derived from it on a cartesian plane (the run is centred on
+its tick), and the derivation survives for polar only.
 
 **A grid's positions come from `scale.ticks(spec)` and are never re-derived.** §4.8's ladders
 have one implementation and `kernel/` owns it, so a grid and a label written with the same
@@ -738,7 +740,7 @@ plane's first* and *is there a pole* — so no guide element names a channel at 
 | `hdml-axis` | a **ring**: one `arc` node at the radial ceiling, spanning the whole turn | a **spoke**: the same straight `path` a cartesian axis draws |
 | `hdml-grid` | a **spoke per tick** — the unchanged straight branch | `--hdml-grid-shape`: a **ring per tick** (`circle`) or a **closed polygon per tick** (`polygon`) |
 | `hdml-tick` | a glyph on the projected point — **no change to the element at all** | the same |
-| `hdml-label` | a run on the projected point, placement derived per tick | the same |
+| `hdml-label` | a run **centred on** the projected point; polar placement derived per tick | the same |
 
 **An angular axis is a ring because a turn's two ends are the same point** — the straight
 span every other case draws would degenerate to nothing. It is an `arc` node and not a
@@ -796,12 +798,20 @@ run off, and lands under every mark on the page. Both were emitted anyway until 
   Suppressing a ring is **not** itself reported — every zero-based radius scale has one at the
   pole, and a rule that fired there would fire on correct documents.
 
-**UA placement (SPEC §3).** An x-channel `hdml-axis` / `hdml-tick` / `hdml-label` is placed
-just below the plot (`top: 100%`), a y-channel one just left of it (`right: 100%`), and the
-**runs they paint** spill into the plane's gutter — which is what the gutter is for. None of
-the three takes an *extent* from it: since 017 R2 all three are lines (below).
+**UA placement (SPEC §3).** An x-channel `hdml-axis` / `hdml-tick` is placed just below the
+plot (`top: 100%`), a y-channel one just left of it (`right: 100%`), and the **runs they
+paint** spill into the plane's gutter — which is what the gutter is for. None of the three
+takes an *extent* from it: since 017 R2 all three are lines (below).
 `hdml-grid` needs **no rule of its own**: the generic `:host` box rule is already
 `inset: 0`, which is SPEC §3's grid row verbatim.
+
+**`hdml-label` is the one of the three whose offset is not `100%`.** Since 017 R2's
+corrected placement (2026-09-27) its run is *centred* on its tick, so it takes half its
+gutter as clearance — `top: calc(100% + 12px)` on x, `right: calc(100% + 20px)` on y at the
+default `GUTTER`. The derivation of the half, and its two limitations, are under
+[`hdml-tick` · `hdml-label`](#hdml-tick--hdml-label--guide-tickts--guide-labelts) below. It is a **normal** declaration: an author
+who writes `top: 100%` puts the run back on the axis, which is exactly what *"the clearance
+is the label's position, and the position is the author's"* has to mean.
 
 **★ A positional guide's cross-axis extent is the runtime's, not yours** (SPEC §3's one
 amendment to the reach rule, 2026-09-26 for the axis and the tick, project 017 R1; extended
@@ -812,7 +822,8 @@ placed by **two** declarations and sized by a third you cannot reach:
 /* what the sheet emits — one rule per tag, per channel */
 :host(hdml-axis[channel="y"])  { right: 100%; left: auto; width: 0 !important }
 :host(hdml-tick[channel="y"])  { right: 100%; left: auto; width: 0 !important }
-:host(hdml-label[channel="y"]) { right: 100%; left: auto; width: 0 !important }
+/* the label's near offset carries R2's clearance; its extent does not differ */
+:host(hdml-label[channel="y"]) { right: calc(100% + 20px); left: auto; width: 0 !important }
 ```
 
 An axis is a line; a tick's length is a **property** rather than a box —
@@ -939,39 +950,62 @@ decorative-ness is carried by **the node kind it emits** — it emits no `text`,
 to the accessibility tree anyway. The invariant is asserted directly: nothing `hdml-tick`
 paints is a `text` node.
 
-**A label's anchor and baseline are DERIVED, never authored.** SPEC §7 gives the tag no
-`position` attribute, so §6.5's *"which edge of its own box the scale's axis runs along"* is
-computed rather than declared. **One predicate covers both planes: the per-axis sign of the
-outward normal** — the direction the glyphs hang away from the plot. The plane supplies the
-normal and `guidePlacement` reads its two components; a component pointing at higher
-coordinates runs the text on (`start` across x, `top` down y), one pointing at lower
-coordinates runs it back (`end`, `bottom`), and a component pointing along neither leaves the
-run **centred** on its tick.
+**A cartesian label's run is CENTRED on its tick** — horizontally *and* vertically, so the
+centre of the run sits on the same point of the axis as the tick does. That is the whole
+cartesian rule, it is the same on both channels, and nothing about it is derived: the answer
+depends on neither the guide, nor the point, nor the box. Clearance from the axis is the
+**label's position** and comes from the UA sheet, which the author overrides in the ordinary
+way (below).
 
-Under a plane composing in **view space** the normal is constant and axis-aligned — `(0, ±1)`
-for a guide on the plane's first channel, `(±1, 0)` for one on its second, its sign taken
-from `guideEdge`'s near edge against the scale box's centre. **That single zero component is
-why §6.5's four cartesian rows each carry a `middle`.** Under a plane composing **about a
-pole** the normal is radial — the point itself, less the pole — so it turns with the ring and
-the placement is resolved per tick rather than once for the set. That is the whole difference
-between the two.
+*(017 R2, 2026-09-27. Until then the cartesian answer was derived too — the run hung
+*away* from the scale's centre, giving `middle`/`top` on x and `end`/`middle` on y. The
+derivation survives for polar only.)*
+
+**A polar label's anchor and baseline are still DERIVED, never authored.** SPEC §7 gives the
+tag no `position` attribute, so a case keyed on the channel would be the authored placement
+the spec forbids, merely spelled in TypeScript. **One predicate: the per-axis sign of the
+outward normal** — the direction the glyphs hang away from the pole, which is the point
+itself less the pole, so it **turns with the ring** and the placement resolves per tick rather
+than once for the set. A component pointing at higher coordinates runs the text on (`start`
+across x, `top` down y), one pointing at lower coordinates runs it back (`end`, `bottom`), and
+a component pointing along neither leaves the run centred.
+
+**Polar keeps today's behaviour deliberately, and the exception is documented rather than
+silent.** A polar label's `guideAcross` takes the `pole !== null` branch and never reads its
+box — it returns the radius range's far end, the rim — so *"move the label"* has nothing to
+move on a ring, and centring those runs on the rim would put them over the outer marks with
+no author remedy. Inventing a radial offset property to fix that would be the second
+mechanism R2 exists to avoid.
 
 | Guide | Sits | Normal | `anchor` | `baseline` |
 |---|---|---|---|---|
-| x-channel | below the plot | `(0, +)` | `middle` | `top` |
-| x-channel | above the plot | `(0, −)` | `middle` | `bottom` |
-| y-channel | left of the plot | `(−, 0)` | `end` | `middle` |
-| y-channel | right of the plot | `(+, 0)` | `start` | `middle` |
+| **cartesian, any channel** | **anywhere** | *(none read)* | **`middle`** | **`middle`** |
 | polar, any channel | at 12 o'clock | `(0, −)` | `middle` | `bottom` |
 | polar, any channel | at 3 o'clock | `(+, 0)` | `start` | `middle` |
 | polar, any channel | at 4:30 | `(+, +)` | `start` | `top` |
 
-The deadband is **relative to the normal's own magnitude** (`1e-6` of it), because the polar
-normal is a radius long and the cartesian one is a unit vector: `cos(π / 2)` is `6.1e-17`, so
-a three-o'clock tick's vertical component is fifteen orders of magnitude under the threshold
-while the smallest angle an author can distinguish is nine orders over it. A tick **on** the
-pole has no direction at all and resolves to `middle`/`middle` — the truthful answer rather
-than a guarded one.
+The deadband is **relative to the normal's own magnitude** (`1e-6` of it), because a polar
+normal is a radius long and that radius is the plane's rather than a unit: `cos(π / 2)` is
+`6.1e-17`, so a three-o'clock tick's vertical component is fifteen orders of magnitude under
+the threshold while the smallest angle an author can distinguish is nine orders over it. A
+tick **on** the pole has no direction at all and resolves to `middle`/`middle` — the truthful
+answer rather than a guarded one, and now the same answer a cartesian plane gives, reached by
+a different route.
+
+**The clearance, and why it is half the gutter.** A run centred on its tick straddles the plot
+edge, half of it over the marks, so a cartesian `hdml-label` is placed `calc(100% + c)` rather
+than the axis's and tick's `100%` — **`c` is half the gutter its runs spill into**, so `12px`
+below the plot and `20px` left of it at the default `GUTTER`. The number is derived, not
+picked: a run of extent `e` must clear the plot (`c ≥ e / 2`) and stay inside the view
+(`c + e / 2 ≤ gutter`), and both hold for every `e ≤ gutter` at exactly one `c`. It therefore
+needs no font measurement — `e ≤ gutter` is the *same* fit budget the old outward-hanging
+placement had, so no page's labels start clipping at a font size where they did not before.
+Two limitations, stated rather than discovered: the sheet is built once at import time, so an
+author who shrinks the plane's `padding` gets a clearance sized for the gutter they replaced
+(and moves the label if they mind); and `dominant-baseline: middle` centres on the x-height
+midline rather than the em box, so the vertical centring is a glyph-metric approximation of a
+geometric claim. **Neither is visible to any scene assertion** — a clipped run measures the
+same box as one with room to spare — so both are the visual gate's to catch.
 
 **A label does not call `measureText`.** The `text` node carries `anchor` and `baseline` and
 the renderer does the placing, so a measured width buys it nothing. What needs the §5.3 seam

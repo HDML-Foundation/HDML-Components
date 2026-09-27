@@ -226,10 +226,13 @@ export class HdmlLabelElement extends HdvlElement {
       }
       const at = guidePoint(guide, ticks[i].at, across);
       // ★ PER TICK, not once for the set. Under a plane composing
-      // in view space every run answers the same — the normal is
-      // constant — and under one composing about a pole it turns
-      // with the ring, which is the only difference between them.
-      const place = guidePlacement(guide, at, across);
+      // in view space every run answers the same — R2 centres it
+      // on its tick — and under one composing about a pole it
+      // turns with the ring, which is the only difference left
+      // between them. Hoisting the flat answer out of the loop
+      // would case on the plane here, which is the derivation
+      // `guidePlacement` exists to keep in one place.
+      const place = guidePlacement(guide, at);
       nodes.push({
         k: "text",
         i: -1,

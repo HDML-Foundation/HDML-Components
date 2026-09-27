@@ -414,6 +414,11 @@ const LEGEND_CSS = [
  * guides just left (`right: 100%`)"*, spilling into
  * {@link GUTTER}.
  *
+ * ★ **Since 017 R2 a LABEL's near offset is not `100%`**: it
+ * carries half its gutter as clearance — {@link LABEL_CLEARANCE},
+ * where the half is derived, and {@link guideRules}, which emits
+ * it.
+ *
  * Keyed by {@link Channel} rather than by a string so that a
  * renamed channel is a compile error instead of a selector that
  * silently stops matching; the key is read back out for the
@@ -433,8 +438,8 @@ const LEGEND_CSS = [
  * is geometry against nothing — and it renders, silently, with no
  * diagnostic. Setting `bottom: auto` alone is not enough either: the
  * box would then shrink-to-fit shadow content whose `.plot` is
- * `height: 100%` of an indefinite height. Hence {@link offsets}
- * resetting the far offset, and hence an extent being stated at all.
+ * `height: 100%` of an indefinite height. Hence each row's `far`
+ * offset being reset, and hence an extent being stated at all.
  *
  * **And since 017 R2 there is only ONE extent**, which is the
  * second case: every {@link PLACED_LINE} gets **`0 !important`**.
@@ -469,27 +474,81 @@ const GUIDE_PLACEMENT: Partial<
   Record<
     Channel,
     {
-      /** The near offset, and the far one reset. */
-      readonly offsets: readonly string[];
+      /** The offset that places the line. */
+      readonly near: "top" | "right";
+      /** The opposite offset, reset so the box is not
+       * over-constrained. */
+      readonly far: "bottom" | "left";
       /** The cross-axis extent's property. */
       readonly cross: "width" | "height";
+      /** The {@link GUTTER} side this channel's runs spill into. */
+      readonly gutter: number;
     }
   >
 > = {
   x: {
-    offsets: ["  top: 100%;", "  bottom: auto;"],
+    near: "top",
+    far: "bottom",
     cross: "height",
+    gutter: GUTTER.bottom,
   },
   y: {
-    offsets: ["  right: 100%;", "  left: auto;"],
+    near: "right",
+    far: "left",
     cross: "width",
+    gutter: GUTTER.left,
   },
 };
 
 /**
+ * ★ 017 R2's label clearance, as a fraction of the gutter its
+ * runs spill into — **and it is derived, not picked.**
+ *
+ * R2 centres a cartesian run on its tick in *both* dimensions, so
+ * with no clearance half of every run sits inside the plot, over
+ * the marks. R2 settles that the clearance is the UA's own offset
+ * (the alternative makes the zero-CSS floor render labels over its
+ * own bars, and `00-minimal` is that floor). It does **not**
+ * settle the number. This is the number, and this is why it is
+ * the only one:
+ *
+ * Write the run's extent across its channel `e` and the clearance
+ * `c`. A centred run must not reach back over the plot
+ * (`c ≥ e / 2`) and must not clip at the view edge
+ * (`c + e / 2 ≤ gutter`). Both hold for every `e ≤ gutter`
+ * **exactly when `c = gutter / 2`** — any smaller `c` encroaches
+ * before the gutter is full, any larger clips before it is.
+ *
+ * ★ **So it is not a font measurement, and it does not need to
+ * be.** The old placement hung the run *outward* from the line
+ * (`baseline: top` on x, `anchor: end` on y), which fitted iff
+ * `e ≤ gutter`. At `gutter / 2` the centred run fits under the
+ * *same* condition, so this step moves every label without moving
+ * the font size at which one stops fitting. A literal `8px` would
+ * have been the thing this is not: a number that silently stops
+ * being right at a different `--hdml-font-size`.
+ *
+ * **Two limitations, stated rather than discovered.** The sheet is
+ * built once at import time, so `gutter` is {@link GUTTER}'s
+ * default — an author who shrinks the plane's `padding` gets a
+ * clearance sized for the gutter they replaced, and moves the
+ * label if they mind. And `dominant-baseline: middle` centres on
+ * the x-height midline rather than the em box, so the x centring
+ * is a glyph-metric approximation of a geometric claim. ★ Neither
+ * is visible to any scene assertion — {@link GUTTER}'s own
+ * docblock says why — so both are the visual gate's to catch.
+ */
+const LABEL_CLEARANCE = 0.5;
+
+/**
  * {@link GUIDE_PLACEMENT} as CSS text — **one rule per tag per
- * channel**, so six rules, all now carrying the same three
- * declarations.
+ * channel**, so six rules of three declarations each.
+ *
+ * ★ **Five of the six carry the same three; the label's two
+ * differ by {@link LABEL_CLEARANCE}.** That is what 10-2's
+ * one-rule-per-tag split bought and why it is not undone here: a
+ * per-tag offset needed no new rule, only a different value in
+ * the one the label already had.
  *
  * **★ Identical declarations are emitted separately on purpose, and
  * that is not cosmetic** (017 R1's second reason, generalised by
@@ -532,9 +591,18 @@ function guideRules(): string[] {
       continue;
     }
     for (const tag of PLACED_LINE) {
+      // ★ 017 R2: the LINE is the same for all three, and only
+      // the label's is offset off it. An axis and a tick ARE the
+      // line; a label is a run hung near it, and with the run now
+      // centred on its tick it needs the gutter's own room.
+      const near =
+        tag === HDVL_TAG_NAMES.LABEL
+          ? `calc(100% + ${row.gutter * LABEL_CLEARANCE}px)`
+          : "100%";
       out.push(
         `:host(${tag}[${attr}="${channel}"]) {`,
-        ...row.offsets,
+        `  ${row.near}: ${near};`,
+        `  ${row.far}: auto;`,
         `  ${row.cross}: 0 !important;`,
         "}",
         "",

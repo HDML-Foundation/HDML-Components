@@ -172,6 +172,31 @@ async function placed(
   return [view, rectOf(view, el)];
 }
 
+/** The view {@link placed} mounts — the only transcribed numbers. */
+const PLACED_VIEW = { w: 400, h: 200 };
+
+/**
+ * ★ SPEC §3's cartesian gutter, **measured rather than
+ * transcribed**.
+ *
+ * `ua.ts` keeps `GUTTER` private, and copying its four numbers
+ * into this file would make the clearance assertions agree with a
+ * transcription instead of with the sheet. An axis lands on the
+ * plot's own edges, so the gutter is whatever is left of the view
+ * beyond them — and that is the same number 017 R2's
+ * `LABEL_CLEARANCE` takes half of.
+ *
+ * @returns The two gutters a placed guide spills into.
+ */
+async function gutterOf(): Promise<{
+  bottom: number;
+  left: number;
+}> {
+  const [, x] = await placed("x");
+  const [, y] = await placed("y");
+  return { bottom: PLACED_VIEW.h - x.y, left: y.x };
+}
+
 /**
  * The `:host` rule declaring one placed guide's cross-axis extent
  * on one channel, found by selector rather than by index.
@@ -433,6 +458,7 @@ suite("hdvl/ua — the element sheet", () => {
     // R2 brought the LABEL to the same line: its box supplies one
     // number, the edge its run hangs off, and it never lays text
     // out in it.
+    const GUTTER = await gutterOf();
     const [view, box] = await placed("x");
     const axis = <Element>view.querySelector("hdml-axis");
     assert.strictEqual(getComputedStyle(axis).position, "absolute");
@@ -442,11 +468,15 @@ suite("hdvl/ua — the element sheet", () => {
     // plot's bottom edge, with no thickness to place.
     assert.deepEqual(box, { x: 40, y: 176, w: 352, h: 0 });
 
-    // ★ All three now, and the label's is the one R2 moved.
-    const [, run] = await placed("x", "hdml-label");
+    // ★ The axis and the tick ARE that line. The LABEL is that
+    // line cleared into the gutter by half of it (017 R2's
+    // corrected placement, step 10-3): its run is centred on its
+    // tick, so with no clearance half of every glyph would sit
+    // over the marks. Derived from GUTTER here, not transcribed.
     const [, tick] = await placed("x", "hdml-tick");
-    assert.deepEqual(run, box);
     assert.deepEqual(tick, box);
+    const [, run] = await placed("x", "hdml-label");
+    assert.deepEqual(run, { ...box, y: box.y + GUTTER.bottom / 2 });
 
     // ★ The attribution the label's gutter used to carry. With
     // every placed guide at zero, "deliberate" and "the
@@ -458,7 +488,13 @@ suite("hdvl/ua — the element sheet", () => {
     for (const tag of TAGS) {
       const rule = crossRuleFor("x", tag);
       assert.strictEqual(rule.style.bottom, "auto", tag);
-      assert.strictEqual(rule.style.top, "100%", tag);
+      assert.strictEqual(
+        rule.style.top,
+        tag === "hdml-label"
+          ? `calc(100% + ${GUTTER.bottom / 2}px)`
+          : "100%",
+        tag,
+      );
     }
   });
 
@@ -466,27 +502,35 @@ suite("hdvl/ua — the element sheet", () => {
     // 017 R1, the y row. Before it, this box was
     // `{x: 0, y: 8, w: 40, h: 168}` — 40px of gutter width the
     // runtime never read and an author could over-constrain.
+    const GUTTER = await gutterOf();
     const [view, box] = await placed("y");
     const axis = <Element>view.querySelector("hdml-axis");
     assert.strictEqual(getComputedStyle(axis).width, "0px");
     assert.strictEqual(getComputedStyle(axis).height, "168px");
     assert.deepEqual(box, { x: 40, y: 8, w: 0, h: 168 });
 
-    // ★ R2: the label's box was that same `{x: 0, w: 40}` slab
-    // until this step. Collapsing it moves the box's left edge to
-    // where its right edge already was — which is the edge
-    // `guideEdge` was returning all along, so the RUN does not
-    // move. That is the whole of R2's "no existing page moves
-    // except by the box-extent change", in one pair of numbers.
-    const [, run] = await placed("y", "hdml-label");
+    // ★ R2 collapsed the label's `{x: 0, w: 40}` slab onto this
+    // same line, and step 10-3 then moved the line itself: half
+    // the LEFT gutter, a different number from the x channel's
+    // and derived the same way. A y run is wide and an x run is
+    // short, so one clearance could not have served both — what
+    // is shared is the rule, not the number.
     const [, tick] = await placed("y", "hdml-tick");
-    assert.deepEqual(run, box);
     assert.deepEqual(tick, box);
+    const [, run] = await placed("y", "hdml-label");
+    assert.deepEqual(run, { ...box, x: box.x - GUTTER.left / 2 });
+    assert.notStrictEqual(GUTTER.left / 2, GUTTER.bottom / 2);
 
     for (const tag of TAGS) {
       const rule = crossRuleFor("y", tag);
       assert.strictEqual(rule.style.left, "auto", tag);
-      assert.strictEqual(rule.style.right, "100%", tag);
+      assert.strictEqual(
+        rule.style.right,
+        tag === "hdml-label"
+          ? `calc(100% + ${GUTTER.left / 2}px)`
+          : "100%",
+        tag,
+      );
     }
   });
 
@@ -600,23 +644,34 @@ suite("hdvl/ua — the element sheet", () => {
     const [, xSwapped] = await placed("x");
     assert.deepEqual(xSwapped, xBase);
 
-    // ★ 017 R2 brings the LABEL under the same convergence, and
-    // this is the idiom's only home: R1's write-up found `left: 0`
-    // on nine corpus pages for an axis or a tick, and on ZERO of
-    // them for a label. Before R2, `left: 0` here met the UA's
-    // `right: 100%` AND its `width: 40px`, CSS dropped `right`, and
-    // the run landed a gutter's width inside the plot.
+    // ★ **The label converges on the LINE, not on its own
+    // default, and the two channels answer differently.** Step
+    // 10-3 gave the label a clearance the axis does not have, and
+    // that exposed something the equal numbers had been hiding:
+    // convergence was never a property of the mechanism on this
+    // tag, it was a coincidence of `100%` naming the same edge as
+    // the opposite offset's `0`.
+    //
+    // What CSS actually does with an over-constrained box is drop
+    // ONE offset, and which one is not symmetric: `right` in the
+    // horizontal (in a left-to-right document), `bottom` in the
+    // vertical. So on **y** the author's `left: 0` wins and the
+    // run lands on the axis's own line; on **x** the author's
+    // `bottom: 0` is the offset dropped, and the UA's clearance
+    // survives untouched. Both are asserted, because a later
+    // change that made them agree again would mean one of them
+    // had stopped behaving.
     const [, run] = await placed("y", "hdml-label");
     adoptScratch('hdml-label[channel="y"] { left: 0 }');
     const [, runSwapped] = await placed("y", "hdml-label");
-    assert.deepEqual(runSwapped, run);
     assert.deepEqual(runSwapped, base);
+    assert.notDeepEqual(runSwapped, run);
 
     const [, xRun] = await placed("x", "hdml-label");
     adoptScratch('hdml-label[channel="x"] { bottom: 0 }');
     const [, xRunSwapped] = await placed("x", "hdml-label");
     assert.deepEqual(xRunSwapped, xRun);
-    assert.deepEqual(xRunSwapped, xBase);
+    assert.notDeepEqual(xRunSwapped, xBase);
   });
 
   test("★ an author cannot widen the label's line", async () => {
@@ -635,10 +690,21 @@ suite("hdvl/ua — the element sheet", () => {
       'hdml-label[channel="x"] { height: 12px }\n' +
         'hdml-label[channel="y"] { width: 9px }',
     );
+    const GUTTER = await gutterOf();
     const [xView, xBox] = await placed("x", "hdml-label");
-    assert.deepEqual(xBox, { x: 40, y: 176, w: 352, h: 0 });
+    assert.deepEqual(xBox, {
+      x: 40,
+      y: 176 + GUTTER.bottom / 2,
+      w: 352,
+      h: 0,
+    });
     const [yView, yBox] = await placed("y", "hdml-label");
-    assert.deepEqual(yBox, { x: 40, y: 8, w: 0, h: 168 });
+    assert.deepEqual(yBox, {
+      x: 40 - GUTTER.left / 2,
+      y: 8,
+      w: 0,
+      h: 168,
+    });
     assert.isNotNull(xView.shadowRoot);
     assert.isNotNull(yView.shadowRoot);
   });
@@ -652,26 +718,100 @@ suite("hdvl/ua — the element sheet", () => {
     // would be a second mechanism for one thing."
     //
     // `calc(100% + 8px)` is R2's own idiom, and it is chosen over
-    // `left: 0` deliberately: at a zero extent `left: 0` CONVERGES
-    // with `right: 100%` (the test above), so it would move nothing
-    // and prove nothing. Only an offset that is not the UA's own
-    // can tell "the author still reaches this" from "the box has no
+    // `left: 0` deliberately: `left: 0` puts the line back on the
+    // axis by CONVERGING with it (the test above), which cannot
+    // tell "the author still reaches this" from "the box has no
     // width left to be moved by".
+    //
+    // ★ **And since step 10-3 it proves the stronger half too:
+    // the author's offset REPLACES the UA's clearance rather than
+    // adding to it.** `8px` is deliberately smaller than either
+    // clearance, so an author who asks for less gets less — the
+    // run moves *back toward* the axis, which is the opposite
+    // direction from every other assertion in this file and is
+    // exactly what "the clearance is the label's position, and
+    // the position is the author's" has to mean.
+    const GUTTER = await gutterOf();
+    const AUTHOR = 8;
     const [, xBase] = await placed("x", "hdml-label");
     const [, yBase] = await placed("y", "hdml-label");
     adoptScratch(
-      'hdml-label[channel="x"] { top: calc(100% + 8px) }\n' +
-        'hdml-label[channel="y"] { right: calc(100% + 8px) }',
+      `hdml-label[channel="x"] { top: calc(100% + ${AUTHOR}px) }\n` +
+        `hdml-label[channel="y"] { right: calc(100% + ${AUTHOR}px) }`,
     );
     const [, xBox] = await placed("x", "hdml-label");
     const [, yBox] = await placed("y", "hdml-label");
-    assert.deepEqual(xBox, { x: 40, y: 184, w: 352, h: 0 });
-    assert.deepEqual(yBox, { x: 32, y: 8, w: 0, h: 168 });
-    // …and the move is the author's 8px, on the offset axis only.
-    assert.strictEqual(xBox.y - xBase.y, 8);
-    assert.strictEqual(yBase.x - yBox.x, 8);
+    assert.deepEqual(xBox, { x: 40, y: 176 + AUTHOR, w: 352, h: 0 });
+    assert.deepEqual(yBox, { x: 40 - AUTHOR, y: 8, w: 0, h: 168 });
+    // …measured off the plot's own edges, not off the default.
+    assert.strictEqual(xBox.y - xBase.y, AUTHOR - GUTTER.bottom / 2);
+    assert.strictEqual(yBase.x - yBox.x, AUTHOR - GUTTER.left / 2);
+    assert.isBelow(xBox.y, xBase.y);
+    assert.isAbove(yBox.x, yBase.x);
     assert.strictEqual(xBox.h, xBase.h);
     assert.strictEqual(yBox.w, yBase.w);
+
+    // ★ Control 2, stated as the identity it is: an author who
+    // writes the UA's OLD offset gets the run back on the axis's
+    // own line. This is the whole of "the clearance comes from
+    // the UA sheet and stays wholly the author's to override".
+    adoptScratch(
+      'hdml-label[channel="x"] { top: 100% }\n' +
+        'hdml-label[channel="y"] { right: 100% }',
+    );
+    const [, xAxis] = await placed("x");
+    const [, yAxis] = await placed("y");
+    const [, xOn] = await placed("x", "hdml-label");
+    const [, yOn] = await placed("y", "hdml-label");
+    assert.deepEqual(xOn, xAxis);
+    assert.deepEqual(yOn, yAxis);
+  });
+
+  test("★ a label's clearance is half its gutter", async () => {
+    // ★ 017 R2, step 10-3 — the number, and the only assertion in
+    // this file that says WHY it is that number rather than
+    // checking that it is.
+    //
+    // R2 centres a cartesian run on its tick, so a clearance `c`
+    // has to keep a run of extent `e` off the plot (`c >= e / 2`)
+    // and inside the view (`c + e / 2 <= gutter`). Both hold for
+    // every `e <= gutter` at exactly one `c`, and it is
+    // `gutter / 2`: any less encroaches before the gutter is
+    // full, any more clips before it is. That is also why it
+    // needs no font measurement — `e <= gutter` is the same fit
+    // budget the outward-hanging placement had before this step.
+    //
+    // Asserted against the MEASURED gutter on both channels, so a
+    // clearance frozen at a literal while `GUTTER` moved fails
+    // here. The two numbers differ, which is the point: one rule,
+    // two answers.
+    const GUTTER = await gutterOf();
+    const cases: [["x" | "y", "top" | "right"], number][] = [
+      [["x", "top"], GUTTER.bottom],
+      [["y", "right"], GUTTER.left],
+    ];
+    for (const [[channel, near], gutter] of cases) {
+      const rule = crossRuleFor(channel, "hdml-label");
+      assert.strictEqual(
+        rule.style.getPropertyValue(near),
+        `calc(100% + ${gutter / 2}px)`,
+        channel,
+      );
+      // …and the guides that ARE the line take none of it.
+      for (const tag of <const>["hdml-axis", "hdml-tick"]) {
+        assert.strictEqual(
+          crossRuleFor(channel, tag).style.getPropertyValue(near),
+          "100%",
+          tag,
+        );
+      }
+      // The run's fit budget is the whole gutter, at this `c` and
+      // at no other: `c + e / 2 <= gutter` and `c >= e / 2` meet
+      // only where `e` may reach `gutter`.
+      const c = gutter / 2;
+      assert.strictEqual(gutter - c, c);
+    }
+    assert.notStrictEqual(GUTTER.bottom, GUTTER.left);
   });
 
   test("★ the placement rules keep the sentinel", async () => {

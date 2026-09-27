@@ -505,6 +505,14 @@ the left gutter on its **right**. It is also why the derivation lives in
 
 ## A label's anchor and baseline are the per-axis sign of the outward normal
 
+> **★ Superseded for CARTESIAN planes on 2026-09-27 by project 017 R2's corrected
+> placement model — see *"A cartesian label's run is centred on its tick"* below.**
+> The entry stands as written, because it is still exactly true of a **polar** plane,
+> which keeps this derivation on the founder's call. What went is the *cartesian*
+> branch: a flat plane's run is now centred on its tick in both dimensions, and
+> `normalOf` is never asked. The paragraphs below that explain §6.5's four cartesian
+> rows are the history of rows that no longer happen.
+
 Step 24 cashed that in and step 27 generalised it. §6.5 derives the two `text` fields
 from *"which edge of its own box the scale's axis runs along"*, and the temptation is
 four cases keyed on the channel — which is the authored `position` SPEC §7 forbids,
@@ -1643,6 +1651,88 @@ from the emitted CSS — six extra declarations a channel. That was the wrong ar
 is *generated at runtime*, so what ships is the generator, and the generator lost a `selector`
 closure, a `.map`, a `.join`, the `PLACED_RUN` array and two `gutter` fields. **A UA-sheet
 change's bundle cost is the cost of the generator, not of the CSS it generates.**
+
+## A cartesian label's run is centred on its tick, and the clearance is half the gutter
+
+Project 017 R2, step 10-3 (2026-09-27), on the founder's correction. The model, in his
+words: *"a label's text is **centred on the tick** — horizontally and vertically — so the
+centre of the run sits on the same point of the axis as the tick does. Moving the label
+away from the axis is done by **moving the label**, not by a property."*
+
+**What it replaced.** `normalOf` had two branches. The cartesian one hung the run *away*
+from the scale box's centre, which gave §6.5's four rows — `middle`/`top` below the plot,
+`end`/`middle` left of it, and their two mirrors. That branch is gone. On a flat plane
+`guidePlacement` now answers `middle`/`middle` **directly**, and the entry above
+(*"the per-axis sign of the outward normal"*) survives as the **polar** derivation only.
+
+**Answered directly, not by a zero vector.** Returning `{x: 0, y: 0}` from the cartesian
+branch would have produced the identical pair — it is the path an at-pole tick already
+takes — and it would have been a mechanism wearing a derivation's clothes. There is
+nothing to derive here: the answer depends on neither the guide, nor the point, nor the
+box. The *"this is a derivation and must stay one"* warning stays on `guidePlacement`, and
+is **more** load-bearing than before: what is left is exactly the branch a later reader
+would be tempted to case on.
+
+**Polar keeps today's behaviour, and the exception is documented rather than silent.** A
+polar label's `guideAcross` takes the `pole !== null` branch and **never reads its box** —
+it returns the radius range's far end, the rim — so *"move the label"* has nothing to move
+on a ring, and `--hdml-inner-radius` does not move the radius range either (measured at
+step 08). Centring `09-polar-area`'s and `10-radar`'s runs on the rim would put them over
+the outer marks with no author remedy, and inventing a radial offset property to fix that
+would be the second mechanism R2 exists to avoid.
+
+**The clearance is HALF THE GUTTER, and the half is derived.** A run centred on its tick
+straddles the plot edge, half of it over the marks. R2 settles that the clearance comes
+from the UA sheet — the alternative makes `00-minimal`'s zero-CSS floor render labels over
+its own bars — but not what it is. Write the run's extent across its channel `e` and the
+clearance `c`. It must not reach back over the plot (`c ≥ e / 2`) and must not clip at the
+view edge (`c + e / 2 ≤ gutter`). Both hold for every `e ≤ gutter` **at exactly one `c`,
+and it is `gutter / 2`** — any smaller encroaches before the gutter is full, any larger
+clips before it is. At the default `GUTTER` that is `12px` on x and `20px` on y, one rule
+and two answers, which is why a single number could never have served both.
+
+★ **So it is not a font measurement, and does not need to be.** The old placement hung the
+run *outward* from the line, which fitted iff `e ≤ gutter`. At `gutter / 2` the centred run
+fits under the **same** condition — this step moves every cartesian label without moving
+the font size at which one stops fitting. A literal `8px` would have been precisely the
+thing this is not: a number that silently stops being right at a different
+`--hdml-font-size`.
+
+**Two limitations, stated rather than discovered.** The sheet is built once at import time,
+so `gutter` is `GUTTER`'s default: an author who shrinks the plane's `padding` gets a
+clearance sized for the gutter they replaced, and moves the label if they mind. And
+`dominant-baseline: middle` centres on the x-height midline rather than the em box, so the
+vertical centring is a glyph-metric approximation of a geometric claim. **Neither is
+visible to any scene assertion** — `GUTTER`'s own docblock says why — so both belong to the
+visual gate.
+
+**It is the label's position, so the author owns it.** The clearance is a **normal**
+declaration on the near offset (`top: calc(100% + 12px)`), not the `!important` extent two
+rules away (trap 12). An author writing `top: 100%` puts the run back on the axis's own
+line, which `ua.test.ts` asserts as an identity against the *axis's* measured box.
+
+**The eight corpus pages that authored `top: 100%` had their rules DELETED, not edited.**
+They were restating the UA default; editing them to `calc(100% + 12px)` would have copied
+the UA's number into eight pages, which is the second mechanism R2 exists to avoid.
+`00-minimal` and `12-coverage` authored no label position and needed no edit.
+**`07-mixed` is the one page that had to be edited rather than cleaned**, and it is the
+honest consequence of the model: its `.margin` label is a **right-hand** y axis, which is
+not one of the two gutters SPEC §3 names, so no UA rule can clear it and the page supplies
+`left: calc(100% + 20px)` itself.
+
+★ **And the convergence claim split.** R1's *"the two offset idioms converge at zero"* held
+on `hdml-label` only because `100%` named the same edge as the opposite offset's `0`. With
+a clearance it does not, and CSS's over-constraint resolution is **not symmetric** about
+which offset it drops — `right` in the horizontal, `bottom` in the vertical. So an author's
+`left: 0` on a y label **wins** and puts the run on the axis, while an author's `bottom: 0`
+on an x label is the offset dropped and the UA's clearance survives. Both are now asserted,
+because a later change that made them agree again would mean one of them had stopped
+behaving. Convergence still holds outright for `hdml-axis` and `hdml-tick`, whose near
+offset is still exactly `100%`.
+
+**Bundle.** `./hdvl` **414.2 → 414.2 kB**, flat. Predicted from the generator (the entry
+above): `normalOf` lost a branch, `guideRules` gained a per-tag conditional and
+`GUIDE_PLACEMENT` traded an `offsets` array for four named fields.
 
 ## A filled widget strokes, and the safety is a UA rule not a `null`
 

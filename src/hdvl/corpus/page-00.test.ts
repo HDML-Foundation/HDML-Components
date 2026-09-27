@@ -97,10 +97,17 @@ suite("corpus 00-minimal", () => {
     // R1 zeroed the axis and left the label on the gutter
     // (`h: 24` / `w: 40`, at `x: 0`); R2 brought the label to the
     // same line, because its box supplies one number — the edge its
-    // run hangs off — and never lays text out. Nothing in the
-    // golden below moved with it: `guideEdge` already returned the
-    // edge nearer the scale's centre, and that is the edge the
-    // collapse leaves behind.
+    // run hangs off — and never lays text out.
+    //
+    // ★ **And since step 10-3 the label's line is that line moved
+    // off the axis by HALF its own gutter.** R2's corrected model
+    // centres a run on its tick in both dimensions, so with no
+    // clearance half of every run would sit over the bars — and on
+    // THIS page, which authors no CSS beyond a width, there would
+    // be no author to fix it. The half is derived in `ua.ts`'s
+    // `LABEL_CLEARANCE`; here it is re-derived from `GUTTER`, so a
+    // clearance that stopped tracking the gutter fails here first.
+    const CLEAR = { x: GUTTER.bottom / 2, y: GUTTER.left / 2 };
     const boxOf = (tag: string): Rect =>
       scene.groups.filter((g) => g.tag === tag).map((g) => g.box)[0];
     const boxesOf = (tag: string): Rect[] =>
@@ -110,11 +117,21 @@ suite("corpus 00-minimal", () => {
       { x: PLOT.x, y: PLOT.y, w: 0, h: PLOT.h },
     ]);
     assert.deepEqual(boxesOf("hdml-label"), [
-      { x: PLOT.x, y: PLOT.y + PLOT.h, w: PLOT.w, h: 0 },
-      { x: PLOT.x, y: PLOT.y, w: 0, h: PLOT.h },
+      { x: PLOT.x, y: PLOT.y + PLOT.h + CLEAR.x, w: PLOT.w, h: 0 },
+      { x: PLOT.x - CLEAR.y, y: PLOT.y, w: 0, h: PLOT.h },
     ]);
-    // …which is to say: the same two boxes as the axis.
-    assert.deepEqual(boxesOf("hdml-label"), boxesOf("hdml-axis"));
+    // …which is to say: the axis's own two lines, each cleared
+    // into its own gutter, and moved on the OFFSET axis only.
+    const axes = boxesOf("hdml-axis");
+    const runs = boxesOf("hdml-label");
+    assert.strictEqual(runs[0].y - axes[0].y, CLEAR.x);
+    assert.strictEqual(axes[1].x - runs[1].x, CLEAR.y);
+    assert.strictEqual(runs[0].x, axes[0].x);
+    assert.strictEqual(runs[1].y, axes[1].y);
+    assert.deepEqual(
+      runs.map((b) => [b.w, b.h]),
+      axes.map((b) => [b.w, b.h]),
+    );
     assert.deepEqual(boxOf("hdml-bar"), PLOT);
 
     const bars = scene.groups.filter((g) => g.role === "mark");
@@ -194,7 +211,7 @@ const GOLDEN: Scene = {
       widget: "",
       tag: "hdml-label",
       role: "guide",
-      box: { x: 40, y: 216, w: 432, h: 0 },
+      box: { x: 40, y: 228, w: 432, h: 0 },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -205,10 +222,10 @@ const GOLDEN: Scene = {
           k: "text",
           i: -1,
           x: 85.473684,
-          y: 216,
+          y: 228,
           text: "Q1",
           anchor: "middle",
-          baseline: "top",
+          baseline: "middle",
           font: {
             family: "system-ui",
             size: 11,
@@ -226,10 +243,10 @@ const GOLDEN: Scene = {
           k: "text",
           i: -1,
           x: 199.157895,
-          y: 216,
+          y: 228,
           text: "Q2",
           anchor: "middle",
-          baseline: "top",
+          baseline: "middle",
           font: {
             family: "system-ui",
             size: 11,
@@ -247,10 +264,10 @@ const GOLDEN: Scene = {
           k: "text",
           i: -1,
           x: 312.842105,
-          y: 216,
+          y: 228,
           text: "Q3",
           anchor: "middle",
-          baseline: "top",
+          baseline: "middle",
           font: {
             family: "system-ui",
             size: 11,
@@ -268,10 +285,10 @@ const GOLDEN: Scene = {
           k: "text",
           i: -1,
           x: 426.526316,
-          y: 216,
+          y: 228,
           text: "Q4",
           anchor: "middle",
-          baseline: "top",
+          baseline: "middle",
           font: {
             family: "system-ui",
             size: 11,
@@ -320,7 +337,7 @@ const GOLDEN: Scene = {
       widget: "",
       tag: "hdml-label",
       role: "guide",
-      box: { x: 40, y: 8, w: 0, h: 208 },
+      box: { x: 20, y: 8, w: 0, h: 208 },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -330,10 +347,10 @@ const GOLDEN: Scene = {
         {
           k: "text",
           i: -1,
-          x: 40,
+          x: 20,
           y: 216,
           text: "0",
-          anchor: "end",
+          anchor: "middle",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -351,10 +368,10 @@ const GOLDEN: Scene = {
         {
           k: "text",
           i: -1,
-          x: 40,
+          x: 20,
           y: 174.4,
           text: "100",
-          anchor: "end",
+          anchor: "middle",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -372,10 +389,10 @@ const GOLDEN: Scene = {
         {
           k: "text",
           i: -1,
-          x: 40,
+          x: 20,
           y: 132.8,
           text: "200",
-          anchor: "end",
+          anchor: "middle",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -393,10 +410,10 @@ const GOLDEN: Scene = {
         {
           k: "text",
           i: -1,
-          x: 40,
+          x: 20,
           y: 91.2,
           text: "300",
-          anchor: "end",
+          anchor: "middle",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -414,10 +431,10 @@ const GOLDEN: Scene = {
         {
           k: "text",
           i: -1,
-          x: 40,
+          x: 20,
           y: 49.6,
           text: "400",
-          anchor: "end",
+          anchor: "middle",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -435,10 +452,10 @@ const GOLDEN: Scene = {
         {
           k: "text",
           i: -1,
-          x: 40,
+          x: 20,
           y: 8,
           text: "500",
-          anchor: "end",
+          anchor: "middle",
           baseline: "middle",
           font: {
             family: "system-ui",
