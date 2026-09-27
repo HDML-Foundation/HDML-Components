@@ -239,8 +239,9 @@ export class HdmlLabelElement extends HdvlElement {
         anchor: place.anchor,
         baseline: place.baseline,
         font: m.font,
-        // 017 R2's angle. Unrotated until 10-3 registers
-        // `--hdml-text-rotate` and reads it here.
+        // 017 R2's angle. Unrotated until 10-4 registers
+        // `--hdml-text-rotate` and reads it here (it was 10-3 until
+        // the founder's 2026-09-27 correction inserted a part).
         rotate: 0,
         decorative: false,
         ...paint,
