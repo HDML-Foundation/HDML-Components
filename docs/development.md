@@ -175,6 +175,59 @@ Configured in [.testrc.js](../.testrc.js):
   from a CJS file. A small `@web/dev-server` plugin in [.testrc.js](../.testrc.js)
   esbuild-bundles it into an ESM shim on the fly (esbuild is already the `bin` bundler — no new
   dependency). Without it, every hdio suite that touches the parser fails to import.
+- **A real pointer.** `sendMousePlugin()` from `@web/test-runner-commands/plugins` is
+  registered, which is what lets a test drive **OS-level mouse input** through the Playwright
+  launcher: `sendMouse({type: "move" | "down" | "up", position})` and `resetMouse()`. Without
+  the plugin the browser-side `sendMouse` import resolves and the command is rejected by the
+  server, so a pointer test would fail rather than silently pass. The package was already
+  installed transitively (`@web/test-runner` depends on it, and `@open-wc/testing` does too);
+  it is now a **declared** `devDependency` at the version the lockfile already carried, because
+  [src/hdvl/states-pointer.test.ts](../src/hdvl/states-pointer.test.ts) imports it directly.
+  The declaration was hand-written into `package.json` **and** the lockfile's root
+  `devDependencies` block rather than installed, and the diff is one line each: an
+  `npm install` re-resolves the whole tree and the lockfile is the only thing pinning
+  Playwright to 1.58.2 against the read-only `/ms-playwright` (see § Playwright browsers).
+  **Everything about a state variant except `:hover` and `:active` themselves is asserted
+  without a pointer** — `states.test.ts` is the pure half — and the split is deliberate: a
+  pointer is global mutable state (the mouse stays where it was left, so every pointer suite
+  teardown calls `resetMouse()`) and it is the one thing in the suite whose failure mode is a
+  flaky target rather than a wrong number. Aiming is therefore never arithmetic: a candidate
+  point is verified with `ShadowRoot.elementFromPoint`, which answers about the **composed**
+  tree and so accounts for occlusion, and a **stroked** node — a `line`'s path is `fill: none`
+  and is painted on its stroke only, under the SVG default `pointer-events: visiblePainted`
+  that this library never overrides — is aimed at through its own `getPointAtLength`
+  centreline rather than at the centre of a bounding box it does not fill.
+
+### ★ A three-engine total is not a gate on this runner
+
+**A concurrent `npm test` can exit 1 and still print `0 failed` on every engine**, and it can
+report a per-engine total *lower* than the run beside it. The cause was isolated at project
+017 step 09-3 and is **not** a test incompatibility:
+
+```
+ ❌ page.goto: Page crashed
+    - navigating to "http://localhost:8000/?wtr-session-id=…", waiting until "load"
+    (failed on Webkit)
+```
+
+A **webkit page crashes on session start** when three browsers are launched at once. The
+crash fails a whole *file's* session, so that file's tests never report — the shortfall is
+always exactly one file's worth (measured: webkit 1361 against chromium's 1369, with
+`page-10.test.js`'s **8** tests missing) — and it counts as `0 failed` **correctly**, because
+a session that never started produced no failing test. The file it hits is **random**: the
+same run without one unrelated suite present crashed `mark-rule.test.js` instead.
+
+Three consequences, all of them about how to read a run rather than how to fix one:
+
+- **`0 failed` is not "nothing went wrong."** Read the per-engine totals, and read them
+  against each other rather than against a remembered baseline. A per-engine total that
+  happens to equal a *previous* baseline is a coincidence to investigate, not a signal.
+- **The authority is a per-engine run**, one browser at a time. Spread `.testrc.js` and
+  replace `browsers`, requiring the launcher **by absolute path** (`--browsers webkit` alone
+  fails with *"must be used along with the puppeteer or playwright option"*). All three
+  engines run the full suite and exit 0 that way.
+- **Do not kill leftover runners by the pattern `web-test-runner`** — `pgrep -f` matches the
+  wrapper shells of the command you are about to run, so it kills the run you are starting.
 
 Tests live next to source as `*.test.ts` in [src/hdql/](../src/hdql/),
 [src/hdio/](../src/hdio/) (`endpoint` / `onmessage` / `parse` / `HdioClient`),

@@ -1398,6 +1398,18 @@ box — they are for emphasis, not for resizing. And a **width** variant alone p
 on a filled host that set no `--hdml-line-color`, because R4 made the outline opt-in and the
 base `stroke` is then `none`; the author sets both, as `09-polar-area` does.
 
+**★ A mark is hovered where it PAINTS, which on a `line` means on its stroke.** Nothing in
+this library sets `pointer-events`, so every node keeps the SVG default `visiblePainted`: a
+filled mark — a bar, a point, a wedge, an area — is hovered anywhere inside it, and
+`hdml-line` and `hdml-rule`, whose node is stroked with `fill: none`, are hovered **on the
+stroke only**. A series drawn at the initial `--hdml-line-width: 1.5px` is therefore a 1.5 px
+target, and an author who wants a whole-series hover cue to be comfortable to reach should
+say so with the width. It is the one place the granularity R7 defines — *the mark is the
+element*, for `line` and `area` — meets a fact about hit areas rather than about paint, and
+it is what makes `hdml-area`'s whole-series hover easy and `hdml-line`'s precise. Both are
+exercised under real OS-level pointer input by
+[src/hdvl/states-pointer.test.ts](../src/hdvl/states-pointer.test.ts) (step 09-3).
+
 ## Authoring example
 
 ```html

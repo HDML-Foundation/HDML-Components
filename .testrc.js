@@ -8,6 +8,9 @@ const path = require("path");
 const esbuild = require("esbuild");
 const { legacyPlugin } = require("@web/dev-server-legacy");
 const { playwrightLauncher } = require("@web/test-runner-playwright");
+const {
+  sendMousePlugin,
+} = require("@web/test-runner-commands/plugins");
 
 // `@hdml/parser` does `import { parse } from "node-html-parser"`, but
 // `node-html-parser` is CommonJS (with `css-select` / `he` CJS deps).
@@ -271,6 +274,7 @@ module.exports = {
     },
   },
   plugins: [
+    sendMousePlugin(),
     nodeHtmlParserEsm(),
     legacyPlugin({
       polyfills: {
