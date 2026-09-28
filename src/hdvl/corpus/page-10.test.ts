@@ -20,6 +20,7 @@ import {
   stringCol,
   stripText,
 } from "../../testing/corpus";
+import { assertInvariants } from "../../testing/invariants";
 import {
   installSceneRecorder,
   restoreRenderers,
@@ -127,6 +128,10 @@ suite("corpus 10-radar", () => {
 
   teardown(() => {
     restoreRenderers();
+  });
+
+  test("★ the geometry invariants hold", async () => {
+    await assertInvariants("10-radar");
   });
 
   test("it renders, one view, both series", async () => {

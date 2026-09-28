@@ -19,6 +19,7 @@ import {
   stringCol,
   stripText,
 } from "../../testing/corpus";
+import { assertInvariants } from "../../testing/invariants";
 import {
   installSceneRecorder,
   restoreRenderers,
@@ -70,6 +71,10 @@ suite("corpus 05-scatter", () => {
 
   teardown(() => {
     restoreRenderers();
+  });
+
+  test("★ the geometry invariants hold", async () => {
+    await assertInvariants("05-scatter");
   });
 
   test("both views render", async () => {

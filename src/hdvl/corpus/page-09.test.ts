@@ -22,6 +22,7 @@ import {
   stripText,
   withoutDeferred,
 } from "../../testing/corpus";
+import { assertInvariants } from "../../testing/invariants";
 import {
   installSceneRecorder,
   restoreRenderers,
@@ -129,6 +130,10 @@ suite("corpus 09-polar-area", () => {
 
   teardown(() => {
     restoreRenderers();
+  });
+
+  test("★ the geometry invariants hold", async () => {
+    await assertInvariants("09-polar-area");
   });
 
   test("both views render", async () => {

@@ -17,6 +17,7 @@ import {
   stateSheetOf,
   stripText,
 } from "../../testing/corpus";
+import { assertInvariants } from "../../testing/invariants";
 import { subscriptionsOf } from "../subscribe";
 import {
   installSceneRecorder,
@@ -53,6 +54,10 @@ suite("corpus 02-area", () => {
 
   teardown(() => {
     restoreRenderers();
+  });
+
+  test("★ the geometry invariants hold", async () => {
+    await assertInvariants("02-area");
   });
 
   test("both views render with no provider", async () => {

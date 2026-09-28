@@ -19,6 +19,7 @@ import {
   stringCol,
   stripText,
 } from "../../testing/corpus";
+import { assertInvariants } from "../../testing/invariants";
 import {
   installSceneRecorder,
   restoreRenderers,
@@ -65,6 +66,10 @@ suite("corpus 07-mixed", () => {
 
   teardown(() => {
     restoreRenderers();
+  });
+
+  test("★ the geometry invariants hold", async () => {
+    await assertInvariants("07-mixed");
   });
 
   test("it renders through FakeIo alone", async () => {

@@ -22,6 +22,7 @@ import {
   stripText,
   withoutDeferred,
 } from "../../testing/corpus";
+import { assertInvariants } from "../../testing/invariants";
 import {
   dateOptions,
   formatCompactSet,
@@ -113,6 +114,10 @@ suite("corpus 12-coverage (B, the gauge)", () => {
 
   teardown(() => {
     restoreRenderers();
+  });
+
+  test("★ the geometry invariants hold", async () => {
+    await assertInvariants("12-coverage");
   });
 
   test("★ four views, and this gate owns one", async () => {

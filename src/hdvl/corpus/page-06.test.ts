@@ -24,6 +24,7 @@ import {
   stripText,
   textsOf,
 } from "../../testing/corpus";
+import { assertInvariants } from "../../testing/invariants";
 import {
   installSceneRecorder,
   restoreRenderers,
@@ -153,6 +154,10 @@ suite("corpus 06-bubble", () => {
 
   teardown(() => {
     restoreRenderers();
+  });
+
+  test("★ the geometry invariants hold", async () => {
+    await assertInvariants("06-bubble");
   });
 
   test("the view renders through FakeIo alone", async () => {

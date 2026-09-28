@@ -26,6 +26,7 @@ import {
   textsOf,
   withoutDeferred,
 } from "../../testing/corpus";
+import { assertInvariants } from "../../testing/invariants";
 import {
   installSceneRecorder,
   restoreRenderers,
@@ -246,6 +247,10 @@ suite("corpus 04-grouped-stacked", () => {
     console.warn = realWarn;
     console.error = realError;
     restoreRenderers();
+  });
+
+  test("★ the geometry invariants hold", async () => {
+    await assertInvariants("04-grouped-stacked");
   });
 
   test("★ five views render, five keys painted", async () => {

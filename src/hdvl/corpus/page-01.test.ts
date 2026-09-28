@@ -20,6 +20,7 @@ import {
   stateSheetOf,
   stripText,
 } from "../../testing/corpus";
+import { assertInvariants } from "../../testing/invariants";
 import { subscriptionsOf } from "../subscribe";
 import {
   installSceneRecorder,
@@ -87,6 +88,10 @@ suite("corpus 01-line", () => {
 
   teardown(() => {
     restoreRenderers();
+  });
+
+  test("★ the geometry invariants hold", async () => {
+    await assertInvariants("01-line");
   });
 
   test("it renders through FakeIo alone", async () => {

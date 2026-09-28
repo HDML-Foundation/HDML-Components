@@ -22,6 +22,7 @@ import {
   stripText,
   withoutDeferred,
 } from "../../testing/corpus";
+import { assertInvariants } from "../../testing/invariants";
 import { sceneOf } from "../../testing/scene-of";
 import {
   installSceneRecorder,
@@ -147,6 +148,10 @@ suite("corpus 08-pie-doughnut", () => {
 
   teardown(() => {
     restoreRenderers();
+  });
+
+  test("★ the geometry invariants hold", async () => {
+    await assertInvariants("08-pie-doughnut");
   });
 
   test("all four views render through FakeIo alone", async () => {

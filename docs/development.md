@@ -595,13 +595,37 @@ with the IdP and the page's origin (`http://127.0.0.1:8000` under `wds`) must be
   [docs/hdio-client.md](hdio-client.md)) — the value committed in the page is a spent
   dev-tenant code kept only as a shape example. Replace it with a fresh one before use.
 
+### The geometry invariants
+
+[src/testing/invariants.ts](../src/testing/invariants.ts) is the corpus's
+**rendered**-geometry gate (project 017, O1). Every whole-`Scene` golden in
+[src/hdvl/corpus/](../src/hdvl/corpus/) asserts *computed* geometry, and a tree of
+correct numbers can still paint a broken picture — so each of the thirteen page suites
+also runs three universal predicates over the page as the **real** renderer draws it:
+*no text run escapes its view*, *no two text runs overlap* (scoped to the whole view),
+and *a view that declares marks paints marks* (this one off the `Scene`, so the suite
+mounts twice and calls `restoreRenderers()` between the passes).
+
+Two things about it are load-bearing:
+
+- **A run's extent is `getBBox()` composed with `getScreenCTM()`, never
+  `getBoundingClientRect()`.** Firefox inflates a text element's client rect by 1 px on
+  every side, which made P2 report 10 pairs on chromium and webkit and **40** on firefox;
+  the composed ink box is transform-aware (10-1 paints rotation as a `transform`) and
+  brings all three to 10.
+- **`ACCEPTED` is a committed, argued baseline, keyed on identity and never on
+  magnitude.** An unlisted violation is red, and so is a **listed one that stops
+  firing** — so the list can only shrink. Every entry carries a `reason`, and one
+  carries an `engines` field, because a 1 px clearance is a font metric.
+
 ### The live-render harness
 
 [scripts/render-live.mjs](../scripts/render-live.mjs) renders the live pages headlessly
 against a running HDIO server, with **real data**, and writes **one PNG per `hdml-view`**
-plus a per-view SVG node count. It exists because the acceptance corpus asserts computed
-geometry and never looks at a pixel, so overflow, clipping, misplacement and font-metric
-drift are invisible to it by construction (project 017, O1). It is a **dev instrument, not
+plus a per-view SVG node count. It exists because no deterministic gate can see
+a **pixel**: the invariants above assert rendered *extents*, which catches overflow and
+overprint, and leaves paint-order occlusion — and anything that needs real data or a real
+width — to a human reading these PNGs (project 017, O1). It is a **dev instrument, not
 a gate**: nothing in `npm test` calls it, it needs a live server, and its output is for a
 human to read. It adds no dependency — Playwright is already here, pinned at 1.58.2 through
 `@web/test-runner-playwright`.

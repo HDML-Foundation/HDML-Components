@@ -21,6 +21,7 @@ import {
   stringCol,
   stripText,
 } from "../../testing/corpus";
+import { assertInvariants } from "../../testing/invariants";
 import {
   installSceneRecorder,
   restoreRenderers,
@@ -91,6 +92,10 @@ suite("corpus 03-bar", () => {
 
   teardown(() => {
     restoreRenderers();
+  });
+
+  test("★ the geometry invariants hold", async () => {
+    await assertInvariants("03-bar");
   });
 
   test("all three views render", async () => {

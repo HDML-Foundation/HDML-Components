@@ -15,6 +15,7 @@ import {
   nodeCount,
   stripText,
 } from "../../testing/corpus";
+import { assertInvariants } from "../../testing/invariants";
 import {
   installSceneRecorder,
   restoreRenderers,
@@ -72,6 +73,10 @@ suite("corpus 00-minimal", () => {
 
   teardown(() => {
     restoreRenderers();
+  });
+
+  test("★ the geometry invariants hold", async () => {
+    await assertInvariants("00-minimal");
   });
 
   test("it renders with no CSS and no provider", async () => {

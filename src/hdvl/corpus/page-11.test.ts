@@ -24,6 +24,7 @@ import {
   stringCol,
   stripText,
 } from "../../testing/corpus";
+import { assertInvariants } from "../../testing/invariants";
 import {
   installSceneRecorder,
   restoreRenderers,
@@ -198,6 +199,10 @@ suite("corpus 11-multi-plane (A, small multiples)", () => {
 
   teardown(() => {
     restoreRenderers();
+  });
+
+  test("★ the geometry invariants hold", async () => {
+    await assertInvariants("11-multi-plane");
   });
 
   test("★ two views, and three planes in A", async () => {
