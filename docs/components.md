@@ -1005,7 +1005,10 @@ author who shrinks the plane's `padding` gets a clearance sized for the gutter t
 (and moves the label if they mind); and `dominant-baseline: middle` centres on the x-height
 midline rather than the em box, so the vertical centring is a glyph-metric approximation of a
 geometric claim. **Neither is visible to any scene assertion** — a clipped run measures the
-same box as one with room to spare — so both are the visual gate's to catch.
+same box as one with room to spare. ★ **And neither is caught by the geometry gate 017 built
+either** (step 11): its predicates measure a run against its *view*, and a label overhanging
+its gutter into the plot is inside the view the whole time. Both remain a human's to see, on
+the live-render PNGs.
 
 #### The two properties an author reaches for — `--hdml-text-*` (017 R2)
 

@@ -273,13 +273,73 @@ function ladder(
   }));
 }
 
-/** 02-area A — an axis that never thins. */
+/* ---------------------------------------------------------------- */
+/* The eight families, and the decision each carries                */
+/* ---------------------------------------------------------------- */
+
+/*
+ * ★ **Every family below cites a decision, and none defers.**
+ *
+ * 11-1 and 11-2 filed six families "for triage at 11-3", on the
+ * rule stated in ACCEPTED's own docblock: *recorded is not
+ * blessed*. They were put to the founder on 2026-09-28 with the
+ * runtime-vs-page split stated, and all six came back — two routed
+ * out of 017, four accepted. The decisions are recorded where the
+ * 2026-09-26 ones are, in `001. Requirements.md` § Findings
+ * triaged, and each `reason` names one. An entry that deferred to
+ * a step that has happened is the mechanism failing.
+ */
+
+/** 00-minimal — a font metric, and the reason `engines` exists. */
+const F1 =
+  "F1 — the zero-CSS floor's top y run clears the view by 1 px on " +
+  "chromium and webkit and inks 1 px taller on firefox, so only " +
+  "firefox crosses it, by 0.25 px. A font metric (016 step 33's " +
+  "class), not a document defect; the clearance is ua.ts's and " +
+  "widening it would move 00-minimal's golden to absorb 0.25 px on " +
+  "one engine. IGNORE — NOT A DEFECT, founder's decision " +
+  "2026-09-28.";
+
+/** 05-scatter B — the origin corner, a class already decided. */
+const F2 =
+  "F2 — the origin corner. 05-scatter B's widest y run ($10.00K) " +
+  "and its first x run (0) ink across each other by 3.63 x 1 px at " +
+  "the plot's bottom-left. The collision class 10-3 cleared on " +
+  "11-multi-plane (0B vs 2013), surviving here because this page's " +
+  "y runs are currency-formatted and wide. IGNORE — founder's " +
+  "decision 2026-09-28, the same call the class itself got on " +
+  "2026-09-26.";
+
+/** 12-coverage C — the UA legend default, escaping. */
+const F3 =
+  "★ F3 — the same UA legend default, ESCAPING. 12-coverage C's " +
+  "category runs (Alpha/Beta/Gamma) are 25-43 px wide and start " +
+  "18 px from the view's right edge, so all three ink past it, by " +
+  "up to 25 px. The live 12-coverage truncation class reproducing " +
+  "on the mock twin, on a different view. IGNORE — founder's " +
+  "decision 2026-09-28: the pages are evidence, not the " +
+  "deliverable.";
+
+/** 12-coverage D — a runtime defect, and 019's. */
+const F4 =
+  "★ F4 — the symlog ladder emits DUPLICATE runs at the origin. " +
+  "12-coverage D's y axis prints -0.001K twice and 0.001K twice, " +
+  "4.12 px apart in 13 px-tall runs. Not recorded anywhere before " +
+  "11-1, and a RUNTIME defect: a scale emitting the same tick " +
+  "twice is src/hdvl/kernel/'s. ROUTED TO 019 — founder's decision " +
+  "2026-09-28; 017 does not fix it, and this entry goes stale the " +
+  "day 019 does.";
+
+/** 02-area A — an axis that never thins. A runtime question. */
 const R02 =
   "★ 11-2 — THE LADDER DOES NOT THIN WITH THE WIDTH. 02-area A's " +
   "x axis declares no count, and the datetime scale emits the same " +
   "21 runs at 400 px as at 800: the ink stays 17.98 px while the " +
-  "pitch falls 30.78 -> 14.09, so every adjacent pair collides. " +
-  "Filed at 11-2 for triage at 11-3.";
+  "pitch falls 30.78 -> 14.09, so every adjacent pair collides. A " +
+  "RUNTIME question nobody had asked — should a ladder thin when " +
+  "the room runs out? ROUTED TO 019 — founder's decision " +
+  "2026-09-28; the fix is a width-aware tick count in a kernel " +
+  "every datetime axis shares, which 017 has not scoped.";
 
 /** 04-grouped-stacked — 184 of 400 px spent on chrome. */
 const R04 =
@@ -287,22 +347,25 @@ const R04 =
   "padding is 16px 120px 40px 64px (the 120 reserves the legend's " +
   "left:100% column), leaving a 216 px plot for 12 month bands: " +
   "pitch 46.04 -> 15.40 against a 17.98 px run, so every adjacent " +
-  "pair but Jun x Jul collides. Filed at 11-2 for triage at 11-3.";
+  "pair but Jun x Jul collides. IGNORE — founder's decision " +
+  "2026-09-28: a page laid out narrower than its author drew it is " +
+  "not a runtime defect.";
 
 /** 04-grouped-stacked E — the same ladder, 1.07 px wider. */
 const R04E =
   "★ 11-2 — the same crowding as 04's other four views, at a " +
   "16.47 px pitch rather than 15.40 because this view's plot is " +
   "5.9 px wider. That 1.07 px is exactly what lets Jun x Jul clear " +
-  "here on all three engines. Filed at 11-2 for triage at 11-3.";
+  "here on all three engines. IGNORE — founder's decision " +
+  "2026-09-28, with the rest of 04.";
 
 /** 04-grouped-stacked — the pair that sits on the boundary. */
 const R04J =
   "★ 11-2 — Jun x Jul, THE PAIR ON THE BOUNDARY. At a 15.40 px " +
   "pitch the two narrowest month runs clear on firefox and webkit " +
   "and cross on chromium — 016 step 33's font-metric class, and " +
-  "the second measured use of `engines` after 00-minimal's. Filed " +
-  "at 11-2 for triage at 11-3.";
+  "the second measured use of `engines` after 00-minimal's. " +
+  "IGNORE — founder's decision 2026-09-28, with the rest of 04.";
 
 /** 11-multi-plane A — a third of 400 px is 133. */
 const R11 =
@@ -310,8 +373,8 @@ const R11 =
   "them are the panel's own padding. Six -45deg month runs whose " +
   "composed ink box is 21.91 px sit at a 12.26 px pitch (34.10 at " +
   "800), so every adjacent pair collides and no next-but-one does " +
-  "(2 x 12.26 > 21.91). All three panels, identically. Filed at " +
-  "11-2 for triage at 11-3.";
+  "(2 x 12.26 > 21.91). All three panels, identically. IGNORE — " +
+  "founder's decision 2026-09-28, with 04's crowding.";
 
 /** 10-radar — a category run that does not shrink with its ring. */
 const R10 =
@@ -319,8 +382,26 @@ const R10 =
   "The view narrows 520 -> 400 so the ring's right edge moves 60 " +
   "px left, but the 43.62 px category run beside it keeps its ink " +
   "and now inks past the view's right edge. The escape half of the " +
-  "class the overprint above is the overlap half of. Filed at 11-2 " +
-  "for triage at 11-3.";
+  "class the overprint is the overlap half of. IGNORE — founder's " +
+  "decision 2026-09-28, with 04's crowding.";
+
+/** 12-coverage A — the known live ramp legend, colliding. */
+const A12 =
+  "★ The 12-coverage A ramp legend — colliding rather than " +
+  "truncating. The page declares NO legend gutter and §3's UA " +
+  "default overlays the legend on the plot's top-right corner, so " +
+  "the bottom ramp entry (40) meets the x axis's last tick (100). " +
+  "Same widget and same cause as the live 2,0 defect that " +
+  "001. Requirements.md § Findings triaged 2026-09-26 IGNOREs.";
+
+/** 10-radar — the known live overprint, verbatim. */
+const A10 =
+  "★ THE KNOWN LIVE 10-radar OVERPRINT, REPRODUCING ON THE MOCK " +
+  "TWIN. 001. Requirements.md names it as the radial 10 printing " +
+  "on the top category label; here the top category is comfort and " +
+  "it is the same two widgets, the same outermost radius run and " +
+  "the same cause. Reported, never red — the founder's decision at " +
+  "step 11, and IGNORE on 2026-09-26.";
 
 /**
  * ★ **The accepted-violations baseline — and it is NOT empty.**
@@ -330,45 +411,44 @@ const R10 =
  * **no calibration set**. Measured over 13 pages and 29 views, that
  * prediction is **refuted**: **two of the three reproduce**, and the
  * predicates found **three more defect families nobody had
- * recorded**.
+ * recorded**. Step 11-2 added {@link NARROW} and found **four
+ * more**, so the baseline is **104 entries over seven pages** —
+ * 14 at both widths, 90 narrow-only — and **eight families**:
  *
- * | family | what it is |
- * |---|---|
- * | `10-radar` | ★ the known live overprint, verbatim |
- * | `12-coverage` A | ★ the known live ramp legend, colliding |
- * | `12-coverage` C | the same default, escaping the view by 25 px |
- * | `12-coverage` D | a symlog ladder's duplicate runs at zero |
- * | `05-scatter` B | the origin corner 10-3 cleared elsewhere |
- * | `00-minimal` | a 1 px clearance one font metric crosses |
+ * | family | n | what it is | decision |
+ * |---|---|---|---|
+ * | `10-radar` A | 1 | ★ the live overprint | IGNORE 09-26 |
+ * | `12-coverage` A | 1 | ★ the live ramp legend | IGNORE 09-26 |
+ * | `12-coverage` C | 3 | the UA default escaping | IGNORE 09-28 |
+ * | `12-coverage` D | 7 | ★ duplicate symlog runs | **019** |
+ * | `05-scatter` B | 1 | the origin corner | IGNORE 09-28 |
+ * | `00-minimal` | 1 | a 1 px font-metric cross | IGNORE 09-28 |
+ * | `02-area` A | 20 | ★ 21 runs at both widths | **019** |
+ * | `04`·`11`·`10` narrow | 70 | chrome > plot | IGNORE 09-28 |
  *
- * **Fourteen entries over five pages**, every one argued in its
- * `reason`. None is red: step 11's decision is *"the gate only
- * reports, never reds; the three are its calibration set rather than
- * its acceptance test"*, and a gate red on an appearance its owner
- * has accepted is a gate that gets re-recorded. What is **not**
- * settled here is the triage of the three new families — that is
- * 11-3's, and until it happens they are recorded, not blessed.
+ * ★ **Recorded is not blessed — and the triage happened.** The
+ * first six families were filed by 11-1 and 11-2 with `reason`
+ * strings that deferred to step 11-3; they were put to the founder
+ * on **2026-09-28**, split into the two that are questions about
+ * the **runtime** and the four that are pages laid out narrower or
+ * denser than their author drew them. The two runtime ones are
+ * **routed to 019** — a scale that emits the same tick twice, and
+ * a ladder that does not thin when the room runs out — and 017
+ * fixes neither, because § Scope item 11 is *the gate*, not the
+ * defects it finds. Every `reason` now names a decision; none
+ * defers to a step.
  *
- * ★ **Step 11-2 added {@link NARROW}, and the baseline went 14 →
- * 104.** All fourteen of the above survive the narrowing unchanged
- * (`widths: ALL_WIDTHS`) — every one of them is anchored to a plot
- * edge or runs vertically, and neither moves when the box does. The
- * **ninety** new ones are narrow-only, and they are **four crowded
- * ladders plus one escape**, not ninety findings:
+ * ★ **None of the 90 narrow entries implicates the runtime**, which
+ * is what the second viewport was added to find out — they are four
+ * crowded ladders plus one escape, not ninety findings, and they
+ * are enumerated through {@link ladder} so each family argues once.
  *
- * | family | n | what it is |
- * |---|---|---|
- * | `02-area` A | 20 | 21 runs at both widths — no `count` |
- * | `04-grouped-stacked` ×5 | 54 | 184 px of 400 is chrome |
- * | `11-multi-plane` A | 15 | a 33.333 % panel is 133 px wide |
- * | `10-radar` | 1 | a run that does not shrink with its ring |
- *
- * ★ **They are responsive defects in the PAGES, and the runtime is
- * not implicated in any of them** — which is what the second
- * viewport was added to find out. Whether a chart *should* thin its
- * own ladder when the room runs out is a runtime question the
- * corpus cannot answer, and it is filed for 11-3's triage with the
- * other three.
+ * None of the 104 is red: step 11's decision is *"the gate only
+ * reports, never reds"*, and a gate red on an appearance its owner
+ * has accepted is a gate that gets re-recorded. What keeps that
+ * from being a log is the **stale** half of {@link gateDiff}: the
+ * list can only shrink, so the day 019 de-dupes the symlog ladder,
+ * `12-coverage`'s seven entries go red until they are deleted.
  *
  * @see DEFERRED_TO_SLICE_H
  */
@@ -380,13 +460,7 @@ export const ACCEPTED: readonly Accepted[] = [
     runs: ["hdml-label[3]#5"],
     engines: ["firefox"],
     widths: ALL_WIDTHS,
-    reason:
-      "F1 — the zero-CSS floor's top y run clears the view by 1 px " +
-      "on chromium and webkit and inks 1 px taller on firefox, so " +
-      "only firefox crosses it, by 0.25 px. A font metric (016 step" +
-      "33's class), not a document defect; the clearance is ua.ts's" +
-      "and moving it moves 00-minimal's golden. Filed at 11-1 for " +
-      "triage at 11-3.",
+    reason: F1,
   },
   {
     page: "05-scatter",
@@ -395,14 +469,7 @@ export const ACCEPTED: readonly Accepted[] = [
     runs: ["hdml-label[3]#0", "hdml-label[4]#0"],
     engines: ALL_ENGINES,
     widths: ALL_WIDTHS,
-    reason:
-      "F2 — the origin corner. 05-scatter B's widest y run " +
-      "($10.00K)" +
-      "and its first x run (0) ink across each other by 3.63 x 1 px" +
-      "at the plot's bottom-left. The collision class 10-3 cleared " +
-      "on 11-multi-plane (0B vs 2013), surviving here because this " +
-      "page's y runs are currency-formatted and wide. Filed at 11-1" +
-      "for triage at 11-3.",
+    reason: F2,
   },
   {
     page: "10-radar",
@@ -411,14 +478,7 @@ export const ACCEPTED: readonly Accepted[] = [
     runs: ["hdml-label[2]#0", "hdml-label[3]#4"],
     engines: ALL_ENGINES,
     widths: ALL_WIDTHS,
-    reason:
-      "★ THE KNOWN LIVE 10-radar OVERPRINT, REPRODUCING ON THE MOCK" +
-      "TWIN. 001. Requirements.md names it as the radial 10 " +
-      "printing" +
-      "on the top category label; here the top category is comfort " +
-      "and it is the same two widgets, the same outermost radius " +
-      "run and the same cause. Reported, never red — the founder's " +
-      "decision at step 11.",
+    reason: A10,
   },
   {
     page: "12-coverage",
@@ -427,150 +487,34 @@ export const ACCEPTED: readonly Accepted[] = [
     runs: ["hdml-label[2]#5", "hdml-legend[6]#4"],
     engines: ALL_ENGINES,
     widths: ALL_WIDTHS,
-    reason:
-      "★ The 12-coverage A ramp legend — colliding rather than " +
-      "truncating. The page declares NO legend gutter and §3's UA " +
-      "default overlays the legend on the plot's top-right corner, " +
-      "so the bottom ramp entry (40) meets the x axis's last tick " +
-      "(100). Same widget and same cause as the live 2,0 defect " +
-      "001. Requirements.md § Findings triaged 2026-09-26 IGNOREs.",
+    reason: A12,
   },
-  {
+  ...[0, 1, 2].map((run) => ({
     page: "12-coverage",
     view: 2,
-    predicate: "escapes-view",
-    runs: ["hdml-legend[6]#0"],
+    predicate: <Predicate>"escapes-view",
+    runs: [`hdml-legend[6]#${run}`],
     engines: ALL_ENGINES,
     widths: ALL_WIDTHS,
-    reason:
-      "★ F3 — the same UA legend default, ESCAPING. 12-coverage C's" +
-      "category runs (Alpha/Beta/Gamma) are 25-43 px wide and start" +
-      "18 px from the view's right edge, so all three ink past it, " +
-      "by up to 25 px. This is the live 12-coverage truncation " +
-      "class reproducing on the mock twin, on a different view. " +
-      "Filed at 11-1 for triage at 11-3.",
-  },
-  {
-    page: "12-coverage",
-    view: 2,
-    predicate: "escapes-view",
-    runs: ["hdml-legend[6]#1"],
-    engines: ALL_ENGINES,
-    widths: ALL_WIDTHS,
-    reason:
-      "★ F3 — the same UA legend default, ESCAPING. 12-coverage C's" +
-      "category runs (Alpha/Beta/Gamma) are 25-43 px wide and start" +
-      "18 px from the view's right edge, so all three ink past it, " +
-      "by up to 25 px. This is the live 12-coverage truncation " +
-      "class reproducing on the mock twin, on a different view. " +
-      "Filed at 11-1 for triage at 11-3.",
-  },
-  {
-    page: "12-coverage",
-    view: 2,
-    predicate: "escapes-view",
-    runs: ["hdml-legend[6]#2"],
-    engines: ALL_ENGINES,
-    widths: ALL_WIDTHS,
-    reason:
-      "★ F3 — the same UA legend default, ESCAPING. 12-coverage C's" +
-      "category runs (Alpha/Beta/Gamma) are 25-43 px wide and start" +
-      "18 px from the view's right edge, so all three ink past it, " +
-      "by up to 25 px. This is the live 12-coverage truncation " +
-      "class reproducing on the mock twin, on a different view. " +
-      "Filed at 11-1 for triage at 11-3.",
-  },
-  {
-    page: "12-coverage",
-    view: 3,
-    predicate: "runs-overlap",
-    runs: ["hdml-label[4]#4", "hdml-label[4]#5"],
-    engines: ALL_ENGINES,
-    widths: ALL_WIDTHS,
-    reason:
-      "★ F4 — the symlog ladder emits DUPLICATE runs at the origin." +
-      "12-coverage D's y axis prints -0.001K twice and 0.001K " +
-      "twice, 4.12 px apart in 13 px-tall runs. Not recorded " +
-      "anywhere before 11-1. Filed at 11-1 for triage at 11-3.",
-  },
-  {
-    page: "12-coverage",
-    view: 3,
-    predicate: "runs-overlap",
-    runs: ["hdml-label[4]#4", "hdml-label[4]#6"],
-    engines: ALL_ENGINES,
-    widths: ALL_WIDTHS,
-    reason:
-      "★ F4 — the symlog ladder emits DUPLICATE runs at the origin." +
-      "12-coverage D's y axis prints -0.001K twice and 0.001K " +
-      "twice, 4.12 px apart in 13 px-tall runs. Not recorded " +
-      "anywhere before 11-1. Filed at 11-1 for triage at 11-3.",
-  },
-  {
-    page: "12-coverage",
-    view: 3,
-    predicate: "runs-overlap",
-    runs: ["hdml-label[4]#5", "hdml-label[4]#6"],
-    engines: ALL_ENGINES,
-    widths: ALL_WIDTHS,
-    reason:
-      "★ F4 — the symlog ladder emits DUPLICATE runs at the origin." +
-      "12-coverage D's y axis prints -0.001K twice and 0.001K " +
-      "twice, 4.12 px apart in 13 px-tall runs. Not recorded " +
-      "anywhere before 11-1. Filed at 11-1 for triage at 11-3.",
-  },
-  {
-    page: "12-coverage",
-    view: 3,
-    predicate: "runs-overlap",
-    runs: ["hdml-label[4]#5", "hdml-label[4]#7"],
-    engines: ALL_ENGINES,
-    widths: ALL_WIDTHS,
-    reason:
-      "★ F4 — the symlog ladder emits DUPLICATE runs at the origin." +
-      "12-coverage D's y axis prints -0.001K twice and 0.001K " +
-      "twice, 4.12 px apart in 13 px-tall runs. Not recorded " +
-      "anywhere before 11-1. Filed at 11-1 for triage at 11-3.",
-  },
-  {
-    page: "12-coverage",
-    view: 3,
-    predicate: "runs-overlap",
-    runs: ["hdml-label[4]#6", "hdml-label[4]#7"],
-    engines: ALL_ENGINES,
-    widths: ALL_WIDTHS,
-    reason:
-      "★ F4 — the symlog ladder emits DUPLICATE runs at the origin." +
-      "12-coverage D's y axis prints -0.001K twice and 0.001K " +
-      "twice, 4.12 px apart in 13 px-tall runs. Not recorded " +
-      "anywhere before 11-1. Filed at 11-1 for triage at 11-3.",
-  },
-  {
-    page: "12-coverage",
-    view: 3,
-    predicate: "runs-overlap",
-    runs: ["hdml-label[4]#6", "hdml-label[4]#8"],
-    engines: ALL_ENGINES,
-    widths: ALL_WIDTHS,
-    reason:
-      "★ F4 — the symlog ladder emits DUPLICATE runs at the origin." +
-      "12-coverage D's y axis prints -0.001K twice and 0.001K " +
-      "twice, 4.12 px apart in 13 px-tall runs. Not recorded " +
-      "anywhere before 11-1. Filed at 11-1 for triage at 11-3.",
-  },
-  {
-    page: "12-coverage",
-    view: 3,
-    predicate: "runs-overlap",
-    runs: ["hdml-label[4]#7", "hdml-label[4]#8"],
-    engines: ALL_ENGINES,
-    widths: ALL_WIDTHS,
-    reason:
-      "★ F4 — the symlog ladder emits DUPLICATE runs at the origin." +
-      "12-coverage D's y axis prints -0.001K twice and 0.001K " +
-      "twice, 4.12 px apart in 13 px-tall runs. Not recorded " +
-      "anywhere before 11-1. Filed at 11-1 for triage at 11-3.",
-  },
+    reason: F3,
+  })),
+  ...ladder(
+    "12-coverage",
+    3,
+    "hdml-label[4]",
+    [
+      [4, 5],
+      [4, 6],
+      [5, 6],
+      [5, 7],
+      [6, 7],
+      [6, 8],
+      [7, 8],
+    ],
+    ALL_ENGINES,
+    ALL_WIDTHS,
+    F4,
+  ),
 
   /* ---- NARROW-only, step 11-2 — 90 entries, five families ---- */
 
@@ -991,6 +935,73 @@ export async function collectInvariants(
 }
 
 /**
+ * What the gate found at one width, against the baseline.
+ *
+ * ★ **The two halves are a pure function, and that is deliberate.**
+ * Until step 11-3 the comparison lived inside
+ * {@link assertInvariants}, so the only way to prove either half
+ * fires was to break a corpus page — which traps 9/10 forbid, and
+ * which is why 11-1's and 11-2's eight negative controls were all
+ * transient and reproducible from nothing in the tree. Split out,
+ * both halves are exercised against synthetic input by
+ * `invariants.test.ts`, permanently.
+ */
+export interface GateDiff {
+  /** The layout box width these two lists are for. */
+  width: number;
+  /** Violations with no entry covering them — a regression. */
+  unaccepted: readonly string[];
+  /**
+   * Entries that no longer fire — a **fix**, and the half that
+   * keeps the baseline shrinking instead of rotting shut.
+   */
+  stale: readonly string[];
+}
+
+/**
+ * Compares one page's observed violations against the baseline,
+ * **at each width independently**.
+ *
+ * The width is never part of {@link keyOf} — see
+ * {@link Accepted.widths} for why the union across widths was
+ * rejected — so it is the comparison, not the key, that separates
+ * them.
+ *
+ * @param page - The page's basename, e.g. `"03-bar"`.
+ * @param found - What {@link collectInvariants} returned.
+ * @param accepted - The baseline, or a fixture.
+ * @param engine - The engine to credit entries for.
+ * @param widths - {@link WIDTHS}, or a subset.
+ * @returns One {@link GateDiff} per width, in {@link WIDTHS} order.
+ */
+export function gateDiff(
+  page: string,
+  found: readonly Observed[],
+  accepted: readonly Accepted[] = ACCEPTED,
+  engine: Engine = ENGINE,
+  widths: readonly number[] = WIDTHS,
+): GateDiff[] {
+  return widths.map((width) => {
+    const listed = accepted
+      .filter(
+        (a) =>
+          a.page === page &&
+          a.engines.includes(engine) &&
+          a.widths.includes(width),
+      )
+      .map(keyOf);
+    const keys = found
+      .filter((v) => v.width === width)
+      .map((v) => keyOf(v));
+    return {
+      width,
+      unaccepted: keys.filter((k) => !listed.includes(k)),
+      stale: listed.filter((k) => !keys.includes(k)),
+    };
+  });
+}
+
+/**
  * The gate: **at each width independently**, every violation on a
  * page is either listed in {@link ACCEPTED} for that width or red,
  * **and** every listed one still fires there.
@@ -1002,33 +1013,29 @@ export async function collectInvariants(
  * fixing it at one width and not the other is reported rather than
  * absorbed.
  *
+ * ★ **The two messages mean opposite things.** *"unaccepted
+ * geometry violation"* is a defect you introduced or an entry you
+ * owe an argument for; *"stale ACCEPTED entry"* is a defect that
+ * stopped firing, and the only correct response is to **delete the
+ * entry**. Re-recording it is the one move the mechanism forbids.
+ *
  * @param page - The page's basename, e.g. `"03-bar"`.
  */
 export async function assertInvariants(page: string): Promise<void> {
   const found = await collectInvariants(page);
 
-  for (const width of WIDTHS) {
-    const listed = ACCEPTED.filter(
-      (a) =>
-        a.page === page &&
-        a.engines.includes(ENGINE) &&
-        a.widths.includes(width),
-    ).map(keyOf);
-    const keys = found
-      .filter((v) => v.width === width)
-      .map((v) => keyOf(v));
-
+  for (const diff of gateDiff(page, found)) {
     // An unlisted violation is a regression.
     assert.deepEqual(
-      keys.filter((k) => !listed.includes(k)),
+      [...diff.unaccepted],
       [],
-      `${page} @${width}px: unaccepted geometry violation`,
+      `${page} @${diff.width}px: unaccepted geometry violation`,
     );
     // A listed one that stopped firing is a regression too.
     assert.deepEqual(
-      listed.filter((k) => !keys.includes(k)),
+      [...diff.stale],
       [],
-      `${page} @${width}px: stale ACCEPTED entry — delete it`,
+      `${page} @${diff.width}px: stale ACCEPTED entry — delete it`,
     );
   }
 }

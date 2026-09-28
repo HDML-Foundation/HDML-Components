@@ -1703,8 +1703,10 @@ so `gutter` is `GUTTER`'s default: an author who shrinks the plane's `padding` g
 clearance sized for the gutter they replaced, and moves the label if they mind. And
 `dominant-baseline: middle` centres on the x-height midline rather than the em box, so the
 vertical centring is a glyph-metric approximation of a geometric claim. **Neither is
-visible to any scene assertion** — `GUTTER`'s own docblock says why — so both belong to the
-visual gate.
+visible to any scene assertion** — `GUTTER`'s own docblock says why. ★ **Nor to 017's
+geometry gate** (step 11), which measures a run against its *view* and not against its
+gutter, so a run overhanging into the plot is inside the view throughout. Both are a
+human's to see, on the live-render PNGs.
 
 **It is the label's position, so the author owns it.** The clearance is a **normal**
 declaration on the near offset (`top: calc(100% + 12px)`), not the `!important` extent two
@@ -1863,7 +1865,10 @@ therefore put the **real** renderer back and measure rendered bounding boxes aga
 decorative: reverting the padding alone fails the page-11 one by **0.33px**. ★ That margin is
 the honest limit — the mock twin's canned labels are three characters where the live twin's are
 four digits, so the corpus catches this revert almost by accident and a shorter fixture label
-would make the test vacuous. The padding decision's real coverage is the visual gate.
+would make the test vacuous. ★ **017 step 11-1 generalised exactly those two assertions
+into P1 `escapes-view`** — from *the rotated runs on two pages* to *every run on every
+view*, at two widths — so the padding decision's coverage is now the geometry gate, and
+`11-multi-plane`'s narrow-width entries are what it has to say about it.
 
 ## A filled widget strokes, and the safety is a UA rule not a `null`
 

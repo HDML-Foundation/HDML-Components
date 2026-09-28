@@ -339,7 +339,9 @@ engine, or add a polyfill — a failure changes what the display elements can be
 ### Writing a scene assertion
 
 HDVL assertions are **scene descriptions, never pixels** — a regression then names the number
-that moved, which a screenshot baseline cannot. The conventions:
+that moved, which a screenshot baseline cannot. (Since 017 step 11-1 the corpus also asserts
+**rendered extents**, through [the geometry invariants](#the-geometry-invariants); that is a
+third thing, and still not a pixel.) The conventions:
 
 - `deepEqual` against a golden scene committed as a **TS literal**, obtained through a
   precision-quantized `sceneOf(view, { precision: 6 })`. The scene itself is never quantized;
@@ -504,7 +506,7 @@ Seven decisions the harness takes once, because five gate steps inherit them:
 | **A page is fetched, never inlined** | `mountCorpus` `fetch`es `/html/hdvl/<name>.html` off the runner's own static serving. Inlining the markup into a test would be a **third** copy that no `cmp` covers |
 | **The page's `hdml-io` is removed first** | **Ten of the thirteen** gated pages declare one against a host that does not exist, and it would both hit the network and register as a **second** D8 provider — `subscribe.ts` de-dupes by `id`, not by provider. `FakeIo` replaces it outright (RFC §10.3). The count removed is asserted, and so is the absence of any `hdml-io` in the mounted page |
 | **The page's `<style>` is adopted verbatim** | Injected into `document.head` before the fixture mounts, removed at teardown. The bare tag selectors are what SPEC §7 makes placement out of, so they must reach the light DOM exactly as on the served page |
-| **The layout viewport is pinned at 800 px** | Twelve of the thirteen gated pages size their view `width: 100%`. The runner's window is a Playwright default, not a corpus fact; 800 is wider than every page's own `max-width` (760, 760, 760, **760**, 720, **760**, 780, 480, 480, 520, **780**, 480), so each page keeps its author's dimensions and none is capped by the harness. It is also what makes `11`'s thirds a *fractional* number of pixels — 33.333 % of 780 — and so the one place a used width is engine-dependent |
+| **The layout viewport is `VIEWPORT`, 800 px, by default** | Twelve of the thirteen gated pages size their view `width: 100%`. The runner's window is a Playwright default, not a corpus fact; 800 is wider than every page's own `max-width` (760, 760, 760, **760**, 720, **760**, 780, 480, 480, 520, **780**, 480), so each page keeps its author's dimensions and none is capped by the harness. It is also what makes `11`'s thirds a *fractional* number of pixels — 33.333 % of 780 — and so the one place a used width is engine-dependent. **Since 017 step 11-2 it is a default rather than a pin**: `mountCorpus(name, width)` takes a second width and [the geometry invariants](#the-geometry-invariants) run at `NARROW` (400 px) as well. **Every golden and every scene assertion is still recorded at 800**, which is what the default protects — moving it reds 41 tests |
 | **Geometry is asserted everywhere, `text` on chromium only** | Cross-engine rule 4. `stripText` blanks every `text` field for the three-engine `deepEqual`; the strings are a second assertion behind an engine guard whose classification is itself asserted on all three, so an engine-detection change cannot make the scoped half silently pass |
 | **A deferred element is excluded by name** | C3, as `DEFERRED_TO_SLICE_H` + `withoutDeferred` rather than as an omission. Added at step 28, the first gate to meet a double-gated page; **emptied at step 32**, which is what widened those goldens. Both are kept — an empty list is also an assertion, and a later page may need a different tag in it |
 | **`-0` is swept, not assumed** | `negativeZeros` returns the dotted paths of every signed zero in a scene. Added at step 28 because polar pages are where one becomes reachable — `sin(180deg)` is `-1.2e-16` and a coordinate times a zero radius carries the sign |
@@ -600,34 +602,121 @@ with the IdP and the page's origin (`http://127.0.0.1:8000` under `wds`) must be
 [src/testing/invariants.ts](../src/testing/invariants.ts) is the corpus's
 **rendered**-geometry gate (project 017, O1). Every whole-`Scene` golden in
 [src/hdvl/corpus/](../src/hdvl/corpus/) asserts *computed* geometry, and a tree of
-correct numbers can still paint a broken picture — so each of the thirteen page suites
-also runs three universal predicates over the page as the **real** renderer draws it:
-*no text run escapes its view*, *no two text runs overlap* (scoped to the whole view),
-and *a view that declares marks paints marks* (this one off the `Scene`, so the suite
-mounts twice and calls `restoreRenderers()` between the passes).
+correct numbers can still paint a broken picture — so each of the thirteen page
+suites also runs three universal predicates over the page as the **real** renderer
+draws it, in **one test of three lines** that calls `assertInvariants(page)`.
 
-Two things about it are load-bearing:
+**It is documented here and nowhere else.** `corpus.ts`'s seven numbered decisions
+are the *harness's* conventions — what `mountCorpus` does for every gate step — and
+the gate is a separate assertion layer with its own baseline, its own two failure
+messages and its own contributor workflow. The source's own docblocks keep the
+*mechanism* arguments (why the ink box, why P2's scope, why a `widths` field); what
+follows is what you need when the gate reds on you and you did not write it.
 
-- **A run's extent is `getBBox()` composed with `getScreenCTM()`, never
-  `getBoundingClientRect()`.** Firefox inflates a text element's client rect by 1 px on
-  every side, which made P2 report 10 pairs on chromium and webkit and **40** on firefox;
-  the composed ink box is transform-aware (10-1 paints rotation as a `transform`) and
-  brings all three to 10.
-- **`ACCEPTED` is a committed, argued baseline, keyed on identity and never on
-  magnitude.** An unlisted violation is red, and so is a **listed one that stops
-  firing** — so the list can only shrink. Every entry carries a `reason`, and one
-  carries an `engines` field, because a 1 px clearance is a font metric.
+#### The three predicates
+
+| | reads | fires when |
+|---|---|---|
+| **P1 `escapes-view`** | rendered | a text run's ink is not contained by its `hdml-view`'s border box. Four inequalities, one per edge. A run 25 px past the right edge is `12-coverage` C's, and it looks like a clipped or overhanging label |
+| **P2 `runs-overlap`** | rendered | two text runs' ink boxes intersect, anywhere in the view (`P2Scope`). It looks like overprint: a crowded tick ladder, or a legend laid over an axis |
+| **P3 `marks-empty`** | the `Scene` | a view declares mark groups and paints **no** mark node. It looks like a chart of axes over no data, which is 09-4's finding 2 and the one silent failure a screenshot reader misses |
+
+P1 and P2 need the **real** renderer — the harness installs a recording stub that
+draws nothing, and a predicate run against it passes by asserting over an empty
+`<svg>` — so `collectInvariants` runs two passes and calls `restoreRenderers()`
+between them. That call is **one-way within a test**, which is why the widths loop
+lives *inside* each pass and not around them. Do not reorder it.
+
+#### Reading a failure
+
+Two messages, and they mean **opposite** things.
+
+```
+03-bar @800px: unaccepted geometry violation
+03-bar @400px: stale ACCEPTED entry — delete it
+```
+
+- **`unaccepted geometry violation`** — a violation with no entry covering it. Either
+  you introduced a defect, in which case fix it, or the geometry legitimately
+  changed, in which case add an `Accepted` entry **with an argument**. A `reason`
+  that says no more than *"pre-existing"* is the mechanism failing.
+- **`stale ACCEPTED entry`** — a listed violation that **stopped firing**. This is
+  usually good news: you fixed something. The only correct response is to **delete
+  the entry**. Re-recording it, or widening its `engines` / `widths` to make the red
+  go away, is the one move the mechanism forbids.
+
+The violation key is `page/view/predicate/runs`, and a run is `tag[group]#run` —
+indices, never text, because a rendered `Intl` string is ICU version and OS data
+(cross-engine rule 4, the reason `stripText` exists).
+
+#### Why `ACCEPTED` can only shrink
+
+A suppression list that only ever grows stops meaning anything. This one is
+gated from **both** sides: an unlisted violation is red, and a listed one that
+no longer fires is red too. So the baseline empties itself as defects are fixed,
+and every entry in it is a claim someone argued once and that the suite re-checks
+on every run. It is **104 entries over seven pages** and **eight families** —
+each family's `reason` names a decision, either a founder `IGNORE` or a routing
+to project 019, and the two routed there are runtime defects (a symlog ladder
+that emits the same tick twice; a ladder that does not thin when the room runs
+out) that 017 deliberately did not scope a fix for.
+
+★ **Recorded is not blessed.** A baseline entry is a *record* that a violation
+exists and has been looked at — never an approval of the appearance.
+
+#### `engines` and `widths` — only when you have measured it
+
+Both fields narrow where an entry is credited, and both exist because a violation
+genuinely can be true in one place and false in another:
+
+- **`engines`** — a run's ink is a font metric. `00-minimal`'s top y run clears the
+  view by 1 px on chromium and webkit and crosses it by **0.25 px** on firefox; `04`'s
+  Jun × Jul pair crosses on chromium alone. Those are the **two** measured uses in
+  the whole baseline. Reach for it only after running the three engines separately.
+- **`widths`** — the gate lays every page out at **two** widths and compares them
+  **independently**, so a violation the narrow box creates is not owed at the wide
+  one. 90 of the 104 entries are narrow-only.
+
+Neither is a way to quiet a red. An entry scoped to one engine because you only ran
+one engine is a hole with a field name on it.
+
 - **Every page is laid out at two widths** — `VIEWPORT` (800 px, where each page is
   sized by its own `max-width`) and `NARROW` (400 px, where none of them is and the
   harness box binds instead). 800 is the nearest hundred above the band of declared
   `max-width`s (`[480 … 780]`); 400 is the nearest hundred below it, which is the same
   rule mirrored. Only the gate lays out at `NARROW` — **every golden and every scene
-  assertion is still recorded at `VIEWPORT`**, which is `mountCorpus`'s default. An
-  entry therefore also carries a `widths` field, symmetric with `engines`, and the two
-  widths are compared **independently**: a violation fixed at one width and live at the
-  other is reported rather than absorbed. The narrow half of the baseline is **90 of
-  the 104 entries**, and all but one of them are four crowded label ladders — the
+  assertion is still recorded at `VIEWPORT`**, which is `mountCorpus`'s default. The
+  narrow half of the baseline is four crowded label ladders plus one escape — the
   responsive behaviour a single-viewport gate cannot see.
+
+#### ★ The ink box, and the trap under it
+
+**A run's extent is `getBBox()` composed with `getScreenCTM()`, never
+`getBoundingClientRect()`** — `inkBox()` in the module. Firefox inflates a text
+element's client rect by **1 px on every side**, which made P2 report 10 pairs on
+chromium and webkit and **40** on firefox, every extra one a legend whose rows are
+pitched 14 px apart at an 11 px font. The composed box carries no inflation and is
+transform-aware, which a bare `getBBox()` is not (it is in the element's own user
+space, and rotation is painted as a `transform`).
+
+The lesson generalises past this gate: an *inequality* survives a per-engine font
+metric, but a per-engine error **in its input** flips it wholesale. If you are
+measuring rendered text anywhere in this repo, use `inkBox`.
+
+#### The negative controls
+
+A gate nobody has seen fail is a gate nobody should trust.
+[src/testing/invariants.test.ts](../src/testing/invariants.test.ts) exercises each
+predicate and **both halves of the comparison** against a *stunt double* — a real
+shadow root with a real `<svg>` and real `<text>`, laid out by the real engine —
+rather than against a corpus page, because breaking a page to prove a point would
+break its `html/hdvl-live/` twin with it.
+
+★ **What it cannot cover, stated rather than discovered:** the stunt double never
+installs the recording renderer, so it cannot catch a predicate run against the
+stub — the failure mode that makes the *whole* gate vacuous. The symptom of that
+one is the whole baseline going stale at once, which reds thirteen pages
+simultaneously. If you ever see that, suspect the mount order before the geometry.
 
 ### The live-render harness
 
