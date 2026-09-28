@@ -9,7 +9,7 @@ import "./index";
 import { HDVL_PROPERTIES, registerProperties } from "./properties";
 
 /**
- * SPEC §9's registry — complete at forty-seven, and intact after a
+ * SPEC §9's registry — complete at forty-nine, and intact after a
  * double registration (step-plan H5).
  *
  * Every name and initial below is **hardcoded** off SPEC §9. Read
@@ -55,6 +55,12 @@ const EXPECTED: [string, null | string][] = [
   ["--hdml-angle-end", "360deg"],
   ["--hdml-inner-radius", "0%"],
   ["--hdml-grid-shape", "circle"],
+  ["--hdml-text-rotate", "0deg"],
+  // ★ 017 R2's fourth keyword. `auto` is the initial because a
+  // registered property always computes to its initial, so a reader
+  // cannot tell absence from an authored `middle` — and `middle`
+  // would flatten every polar ring. See `properties.ts`.
+  ["--hdml-text-anchor", "auto"],
   ["--hdml-line-width--hover", null],
   ["--hdml-line-width--active", null],
   ["--hdml-line-color--hover", null],
@@ -119,8 +125,8 @@ suite("hdvl/properties", () => {
     probe = null;
   });
 
-  test("the registry is exactly SPEC §9's 47", () => {
-    assert.lengthOf(HDVL_PROPERTIES, 47);
+  test("the registry is exactly SPEC §9's 49", () => {
+    assert.lengthOf(HDVL_PROPERTIES, 49);
     assert.deepEqual(
       HDVL_PROPERTIES.map((p) => p.name),
       EXPECTED.map(([name]) => name),
@@ -183,7 +189,7 @@ suite("hdvl/properties", () => {
     assert.strictEqual(valueOf("--hdml-curve-bezier-tangents"), "");
   });
 
-  test("re-registering leaves all 47 intact", () => {
+  test("re-registering leaves all 49 intact", () => {
     // H5: `CSS.registerProperty` throws InvalidModificationError on
     // a duplicate, so a page that loads two builds registers twice.
     // With a LOOP-level try/catch the first duplicate would abort

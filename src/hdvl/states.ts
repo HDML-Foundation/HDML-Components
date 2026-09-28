@@ -128,7 +128,7 @@ const STROKE_PAINTED: ReadonlySet<string> = new Set<string>([
 export interface StateInput {
   /** `HdvlElement.uid` — the renderer's `data-w`. */
   uid: string;
-  /** The widget's harvested properties, all forty-seven. */
+  /** The widget's harvested properties, all forty-nine. */
   props: ReadonlyMap<string, string>;
   /**
    * The presentation attributes this widget may not state-vary —

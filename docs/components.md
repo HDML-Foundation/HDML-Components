@@ -1007,6 +1007,51 @@ midline rather than the em box, so the vertical centring is a glyph-metric appro
 geometric claim. **Neither is visible to any scene assertion** — a clipped run measures the
 same box as one with room to spare — so both are the visual gate's to catch.
 
+#### The two properties an author reaches for — `--hdml-text-*` (017 R2)
+
+Everything above is the **default**. Two registered properties override it, and they are named
+for the **run** rather than for `hdml-label`, so an `hdml-text` mark can take the identical pair
+without a duplicate:
+
+| property | syntax | initial | what it does |
+|---|---|---|---|
+| `--hdml-text-rotate` | `<angle>` | `0deg` | rotates the run **clockwise about its own pinned point** |
+| `--hdml-text-anchor` | `start \| middle \| end \| auto` | `auto` | which point of the run is pinned to the tick |
+
+`end` + `-45deg` is the combination the requirement exists for: the pivot is the run's own
+anchor, so every label's **tail** lands on its own tick and the ends line up along the axis. On
+`11-multi-plane`, whose `2013`…`2022` renders as an unbroken run of digits, this is the fix.
+
+**`auto` is the initial, and it is not cosmetic.** A registered custom property **always**
+computes to its initial value, so a reader cannot tell *"the author said nothing"* from
+*"the author said the initial"* — which is why `middle` could not be the initial even though
+that is what a cartesian plane derives. It would have flattened every **polar** ring to
+`middle` the moment the property was registered, and a ring is the one place the derivation
+still turns. `auto` means *"the derivation"*; `middle` stays available and now says something
+`auto` never did — **centre every run, including on a ring**.
+
+**The override applies on both planes**, and that is a decision rather than an accident of the
+mechanism. `--hdml-text-rotate` is one angle for a whole ring too, and a pair that ships
+together and pivots about one point cannot have one half plane-sensitive and the other not; a
+property silently ignored under a pole would need a seventh `WarningCode`, which 017 declined
+twice for other rules; and both properties **inherit**, so a view-level declaration aimed at
+cartesian labels would have warned from a polar label the author never addressed. The cost is
+stated rather than hidden: one anchor over a ring is lopsided — `start` runs the text inward at
+9 o'clock — and `auto` is the way back.
+
+**The anchor is overridden; the baseline is not.** `--hdml-text-anchor` moves the pinned point
+**along** the run, which is one dimension, and R2 deliberately has no property for the other:
+on a **y** label *"which side of the line"* and *"which end of the run"* are the same knob
+spelled twice, so a second property would be a second mechanism for one thing. On a polar
+label that means the anchor stops turning while the baseline still does.
+
+**Rotation reserves no space.** Rotate 45° and deepening the plane's `padding` is the
+**author's** — the runtime does not measure a rotated run's extents and grow the layout to fit.
+And rotation is **scene data, never a CSS `transform`**: SPEC §13 makes an author `transform`
+on a display element unsupported, so the angle is a field on the `text` node and the renderer
+writes `transform="rotate(a x y)"` itself. The host box stays untransformed and MEASURE never
+sees it.
+
 **A label does not call `measureText`.** The `text` node carries `anchor` and `baseline` and
 the renderer does the placing, so a measured width buys it nothing. What needs the §5.3 seam
 is *flow* — `hdml-legend` lays a swatch and its name out sequentially — and collision or
@@ -1298,8 +1343,8 @@ resolved scale, its own box and its computed style.
 
 ### The `--hdml-*` registry
 
-All chart appearance is CSS custom properties, and the **complete 47-property registry** —
-31 base properties plus the **sixteen state variants** (the eight presentation-attribute
+All chart appearance is CSS custom properties, and the **complete 49-property registry** —
+33 base properties plus the **sixteen state variants** (the eight presentation-attribute
 properties × `{hover, active}`, 017 R7) — is registered with
 `CSS.registerProperty` at import time
 ([`src/hdvl/properties.ts`](../src/hdvl/properties.ts)). Every one of them **inherits**, which

@@ -502,6 +502,15 @@ function normalOf(pole: Point, at: Point): Point {
  * what is left is exactly the branch a later reader would be
  * tempted to case on.
  *
+ * ★ **`--hdml-text-anchor` is not a counter-example to that**
+ * (017 R2, step 10-4). What the warning forbids is the *runtime*
+ * inventing placement from the channel; an author's registered
+ * property is the **author** placing the run, reached through the
+ * same cascade as the box and carrying the same authority. It is
+ * read at `guide-label.ts`'s call site and applied to what this
+ * function returns, so every answer here stays derived and this
+ * function never learns that the property exists.
+ *
  * **One predicate: the per-axis sign of the outward normal.** The
  * text hangs off its point in the direction {@link normalOf}
  * returns, so a component pointing at higher coordinates runs the

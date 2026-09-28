@@ -694,7 +694,7 @@ never one: the event is the mechanism, the frame is the claim.
 
 **The property list is parsed out of [src/hdvl/properties.ts](../src/hdvl/properties.ts),
 never typed into the script**, and probe values are derived from each property's
-*syntax* — so a forty-eighth property in an existing syntax class needs no edit, for the
+*syntax* — so a fiftieth property in an existing syntax class needs no edit, for the
 same reason `SENTINEL_PROPERTIES` is built from the registry rather than by hand. Each
 probe sets value A, waits for the page to quiesce, then sets B, so the measured change is
 the same whatever the live page's own CSS declares; a pair that does not move the computed

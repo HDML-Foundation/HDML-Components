@@ -710,8 +710,25 @@ function cssNumber(
   return Number.isFinite(n) ? n : fallback;
 }
 
-/** A registered `<angle>`, in degrees, whatever unit it kept. */
-function cssAngle(raw: undefined | string, fallback: number): number {
+/**
+ * A registered `<angle>`, in degrees, whatever unit it kept.
+ *
+ * ★ **Exported at 017 R2's step 10-4, for its second caller.** It is
+ * registry-generic and never was scale arithmetic — it converts
+ * `rad`/`grad`/`turn` because a registered `<angle>`'s computed value
+ * is not guaranteed to be canonicalised to `deg` on every engine —
+ * and it lived here only because `--hdml-angle-start`/`-end` were the
+ * registry's only `<angle>`s. `--hdml-text-rotate` is the second, and
+ * `guide-label.ts` reads it through **this** function rather than a
+ * sixth private copy: three unit conversions are an implementation,
+ * not the one-liner `cssNumber` is, and R12/R18 gives an
+ * implementation one home. {@link localeOf} is the precedent for a
+ * reader hosted here that a guide also needs.
+ */
+export function cssAngle(
+  raw: undefined | string,
+  fallback: number,
+): number {
   const text = (raw ?? "").trim();
   const n = Number.parseFloat(text);
   if (!Number.isFinite(n)) {

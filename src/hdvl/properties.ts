@@ -33,7 +33,7 @@ const CURVE_TYPES =
   "cardinal | catmull-rom | monotone | step";
 
 /**
- * SPEC §9's registry, complete at forty-seven: thirty-one base
+ * SPEC §9's registry, complete at forty-nine: thirty-three base
  * properties plus the sixteen **state variants** — the eight
  * presentation-attribute properties × `{hover, active}`.
  *
@@ -77,6 +77,39 @@ const CURVE_TYPES =
  * back to a literal here** — a registered property always computes
  * to its initial value, so a literal default in a reader's second
  * argument is unreachable code.
+ *
+ * ── ★ `--hdml-text-anchor`'s fourth keyword is `auto` (017 R2) ──
+ *
+ * The three placements SPEC §9 names are `start | middle | end`, and
+ * the registered enum carries a **fourth**, `auto`, which is its
+ * initial. That is forced by the clause above rather than chosen: a
+ * registered property **always** computes to its initial, so a
+ * reader cannot tell "the author said nothing" from "the author said
+ * the initial." The property overrides a value `guidePlacement`
+ * **derives** — `middle` under a plane composing in view space, the
+ * turning outward normal under one composing about a pole — and
+ * there is no member of the three that means *that*. An initial of
+ * `middle` would therefore flatten every polar ring to `middle` the
+ * moment this property existed, which is the opposite of an
+ * override. `auto` is CSS's own word for *"the UA decides"*, and it
+ * leaves `middle` free to mean what it says: **centre this run,
+ * including on a ring, where the derivation would not have.**
+ *
+ * ★ **The typed enum is why it is not `*`.** `*` would also carry
+ * "empty means derived", the idiom above — but it accepts any string
+ * at all, so `--hdml-text-anchor: centre` would compute to `centre`
+ * and the reader would have to either ignore it silently (the defect
+ * class 017 exists to close) or invent a diagnostic for what CSS
+ * already diagnoses. With a closed enum the typo is
+ * invalid-at-computed-value-time, falls back to `auto`, and DevTools
+ * shows it struck through. The platform does the rejecting.
+ *
+ * ★ **`--hdml-text-rotate` needs no such member, and the asymmetry
+ * is derived.** Rotation has no derivation behind it — every run was
+ * unrotated before this registry entry existed — so its neutral
+ * value is `0deg`, a real member of `<angle>`. A property whose
+ * neutral value is expressible in its own syntax does not need a
+ * sentinel; one whose neutral value is *"ask the derivation"* does.
  */
 export const HDVL_PROPERTIES: readonly PropertyDefinition[] = [
   {
@@ -263,6 +296,18 @@ export const HDVL_PROPERTIES: readonly PropertyDefinition[] = [
     syntax: "circle | polygon",
     inherits: true,
     initialValue: "circle",
+  },
+  {
+    name: "--hdml-text-rotate",
+    syntax: "<angle>",
+    inherits: true,
+    initialValue: "0deg",
+  },
+  {
+    name: "--hdml-text-anchor",
+    syntax: "start | middle | end | auto",
+    inherits: true,
+    initialValue: "auto",
   },
   {
     name: "--hdml-line-width--hover",

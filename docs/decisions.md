@@ -1157,7 +1157,7 @@ rather than trusts.
 **Why 1264 tests missed it.** `ua.test.ts` asserts the sentinel *lists* every
 registered property — completeness of the list, never that being listed works — and
 both tests that drove a change picked an **interpolable** property. The tests are
-therefore now keyed by **syntax class**, not by property, so a forty-eighth
+therefore now keyed by **syntax class**, not by property, so a fiftieth
 registration in an existing class is covered the moment it is registered and one in
 a *new* class is what should fail.
 
@@ -1733,6 +1733,94 @@ offset is still exactly `100%`.
 **Bundle.** `./hdvl` **414.2 → 414.2 kB**, flat. Predicted from the generator (the entry
 above): `normalOf` lost a branch, `guideRules` gained a per-tag conditional and
 `GUIDE_PLACEMENT` traded an `offsets` array for four named fields.
+
+## `--hdml-text-anchor`'s initial is `auto`, because a registered property has no absence
+
+Project 017 R2, step 10-4 (2026-09-28). The two properties R2 named — `--hdml-text-rotate`
+(`<angle>`, `0deg`) and `--hdml-text-anchor` (`start | middle | end | auto`, `auto`) — and the
+one thing about them that was decided rather than transcribed.
+
+**R2 and the step plan both recorded the anchor's initial as `middle`, and that could not
+work.** The reasoning was sound as far as it went: after step 10-3 a cartesian plane derives
+`middle`/`middle`, so `middle` *is* today's behaviour there. What it missed is trap 11's own
+premise, read the other way round: a registered custom property **always** computes to its
+initial value, so `props.get` can never come back `undefined` and a reader cannot distinguish
+*"the author said nothing"* from *"the author said `middle`"*. Applying the computed value
+unconditionally with an initial of `middle` would therefore have flattened **every polar
+ring** to `middle` the moment the property was registered — eight goldens and nineteen runs,
+on the one plane whose derivation R2 deliberately kept. The only alternative that preserves
+`middle` as the initial is to gate the override to cartesian, which is *"silently ignored on
+polar"* wearing a default's clothes.
+
+**So absence is spelled as a value, and the value is `auto`** — CSS's own word for *"the UA
+decides"*. The enum carries **four** keywords where SPEC §9's three describe the placements,
+and the fourth buys two things: the derivation stays reachable, and `middle` is freed to mean
+something it could not mean before — *centre this run, including on a ring, where the
+derivation would not have*.
+
+**Not `syntax: "*"` with an omitted initial**, which is the other idiom in this registry for
+exactly this semantics (`--hdml-curve-bezier-tangents` is *"empty — auto tangents"*, and so
+are the sixteen state variants). It would work. What it costs is typing: `*` accepts any
+string, so `--hdml-text-anchor: centre` would compute to `centre` and the reader would have to
+either ignore it silently — the defect class 017 exists to close — or invent a diagnostic for
+something CSS already diagnoses. With a closed enum the typo is invalid at computed-value
+time, the platform substitutes `auto`, and DevTools shows the declaration struck through.
+
+**`--hdml-text-rotate` needs no such member, and the asymmetry is derived rather than
+tolerated.** Rotation has no derivation behind it — every run was unrotated before this entry
+existed — so its neutral value is `0deg`, a real member of `<angle>`. A property whose neutral
+value is expressible in its own syntax does not need a sentinel; one whose neutral value is
+*"ask the derivation"* does.
+
+### The override is the author's on both planes — and where it lives
+
+**Both planes**, deliberately. Three arguments, the first binding: `--hdml-text-rotate` is one
+angle for a whole ring too, and a pair that ships together and pivots about the same point
+cannot have one half plane-sensitive and the other not. A property silently ignored under a
+pole would need a **seventh `WarningCode`** to be honest, and 017 declined a `W7` twice already
+(step 07's angular bands, R11's pole grid), both times filing under an existing V-rule instead.
+And both properties **inherit**, so a view-level declaration aimed at cartesian labels would
+have warned from a polar label the author never addressed. The cost is stated rather than
+hidden: one anchor over a ring is lopsided — `start` runs the text inward at 9 o'clock — it is
+the author's instruction, it is **visible**, and `auto` is the way back.
+
+**The read lives at `guide-label.ts`'s call site, not inside `guidePlacement`.** Four reasons,
+and they converge: `guide-spec.ts` reads **no** `--hdml-*` at all, and every property in the
+guide half is read by the element that consumes it (`guide-tick.ts` its two, `guide-legend.ts`
+its three); keeping the override out of `guidePlacement` is what lets that function's *"this is
+a derivation and must stay one"* warning go on meaning only the derivation; `guidePlacement` is
+called **per tick** while an author's value is one value for the whole guide, so a read inside
+it would re-read a constant `ticks.length` times; and `--hdml-text-rotate` has no home there
+anyway, because rotation is not placement. Putting the anchor there would have split the pair
+across two modules.
+
+**What the derivation warning does and does not forbid.** It forbids the **runtime** inventing
+placement from the channel — SPEC §7 gives the tag no `position` attribute, so a case keyed on
+the channel is the authored placement the spec forbids, merely spelled in TypeScript. An
+author's registered property is the **author** placing the run, reached through the same cascade
+as the box and carrying the same authority. `guidePlacement` never learns the property exists.
+
+**`cssAngle` is reused, not copied.** `scale.ts`'s reader is 14 lines with three unit
+conversions — not the one-line `cssNumber` this repo duplicates five times — so R12/R18 gives
+it one home and it is now exported. It was never scale arithmetic; it lived there because
+`--hdml-angle-start`/`-end` were the registry's only `<angle>`s. `localeOf` is the precedent.
+Measured: `grad` appears **once** in the bundle before and after, so the reuse duplicated
+nothing.
+
+**Bundle, and the prediction was wrong by 4×.** `./hdvl` **414.2 → 414.6 kB** (+394 B exactly,
+measured), against +0.1 predicted from the generator. Decomposed, and the two halves are
+strictly additive: the two registry literals are **174 B** and the reader is **220 B**. What
+the prediction under-priced was **strings, not code**: a registered property's name is a string
+literal in `properties.ts` *and* another at every read site, ~20 bytes each, and nothing dedupes
+them — `--hdml-text-anchor` appears twice in the bundle, `--hdml-tick-height` **four** times
+(the registry plus three readers). A property's bundle cost scales with its **number of
+readers**, which is not what "two object literals" suggests.
+
+**No golden moved, and that is the whole acceptance.** Both initials reproduce what the
+derivation already answered, so all 29 corpus goldens and all 29 live views are byte-identical
+— proved by removing both reads and watching exactly three tests go red with zero corpus
+failures. The test that asserts `auto` ≡ absence **stays green** under that removal, which is
+why it could never have caught an unimplemented property on its own.
 
 ## A filled widget strokes, and the safety is a UA rule not a `null`
 

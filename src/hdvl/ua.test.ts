@@ -349,7 +349,7 @@ suite("hdvl/ua — the element sheet", () => {
       .getPropertyValue("transition-property")
       .split(",")
       .map((s) => s.trim());
-    // Built from HDVL_PROPERTIES, never by hand: a forty-eighth
+    // Built from HDVL_PROPERTIES, never by hand: a fiftieth
     // registered property must not be able to go unobserved.
     for (const def of HDVL_PROPERTIES) {
       assert.include(listed, def.name);

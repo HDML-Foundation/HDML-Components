@@ -351,6 +351,141 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
     );
   });
 
+  test("★ --hdml-text-rotate reaches the node alone", async () => {
+    // 017 R2's step 10-4, first half. The property is the ONLY way
+    // an angle enters the scene — a CSS `transform` on a display
+    // element is SPEC §13's unsupported, and `measure.ts` does not
+    // compensate for one — so this is the whole of the mechanism.
+    //
+    // ★ The value is authored in `turn`, not `deg`, deliberately.
+    // A registered `<angle>`'s computed value is not guaranteed to
+    // be canonicalised to degrees on every engine, so `cssAngle`
+    // converts; asserting `0.25turn === 90` is the only form of this
+    // test that cannot pass by the string happening to match.
+    const plain = await mount(page('count="3"'));
+    const turned = await mount(
+      page('count="3"', "--hdml-text-rotate: 0.25turn"),
+    );
+    for (const node of texts(plain)) {
+      assert.strictEqual(node.rotate, 0);
+    }
+    for (const node of texts(turned)) {
+      assert.strictEqual(node.rotate, 90);
+    }
+    // ★ …and NOTHING else moved. Rotation is a paint-time pivot
+    // about the run's own anchor point, so the point itself, the
+    // placement and the text are all invariant under it — which is
+    // also why R2 can say rotation reserves no space.
+    const strip = (n: TextNode) => ({
+      x: n.x,
+      y: n.y,
+      text: n.text,
+      anchor: n.anchor,
+      baseline: n.baseline,
+    });
+    assert.deepEqual(
+      texts(turned).map(strip),
+      texts(plain).map(strip),
+    );
+  });
+
+  test("★ --hdml-text-anchor wins on BOTH channels", async () => {
+    // 017 R2's step 10-4, second half — and R2's *"one meaning on
+    // every channel"* as an experiment rather than a claim. Before
+    // 10-3 this property would have overridden a DIFFERENT dimension
+    // per channel (the along-run knob on x, the side-of-the-line on
+    // y); with the run centred on its tick it now means one thing
+    // everywhere: which point of the run is pinned.
+    //
+    // ★ The override under test is never `middle`. The derivation
+    // already answers `middle` on both cartesian channels, so an
+    // assertion that `--hdml-text-anchor: middle` yields `middle`
+    // would pass with the property unimplemented — 10-3's finding,
+    // that two mechanisms agreeing on a number is not evidence they
+    // agree, in the place it would bite next.
+    for (const want of <const>["start", "end"]) {
+      const x = await mount(xPage(`--hdml-text-anchor: ${want}`));
+      const y = await mount(
+        page('count="3"', `--hdml-text-anchor: ${want}`),
+      );
+      const runs = [...texts(x, "x"), ...texts(y)];
+      assert.isAbove(runs.length, 0);
+      for (const node of runs) {
+        assert.strictEqual(node.anchor, want);
+        // The baseline is not authorable and stays the derivation's.
+        assert.strictEqual(node.baseline, "middle");
+      }
+    }
+  });
+
+  test("★ `auto` IS the derivation, and so is absence", async () => {
+    // ★ The negative control as a test, and the only thing that
+    // proves the default is a default. `auto` is the registered
+    // initial precisely because a registered property always
+    // computes to its initial, so "the author said nothing" has to
+    // be spelled as a value — and the two spellings must be
+    // indistinguishable in the scene.
+    const absent = await mount(page('count="3"'));
+    const explicit = await mount(
+      page('count="3"', "--hdml-text-anchor: auto"),
+    );
+    assert.deepEqual(
+      roundDeep(texts(explicit), P.precision),
+      roundDeep(texts(absent), P.precision),
+    );
+    for (const node of texts(absent)) {
+      assert.strictEqual(node.anchor, "middle");
+    }
+  });
+
+  test("★ the override reaches a POLAR label too", async () => {
+    // ★ 017 R2's step 10-4 open question, answered: the author wins
+    // on BOTH planes. `--hdml-text-rotate` is one angle for a whole
+    // ring as well, and a pair that ships together and pivots about
+    // one point cannot have one half plane-sensitive; a property
+    // silently ignored under a pole would need a seventh warning
+    // code, which 017 declined twice.
+    //
+    // ★ And it overrides the ANCHOR ALONE. The four axis-aligned
+    // ticks derive `middle / start / middle / end` (asserted in
+    // `guide-polar.test.ts`); under the override all four read
+    // `end`, while the BASELINE still turns `bottom / middle / top /
+    // middle`. A property that flattened the derivation wholesale
+    // would fail on the baseline, not on the anchor.
+    const ring = (style: string) => html`
+      <hdml-view aria-label="pol" style="width: 400px; height: 200px">
+        <hdml-polar-plane>
+          <hdml-continuous-scale channel="angle" min="0" max="4">
+            <hdml-continuous-scale channel="radius" min="0" max="10">
+              <hdml-label
+                channel="angle"
+                values="[0, 1, 2, 3]"
+                style="${style}"
+              ></hdml-label>
+              <hdvl-probe></hdvl-probe>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `;
+    const derived = await mount(ring(""));
+    const pinned = await mount(ring("--hdml-text-anchor: end"));
+    const pairs = (v: HdmlViewElement) =>
+      texts(v, "angle").map((n) => `${n.anchor}/${n.baseline}`);
+    assert.deepEqual(pairs(derived), [
+      "middle/bottom",
+      "start/middle",
+      "middle/top",
+      "end/middle",
+    ]);
+    assert.deepEqual(pairs(pinned), [
+      "end/bottom",
+      "end/middle",
+      "end/top",
+      "end/middle",
+    ]);
+  });
+
   test("★ ONE shared compact prefix over the set", async () => {
     // §4.9 / SPEC §7, asserted STRUCTURALLY so it holds on all
     // three engines: every label ends with the same part, that

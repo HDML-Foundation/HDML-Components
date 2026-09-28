@@ -432,7 +432,7 @@ suite("hdvl/schedule — the frame", () => {
     // works — and the two tests that drove it both picked an
     // interpolable property (`<length>` in `platform.test.ts`, the
     // `<color>` above). So the table below is keyed by SYNTAX
-    // CLASS, not by property: a forty-eighth registration in an
+    // CLASS, not by property: a fiftieth registration in an
     // existing class is covered the moment it is registered, and
     // one in a NEW class is what should make this test fail.
     //

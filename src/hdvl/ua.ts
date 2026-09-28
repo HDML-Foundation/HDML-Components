@@ -635,7 +635,7 @@ const SENTINEL_BOX = [
  * Every property whose change schedules a frame (§5.6, R24).
  *
  * **Built from {@link HDVL_PROPERTIES}, never by hand** — a
- * forty-eighth registered property must not be able to become
+ * fiftieth registered property must not be able to become
  * silently unobserved.
  */
 export const SENTINEL_PROPERTIES: readonly string[] = [
