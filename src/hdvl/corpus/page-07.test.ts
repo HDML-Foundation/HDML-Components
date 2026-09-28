@@ -123,6 +123,30 @@ suite("corpus 07-mixed", () => {
     assert.lengthOf(labels[0].nodes, MONTHS.length);
   });
 
+  test("★ a rotated run fits the padding already there", async () => {
+    // The other half of 017 R2's padding rule, and the reason it is
+    // a rule rather than a number: page 11 had to deepen `32px` to
+    // `40px` to rotate, and this page rotates the same run at the
+    // same angle and changed NOTHING, because its plane already
+    // reserved 40. The claim is about rendered extents, which a
+    // `Scene` cannot hold, so the real renderer goes back in first.
+    restoreRenderers();
+    const page = await mountCorpus("07-mixed");
+    const view = page.views[0];
+    const svg = view.shadowRoot?.querySelector("svg") ?? null;
+    assert.isNotNull(svg);
+    const box = view.getBoundingClientRect();
+    const rotated = Array.from(svg.querySelectorAll("text")).filter(
+      (t) => t.getAttribute("transform") !== null,
+    );
+    assert.lengthOf(rotated, 6);
+    rotated.forEach((t) => {
+      const r = t.getBoundingClientRect();
+      assert.isAtMost(r.bottom, box.bottom);
+      assert.isAtLeast(r.left, box.left);
+    });
+  });
+
   test("the golden holds on every engine", async () => {
     const page = await mountCorpus("07-mixed");
     assert.deepEqual(
@@ -198,7 +222,7 @@ const GOLDEN: Scene = {
           x: 113.214286,
           y: 324,
           text: "Jan",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -206,7 +230,7 @@ const GOLDEN: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -219,7 +243,7 @@ const GOLDEN: Scene = {
           x: 223.928571,
           y: 324,
           text: "Feb",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -227,7 +251,7 @@ const GOLDEN: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -240,7 +264,7 @@ const GOLDEN: Scene = {
           x: 334.642857,
           y: 324,
           text: "Mar",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -248,7 +272,7 @@ const GOLDEN: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -261,7 +285,7 @@ const GOLDEN: Scene = {
           x: 445.357143,
           y: 324,
           text: "Apr",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -269,7 +293,7 @@ const GOLDEN: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -282,7 +306,7 @@ const GOLDEN: Scene = {
           x: 556.071429,
           y: 324,
           text: "May",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -290,7 +314,7 @@ const GOLDEN: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -303,7 +327,7 @@ const GOLDEN: Scene = {
           x: 666.785714,
           y: 324,
           text: "Jun",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -311,7 +335,7 @@ const GOLDEN: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,

@@ -53,6 +53,14 @@
       hdml-axis.price { position: absolute; top: 0; bottom: 0; left: 100%;
         --hdml-line-width: 1px; --hdml-line-color: #f59e0b; }
       hdml-label { --hdml-font-size: 11px; }
+      /* 017 R2: on live data this axis carries nineteen four-digit
+         years across 652px and the runs all but touch — 5.33px of
+         clear space, measured. Same idiom as page 11: `end` pins each
+         run's tail to its own tick, -45deg swings the rest below-left.
+         No padding change is needed here — the plane already reserves
+         40px below the plot and a rotated year run wants 36. */
+      hdml-label[channel="x"] { --hdml-text-rotate: -45deg;
+        --hdml-text-anchor: end; }
       /* The right-hand y axis is the AUTHOR's placement, not one of
          the two gutters SPEC §3 names, so the UA clearance cannot
          reach it: with the run centred on its tick (017 R2) this

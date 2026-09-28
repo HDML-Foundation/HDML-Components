@@ -1045,8 +1045,31 @@ on a **y** label *"which side of the line"* and *"which end of the run"* are the
 spelled twice, so a second property would be a second mechanism for one thing. On a polar
 label that means the anchor stops turning while the baseline still does.
 
-**Rotation reserves no space.** Rotate 45° and deepening the plane's `padding` is the
-**author's** — the runtime does not measure a rotated run's extents and grow the layout to fit.
+**Rotation reserves no space, so the two declarations come with a third.** Rotate 45° and
+deepening the plane's `padding` is the **author's** — the runtime does not measure a rotated
+run's extents and grow the layout to fit. That makes the working idiom three lines, not two,
+and leaving the third out **clips silently**: no rule in SPEC §11 can see a rendered extent, so
+nothing warns.
+
+```css
+/* the plane has to find the room the rotation needs */
+hdml-cartesian-plane { padding: 16px 12px 40px 44px; }
+
+hdml-label[channel="x"] {
+  --hdml-text-rotate: -45deg;
+  --hdml-text-anchor: end;
+}
+```
+
+**Where the `40px` comes from.** A run of width `w` and line height `h`, pinned by `end` and
+turned `-45deg`, reaches `0.707 × (w + h / 2)` below its pinned point — and the pinned point is
+already half the gutter below the plot. At 11px `system-ui` a four-digit year (`w ≈ 28px`)
+reaches **24px** below the pin and so **36px** below the plot, against a default bottom gutter
+of 24. Round up and a rotating plane wants about **40px** where an unrotated one wants 24. The
+corpus carries both sides of that: `11-multi-plane`'s three panels went from `32px` to `40px`
+in the same commit that gave them an angle, and `07-mixed` rotates the identical run at the
+identical angle and changed **nothing**, because its plane already reserved 40.
+
 And rotation is **scene data, never a CSS `transform`**: SPEC §13 makes an author `transform`
 on a display element unsupported, so the angle is a field on the `text` node and the renderer
 writes `transform="rotate(a x y)"` itself. The host box stays untransformed and MEASURE never

@@ -1822,6 +1822,49 @@ derivation already answered, so all 29 corpus goldens and all 29 live views are 
 failures. The test that asserts `auto` ≡ absence **stays green** under that removal, which is
 why it could never have caught an unimplemented property on its own.
 
+### The room a rotation needs is the page's, and 40px was derived from the page — step 10-5
+
+**The `ua.ts` clearance stays rotation-blind, and that is the decision.** A UA clearance that
+knew about rotation would have to measure a rotated run's extents — the feature R2 puts out of
+scope in one sentence (*"the plane's padding is the author's to deepen"*) — and it would move
+all 21 cartesian-label views again for a property no page had set. The clearance stays
+`gutter / 2`, derived without a font measurement, and what a rotation costs on top of it is
+authored.
+
+**So the unit of work is a page that rotates AND deepens, and the depth is arithmetic the
+author does.** A run of width `w` and line height `h`, pinned by `end` and turned `-45deg`,
+reaches `0.707 × (w + h / 2)` below its pinned point, which is already `gutter / 2` below the
+plot. At 11px `system-ui` a four-digit year (`w ≈ 28`) reaches **24.04px** below the pin,
+measured on live data — **36px** below the plot against a default bottom gutter of 24.
+
+**`40px` is not a free choice.** It is the depth `11-multi-plane`'s own overlay plane and
+`07-mixed`'s plane already carried, both measured to fit the identical rotated run with ~4px
+and ~12px to spare; the panels' `32px` was the one plane on either page that could not hold it,
+and rotating it unchanged clipped by **4.04px**, measured. Changing 32 → 40 removes an outlier
+rather than introducing a number.
+
+**Which pages rotate was a measurement, not a taste.** Minimum clear space between adjacent
+x-label runs, over every live view that has a horizontal run: `11-multi-plane` A **−7.19px**
+(overlapping, on all three panels), `11-multi-plane` B **+3.81**, `07-mixed` **+5.33**, and then
+a gap to `04` at **+27.79**. Three crowded views over two pages, and the next-tightest has 3.5×
+more room.
+
+**A y-channel view was declined on the same instrument.** The tightest *cartesian* y run in the
+live corpus clears **32.6px** vertically; the only negative is `12-coverage`'s polar
+`channel="angle"` ring, where a vertical measure is meaningless. There is no y collision to fix,
+and these pages double as the authoring examples, so a rotation authored where nothing collides
+is an idiom a reader would copy without the reason. The y channel's override is asserted by
+step 10-4's unit tests on **both** channels.
+
+**What no scene assertion can check, and what was added instead.** A `Scene` holds an anchor
+point and an angle; a rotated run's *extent* is not in it, by construction. Two corpus tests
+therefore put the **real** renderer back and measure rendered bounding boxes against the view's
+— the only thing in the repo that looks at a rotated extent. They are live rather than
+decorative: reverting the padding alone fails the page-11 one by **0.33px**. ★ That margin is
+the honest limit — the mock twin's canned labels are three characters where the live twin's are
+four digits, so the corpus catches this revert almost by accident and a shorter fixture label
+would make the test vacuous. The padding decision's real coverage is the visual gate.
+
 ## A filled widget strokes, and the safety is a UA rule not a `null`
 
 Project 017 R4, implementation step 04. `fillPaint` hard-coded `stroke: null` /

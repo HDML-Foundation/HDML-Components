@@ -358,6 +358,82 @@ suite("corpus 11-multi-plane (A, small multiples)", () => {
     );
   });
 
+  test("★ the x runs rotate and the y runs do not", async () => {
+    // 017 R2's corpus coverage, as a claim about the SELECTOR. The
+    // page declares the pair on `hdml-label[channel="x"]`, so the
+    // interesting thing is not that eighteen runs turned — the
+    // golden says that — but that the one y label did not, and
+    // still reads `auto`, the initial. Both values are read off the
+    // element's computed style rather than transcribed, so a page
+    // that changes its angle moves this test with it.
+    const page = await mountCorpus("11-multi-plane");
+    const a = page.views[0];
+    const groups = new Map(
+      sceneOf(a).groups.map((g) => [g.widget, g]),
+    );
+    const nodesOf = (sel: string) =>
+      Array.from(a.querySelectorAll(sel)).flatMap(
+        (e) =>
+          groups.get((<HdvlElement>(<unknown>e)).uid)?.nodes ?? [],
+      );
+    const authored = (e: Element, p: string) =>
+      getComputedStyle(e).getPropertyValue(p).trim();
+
+    const x = a.querySelectorAll<HdvlElement>(
+      'hdml-label[channel="x"]',
+    );
+    assert.lengthOf(x, 3);
+    const angle = parseFloat(authored(x[0], "--hdml-text-rotate"));
+    const anchor = authored(x[0], "--hdml-text-anchor");
+    assert.strictEqual(angle, -45);
+    assert.strictEqual(anchor, "end");
+    const xs = nodesOf('hdml-label[channel="x"]');
+    assert.lengthOf(xs, 18);
+    xs.forEach((n) => {
+      assert.strictEqual(n.k === "text" ? n.rotate : NaN, angle);
+      assert.strictEqual(n.k === "text" ? n.anchor : "", anchor);
+    });
+
+    // The y label is one selector away and takes neither.
+    const y = a.querySelectorAll<HdvlElement>(
+      'hdml-label[channel="y"]',
+    );
+    assert.lengthOf(y, 1);
+    assert.strictEqual(authored(y[0], "--hdml-text-anchor"), "auto");
+    const ys = nodesOf('hdml-label[channel="y"]');
+    assert.lengthOf(ys, 5);
+    ys.forEach((n) => {
+      assert.strictEqual(n.k === "text" ? n.rotate : NaN, 0);
+      assert.strictEqual(n.k === "text" ? n.anchor : "", "middle");
+    });
+  });
+
+  test("★ a rotated run fits the padding it deepened", async () => {
+    // ★ The ONE claim in this project a `Scene` cannot make. R2
+    // reserves no space for rotation — *"the plane's padding is the
+    // author's to deepen"* — so whether this page's `40px` is
+    // enough is a fact about RENDERED extents, and the scene holds
+    // an anchor point and an angle rather than a box. The recorder
+    // draws nothing, so the real renderer goes back in first; the
+    // suite's own teardown is idempotent.
+    restoreRenderers();
+    const page = await mountCorpus("11-multi-plane");
+    const view = page.views[0];
+    const svg = view.shadowRoot?.querySelector("svg") ?? null;
+    assert.isNotNull(svg);
+    const box = view.getBoundingClientRect();
+    const rotated = Array.from(svg.querySelectorAll("text")).filter(
+      (t) => t.getAttribute("transform") !== null,
+    );
+    assert.lengthOf(rotated, 18);
+    rotated.forEach((t) => {
+      const r = t.getBoundingClientRect();
+      // Down-left is where `end` + a negative angle throws a run.
+      assert.isAtMost(r.bottom, box.bottom);
+      assert.isAtLeast(r.left, box.left);
+    });
+  });
+
   test("the golden holds on every engine", async () => {
     const page = await mountCorpus("11-multi-plane");
     assert.deepEqual(
@@ -638,7 +714,7 @@ const GOLDEN_A: Scene = {
       widget: "",
       tag: "hdml-axis",
       role: "guide",
-      box: { x: 44, y: 248, w: 203.98, h: 0 },
+      box: { x: 44, y: 240, w: 203.98, h: 0 },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -650,8 +726,8 @@ const GOLDEN_A: Scene = {
           i: -1,
           subpaths: [
             {
-              start: { x: 44, y: 248 },
-              segments: [{ k: "line", to: { x: 247.98, y: 248 } }],
+              start: { x: 44, y: 240 },
+              segments: [{ k: "line", to: { x: 247.98, y: 240 } }],
             },
           ],
           closed: false,
@@ -667,7 +743,7 @@ const GOLDEN_A: Scene = {
       widget: "",
       tag: "hdml-axis",
       role: "guide",
-      box: { x: 44, y: 16, w: 0, h: 232 },
+      box: { x: 44, y: 16, w: 0, h: 224 },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -679,7 +755,7 @@ const GOLDEN_A: Scene = {
           i: -1,
           subpaths: [
             {
-              start: { x: 44, y: 248 },
+              start: { x: 44, y: 240 },
               segments: [{ k: "line", to: { x: 44, y: 16 } }],
             },
           ],
@@ -696,7 +772,7 @@ const GOLDEN_A: Scene = {
       widget: "",
       tag: "hdml-label",
       role: "guide",
-      box: { x: 44, y: 260, w: 203.98, h: 0 },
+      box: { x: 44, y: 252, w: 203.98, h: 0 },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -707,9 +783,9 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 58.07,
-          y: 260,
+          y: 252,
           text: "Jan",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -717,7 +793,7 @@ const GOLDEN_A: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -728,9 +804,9 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 93.24,
-          y: 260,
+          y: 252,
           text: "Feb",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -738,7 +814,7 @@ const GOLDEN_A: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -749,9 +825,9 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 128.41,
-          y: 260,
+          y: 252,
           text: "Mar",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -759,7 +835,7 @@ const GOLDEN_A: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -770,9 +846,9 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 163.58,
-          y: 260,
+          y: 252,
           text: "Apr",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -780,7 +856,7 @@ const GOLDEN_A: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -791,9 +867,9 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 198.75,
-          y: 260,
+          y: 252,
           text: "May",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -801,7 +877,7 @@ const GOLDEN_A: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -812,9 +888,9 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 233.92,
-          y: 260,
+          y: 252,
           text: "Jun",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -822,7 +898,7 @@ const GOLDEN_A: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -835,7 +911,7 @@ const GOLDEN_A: Scene = {
       widget: "",
       tag: "hdml-label",
       role: "guide",
-      box: { x: 24, y: 16, w: 0, h: 232 },
+      box: { x: 24, y: 16, w: 0, h: 224 },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -846,7 +922,7 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 24,
-          y: 248,
+          y: 240,
           text: "0K",
           anchor: "middle",
           baseline: "middle",
@@ -867,7 +943,7 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 24,
-          y: 190,
+          y: 184,
           text: "200K",
           anchor: "middle",
           baseline: "middle",
@@ -888,7 +964,7 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 24,
-          y: 132,
+          y: 128,
           text: "400K",
           anchor: "middle",
           baseline: "middle",
@@ -909,7 +985,7 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 24,
-          y: 74,
+          y: 72,
           text: "600K",
           anchor: "middle",
           baseline: "middle",
@@ -953,7 +1029,7 @@ const GOLDEN_A: Scene = {
       widget: "",
       tag: "hdml-bar",
       role: "mark",
-      box: { x: 44, y: 16, w: 203.98, h: 232 },
+      box: { x: 44, y: 16, w: 203.98, h: 224 },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -964,9 +1040,9 @@ const GOLDEN_A: Scene = {
           k: "rect",
           i: 0,
           x: 44,
-          y: 68.2,
+          y: 66.4,
           w: 28.14,
-          h: 179.8,
+          h: 173.6,
           fill: "rgb(28, 140, 244)",
           stroke: null,
           strokeWidth: 0,
@@ -976,9 +1052,9 @@ const GOLDEN_A: Scene = {
           k: "rect",
           i: 1,
           x: 79.17,
-          y: 79.8,
+          y: 77.6,
           w: 28.14,
-          h: 168.2,
+          h: 162.4,
           fill: "rgb(28, 140, 244)",
           stroke: null,
           strokeWidth: 0,
@@ -988,9 +1064,9 @@ const GOLDEN_A: Scene = {
           k: "rect",
           i: 2,
           x: 114.34,
-          y: 45,
+          y: 44,
           w: 28.14,
-          h: 203,
+          h: 196,
           fill: "rgb(28, 140, 244)",
           stroke: null,
           strokeWidth: 0,
@@ -1000,9 +1076,9 @@ const GOLDEN_A: Scene = {
           k: "rect",
           i: 3,
           x: 149.51,
-          y: 56.6,
+          y: 55.2,
           w: 28.14,
-          h: 191.4,
+          h: 184.8,
           fill: "rgb(28, 140, 244)",
           stroke: null,
           strokeWidth: 0,
@@ -1012,9 +1088,9 @@ const GOLDEN_A: Scene = {
           k: "rect",
           i: 4,
           x: 184.68,
-          y: 33.4,
+          y: 32.8,
           w: 28.14,
-          h: 214.6,
+          h: 207.2,
           fill: "rgb(28, 140, 244)",
           stroke: null,
           strokeWidth: 0,
@@ -1024,9 +1100,9 @@ const GOLDEN_A: Scene = {
           k: "rect",
           i: 5,
           x: 219.85,
-          y: 42.1,
+          y: 41.2,
           w: 28.14,
-          h: 205.9,
+          h: 198.8,
           fill: "rgb(28, 140, 244)",
           stroke: null,
           strokeWidth: 0,
@@ -1038,7 +1114,7 @@ const GOLDEN_A: Scene = {
       widget: "",
       tag: "hdml-axis",
       role: "guide",
-      box: { x: 303.98, y: 248, w: 203.98, h: 0 },
+      box: { x: 303.98, y: 240, w: 203.98, h: 0 },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -1050,8 +1126,8 @@ const GOLDEN_A: Scene = {
           i: -1,
           subpaths: [
             {
-              start: { x: 303.98, y: 248 },
-              segments: [{ k: "line", to: { x: 507.97, y: 248 } }],
+              start: { x: 303.98, y: 240 },
+              segments: [{ k: "line", to: { x: 507.97, y: 240 } }],
             },
           ],
           closed: false,
@@ -1067,7 +1143,7 @@ const GOLDEN_A: Scene = {
       widget: "",
       tag: "hdml-label",
       role: "guide",
-      box: { x: 303.98, y: 260, w: 203.98, h: 0 },
+      box: { x: 303.98, y: 252, w: 203.98, h: 0 },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -1078,9 +1154,9 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 318.05,
-          y: 260,
+          y: 252,
           text: "Jan",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -1088,7 +1164,7 @@ const GOLDEN_A: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -1099,9 +1175,9 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 353.22,
-          y: 260,
+          y: 252,
           text: "Feb",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -1109,7 +1185,7 @@ const GOLDEN_A: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -1120,9 +1196,9 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 388.39,
-          y: 260,
+          y: 252,
           text: "Mar",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -1130,7 +1206,7 @@ const GOLDEN_A: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -1141,9 +1217,9 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 423.56,
-          y: 260,
+          y: 252,
           text: "Apr",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -1151,7 +1227,7 @@ const GOLDEN_A: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -1162,9 +1238,9 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 458.73,
-          y: 260,
+          y: 252,
           text: "May",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -1172,7 +1248,7 @@ const GOLDEN_A: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -1183,9 +1259,9 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 493.9,
-          y: 260,
+          y: 252,
           text: "Jun",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -1193,7 +1269,7 @@ const GOLDEN_A: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -1206,7 +1282,7 @@ const GOLDEN_A: Scene = {
       widget: "",
       tag: "hdml-bar",
       role: "mark",
-      box: { x: 303.98, y: 16, w: 203.98, h: 232 },
+      box: { x: 303.98, y: 16, w: 203.98, h: 224 },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -1217,9 +1293,9 @@ const GOLDEN_A: Scene = {
           k: "rect",
           i: 0,
           x: 303.98,
-          y: 117.5,
+          y: 114,
           w: 28.14,
-          h: 130.5,
+          h: 126,
           fill: "rgb(245, 158, 11)",
           stroke: null,
           strokeWidth: 0,
@@ -1229,9 +1305,9 @@ const GOLDEN_A: Scene = {
           k: "rect",
           i: 1,
           x: 339.15,
-          y: 47.9,
+          y: 46.8,
           w: 28.14,
-          h: 200.1,
+          h: 193.2,
           fill: "rgb(245, 158, 11)",
           stroke: null,
           strokeWidth: 0,
@@ -1241,9 +1317,9 @@ const GOLDEN_A: Scene = {
           k: "rect",
           i: 2,
           x: 374.32,
-          y: 97.2,
+          y: 94.4,
           w: 28.14,
-          h: 150.8,
+          h: 145.6,
           fill: "rgb(245, 158, 11)",
           stroke: null,
           strokeWidth: 0,
@@ -1253,9 +1329,9 @@ const GOLDEN_A: Scene = {
           k: "rect",
           i: 3,
           x: 409.49,
-          y: 105.9,
+          y: 102.8,
           w: 28.14,
-          h: 142.1,
+          h: 137.2,
           fill: "rgb(245, 158, 11)",
           stroke: null,
           strokeWidth: 0,
@@ -1265,9 +1341,9 @@ const GOLDEN_A: Scene = {
           k: "rect",
           i: 4,
           x: 444.66,
-          y: 36.3,
+          y: 35.6,
           w: 28.14,
-          h: 211.7,
+          h: 204.4,
           fill: "rgb(245, 158, 11)",
           stroke: null,
           strokeWidth: 0,
@@ -1277,9 +1353,9 @@ const GOLDEN_A: Scene = {
           k: "rect",
           i: 5,
           x: 479.83,
-          y: 71.1,
+          y: 69.2,
           w: 28.14,
-          h: 176.9,
+          h: 170.8,
           fill: "rgb(245, 158, 11)",
           stroke: null,
           strokeWidth: 0,
@@ -1291,7 +1367,7 @@ const GOLDEN_A: Scene = {
       widget: "",
       tag: "hdml-axis",
       role: "guide",
-      box: { x: 563.98, y: 248, w: 203.98, h: 0 },
+      box: { x: 563.98, y: 240, w: 203.98, h: 0 },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -1303,8 +1379,8 @@ const GOLDEN_A: Scene = {
           i: -1,
           subpaths: [
             {
-              start: { x: 563.98, y: 248 },
-              segments: [{ k: "line", to: { x: 767.97, y: 248 } }],
+              start: { x: 563.98, y: 240 },
+              segments: [{ k: "line", to: { x: 767.97, y: 240 } }],
             },
           ],
           closed: false,
@@ -1320,7 +1396,7 @@ const GOLDEN_A: Scene = {
       widget: "",
       tag: "hdml-label",
       role: "guide",
-      box: { x: 563.98, y: 260, w: 203.98, h: 0 },
+      box: { x: 563.98, y: 252, w: 203.98, h: 0 },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -1331,9 +1407,9 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 578.05,
-          y: 260,
+          y: 252,
           text: "Jan",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -1341,7 +1417,7 @@ const GOLDEN_A: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -1352,9 +1428,9 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 613.22,
-          y: 260,
+          y: 252,
           text: "Feb",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -1362,7 +1438,7 @@ const GOLDEN_A: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -1373,9 +1449,9 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 648.39,
-          y: 260,
+          y: 252,
           text: "Mar",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -1383,7 +1459,7 @@ const GOLDEN_A: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -1394,9 +1470,9 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 683.56,
-          y: 260,
+          y: 252,
           text: "Apr",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -1404,7 +1480,7 @@ const GOLDEN_A: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -1415,9 +1491,9 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 718.73,
-          y: 260,
+          y: 252,
           text: "May",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -1425,7 +1501,7 @@ const GOLDEN_A: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -1436,9 +1512,9 @@ const GOLDEN_A: Scene = {
           k: "text",
           i: -1,
           x: 753.9,
-          y: 260,
+          y: 252,
           text: "Jun",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -1446,7 +1522,7 @@ const GOLDEN_A: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -1459,7 +1535,7 @@ const GOLDEN_A: Scene = {
       widget: "",
       tag: "hdml-bar",
       role: "mark",
-      box: { x: 563.98, y: 16, w: 203.98, h: 232 },
+      box: { x: 563.98, y: 16, w: 203.98, h: 224 },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -1470,9 +1546,9 @@ const GOLDEN_A: Scene = {
           k: "rect",
           i: 0,
           x: 563.98,
-          y: 158.1,
+          y: 153.2,
           w: 28.14,
-          h: 89.9,
+          h: 86.8,
           fill: "rgb(16, 185, 129)",
           stroke: null,
           strokeWidth: 0,
@@ -1482,9 +1558,9 @@ const GOLDEN_A: Scene = {
           k: "rect",
           i: 1,
           x: 599.15,
-          y: 143.6,
+          y: 139.2,
           w: 28.14,
-          h: 104.4,
+          h: 100.8,
           fill: "rgb(16, 185, 129)",
           stroke: null,
           strokeWidth: 0,
@@ -1494,9 +1570,9 @@ const GOLDEN_A: Scene = {
           k: "rect",
           i: 2,
           x: 634.32,
-          y: 21.8,
+          y: 21.6,
           w: 28.14,
-          h: 226.2,
+          h: 218.4,
           fill: "rgb(16, 185, 129)",
           stroke: null,
           strokeWidth: 0,
@@ -1506,9 +1582,9 @@ const GOLDEN_A: Scene = {
           k: "rect",
           i: 3,
           x: 669.49,
-          y: 126.2,
+          y: 122.4,
           w: 28.14,
-          h: 121.8,
+          h: 117.6,
           fill: "rgb(16, 185, 129)",
           stroke: null,
           strokeWidth: 0,
@@ -1518,9 +1594,9 @@ const GOLDEN_A: Scene = {
           k: "rect",
           i: 4,
           x: 704.66,
-          y: 117.5,
+          y: 114,
           w: 28.14,
-          h: 130.5,
+          h: 126,
           fill: "rgb(16, 185, 129)",
           stroke: null,
           strokeWidth: 0,
@@ -1530,9 +1606,9 @@ const GOLDEN_A: Scene = {
           k: "rect",
           i: 5,
           x: 739.83,
-          y: 108.8,
+          y: 105.6,
           w: 28.14,
-          h: 139.2,
+          h: 134.4,
           fill: "rgb(16, 185, 129)",
           stroke: null,
           strokeWidth: 0,
@@ -1696,7 +1772,7 @@ const GOLDEN_B: Scene = {
           x: 56,
           y: 252,
           text: "Jan",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -1704,7 +1780,7 @@ const GOLDEN_B: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -1717,7 +1793,7 @@ const GOLDEN_B: Scene = {
           x: 196,
           y: 252,
           text: "Feb",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -1725,7 +1801,7 @@ const GOLDEN_B: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -1738,7 +1814,7 @@ const GOLDEN_B: Scene = {
           x: 336,
           y: 252,
           text: "Mar",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -1746,7 +1822,7 @@ const GOLDEN_B: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -1759,7 +1835,7 @@ const GOLDEN_B: Scene = {
           x: 476,
           y: 252,
           text: "Apr",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -1767,7 +1843,7 @@ const GOLDEN_B: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -1780,7 +1856,7 @@ const GOLDEN_B: Scene = {
           x: 616,
           y: 252,
           text: "May",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -1788,7 +1864,7 @@ const GOLDEN_B: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,
@@ -1801,7 +1877,7 @@ const GOLDEN_B: Scene = {
           x: 756,
           y: 252,
           text: "Jun",
-          anchor: "middle",
+          anchor: "end",
           baseline: "middle",
           font: {
             family: "system-ui",
@@ -1809,7 +1885,7 @@ const GOLDEN_B: Scene = {
             weight: "normal",
             style: "normal",
           },
-          rotate: 0,
+          rotate: -45,
           decorative: false,
           fill: "rgb(0, 0, 0)",
           stroke: null,

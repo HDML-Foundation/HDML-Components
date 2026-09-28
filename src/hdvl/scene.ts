@@ -164,7 +164,14 @@ export type SceneNode =
        * ★ **It reserves no space** (R2's stated boundary). The
        * runtime does not measure a rotated run's extents and grow
        * the layout to fit; deepening the plane's padding is the
-       * author's.
+       * author's. The cost is small and knowable — a run of width
+       * `w` and line height `h` pinned by `end` and turned
+       * `-45deg` reaches `0.707 * (w + h / 2)` below its pinned
+       * point, 24px for a four-digit year at 11px — and the
+       * corpus authors both sides of it since step 10-5:
+       * `11-multi-plane` deepened its panels to find the room and
+       * `07-mixed` already had it. Nothing warns if a page gets it
+       * wrong, because no SPEC §11 rule can see a rendered extent.
        */
       rotate: number;
       /**
