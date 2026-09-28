@@ -68,7 +68,10 @@
  * `page-11.test.ts`. The road
  * not taken — inheriting the runner's window — was measured at
  * 800 px here, giving a 736 px figure and silently overriding every
- * declared max-width.
+ * declared max-width. Step 11-2 adds the **complement** of this
+ * choice for the geometry gate alone — see {@link NARROW}; every
+ * golden and every scene assertion in this repo is still recorded at
+ * {@link VIEWPORT}, which {@link mountCorpus} keeps as its default.
  *
  * **5. `text` is scoped, geometry is not.** A rendered `Intl` string
  * is ICU data and differs by engine (plan rule 4), so a whole-scene
@@ -103,6 +106,38 @@ export const P = { precision: 6 };
  * 4 above for why it is pinned rather than inherited.
  */
 export const VIEWPORT = 800;
+
+/**
+ * ★ **The narrow layout box, and the rule that picks it**
+ * (project 017 O7, step 11-2).
+ *
+ * Decision 4 above pins {@link VIEWPORT} at `800` because it is the
+ * nearest multiple of 100 **strictly above** the band of declared
+ * `max-width`s (`[480 … 780]`), so *every* page is sized by its own
+ * declaration and none by the harness. O7's complaint is that this
+ * pins one of the two axes real pages vary, and a gate that only ever
+ * lays out at 800 never sees a page narrower than its author drew it.
+ *
+ * The complement is the **same construction mirrored**: the nearest
+ * multiple of 100 **strictly below** the band, where *no* page's
+ * `max-width` binds and every page is harness-constrained. That is
+ * `400` — the largest value the rule admits, i.e. as close to the
+ * corpus's own declarations from below as 800 is from above. It is
+ * *not* chosen because it is round, and that it happens to be
+ * `VIEWPORT / 2` is a consequence rather than a reason.
+ *
+ * ★ **One page cannot be narrowed.** `00-minimal` declares no
+ * `figure` `max-width` at all — its view carries an inline
+ * `style="width: 480px"` — so at this width it overflows the harness
+ * box instead of shrinking. Its geometry is identical at both widths,
+ * which is a property of the page and not a failure of the harness.
+ *
+ * Used only by the geometry gate
+ * ([`invariants.ts`](./invariants.ts)); no golden is recorded here,
+ * because 29 more whole-`Scene` goldens read one diff at a time was
+ * declined at 017's step 11 sequencing.
+ */
+export const NARROW = 400;
 
 /* ---------------------------------------------------------------- */
 /* Engine classification — the declared guard, asserted             */
@@ -241,9 +276,17 @@ export async function quiesce(
  * late-join path rather than the handshake the served page takes.
  *
  * @param name - The basename, e.g. `"03-bar"`.
+ * @param width - The layout box's width in CSS px. Defaults to
+ * {@link VIEWPORT}, which is what every golden was recorded at and
+ * what `page-11.test.ts`'s `VIEW_W` is derived from — so the default
+ * is load-bearing and a caller passing {@link NARROW} is the gate,
+ * never an assertion.
  * @returns The mounted page.
  */
-export async function mountCorpus(name: string): Promise<CorpusPage> {
+export async function mountCorpus(
+  name: string,
+  width: number = VIEWPORT,
+): Promise<CorpusPage> {
   const text = await pageSource(name);
   const doc = new DOMParser().parseFromString(text, "text/html");
 
@@ -259,7 +302,7 @@ export async function mountCorpus(name: string): Promise<CorpusPage> {
   }
 
   const root = document.createElement("div");
-  root.style.width = `${VIEWPORT}px`;
+  root.style.width = `${width}px`;
   await fixture(doc.body.innerHTML, { parentNode: root });
   const views: HdmlViewElement[] = Array.from(
     root.querySelectorAll<HdmlViewElement>(HDVL_TAG_NAMES.VIEW),

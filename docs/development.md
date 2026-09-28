@@ -617,6 +617,17 @@ Two things about it are load-bearing:
   magnitude.** An unlisted violation is red, and so is a **listed one that stops
   firing** — so the list can only shrink. Every entry carries a `reason`, and one
   carries an `engines` field, because a 1 px clearance is a font metric.
+- **Every page is laid out at two widths** — `VIEWPORT` (800 px, where each page is
+  sized by its own `max-width`) and `NARROW` (400 px, where none of them is and the
+  harness box binds instead). 800 is the nearest hundred above the band of declared
+  `max-width`s (`[480 … 780]`); 400 is the nearest hundred below it, which is the same
+  rule mirrored. Only the gate lays out at `NARROW` — **every golden and every scene
+  assertion is still recorded at `VIEWPORT`**, which is `mountCorpus`'s default. An
+  entry therefore also carries a `widths` field, symmetric with `engines`, and the two
+  widths are compared **independently**: a violation fixed at one width and live at the
+  other is reported rather than absorbed. The narrow half of the baseline is **90 of
+  the 104 entries**, and all but one of them are four crowded label ladders — the
+  responsive behaviour a single-viewport gate cannot see.
 
 ### The live-render harness
 
