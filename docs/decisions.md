@@ -888,12 +888,20 @@ the check cannot be spelled without it; putting it in the one module that import
 Two decisions in [src/testing/corpus.ts](../src/testing/corpus.ts) that five gate steps
 inherit, both of which have a plausible alternative that fails quietly.
 
-**Fetched.** `html/hdvl/*.html` are already byte copies of the project folder's originals,
-and a `cmp` at landing time is what keeps them so. Inlining a page's markup into a
-`.test.ts` would make a **third** copy that no `cmp` covers, and the gate would then assert
-against markup nobody ships. Fetching instead depends on the runner serving `rootDir: "."`
+**Fetched.** The gate reads the page it ships. Inlining a page's markup into a `.test.ts`
+would make a **second** copy that nothing reconciles, and the gate would then assert against
+markup nobody ships. Fetching instead depends on the runner serving `rootDir: "."`
 statically — a dependency whose failure mode is a 404 that throws and names the URL, where a
 drifted inline copy is silent.
+
+> **Amended 2026-09-28 (project 017, step 14).** This decision was originally argued as
+> *"`html/hdvl/*.html` are already byte copies of the project folder's originals, and a `cmp`
+> at landing time is what keeps them so"*, and the inline copy would have been a **third**.
+> **The byte-copy relationship ended at 017 step 09-1** — ten of the thirteen pages now
+> differ, deliberately — so `html/hdvl/` is the single source and an inline copy would be the
+> second, not the third. **The decision is unchanged and its reasoning is stronger**: with no
+> `cmp` to keep a second copy honest, fetching the shipped page is the only form that cannot
+> drift. See [development.md § The HDVL corpus pages](development.md#the-hdvl-corpus-pages).
 
 **Removed.** Ten of the thirteen gated pages declare an `hdml-io` against a host that does
 not exist — `00-minimal`, `02-area` and `12-coverage` are the literal-only conformance class
@@ -2451,9 +2459,21 @@ and Python. This repo runs none of them — its FlatBuffers contract is consumed
 `@hdml/buffer` / `@hdml/types` packages. The image is shared across the HDML workspace, so
 removing them is a workspace-level decision, not local cleanup.
 
-## CI builds the devcontainer image, not a release
+## A release is a pushed tag — and CI publishes it
 
-[main.yml](../.github/workflows/main.yml) only `npm ci && npm run build`s the
-package inside the devcontainer; no `npm publish`. [`scripts/release.sh`](../scripts/release.sh)
-is entirely commented out — looks inherited from a monorepo template. The publish flow is
-manual. `TODO(confirm: the actual release procedure.)`
+**Corrected 2026-09-28, at project 017's closeout. The three sentences this section used to
+carry are all false**, and the `TODO(confirm:)` that asked for *the actual release procedure*
+is answerable from the tree, so it is resolved here rather than deleted (workspace
+[`CLAUDE.md` §9](../../../CLAUDE.md)). They were true when written and were falsified by
+**018 Slice D step 13** (2026-09-18), which made the package's first npm publish.
+
+What is true now: there are **three** workflows, not one.
+[main.yml](../.github/workflows/main.yml) still only `npm ci && npm run build`s inside the
+devcontainer, and [devcontainer.yml](../.github/workflows/devcontainer.yml) builds the image
+— but [release.yml](../.github/workflows/release.yml) is triggered **on a pushed tag** and
+runs `npm publish` with the org token. [`scripts/release.sh`](../scripts/release.sh) is
+**not** commented out: it is 69 lines, 39 of them live, and it prepares a release *locally*
+and stops before any push — set the version, run the full build gate, print the tarball file
+list, commit `build(release): <version>`, create the annotated tag. **Pushing that tag is the
+release.** Nobody runs `npm publish` by hand (RFC 018/002 §9.2), and an npm version once
+published can never be reused, which is why the script refuses to push for you.

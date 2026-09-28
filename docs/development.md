@@ -80,7 +80,21 @@ checks read the built trees, and after `manifest` because it validates it.
 `"customElements": "custom-elements.json"` — a published contract that until step 35
 pointed at a file that did not exist in the repo. `manifest` now runs immediately before
 `check_dist`, so what is asserted is always what the build just produced and a stale
-manifest cannot ship. The check verifies all **21** display tags and the **12** the `.`
+manifest cannot ship **in the tarball**.
+
+> ★ **It can, and did, go stale in the repo** — found at project 017's closeout (step 14).
+> `manifest` regenerates the file, so the *published* artifact is always fresh; **nothing
+> asserts the working tree is clean afterwards**, and `check_dist` verifies only the tag
+> set. So the committed copy drifted for **five commits**: it was last regenerated at
+> `762be72` (017 step 10-3) and went stale at `6e809bc` (step 10-4), which registered
+> `--hdml-text-rotate` / `--hdml-text-anchor` and exported `cssAngle` — none of which
+> changes a tag, so every one of the four later gates was green on a false manifest. Step 14
+> committed the regenerated file. **The gap is real and unclosed**: a `git diff --exit-code
+> custom-elements.json` after `manifest` would close it, and nothing does that today. Run
+> `npm run manifest` and check `git status` after any change to a public docblock, signature
+> or export, not only after a tag change.
+
+The check verifies all **21** display tags and the **12** the `.`
 entry registers are present (derived from `vocabulary.ts` and from `src/index.ts`'s own
 import list, never a hand-written list), and that **every display tag's declared
 attributes are exactly its `*_ATTRS_LIST`** — a class whose JSDoc `@attribute` block
@@ -408,12 +422,21 @@ difference or product of equal coordinates.
 ### The HDVL corpus pages
 
 [html/hdvl/](../html/hdvl/) holds the thirteen corpus pages (`00-minimal` … `12-coverage`),
-linked from [html/index.html](../html/index.html). They are **byte copies** of the originals
-in the project folder (`016. HDVL Elements/002. Product Discovery/examples/`), and they double
-as the acceptance suite.
+linked from [html/index.html](../html/index.html). They are the **single source** for the
+corpus, and they double as the acceptance suite.
 
-**No test can assert the two copies agree** — this repo cannot reach the project folder — so a
-corpus fix must land in **both** locations, by hand, in the same change.
+**They were byte copies of the originals in the project folder** (`016. HDVL Elements/002.
+Product Discovery/examples/`) and that relationship **ended during project 017**, at step
+09-1 (2026-09-27). Ten of the thirteen now differ, because 017 edited the pages here for
+runtime reasons the design corpus has no opinion about: R7's `_hover` → `--hover` rename and
+its state declarations, R2's eight deleted `hdml-label` rules, and the two rotated x axes.
+**The project-folder pages are frozen design history** — its own README opens *"These pages
+do not run"* — and overwriting them with declarations 016 could not have written would
+falsify that record, so 017 retired the invariant rather than the divergence. Only the
+thirteen `*.html` are affected; `SPEC.md` in the same folder is **still the live authoring
+contract** and 017 amended it in twelve places.
+
+**Nothing needs mirroring any more.** A corpus fix lands here, once.
 
 They are **executed**, not only served. [src/hdvl/corpus/](../src/hdvl/corpus/) is one
 `*.test.ts` per page; [src/testing/corpus.ts](../src/testing/corpus.ts) is the shared harness.

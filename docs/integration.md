@@ -40,7 +40,7 @@ surface exactly; `./hdio`, `./hdql` and `./hdvl` are purely additive.
 | `.` | `<hdml-io>` + the eleven HDQL elements — **twelve** tags | Byte-for-byte what it registered before the split. No display module, no geometry kernel. |
 | `./hdio` | `<hdml-io>` only | The other eleven modules in `src/hdio/` are its supporting graph and define no tag. |
 | `./hdql` | the eleven HDQL elements | Same import order as `.` — that order is the public registration order. |
-| `./hdvl` | the **twenty-one** display tags | The display half. It also exports the vocabulary (`HDVL_TAG_NAMES`, `HDVL_FAMILIES`, `familyOf` + the twenty `*_ATTRS_LIST` enums re-exported from `@hdml/types`) and no element class — importing it additionally registers SPEC §9's 35 `--hdml-*` custom properties and adopts the two `hdml-fallback` rules into `document.adoptedStyleSheets`. Deliberately **not** reachable from `.`: a consumer authoring an HDML document does not pay for the display layer. |
+| `./hdvl` | the **twenty-one** display tags | The display half. It also exports the vocabulary (`HDVL_TAG_NAMES`, `HDVL_FAMILIES`, `familyOf` + the twenty `*_ATTRS_LIST` enums re-exported from `@hdml/types`) and no element class — importing it additionally registers SPEC §9's **49** `--hdml-*` custom properties and adopts the two `hdml-fallback` rules into `document.adoptedStyleSheets`. Deliberately **not** reachable from `.`: a consumer authoring an HDML document does not pay for the display layer. |
 
 ```jsonc
 "exports": {
@@ -84,6 +84,13 @@ The whole of `check-dist` runs in **0.74 s** with the four bundles included.
 | `./hdql` | 35.5 kB / 9.7 kB | 38 kB / 11 kB |
 | `./hdvl` | 409.2 kB / 116.2 kB | 430 kB / 123 kB |
 | `bin/index.min.js` | 1 203.5 kB / 328.5 kB | 1 264 kB / 345 kB |
+
+**Re-measured 2026-09-28, at project 017's closeout** — the column above keeps its own date,
+because the ceilings were derived from it. Every bundle is still inside its ceiling: `.`
+**784.5 / 216.2**, `./hdio` **778.6 / 215.2**, `./hdql` **35.5 / 9.7** (unmoved), `./hdvl`
+**414.6 / 117.7**, `bin/index.min.js` **1 198.4 / 328.7**. `./hdvl` is the one 017 moved —
+**409.2 → 414.6 kB**, +5.4 kB for the state-rule generator, two registered properties and the
+rotation field, against 20.8 kB of headroom.
 
 Every ceiling is **measured × 1.05, rounded up to the whole kB** — five per cent absorbs
 a widget and does not absorb a dependency, which is the only regression the check exists
