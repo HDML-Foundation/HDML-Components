@@ -91,6 +91,22 @@ function f1Key(): string {
   return state.registry.get("hdml-frame=f1")!.key;
 }
 
+// The same document with the model's table identifier changed. The
+// model's hash moves, the frame's rewritten `source` moves with it,
+// so BOTH canonical keys change while the authored ref
+// (`hdml-frame=f1`) and the subscribed column union stay put.
+const editedDoc = gateDoc.replace("`c`.`s`.`t`", "`c`.`s`.`t2`");
+
+// The canonical key `parse` assigns `ref` in `doc`.
+function keyOf(doc: string, ref: string): string {
+  const state: HdioState = {
+    data: new Uint8Array(),
+    registry: new Map(),
+  };
+  parse(state, doc);
+  return state.registry.get(ref)!.key;
+}
+
 // A static (`/`-prefixed) ref never hits the D4 gate — it resolves
 // `stored:true` on the pure transform, so a query submits at once.
 const STATIC_REF = "/x.html?hdml-frame=f";
@@ -315,6 +331,52 @@ suite("hdio query engine (D1/D4/D5/D6/D7)", () => {
     assert.equal(submits[0].docPath, `dynamic:${key}`);
   });
 
+  test(
+    "a re-posted document resubmits an unchanged " +
+      "column union against the new key",
+    async () => {
+      const k1 = keyOf(gateDoc, "hdml-frame=f1");
+      const k2 = keyOf(editedDoc, "hdml-frame=f1");
+      // Sanity: the authored edit really did move the frame's key.
+      assert.notEqual(k1, k2);
+      const submits: { docPath: string; columns: string[] }[] = [];
+      HdioClient.prototype.submitQuery = function (p) {
+        submits.push(p);
+        return Promise.resolve({ jobId: "j", status: "completed" });
+      };
+      HdioClient.prototype.queryResult = function () {
+        return Promise.resolve([
+          ipcBuffer({
+            a: arrow.vectorFromArray([1], new arrow.Int32()),
+          }),
+        ]);
+      };
+      HdioClient.prototype.postDocument = function () {
+        return Promise.resolve({
+          stored: [
+            { key: k1, type: "frame", stored: true },
+            { key: k2, type: "frame", stored: true },
+          ],
+          ddl: [],
+        });
+      };
+      const handle = createHandler(() => undefined);
+      handle(propsEvent("h", "acme", ""));
+      handle(subEvent("s1", "?hdml-frame=f1", "a"));
+      handle(htmlEvent(gateDoc));
+      await wait(80);
+      assert.lengthOf(submits, 1);
+      assert.equal(submits[0].docPath, `dynamic:${k1}`);
+      // The author edits the model; the frame's key moves with it,
+      // but nobody subscribed or unsubscribed, so the column union
+      // is byte-identical. The widget must still re-query.
+      handle(htmlEvent(editedDoc));
+      await wait(80);
+      assert.lengthOf(submits, 2);
+      assert.equal(submits[1].docPath, `dynamic:${k2}`);
+    },
+  );
+
   test("D4: a covering POST rejection fails the gate", async () => {
     const submits: unknown[] = [];
     HdioClient.prototype.submitQuery = function (p) {
@@ -367,6 +429,80 @@ suite("hdio query engine (D1/D4/D5/D6/D7)", () => {
     // it comparable — and so discardable — against a later data
     // generation (R38).
     assert.notProperty(errs[0].data, "generation");
+  });
+
+  test("D4: a late 201 revives an expired gate", async () => {
+    const key = f1Key();
+    const submits: { docPath: string; columns: string[] }[] = [];
+    HdioClient.prototype.submitQuery = function (p) {
+      submits.push(p);
+      return Promise.resolve({ jobId: "j", status: "completed" });
+    };
+    HdioClient.prototype.queryResult = function () {
+      return Promise.resolve([
+        ipcBuffer({
+          a: arrow.vectorFromArray([1], new arrow.Int32()),
+        }),
+      ]);
+    };
+    // The covering POST resolves only AFTER the backstop has fired.
+    let land: (v: unknown) => void = () => undefined;
+    HdioClient.prototype.postDocument = function () {
+      return new Promise<unknown>((resolve) => {
+        land = resolve;
+      });
+    };
+    const posted: OutboundMessage[] = [];
+    const handle = createHandler((m) => posted.push(m));
+    handle(propsEvent("h", "acme", "", { queryReadyTimeout: 40 }));
+    handle(subEvent("s1", "?hdml-frame=f1", "a"));
+    handle(htmlEvent(gateDoc));
+    await wait(160);
+    assert.lengthOf(posted.filter(isError), 1);
+    assert.lengthOf(submits, 0);
+    // `armGate` cleared `gateTimer` when it fired, so a release
+    // predicated on `gateTimer !== null` skipped this frame forever:
+    // the 201 landed, the target was queryable, and no query was ever
+    // submitted — a blank widget with a clean console until reload.
+    land({ stored: [{ key, type: "frame", stored: true }], ddl: [] });
+    await wait(80);
+    assert.lengthOf(submits, 1);
+    assert.equal(submits[0].docPath, `dynamic:${key}`);
+  });
+
+  test("D6: a failed query is retried on the next fold", async () => {
+    const key = f1Key();
+    const submits: { docPath: string; columns: string[] }[] = [];
+    HdioClient.prototype.submitQuery = function (p) {
+      submits.push(p);
+      return Promise.resolve({ jobId: "j", status: "failed" });
+    };
+    HdioClient.prototype.queryStatus = function () {
+      return Promise.resolve({ status: "failed", error: "boom" });
+    };
+    HdioClient.prototype.postDocument = function () {
+      return Promise.resolve({
+        stored: [{ key, type: "frame", stored: true }],
+        ddl: [],
+      });
+    };
+    const posted: OutboundMessage[] = [];
+    const handle = createHandler((m) => posted.push(m));
+    handle(propsEvent("h", "acme", ""));
+    handle(htmlEvent(gateDoc));
+    handle(subEvent("s1", "?hdml-frame=f1", "a"));
+    await wait(80);
+    assert.lengthOf(submits, 1);
+    const errs = posted.filter(isError);
+    assert.lengthOf(errs, 1);
+    assert.equal(errs[0].data.code, "query-failed");
+    // The failure cleared the submitted union, so the identical one
+    // is no longer refused by the `sameColumns` guard and the next
+    // fold resubmits it. Before the fix a failure was terminal for
+    // the life of the page.
+    handle(htmlEvent(gateDoc));
+    await wait(80);
+    assert.lengthOf(submits, 2);
   });
 
   test("D6: pending backs off then completes", async () => {

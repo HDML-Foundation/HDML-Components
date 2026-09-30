@@ -189,6 +189,16 @@ interface Frame {
   ref: string;
   subs: Set<string>;
   columns: string[];
+  /**
+   * The `doc_path` the last submitted generation was sent to — the
+   * second half of the "nothing changed, do not resubmit" identity.
+   * A local ref's target is a **content hash**, so an authored edit
+   * to the frame (or to anything upstream of it) moves it while the
+   * ref and the column union stay put; without it in the guard, an
+   * edited document POSTs, folds and releases, and then re-queries
+   * nothing. `""` until the first submit.
+   */
+  docPath: string;
   generation: number;
   gateTimer: null | ReturnType<typeof setTimeout>;
   evaluate: throdeb.debounce<() => void>;
@@ -394,6 +404,7 @@ export function createHandler(
       ref,
       subs: new Set(),
       columns: [],
+      docPath: "",
       generation: 0,
       gateTimer: null,
       evaluate: throdeb.debounce(SUBMIT_DEBOUNCE_MS, () => {
@@ -461,10 +472,22 @@ export function createHandler(
       return;
     }
     disarmGate(frame);
-    if (frame.generation > 0 && sameColumns(union, frame.columns)) {
+    // Resubmit when EITHER half of the submitted identity moved: the
+    // column union (a mount/unmount widened or narrowed it) or the
+    // target itself (an authored edit re-hashed the element, so the
+    // same ref now names a different artifact). Guarding on the
+    // union alone made a document edit invisible to a frame whose
+    // subscribers never changed — the post→201→fold→release cycle
+    // ran to completion and then returned here, every time.
+    if (
+      frame.generation > 0 &&
+      frame.docPath === target.docPath &&
+      sameColumns(union, frame.columns)
+    ) {
       return;
     }
     frame.columns = union;
+    frame.docPath = target.docPath;
     frame.generation += 1;
     void runQuery(
       frame,
@@ -665,9 +688,13 @@ export function createHandler(
   // ever attempted, and nothing was logged. That is a permanently
   // blank widget with a clean console, and only a reload cleared it.
   //
-  // Re-evaluating a satisfied frame is a no-op: `evaluateFrame`
-  // returns early when the union it would submit equals the one it
-  // last submitted, so this cannot resubmit live work.
+  // Re-evaluating a satisfied frame whose submitted identity is
+  // unchanged is a no-op: `evaluateFrame` returns early when BOTH
+  // the union and the resolved target equal the ones it last
+  // submitted, so this cannot resubmit live work. When the target
+  // moved — an authored edit re-hashed the element — resubmitting
+  // is the point: the ref is the same but it now names a different
+  // artifact, and the old generation's data is stale.
   function reevaluateFrames(): void {
     frames.forEach((frame) => {
       frame.evaluate();

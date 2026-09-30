@@ -350,8 +350,11 @@ source ref. One frame = one query; the full path is
   predicated on `gateTimer !== null` skipped exactly the frames that had timed out: the 201
   landed, the target became queryable, and no query was ever submitted, nothing was retried
   and nothing was logged — a permanently blank widget with a clean console that only a reload
-  cleared. Re-evaluating a satisfied frame is a no-op (`evaluateFrame` returns early when the
-  union it would submit equals the one it last submitted), so this cannot resubmit live work.
+  cleared. Re-evaluating a satisfied frame whose **submitted identity** is unchanged is a
+  no-op (`evaluateFrame` returns early only when *both* the union and the resolved target
+  equal the ones it last submitted), so this cannot resubmit live work — while a frame whose
+  **target moved** is resubmitted, which is what makes an authored edit reach the widget
+  (D5, below).
 - **Poll (D6, §5.6).** If the `submitQuery` 202 `status` is already terminal (a cache hit),
   skip straight to `queryResult`; else poll `queryStatus` short-first (~200 ms) doubling to a
   ceiling (~2 s) with a wall-clock cap — `queryTimeout` (from `props.config.queryTimeout`,
@@ -364,8 +367,16 @@ source ref. One frame = one query; the full path is
   the page.
 - **Supersede (D5, §5.5).** Each frame tracks a monotonic **generation**; a widened union (or
   a changed frame key) bumps it, and any earlier run whose generation is now stale **discards**
-  its completion (never delivers). Superseded jobs are **not** cancelled by default (server
-  `Cancel` cannot abort a running Trino query); a still-`pending` superseded job is
+  its completion (never delivers). **Both halves of that identity are compared**, the union
+  *and* the resolved `doc_path`. The key half matters because a **local** ref's target is a
+  **content hash**: editing an `hdml-frame` — or anything upstream of it, since a model's new
+  hash is rewritten into its dependants' `source` — moves the `doc_path` while the authored
+  ref (`?hdml-frame=…`) and the subscriber set stay put. Guarding on the union alone made
+  exactly that edit invisible: the document POSTed, the 201 folded, the release re-evaluated,
+  and the frame returned early on an unchanged union, so the widget kept painting the previous
+  document's data with a clean console and a successful upload behind it. Superseded jobs are
+  **not** cancelled by default (server `Cancel` cannot abort a running Trino query); a
+  still-`pending` superseded job is
   best-effort `cancelQuery`-ed (409 swallowed), running jobs never.
 - **Deliver (D7, §5.6 + D8 §1).** The result is `decode`d **once**, then posted as **one
   atomic `result` per `(ref, generation)`** carrying every subscribed column — `domain` +
