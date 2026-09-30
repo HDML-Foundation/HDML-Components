@@ -146,7 +146,14 @@ export type OutboundMessage =
 // a wall-clock cap past which the job is declared timed out.
 const POLL_MIN_MS = 200;
 const POLL_MAX_MS = 2000;
-const POLL_CAP_MS = 30000;
+
+// The wall-clock cap on one job's polling, overridden by
+// `props.config.queryTimeout`. A cold query is far slower than a
+// warm one (measured: seconds, not milliseconds), so a deployment
+// whose cold path is slower than this needs the knob rather than a
+// fork — expiring here delivers `query-failed` and the frame stops
+// polling.
+const DEFAULT_QUERY_TIMEOUT_MS = 30000;
 
 // The union is debounced before the first submit so a mount burst
 // (many `subscribe`s in one tick) coalesces into one query (D1/D5).
@@ -231,6 +238,24 @@ function readReadyTimeout(config: unknown): number {
 }
 
 /**
+ * Reads the D6 `queryTimeout` from the `props.config` payload,
+ * falling back to {@link DEFAULT_QUERY_TIMEOUT_MS} when
+ * absent/invalid — the same shape as {@link readReadyTimeout}.
+ *
+ * @param config - The `props.config` payload (opaque here).
+ * @returns The per-job poll cap in milliseconds.
+ */
+function readQueryTimeout(config: unknown): number {
+  if (config && typeof config === "object") {
+    const raw = (config as { queryTimeout?: unknown }).queryTimeout;
+    if (typeof raw === "number" && raw > 0) {
+      return raw;
+    }
+  }
+  return DEFAULT_QUERY_TIMEOUT_MS;
+}
+
+/**
  * Best-effort cancel of a still-`pending` superseded job (D5): a
  * running job is never cancelled (server `Cancel` does not abort a
  * live Trino query), and the client swallows the 409 if the job
@@ -262,6 +287,8 @@ function maybeCancel(
  * @param jobId - The job to poll.
  * @param initialStatus - The `submitQuery` 202 status.
  * @param superseded - Predicate: has a newer job taken this frame?
+ * @param capMs - Wall-clock cap past which the job is declared
+ *   timed out (`props.config.queryTimeout`).
  * @returns `done:false` if superseded; else the terminal status.
  */
 async function pollToCompletion(
@@ -269,11 +296,12 @@ async function pollToCompletion(
   jobId: string,
   initialStatus: string,
   superseded: () => boolean,
+  capMs: number,
 ): Promise<{ done: boolean; status: string; error?: string }> {
   let status = initialStatus;
   let error: undefined | string;
   let delay = POLL_MIN_MS;
-  const deadline = Date.now() + POLL_CAP_MS;
+  const deadline = Date.now() + capMs;
   while (!TERMINAL_STATUS.has(status)) {
     if (superseded()) {
       maybeCancel(client, jobId, status);
@@ -340,6 +368,7 @@ export function createHandler(
   const subscriptions = new Map<string, Sub>();
   const frames = new Map<string, Frame>();
   let readyTimeout = DEFAULT_READY_TIMEOUT_MS;
+  let queryTimeout = DEFAULT_QUERY_TIMEOUT_MS;
 
   // The union of every subscriber's column for one frame, sorted so
   // the union is order-independent (D1) and comparable (D5).
@@ -468,11 +497,18 @@ export function createHandler(
         submitted.jobId,
         submitted.status,
         superseded,
+        queryTimeout,
       );
       if (!final.done || superseded()) {
         return;
       }
       if (final.status === "failed") {
+        // Clear the submitted union so this frame is ELIGIBLE again.
+        // `evaluateFrame`'s `sameColumns` guard would otherwise
+        // refuse to resubmit the identical union forever, which
+        // made any failure — the poll cap's synthesized one
+        // included — terminal for the life of the page.
+        frame.columns = [];
         post({
           type: "error",
           data: {
@@ -485,6 +521,11 @@ export function createHandler(
         return;
       }
       if (final.status !== "completed") {
+        // `cancelled` reaches here. A frame we superseded ourselves
+        // already returned above, so this is an externally cancelled
+        // job (a peer sharing it through the server's dedup);
+        // leave it eligible, not stuck on a union never fetched.
+        frame.columns = [];
         return;
       }
       const buffers = await c.queryResult(submitted.jobId);
@@ -612,14 +653,24 @@ export function createHandler(
     };
   }
 
-  // Re-evaluate every gated frame (event-driven release, D4): a fold
-  // may have flipped a ref `stored`, or a parse may have registered
-  // a previously-unknown ref.
-  function releaseGatedFrames(): void {
+  // Re-evaluate EVERY frame (event-driven release, D4): a fold may
+  // have flipped a ref `stored`, or a parse may have registered a
+  // previously-unknown ref.
+  //
+  // ★ Every frame, not just the currently-gated ones. `armGate`
+  // clears `gateTimer` when the backstop fires, so a predicate of
+  // `gateTimer !== null` silently skipped exactly the frames that had
+  // timed out — the 201 that made them queryable arrived and nothing
+  // re-evaluated them, so no query was ever submitted, no retry was
+  // ever attempted, and nothing was logged. That is a permanently
+  // blank widget with a clean console, and only a reload cleared it.
+  //
+  // Re-evaluating a satisfied frame is a no-op: `evaluateFrame`
+  // returns early when the union it would submit equals the one it
+  // last submitted, so this cannot resubmit live work.
+  function reevaluateFrames(): void {
     frames.forEach((frame) => {
-      if (frame.gateTimer !== null) {
-        frame.evaluate();
-      }
+      frame.evaluate();
     });
   }
 
@@ -662,7 +713,7 @@ export function createHandler(
       .then((body) => {
         recordStored(state.registry, body);
         // A 201 may flip a gated ref `stored` → release it (D4).
-        releaseGatedFrames();
+        reevaluateFrames();
       })
       .catch((error: Error) => {
         console.error(error.message);
@@ -679,6 +730,7 @@ export function createHandler(
     switch (msg.type) {
       case "props": {
         readyTimeout = readReadyTimeout(msg.data.config);
+        queryTimeout = readQueryTimeout(msg.data.config);
         const next = `${msg.data.host}\n${msg.data.tenant}`;
         if (client === null || identity !== next) {
           if (client) {

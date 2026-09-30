@@ -361,6 +361,13 @@ export class HdmlIo extends LitElement {
       console.error("hdml-io error:", data.message);
       return;
     }
+    // Once per error MESSAGE, not once per subscriber: a frame with
+    // seven bound columns would otherwise warn seven times for one
+    // failure. Every code here is otherwise invisible to devtools —
+    // it reaches the widget as `:state(error)` and an `hdml-error`
+    // event and nothing else — which is how a gate timeout or an
+    // expired poll presents as a blank chart with a clean console.
+    console.warn(`hdml-io ${data.code} on ${ref}: ${data.message}`);
     this.#subscriptions.forEach((sub) => {
       if (sub.ref !== ref) {
         return;
@@ -589,10 +596,11 @@ export class HdmlIo extends LitElement {
         mode: this.mode,
         // URL wins (RFC 018/002 §7.2a).
         token: this.#handoff ?? this.token,
-        // The D8 shared config, read lazily (§5.8): only the D4 gate
-        // backstop is forwarded — a worker has no `window`.
+        // The D8 shared config, read lazily (§5.8): the two worker
+        // timeouts are forwarded — a worker has no `window`.
         config: {
           queryReadyTimeout: readConfig().queryReadyTimeout,
+          queryTimeout: readConfig().queryTimeout,
         },
       },
     });

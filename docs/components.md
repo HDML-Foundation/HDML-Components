@@ -1650,6 +1650,7 @@ read (the sync point) — the settled defaults:
 | `HDML_CONFIG` field | Default |
 |---|---|
 | `queryReadyTimeout` | `10000` (ms; the stored-gate backstop forwarded to the worker) |
+| `queryTimeout` | `30000` (ms; the wall-clock cap on polling one query job, forwarded to the worker) |
 | `readyEvent` | `"hdml-io-ready"` |
 | `requestEvent` | `"hdml-io-request"` |
 

@@ -344,10 +344,24 @@ source ref. One frame = one query; the full path is
   Step 08 populates it from `window.HDML_CONFIG`). The same gate absorbs an **unknown** ref
   (subscribe-before-parse — the resolver throw is read as *not-ready-yet*). On expiry → one
   `error`. **Static** (`/`-prefixed) targets have no gate.
+
+  **Expiry is not terminal.** The release re-evaluates **every** frame, not only the
+  currently-gated ones. `armGate` clears `gateTimer` when the backstop fires, so a release
+  predicated on `gateTimer !== null` skipped exactly the frames that had timed out: the 201
+  landed, the target became queryable, and no query was ever submitted, nothing was retried
+  and nothing was logged — a permanently blank widget with a clean console that only a reload
+  cleared. Re-evaluating a satisfied frame is a no-op (`evaluateFrame` returns early when the
+  union it would submit equals the one it last submitted), so this cannot resubmit live work.
 - **Poll (D6, §5.6).** If the `submitQuery` 202 `status` is already terminal (a cache hit),
   skip straight to `queryResult`; else poll `queryStatus` short-first (~200 ms) doubling to a
-  ceiling (~2 s) with a wall-clock cap. `completed` → one `queryResult`; `failed` →
-  `status.error` is the reason.
+  ceiling (~2 s) with a wall-clock cap — `queryTimeout` (from `props.config.queryTimeout`,
+  **default 30 000 ms**), past which the job is declared `failed` with `query timed out`.
+  `completed` → one `queryResult`; `failed` → `status.error` is the reason. A cold query is
+  far slower than a warm one, so a deployment whose cold path outruns the cap needs the knob
+  rather than a fork. **A terminal failure clears the frame's submitted union**, so the
+  identical union is no longer refused by the `sameColumns` guard and the next fold resubmits
+  it; before that, a failure — the synthesized timeout included — was terminal for the life of
+  the page.
 - **Supersede (D5, §5.5).** Each frame tracks a monotonic **generation**; a widened union (or
   a changed frame key) bumps it, and any earlier run whose generation is now stale **discards**
   its completion (never delivers). Superseded jobs are **not** cancelled by default (server
@@ -493,6 +507,7 @@ read, so the discovery-bus names and the D4 backstop stay in step by constructio
 | Field | Default | Purpose |
 |---|---|---|
 | `queryReadyTimeout` | `10000` | D4 stored-gate backstop (ms), forwarded to the worker as `props.config.queryReadyTimeout` |
+| `queryTimeout` | `30000` | D6 wall-clock cap (ms) on polling one job to a terminal state, forwarded as `props.config.queryTimeout`; past it the worker delivers `query-failed` |
 | `readyEvent` | `"hdml-io-ready"` | the readiness event `<hdml-io>` announces |
 | `requestEvent` | `"hdml-io-request"` | the subscription-request event `<hdml-io>` listens for |
 | `goneEvent` | `"hdml-io-gone"` | the provider-loss event `<hdml-io>` announces at disconnect (§7.5 delta 7) |
@@ -504,7 +519,15 @@ after import is still honoured) and fills these defaults; an invalid `queryReady
 **`=== true`**, not through the `||` fallback the string keys use — `cfg.paranoidObserver ||
 false` would silently take a host's truthy `"false"` string for `true`. Only
 `queryReadyTimeout` crosses into the worker (a worker has no `window`); the event names and
-`paranoidObserver` are main-thread-only.
+`paranoidObserver` are main-thread-only — **`queryTimeout` crosses too**, so "only
+`queryReadyTimeout` crosses" is no longer true: the two worker timeouts both ride
+`props.config`.
+
+**Every ref-scoped `error` is `console.warn`ed once**, in `#fanOutError`, before the fan-out —
+once per error *message*, not once per subscriber, so a frame with seven bound columns warns
+once. Without it a `gate-timeout` or a `query-failed` reached the widget as `:state(error)`
+and an `hdml-error` event **and nothing else**, which is how a failed cold load presented as a
+blank chart with a clean console. The `console.error` on the **ref-less** branch is unchanged.
 
 ## Query-target resolution (Slice C)
 

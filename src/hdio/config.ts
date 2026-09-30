@@ -20,6 +20,13 @@ export interface HdmlConfig {
   queryReadyTimeout?: number;
 
   /**
+   * Wall-clock cap in ms on polling ONE query job to a terminal
+   * state, forwarded to the worker via `props.config` (D6). Past it
+   * the worker delivers `query-failed`. Default `30000`.
+   */
+  queryTimeout?: number;
+
+  /**
    * The readiness event hdml-io announces on `document` when it is
    * ready to receive subscriptions (§5.8). Default `"hdml-io-ready"`.
    */
@@ -63,6 +70,7 @@ declare global {
  */
 const DEFAULTS: Required<HdmlConfig> = {
   queryReadyTimeout: 10000,
+  queryTimeout: 30000,
   readyEvent: "hdml-io-ready",
   requestEvent: "hdml-io-request",
   goneEvent: "hdml-io-gone",
@@ -92,8 +100,13 @@ export function readConfig(): Required<HdmlConfig> {
     cfg.queryReadyTimeout > 0
       ? cfg.queryReadyTimeout
       : DEFAULTS.queryReadyTimeout;
+  const queryTimeout =
+    typeof cfg.queryTimeout === "number" && cfg.queryTimeout > 0
+      ? cfg.queryTimeout
+      : DEFAULTS.queryTimeout;
   return {
     queryReadyTimeout: timeout,
+    queryTimeout,
     readyEvent: cfg.readyEvent || DEFAULTS.readyEvent,
     requestEvent: cfg.requestEvent || DEFAULTS.requestEvent,
     goneEvent: cfg.goneEvent || DEFAULTS.goneEvent,

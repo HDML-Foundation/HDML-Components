@@ -115,8 +115,9 @@ not represent HDML state, it observes it. It owns four concerns:
    [src/hdio/HdmlIo.ts](../src/hdio/HdmlIo.ts).
 2. **Property sync.** `host` / `tenant` / `mode` / `token` changes are debounced 5ms via
    `throdeb.debounce` (`@hdml/common`) and posted as `{type:"props", data:{host, tenant, mode,
-   token, config}}` — `config.queryReadyTimeout` is read from `window.HDML_CONFIG` (the D4 gate
-   backstop; a worker has no `window`). `token` is `#handoff ?? token`: a single-use handoff
+   token, config}}` — `config.queryReadyTimeout` (the D4 gate backstop) and
+   `config.queryTimeout` (the D6 poll cap) are read from `window.HDML_CONFIG`, because a worker
+   has no `window`. `token` is `#handoff ?? token`: a single-use handoff
    code from `?handoff` on the page URL (captured at connect, after the OIDC callback) or from
    the `token` attribute, the URL winning (RFC 018/002 §7.2a).
 3. **HTML sync.** On every `hdom-changed`, debounced 5ms, it concatenates the `outerHTML` of
@@ -134,10 +135,14 @@ the fallback wires the same handler onto `port2` instead. Its `client` and `stat
 registry }` are **closure** state (one endpoint, one client), not module globals:
 
 - **`type:"props"`** (re)constructs the `HdioClient`, closing any prior one; reads
-  `config.queryReadyTimeout` (the D4 gate backstop).
+  `config.queryReadyTimeout` (the D4 gate backstop) and `config.queryTimeout` (the D6 poll
+  cap).
 - **`type:"html"`** runs `parse(state, html)` (see below) and calls
   `client.postDocument(state.data)`, folding the 201 via `recordStored` — which also
-  **releases** any query frames gated on a now-`stored` ref (a POST rejection instead
+  **releases** query frames by re-evaluating **every** frame — not only the currently-gated
+  ones, because the backstop clears its own timer when it fires and a gated-only predicate
+  stranded exactly the frames that had timed out — on a now-`stored` ref (a POST rejection
+  instead
   **fails** them).
 - **`type:"subscribe"` / `type:"unsubscribe"`** open / close a `(ref, column)`
   subscription, driving the reactive query engine (see [The query leg](#the-query-leg) below).
@@ -186,7 +191,7 @@ flowchart LR
   gate -->|"local, not stored"| hold["hold: arm backstop<br/>(release on 201, fail on POST reject)"]
   hold -.->|"stored"| gate
   gate -->|"static / stored"| submit["submitQuery {doc_path, columns} → 202"]
-  submit --> poll["poll queryStatus<br/>200ms → 2s, cap (D6)"]
+  submit --> poll["poll queryStatus<br/>200ms → 2s, cap queryTimeout (D6)"]
   poll -->|completed| res["queryResult → de-frame IPC"]
   poll -->|failed| err["post error {ref, message}"]
   res --> dec["decode once → domainFor (D9/D3)"]
@@ -248,8 +253,9 @@ sequenceDiagram
   the worker, so a shared raw column is never re-cloned per subscriber. Teardown rides the
   request's `AbortSignal` → `unsubscribe`.
 - **`window.HDML_CONFIG`** ([src/hdio/config.ts](../src/hdio/config.ts)) is the one main-thread
-  config **both** repos read (§8): `queryReadyTimeout` (default `10000`, forwarded to the
-  worker), `readyEvent` (`"hdml-io-ready"`), `requestEvent` (`"hdml-io-request"`). See
+  config **both** repos read (§8): `queryReadyTimeout` (default `10000`) and `queryTimeout`
+  (default `30000`), both forwarded to the worker, plus `readyEvent` (`"hdml-io-ready"`) and
+  `requestEvent` (`"hdml-io-request"`). See
   [docs/hdio-client.md](hdio-client.md#the-discovery-bus--subscription-registry-step-08-d7d8).
 
 ### HTTP
