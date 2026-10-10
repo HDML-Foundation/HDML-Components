@@ -661,6 +661,100 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
     assert.strictEqual(new Set(shown).size, 3);
   });
 
+  test("★ --hdml-text-format wins over format=", async () => {
+    // ★ 019 item 19, and the four cases are mounted rather than
+    // transcribed: the assertion is that the two SOURCES agree or
+    // disagree, never that a particular locale renders `20%`.
+    //
+    // ★★ `property` is also the whole proof that MEASURE harvests a
+    // newly registered property for free — the ONLY route from an
+    // inline `style` to `textsOf` is `Measured.props`, which
+    // `measure.ts` fills by looping `HDVL_PROPERTIES`. If
+    // registration had not been enough, this mount would render
+    // like `bare` instead of like `attribute`.
+    const SKELETON = "percent precision-integer";
+    // ⚠ `OTHER` must DISCRIMINATE, and the obvious choice does not:
+    // this page's domain is `[0, 0.2]`, where `compact-short` is a
+    // no-op — compact notation leaves anything under 1000 alone —
+    // so `format="compact-short"` renders byte-identically to a
+    // bare label and case 3's disagreement would be vacuous.
+    // `currency/USD` differs from both the bare rendering and
+    // the percent one on this domain. Measured, not assumed.
+    const OTHER = "currency/USD";
+    const read = (v: HdmlViewElement) => texts(v).map((n) => n.text);
+
+    const attribute = read(await mount(page(`format="${SKELETON}"`)));
+    const property = read(
+      await mount(page("", `--hdml-text-format: ${SKELETON}`)),
+    );
+    const both = read(
+      await mount(
+        page(`format="${OTHER}"`, `--hdml-text-format: ${SKELETON}`),
+      ),
+    );
+    const other = read(await mount(page(`format="${OTHER}"`)));
+    const bare = read(await mount(page("")));
+
+    // 1 · property only — identical to the attribute saying it.
+    assert.deepEqual(property, attribute);
+    // 2 · attribute only — and it is NOT the bare rendering, which
+    // is what makes case 3's disagreement meaningful.
+    assert.notDeepEqual(other, bare);
+    assert.notDeepEqual(other, attribute);
+    // 3 · ★ BOTH, DISAGREEING — the property answers. Without this
+    // case a reader that preferred the attribute would pass 1 and
+    // 2 both.
+    assert.deepEqual(both, attribute);
+    assert.notDeepEqual(both, other);
+    // 4 · neither — the empty skeleton falls through to the
+    // locale's default, exactly as before either source existed.
+    assert.lengthOf(bare, attribute.length);
+  });
+
+  test("★ format= serves when the property is empty", async () => {
+    // ⚠ THE FALLBACK ARM, ASSERTED ON ITS OWN. It is what keeps the
+    // 29 whole-`Scene` goldens and the 13 live pages still through
+    // this step: every page carries `format=` and no rule declares
+    // the property, so `""` is the computed value everywhere and
+    // the attribute is what renders. Step 30 deletes this arm, and
+    // depends on it working until it does.
+    const view = await mount(
+      page('format="percent precision-integer"'),
+    );
+    const shown = texts(view).map((n) => n.text);
+    assert.isTrue(shown.length > 0);
+    for (const text of shown) {
+      assert.include(text, "%");
+    }
+    // …and the computed property really is at its initial here, so
+    // the assertion above is about the FALLBACK and not about a
+    // property that happened to carry the same skeleton.
+    const label = view.querySelector("hdml-label");
+    assert.isNotNull(label);
+    assert.strictEqual(
+      getComputedStyle(label).getPropertyValue("--hdml-text-format"),
+      "",
+    );
+  });
+
+  test("★ --hdml-tick-count reaches a real label too", async () => {
+    // The sibling half, end to end rather than through the unit
+    // ladder: `tickSpecOf` is handed `m.props` at the one
+    // production site that paints a label, so a declaration on the
+    // element changes the tick SET.
+    const three = await mount(page('count="3"'));
+    const styled = await mount(
+      page('count="3"', "--hdml-tick-count: 6"),
+    );
+    // §4.8's ladder answers with its own rungs, so the counts are
+    // compared against a real `ticks(spec)` and never transcribed.
+    assert.lengthOf(
+      texts(styled),
+      scaleOf(styled, "y").ticks({ count: 6 }).length,
+    );
+    assert.notStrictEqual(texts(styled).length, texts(three).length);
+  });
+
   test("its role is guide, and the scene round-trips", async () => {
     const view = await mount(page('count="3"'));
     assert.strictEqual(groupOf(view).role, "guide");

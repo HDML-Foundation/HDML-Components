@@ -1369,14 +1369,65 @@ resolved scale, its own box and its computed style.
 
 ### The `--hdml-*` registry
 
-All chart appearance is CSS custom properties, and the **complete 49-property registry** —
-33 base properties plus the **sixteen state variants** (the eight presentation-attribute
+All chart appearance is CSS custom properties, and the **complete 51-property registry** —
+35 base properties plus the **sixteen state variants** (the eight presentation-attribute
 properties × `{hover, active}`, 017 R7) — is registered with
 `CSS.registerProperty` at import time
-([`src/hdvl/properties.ts`](../src/hdvl/properties.ts)). Every one of them **inherits**, which
-is what makes plane-level scoping and theme-at-the-view work. Registration is guarded
+([`src/hdvl/properties.ts`](../src/hdvl/properties.ts)). Registration is guarded
 **per property**, so a page that loads two builds of this package ends up with a complete
 registry rather than one truncated at the first duplicate.
+
+#### ★ Two properties do not inherit
+
+**019 items 18 + 19, decision A1.** Every registered property inherits **except
+`--hdml-tick-count` and `--hdml-text-format`**, and inheritance is otherwise what makes
+plane-level scoping and theme-at-the-view work.
+
+These two are the CSS half of two attributes. The rule behind the move is portability: **a
+value whose correct setting depends on the *dataset* cannot live in a stylesheet without
+welding that stylesheet to one document.** So `values` and `step` stay attributes —
+`values="0 100 1000"` is only correct for that data — while tick density and number
+formatting become CSS, because both are portable across datasets.
+
+| | Syntax | Initial | Absence reads as |
+|---|---|---|---|
+| `--hdml-tick-count` | `auto \| <integer>` | `auto` | `auto` |
+| `--hdml-text-format` | `*` | **omitted** | exactly `""` |
+
+⚠ **Because they do not inherit, a declaration must name the readers.** This works:
+
+```css
+hdml-label, hdml-legend { --hdml-text-format: "currency/USD compact-short"; }
+hdml-label[channel="y"] { --hdml-tick-count: 6; }
+```
+
+…and this does **nothing**, which is the one behaviour change an existing page can see:
+
+```css
+hdml-view { --hdml-text-format: percent; }   /* reaches no label */
+```
+
+`count` is read by `hdml-grid`, `hdml-tick`, `hdml-label` and `hdml-legend`; `format` by
+`hdml-label` and `hdml-legend`.
+
+★ **A child can opt back in with one keyword** — `--hdml-tick-count: inherit` does pull the
+ancestor's value — so theming at the plane is still reachable without re-opening the
+decision.
+
+**Why they do not inherit** is a mechanism rather than a preference. A non-inherited
+registered property computes to its initial wherever it is not declared, so *a computed
+value other than the initial means a rule matched **this** element*. That is what lets a
+reader prefer the stylesheet over the attribute without inventing a third state, and it is
+what keeps `format`'s three error clauses — V20(b), V14's ordinal clause and V14's kind
+agreement — off elements the author never addressed. With inheritance, one page-wide
+`--hdml-text-format` would fire all three, and **an error blanks the element** (SPEC §3.5).
+
+⚠ `--hdml-text-rotate` and `--hdml-text-anchor` **do** inherit, because no V-rule reads
+either. The `--hdml-text-*` family is not uniform by necessity.
+
+⚠ **The `count=` and `format=` attributes still work and are still what every shipped page
+uses.** The property wins where both are present; the attribute is the fallback. The
+attributes are removed from the vocabulary in a later 019 step.
 
 The full table of names, syntaxes and initial values is SPEC §9; `properties.ts` exports
 `HDVL_PROPERTIES` so the set can be asserted against without re-deriving it. (Like `./hdql`,

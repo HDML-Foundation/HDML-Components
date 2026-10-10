@@ -569,6 +569,17 @@ const A_COUNT = GRID_ATTRS_LIST.COUNT;
 const A_STEP = GRID_ATTRS_LIST.STEP;
 const A_VALUES = GRID_ATTRS_LIST.VALUES;
 
+/**
+ * ★ 019 item 18 — `count`'s CSS half.
+ *
+ * Registered `auto | <integer>` with `inherits: false`, so its
+ * computed value is `"auto"` on every element no rule matched and
+ * the integer on every element one did. `"auto"` is therefore the
+ * absence test, and it is exact: a registered property always
+ * computes to its initial, so there is no undefined to check.
+ */
+const P_COUNT = "--hdml-tick-count";
+
 /** An attribute's trimmed text, or `null` when absent or empty. */
 function textOf(el: HdvlElement, name: string): string | null {
   const raw = el.getAttribute(name);
@@ -647,14 +658,57 @@ function literalValues(
  * An attribute present but **empty** reads as absent, so one
  * fixture helper can spell all three modes and the unset one.
  *
+ * ── ★ 019 item 18: `count` has two sources, and CSS wins ──
+ *
+ * `--hdml-tick-count` is preferred over `count=`, and the attribute
+ * is the fallback. **This is not a new precedence rung.** The
+ * `values → step → count` ladder is still Contract 2's and this
+ * function still resolves nothing across the three modes; what is
+ * new is that the `count` *mode* now has two places an author can
+ * state it from, and the more specific one — a rule that matched
+ * *this* element — answers first. Step 30 migrates the corpus and
+ * the fixtures to the property and **deletes the attribute arm**;
+ * until it does, every page still carries `count=` and is served by
+ * it, which is why nothing moves in the step that registers the
+ * property.
+ *
+ * ⚠ **`props` is optional, and the reason is the call graph rather
+ * than taste.** A registered property reaches a widget through
+ * MEASURE — `measure.ts` harvests every entry of `HDVL_PROPERTIES`
+ * from the one `getComputedStyle` it is already allowed — so the
+ * four production callers pass `Measured.props` and pay nothing.
+ * The other nineteen callers are tests over **detached** guides and
+ * over mounted corpus pages, and a detached element has no MEASURE
+ * snapshot at all: that is a real state, not a test artifact.
+ * Reading the style here instead would put a second
+ * `getComputedStyle` per guide per frame inside COMPUTE and break
+ * `measure.ts`'s *"one `getComputedStyle` per element, and no
+ * writes"* contract (§5.4, §5.6), so the optional parameter is the
+ * cost that was actually available. **Omitting it is attribute-only
+ * behaviour, which is exactly what this function did before.**
+ *
  * @param el - The guide.
+ * @param props - The MEASURE snapshot's harvested properties, when
+ *   the caller has one. Omitted, `count` is read from the attribute
+ *   alone.
  * @returns Its spec. `{}` — which `Scale.ticks` reads as
  *   `count = 10` — when it writes none of the three, which is
  *   `hdml-axis`'s permanent case and a bare `hdml-grid`'s default.
  */
-export function tickSpecOf(el: HdvlElement): TickSpec {
+export function tickSpecOf(
+  el: HdvlElement,
+  props?: ReadonlyMap<string, string>,
+): TickSpec {
   const spec: TickSpec = {};
-  const count = positive(textOf(el, A_COUNT));
+  // `"auto"` is the initial, so anything else is a rule that
+  // matched this element. `positive` then rejects `0` and a
+  // negative — which the registered `<integer>` syntax admits and
+  // the three modes do not — exactly as it does for the attribute.
+  const styled = (props?.get(P_COUNT) ?? "").trim();
+  const count =
+    styled === "" || styled === "auto"
+      ? positive(textOf(el, A_COUNT))
+      : positive(styled);
   if (count !== undefined) {
     spec.count = count;
   }

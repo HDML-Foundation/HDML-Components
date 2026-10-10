@@ -36,6 +36,12 @@ import {
 } from "./vocabulary";
 
 /**
+ * ★ 019 item 19 — `format`'s CSS half. Registered `*` with
+ * `inherits: false` and no `initialValue`, so `""` is absence.
+ */
+const P_FORMAT = "--hdml-text-format";
+
+/**
  * ★ §4.9's formatting, over the label **set**.
  *
  * Four cases, of which three are already whole in Contract 2 and the
@@ -76,17 +82,41 @@ import {
  * `format` attribute by name, and the legend publishes the same
  * name, so nothing about it is label-specific.
  *
+ * ── ★ 019 item 19: `format` has two sources, and CSS wins ──
+ *
+ * `--hdml-text-format` is preferred over `format=`, and the
+ * attribute is the fallback. The property is registered `*` with
+ * `inherits: false` and **no** `initialValue`, so its computed
+ * value is exactly `""` on every element no rule matched and the
+ * declared string **verbatim** — internal spaces and `/` intact —
+ * on every element one did. `=== ""` is therefore the absence test.
+ * Step 30 migrates the corpus and the fixtures and deletes the
+ * attribute arm.
+ *
+ * ⚠ **`props` is required here, and optional on `tickSpecOf`.** The
+ * asymmetry is forced by the call graph rather than chosen: both of
+ * this function's callers are production sites inside a frame and
+ * hold a `Measured`, while `tickSpecOf` has nineteen further
+ * callers over detached and mounted elements that have no MEASURE
+ * snapshot to pass. A required parameter is the safer shape where
+ * it is available, because a caller cannot forget it; stated here
+ * so a later reader does not smooth the two into one.
+ *
  * @param el - The label, or the legend.
  * @param scale - The scale it labels.
  * @param ticks - The positions it will paint.
+ * @param props - The MEASURE snapshot's harvested properties.
  * @returns One string per tick, in the same order.
  */
 export function textsOf(
   el: HdvlElement,
   scale: Scale,
   ticks: readonly Tick[],
+  props: ReadonlyMap<string, string>,
 ): string[] {
-  const raw = el.getAttribute(LABEL_ATTRS_LIST.FORMAT);
+  const styled = (props.get(P_FORMAT) ?? "").trim();
+  const raw =
+    styled === "" ? el.getAttribute(LABEL_ATTRS_LIST.FORMAT) : styled;
   const skeleton = (raw ?? "").trim();
   if (scale.kind !== "continuous") {
     return ticks.map((t) => scale.format(t.value, skeleton));
@@ -273,8 +303,8 @@ export class HdmlLabelElement extends HdvlElement {
     }
     const m: Measured = guide.measured;
     const across = guideAcross(guide);
-    const ticks = guide.scale.ticks(tickSpecOf(this));
-    const texts = textsOf(this, guide.scale, ticks);
+    const ticks = guide.scale.ticks(tickSpecOf(this, m.props));
+    const texts = textsOf(this, guide.scale, ticks, m.props);
     // A text run is FILLED — `--hdml-fill-color`, whose initial is
     // `currentColor`, so an unstyled label paints in the inherited
     // text colour and `00-minimal.html` needs no CSS at all.

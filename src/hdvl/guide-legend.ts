@@ -378,8 +378,8 @@ function rampNodes(
       ...paint,
     });
   }
-  const ticks = scale.ticks(tickSpecOf(el));
-  const texts = textsOf(el, scale, ticks);
+  const ticks = scale.ticks(tickSpecOf(el, m.props));
+  const texts = textsOf(el, scale, ticks, m.props);
   const paint = fillPaint(m, null);
   const off = across + flow.swatch + flow.gap;
   for (let i = 0; i < ticks.length; i++) {

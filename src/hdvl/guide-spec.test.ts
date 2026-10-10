@@ -117,6 +117,99 @@ suite("hdvl/guide-spec — the shared tick spec", () => {
   });
 });
 
+/**
+ * A MEASURE snapshot's harvested properties.
+ *
+ * ⚠ The LIVE shape always has the key: `measure.ts` harvests every
+ * entry of `HDVL_PROPERTIES` from the one computed style it reads,
+ * so a real `Measured.props` carries `--hdml-tick-count` at its
+ * initial `"auto"` on every element no rule matched. `undefined`
+ * here is the DOUBLE's shape — a hand-built map that omits it — and
+ * both must read as absence, which is why the four cases below are
+ * run twice.
+ */
+function styled(value?: string): ReadonlyMap<string, string> {
+  return new Map<string, string>(
+    value === undefined ? [] : [["--hdml-tick-count", value]],
+  );
+}
+
+suite("hdvl/guide-spec — count's two sources (019 item 18)", () => {
+  test("★ --hdml-tick-count wins over count=", () => {
+    // §6.1's portability rule, as the one assertion that
+    // distinguishes a reader which prefers the property from one
+    // that merely accepts it: the two sources DISAGREE and the
+    // property answers.
+    assert.deepEqual(tickSpecOf(grid({ count: "5" }), styled("12")), {
+      count: 12,
+    });
+  });
+
+  test("★ count= still serves when the property is auto", () => {
+    // ⚠ THE CASE WITHOUT WHICH A READER THAT IGNORED THE ATTRIBUTE
+    // ENTIRELY WOULD PASS. It is also what keeps the 29 goldens
+    // still through this step: every corpus page carries `count=`
+    // and no rule declares the property, so the fallback arm is
+    // what every page is served by until step 30 migrates them.
+    assert.deepEqual(
+      tickSpecOf(grid({ count: "5" }), styled("auto")),
+      {
+        count: 5,
+      },
+    );
+    assert.deepEqual(tickSpecOf(grid({ count: "5" }), styled()), {
+      count: 5,
+    });
+    // …and with no props at all, which is the nineteen test and
+    // corpus callers' shape and the behaviour this function had
+    // before the property existed.
+    assert.deepEqual(tickSpecOf(grid({ count: "5" })), { count: 5 });
+  });
+
+  test("★ the property alone is enough", () => {
+    assert.deepEqual(tickSpecOf(grid({}), styled("3")), { count: 3 });
+  });
+
+  test("★ neither source leaves count ABSENT", () => {
+    // Not zero, not a literal default: absent. `Scale.ticks` reads
+    // an empty spec as `count = 10`, and a default here would be a
+    // second entry point into §4.8's ladder (R12).
+    assert.deepEqual(tickSpecOf(grid({}), styled("auto")), {});
+    assert.deepEqual(tickSpecOf(grid({}), styled()), {});
+  });
+
+  test("a declared-but-unusable property does not fall back", () => {
+    // `<integer>` admits `0` and a negative; the three tick MODES
+    // do not, so `positive` rejects them exactly as it rejects
+    // `count="0"`. The attribute is NOT consulted afterwards: a
+    // rule matched this element, so the author stated the mode
+    // here, and what they stated is unusable — reading the
+    // attribute instead would silently resurrect a value the more
+    // specific source overrode.
+    assert.deepEqual(
+      tickSpecOf(grid({ count: "5" }), styled("0")),
+      {},
+    );
+    assert.deepEqual(
+      tickSpecOf(grid({ count: "5" }), styled("-2")),
+      {},
+    );
+  });
+
+  test("the property does not touch step or values", () => {
+    // Item 18 moves ONE of the three modes. `values` and `step` are
+    // data-space instructions — `values="0 100 1000"` is only
+    // correct for that data — and §6.1 keeps them attributes.
+    assert.deepEqual(
+      tickSpecOf(
+        grid({ step: "0.05", values: "[1, 2]" }),
+        styled("12"),
+      ),
+      { count: 12, step: 0.05, values: [1, 2] },
+    );
+  });
+});
+
 suite("hdvl/guide-spec — the guide's own scene shell", () => {
   test("a guide line carries no row and no vertex", () => {
     // §2.5: `i` is "the SOURCE ROW index the node was built from,

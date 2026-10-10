@@ -2424,6 +2424,65 @@ citation drifted one section down in 017 R7's own entry and was then copied into
 this file and two others. All are corrected; the §10 citations that remain — events, `index`,
 `role="img"` — were checked one at a time and are right.
 
+## `count` and `format` become CSS, and the readers take `Measured.props`
+
+**019 items 18 + 19, 2026-10-10.** `--hdml-tick-count` and `--hdml-text-format` are the
+registry's 50th and 51st entries, both `inherits: false`, and `tickSpecOf` / `textsOf`
+prefer the computed property over the attribute. Three decisions are worth recording,
+because the third was not the one the step was scoped to take.
+
+**1 · Which attributes move, and why not all of them.** The rule is portability: *a value
+whose correct setting depends on the **dataset** cannot live in a stylesheet without welding
+that stylesheet to one document.* `values="0 100 1000"` is only correct for that data, and
+`step` likewise; tick density and number formatting are portable. So `count` and `format`
+move and `values` and `step` do not. It is the second instance of one principle, not a new
+one — the same shape as the channel-first rule, where a channel's palette beats the CSS
+paint property because **data wins over appearance**. Here appearance moves *out* of the
+data-bearing surface for the same reason.
+
+**2 · `inherits: false` is the detector, not a convenience.** A non-inherited registered
+property computes to its initial wherever it is not declared, so a computed value other
+than the initial means *a rule matched **this** element*. That is what a reader needs in
+order to prefer the stylesheet without inventing a third state. It is also what keeps
+`format`'s three error clauses — V20(b), V14's ordinal clause, V14's kind agreement — off
+elements the author never addressed: with `inherits: true` one page-wide declaration fires
+all three, and **an error blanks the element** (SPEC §3.5). ⚠ `--hdml-text-rotate` and
+`--hdml-text-anchor` stay `inherits: true` because **no V-rule reads either**, so the
+`--hdml-text-*` family is not uniform by necessity.
+
+**3 · ★ How a property reaches a reader — `Measured.props`, and the signatures differ.**
+
+A registered property reaches a widget through **MEASURE**: `measure.ts` harvests every
+entry of `HDVL_PROPERTIES` from the one `getComputedStyle` it is already allowed, so
+registering an entry puts it in `Measured.props` with **no plumbing at all**. But neither
+reader took a `Measured`, so the preference *is* a signature change, and the alternative —
+calling `getComputedStyle` inside the reader — was rejected on sight: it adds a second style
+read per guide per frame inside COMPUTE and breaks `measure.ts`'s stated *"one
+`getComputedStyle` per element, and no writes"* contract.
+
+★ **The two readers ended up with different signatures, and the asymmetry is forced by the
+call graph rather than chosen:**
+
+| Reader | Signature | Callers |
+|---|---|---|
+| `tickSpecOf` | `(el, props?)` — **optional** | 4 production · 5 in `src/hdvl/corpus/` · 14 in `guide-spec.test.ts` |
+| `textsOf` | `(el, scale, ticks, props)` — **required** | 2, both production |
+
+A required parameter is the safer shape, because a caller cannot forget it — and it is
+available only where every caller holds a snapshot. `tickSpecOf` has **nineteen** further
+callers over **detached** guides and over mounted corpus pages, and a detached element has
+no MEASURE snapshot at all: that is a real state, not a test artifact. Omitting `props` is
+attribute-only behaviour, which is exactly what the function did before. ⚠ Recorded here so
+that a later reader does not smooth the two into one.
+
+**What did not change.** Every shipped page still carries its `count=` / `format=`
+attributes and is served by the fallback arm, so the 29 whole-`Scene` goldens and the 13
+live pages are untouched. ⚠ **And V14, V16 and V20(b) still read the attributes through
+`getAttribute`, so none of them can see a CSS declaration** — the mutual-exclusion and
+format-kind checks apply to the attribute form only. A later step migrates the pages and
+deletes the fallback arm; whether those clauses follow the value into CSS is that step's
+decision, not this one's.
+
 ## `hdml-split-by` is published and unimplemented
 
 Found by step 35's manifest check. `HDML_TAG_NAMES` has **33** members — 12 data + 21

@@ -1503,6 +1503,60 @@ suite("hdvl/validate — diagnostics", () => {
     </hdml-cartesian-plane>
   `;
 
+  test("⚠ V16 cannot see a CSS declaration", async () => {
+    // ★★ 019 items 18+19, MEASURED rather than reasoned, because
+    // two binding documents disagreed about it.
+    //
+    // RFC 019/001 §6.3 states that V16 "still catches
+    // `--hdml-tick-count` declared beside `step=` on one guide",
+    // and that a UA rule declaring the property would therefore
+    // fire V16 across the corpus. **Both are false.** `checkV16`
+    // filters `SPEC_ATTRS` through `declared()`, which is a pure
+    // `getAttribute(attr) !== null && raw.trim() !== ""` — so a
+    // declaration of the CSS half is invisible to it, whatever its
+    // origin. An INLINE `style` is asserted here because it is the
+    // strongest author declaration there is: if V16 cannot see
+    // this, no stylesheet rule and no adopted UA sheet can make it
+    // fire either.
+    //
+    // ⚠ **The consequence is not local to this test.** V16's
+    // mutual exclusion, V20(b)'s four-attribute clause and V14's
+    // two `format` clauses all gate on `declared()`. They keep
+    // every tooth they have over the ATTRIBUTE form, which is what
+    // every shipped page still uses — but a page that states the
+    // value in CSS instead is unchecked by all four. Whether they
+    // follow the value into CSS is the migration step's decision;
+    // this test is here so that it is a decision and not a
+    // discovery.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v16css"
+        style="width: 400px; height: 200px"
+      >
+        ${GUIDES(html`
+          <hdml-tick
+            channel="y"
+            step="0.5"
+            style="--hdml-tick-count: 6"
+          ></hdml-tick>
+        `)}
+      </hdml-view>
+    `);
+    const el = <Element>view.querySelector("hdml-tick");
+    // The declaration really did land — so the silence below is
+    // about what V16 READS and not about a rule that never applied.
+    assert.strictEqual(
+      getComputedStyle(el)
+        .getPropertyValue("--hdml-tick-count")
+        .trim(),
+      "6",
+    );
+    // …and V16 says nothing.
+    assert.lengthOf(said("V16"), 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+    assert.isFalse(el.matches(":state(error)"));
+  });
+
   test("★ V16 — two of count, step and values", async () => {
     const [, view] = await mount(html`
       <hdml-view

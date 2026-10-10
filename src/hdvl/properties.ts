@@ -12,8 +12,32 @@
  * every appearance decision a chart makes reads a registered custom
  * property, so registration is what gives an unstyled chart a
  * legible default and what makes `getComputedStyle` a total
- * function over the vocabulary. **Every property inherits** — that
- * is what makes plane-level scoping and theme-at-the-view work.
+ * function over the vocabulary. **Every property inherits except
+ * two** — `--hdml-tick-count` and `--hdml-text-format`, 019 items
+ * 18+19 — and inheritance is otherwise what makes plane-level
+ * scoping and theme-at-the-view work.
+ *
+ * ★ **The two exceptions are a detector, not a convenience**
+ * (RFC 019/001 §6.3, decision A1). A non-inherited registered
+ * property computes to its initial wherever it is not declared, so
+ * a computed value other than the initial means *a rule matched
+ * this element*. That is what a reader needs in order to prefer an
+ * author's stylesheet over an author's attribute without inventing
+ * a third state, and it is what keeps `format`'s three error
+ * clauses — V20(b), V14's ordinal clause and V14's kind agreement —
+ * from firing on elements the author never addressed. With
+ * `inherits: true` a single page-wide `--hdml-text-format` would
+ * fire all three, and **an error blanks the element** (SPEC §3.5).
+ *
+ * ⚠ `--hdml-text-rotate` and `--hdml-text-anchor` stay
+ * `inherits: true` on purpose: **no V-rule reads either**, so their
+ * inheritance is harmless. The `--hdml-text-*` family is not
+ * uniform by necessity, and this note exists so that a later reader
+ * does not "fix" the inconsistency.
+ *
+ * ★ An author who wants one of the two at the plane has a
+ * one-keyword opt-in: `--hdml-tick-count: inherit` **does** pull
+ * the ancestor's value, measured on all three engines.
  *
  * @module hdvl/properties
  */
@@ -33,7 +57,7 @@ const CURVE_TYPES =
   "cardinal | catmull-rom | monotone | step";
 
 /**
- * SPEC §9's registry, complete at forty-nine: thirty-three base
+ * SPEC §9's registry, complete at fifty-one: thirty-five base
  * properties plus the sixteen **state variants** — the eight
  * presentation-attribute properties × `{hover, active}`.
  *
@@ -308,6 +332,44 @@ export const HDVL_PROPERTIES: readonly PropertyDefinition[] = [
     syntax: "start | middle | end | auto",
     inherits: true,
     initialValue: "auto",
+  },
+  // ── ★ 019 items 18 + 19: the two that do NOT inherit ──
+  //
+  // RFC 019/001 §6.1's portability rule: a value whose correct
+  // setting depends on the DATASET cannot live in a stylesheet
+  // without welding that stylesheet to one document. `values` and
+  // `step` are such values and stay attributes; tick density and
+  // number formatting are portable across datasets and become CSS.
+  //
+  // `inherits: false` on both is decision A1 and is argued in this
+  // module's header. Neither may be declared by the UA sheet: a
+  // constructed sheet adopted into a shadow root is AUTHOR origin,
+  // so a UA declaration would be indistinguishable from an
+  // author's and would defeat the detector.
+  {
+    // `auto` is the initial because a registered property always
+    // computes to its initial, so absence has to be spelled as a
+    // value — `--hdml-text-anchor`'s argument above, a second
+    // time. It resolves to the width-aware derivation at item 8;
+    // until then it behaves exactly as an absent `count` does,
+    // which `Scale.ticks` reads as `count = 10`.
+    name: "--hdml-tick-count",
+    syntax: "auto | <integer>",
+    inherits: false,
+    initialValue: "auto",
+  },
+  {
+    // `*`, because the corpus's own skeletons are space-separated
+    // ICU token runs — `currency/USD compact-short`,
+    // `percent precision-integer` — that no typed syntax accepts
+    // (§6.7). `initialValue` is therefore **OMITTED, never `""`**:
+    // with syntax `*` an omitted initial is the platform's own
+    // spelling of "empty", `""` is not equivalent on every engine,
+    // and the sixteen state variants below rely on the identical
+    // combination.
+    name: "--hdml-text-format",
+    syntax: "*",
+    inherits: false,
   },
   {
     name: "--hdml-line-width--hover",

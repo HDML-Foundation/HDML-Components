@@ -217,7 +217,9 @@ export class HdmlGridElement extends HdvlElement {
     let poles = 0;
     // A tick whose value does not project is dropped by `ticksFor`
     // before it is seen here, so §4.7 needs no restatement.
-    for (const tick of guide.scale.ticks(tickSpecOf(this))) {
+    for (const tick of guide.scale.ticks(
+      tickSpecOf(this, guide.measured.props),
+    )) {
       // ★ 017 R11's cause 2, hoisted out of `ringOf` so the test
       // reads once for both of §6.5's shapes: a circle at the pole
       // is a zero-radius arc and a polygon at the pole is a closed

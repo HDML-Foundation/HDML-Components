@@ -242,7 +242,7 @@ export class HdmlTickElement extends HdvlElement {
     const nodes: SceneNode[] = [];
     // A tick whose value does not project is dropped by `ticksFor`
     // before it is seen here, so §4.7 needs no restatement.
-    for (const tick of guide.scale.ticks(tickSpecOf(this))) {
+    for (const tick of guide.scale.ticks(tickSpecOf(this, m.props))) {
       const at = guidePoint(guide, tick.at, across);
       nodes.push(glyph(style, at.x, at.y, w, h, paint));
     }
