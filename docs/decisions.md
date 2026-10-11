@@ -1217,7 +1217,53 @@ before `hdml-pie` draws anything. The alternative was a flag that would report
 
 Registration is **additive**. The namespace object is reused, never replaced, so
 a page that loads two builds — or a host app that already owns `window.HDML` —
-keeps everything else on it.
+keeps everything else on it. A second member (`diagnostics`, below) does not
+weaken that: both are assigned **onto** the object that was already there.
+
+## `HDML.diagnostics()` is flat, total, and owned by the validator
+
+Four decisions, taken together because each one falls out of the next.
+
+**The projection lives in `validate.ts`, not in `supports.ts`.** The RFC sketches
+both the type and the function in the feature-detection module; that would make
+the feature-detection surface own a root-ward DOM walk, and would put the
+projection one module away from `Diagnostic`, `RuleId`, `DiagnosticCode`,
+`WarningCode` and the memo that is its only possible input. `supports.ts` imports
+one function instead and stays what its first paragraph says it is.
+
+**The shape is flat, and that is not a tidiness choice.** The design sketch has a
+nested `anchor: { path }`; the **shipped** HDQL emitter does not — `@hdml/parser`
+declares `path` / `line` / `column` / `offset` as top-level `null | T`, and the
+Go reader on the other side of the wire implements that, with a comment saying
+the shape is shared between both emitters. A nested anchor here would leave both
+sides *working*: flat bytes unmarshal into a nested struct **with a nil error**
+and leave the anchor zero, so every finding from this side would arrive with no
+location while nothing reported a fault. One shape means one spelling, including
+`column` rather than `col`.
+
+**No member is optional; an inapplicable one is an explicit `null`.**
+`JSON.stringify` **drops** a key whose value is `undefined`, and CDP's
+`returnByValue` was measured doing the same — an absent optional arrives as a
+*missing key*, not as `null`. An optional `channel` would therefore give a
+consumer a payload whose key set varied row to row, with *"this build has no such
+field"* and *"this finding names no channel"* indistinguishable, and a Go
+unmarshal into a pointer field would produce `nil` for both. The sibling emitter
+is `null | T` throughout for exactly this reason.
+
+**No handle and no `id`.** An alternative was to return an opaque token a caller
+could pass back to resolve the element. Rejected twice over: it makes the
+projection stateful, and it holds a strong reference to a node that may already
+be detached. A path is resolved by walking the live document, which needs no
+bookkeeping and no `id` attribute on the author's markup.
+
+★ **And the segment predicate is the WHOLE vocabulary, data half included.** The
+path format is shared, so the predicate has to be the same predicate: two
+emitters answering to two sets would produce two formats wearing one name. It is
+read from the published `HDML_TAG_NAMES` rather than from the display subset —
+which also means it picks up `hdml-text`, a display tag already published but not
+yet in this package's pin, the moment that pin moves. `vocabulary.test.ts`'s
+exhaustive export fence went red on it, correctly, and admits it as a named
+exception with a test pinning what it must be.
 
 ## `<hdml-io>` is **not** a `HdqlElement`
 

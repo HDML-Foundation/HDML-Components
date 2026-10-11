@@ -66,6 +66,7 @@ import {
   AXIS_ATTRS_LIST,
   CONTINUOUS_SCALE_ATTRS_LIST,
   GRID_ATTRS_LIST,
+  HDML_TAG_SET,
   HDQL_SORT_BY_TAG,
   HDVL_TAG_NAMES,
   LABEL_ATTRS_LIST,
@@ -302,6 +303,13 @@ const POLAR_TAG: string = HDVL_TAG_NAMES.POLAR_PLANE;
 
 /** See {@link RULE_TAG}. */
 const AXIS_TAG: string = HDVL_TAG_NAMES.AXIS;
+
+/**
+ * ⚠ `string`, not the enum member, for the reason every `*_TAG`
+ * above is: `localName` is a `string`, and comparing it to an enum
+ * member is `@typescript-eslint/no-unsafe-enum-comparison`.
+ */
+const VIEW_TAG: string = HDVL_TAG_NAMES.VIEW;
 
 /** See {@link RULE_TAG}. */
 const LEGEND_TAG: string = HDVL_TAG_NAMES.LEGEND;
@@ -3596,4 +3604,285 @@ export function diagnosticsOf(
  */
 export function forgetView(view: HdmlViewElement): void {
   memos.delete(view);
+}
+
+/* ---------------------------------------------------------------- */
+/* The serialisable projection — item 11 (RFC 019/002 §5)           */
+/* ---------------------------------------------------------------- */
+
+/**
+ * One finding, in the shape that crosses a wire.
+ *
+ * ★★ **The shape is FLAT, and it is flat because that is what the
+ * other emitter emits.** RFC 019/002 §5.2 sketches a nested
+ * `anchor: { path }`, and §9.1 still calls it `anchor.path`; both
+ * predate §2.1's `C231` amendment, which measured the shipped
+ * `@hdml/parser` and resolved *in favour of the wire*:
+ * `HdqlDiagnostic` declares `path` / `line` / **`column`** /
+ * `offset` as **top-level `null | T`**, `drainDiagnostics` returns
+ * exactly that object, and HDIO-Server's `domain.HdmlDiagnostic` —
+ * the reader 022 actually goes through — implements it flat, with a
+ * comment saying the shape *"is shared between the HDQL and HDVL
+ * emitters"*. §2.1's amendment is explicit that this binds item 11:
+ * *"a nested `anchor` on one side would leave both sides 'working'
+ * while every anchor from that side was silently discarded"* —
+ * because unmarshalling flat bytes into a nested Go struct
+ * **succeeds with a nil error** and leaves the anchor zero.
+ *
+ * ★ **Nothing is optional, and every inapplicable member is an
+ * explicit `null`.** `JSON.stringify` **drops** a key whose value
+ * is `undefined`, so an optional member would give a payload whose
+ * key set varies from row to row — and CDP `Runtime.evaluate`, the
+ * channel this exists for, reports the same absence a third way.
+ * `HdqlDiagnostic` is `null | T` throughout for exactly this
+ * reason (*"the shape must survive `JSON.stringify` and cross a
+ * WASM boundary"*), so one diagnostic from either emitter has one
+ * key set.
+ *
+ * ★ The first seven members are the shared core, spelled and
+ * ordered as the HDQL emitter spells them. The last four are HDVL's
+ * own additions; a reader of the shared core ignores them.
+ */
+export interface SerialisableDiagnostic {
+  /** A code from the HDVL namespace (RFC 019/002 §2.2). */
+  code: DiagnosticCode | WarningCode;
+  severity: "error" | "warning";
+  /** SPEC §8.4's verbatim teaching message. Contract. */
+  message: string;
+  /**
+   * Tag-and-ordinal path from the document root, or `null` when the
+   * element is not vocabulary or is not linked to a parent.
+   */
+  path: null | string;
+  /**
+   * **Always `null` on this leg**, and permanently so: the
+   * browser's "source" is a DOM re-serialisation, so any line
+   * number computed here is a line number of a different document
+   * (RFC 019/002 §3.4).
+   */
+  line: null | number;
+  /** Always `null` here. ⚠ The wire member is `column`, not `col`. */
+  column: null | number;
+  /** Always `null` here. */
+  offset: null | number;
+  /** The V- or W-number. HDVL-only; SPEC §11's checklist. */
+  rule: RuleId;
+  /**
+   * The path of the element that blanks and dispatches (§3.5) —
+   * **always emitted**, not only when it differs from
+   * {@link SerialisableDiagnostic.path}. §5.2 proposed *"when it
+   * differs"*; that makes one `null` mean two things (*no unit* and
+   * *the unit is the element*) in a field that is never absent on
+   * the internal shape. A reader that wants the distinction
+   * compares the two strings.
+   */
+  unit: null | string;
+  /** The channel, or `null` when the finding names none. */
+  channel: null | Channel;
+  /** The source ref, or `null`. */
+  source: null | string;
+}
+
+/**
+ * Whether the node is an HDML element — membership, not a prefix.
+ *
+ * ⚠ Deliberately **not** a `node is Element` guard, which is the
+ * same trap `@hdml/parser`'s `elementPath.ts` records: every caller
+ * has already narrowed to `Element`, so a type predicate narrows
+ * the FALSE branch to `never` and `hdmlParentOf`'s loop stops
+ * compiling.
+ */
+function isHdml(node: null | Node): boolean {
+  return (
+    node !== null &&
+    node.nodeType === Node.ELEMENT_NODE &&
+    HDML_TAG_SET.has((<Element>node).localName)
+  );
+}
+
+/**
+ * The element's nearest HDML ancestor, or `null`.
+ *
+ * ★ It climbs through **any** intervening element, so a wrapper
+ * `<div>` is not a boundary. That is deliberate parity with
+ * `@hdml/parser`'s `getHdmlParentTag`: the parser ignores the
+ * surrounding HTML, so two `<hdml-label>`s in different wrappers
+ * are siblings of the same scale, and the path has to say so or it
+ * disagrees with the document the semantics describe.
+ */
+function hdmlParentOf(element: Element): null | Element {
+  let parent = element.parentElement;
+  while (parent !== null) {
+    if (isHdml(parent)) {
+      return parent;
+    }
+    parent = parent.parentElement;
+  }
+  return null;
+}
+
+/** The topmost node reachable upwards — `document`, or a root. */
+function topOf(element: Element): ParentNode {
+  let node: Node = element;
+  while (node.parentNode !== null) {
+    node = node.parentNode;
+  }
+  return <ParentNode>node;
+}
+
+/**
+ * Counts the HDML elements before `element` that share its tag AND
+ * its nearest HDML ancestor, scanning in document order and never
+ * descending through an HDML element — which is what makes each one
+ * its own addressing level.
+ */
+function ordinalOf(
+  scope: ParentNode,
+  element: Element,
+  parent: null | Element,
+): number {
+  let ordinal = 0;
+  let done = false;
+  const visit = (node: ParentNode): void => {
+    if (done) {
+      return;
+    }
+    for (const child of Array.from(node.children)) {
+      if (done) {
+        return;
+      }
+      if (child === element) {
+        done = true;
+        return;
+      }
+      if (isHdml(child)) {
+        if (child.localName === element.localName) {
+          ordinal++;
+        }
+        // An HDML element opens its own level, so its subtree
+        // cannot hold a sibling of this one.
+        continue;
+      }
+      visit(child);
+    }
+  };
+  visit(parent ?? scope);
+  return ordinal;
+}
+
+/**
+ * The tag-and-ordinal path of a live element, root-ward, as
+ * `hdml-view[0]/hdml-cartesian-plane[0]/hdml-axis[1]`
+ * (RFC 019/002 §3.4).
+ *
+ * ★ **The same four decisions as the HDQL emitter, so 022 parses
+ * one format**: `/` separates, the ordinal is **0-based** and
+ * counts **same-tag** siblings only, **every** segment carries one
+ * (an only child of its tag is `[0]`, never bare), and the walk
+ * **stops at the outermost HDML ancestor and includes it** — so an
+ * HDVL path begins at its `hdml-view` and there is no
+ * `html[0]/body[0]` prefix. Same-tag ordinals rather than
+ * all-children ordinals mean an `<hdml-axis>`'s path does not move
+ * when an `<hdml-label>` is authored above it.
+ *
+ * ★ **The `hdml-view` segment is not optional**, and a multi-view
+ * page is why: a path that began *below* the view would give two
+ * structurally identical views two identical paths, so a no-arg
+ * {@link diagnostics} call would hand 022 a set in which half the
+ * anchors resolved to the wrong chart.
+ *
+ * @param element - The element to describe.
+ * @returns The path, or `null` if it is not an HDML element or is
+ * not linked to a parent.
+ */
+export function pathOf(element: Element): null | string {
+  if (element.parentNode === null || !isHdml(element)) {
+    return null;
+  }
+  const scope = topOf(element);
+  const segments: string[] = [];
+  let node: null | Element = element;
+  while (node !== null) {
+    const parent = hdmlParentOf(node);
+    segments.push(
+      `${node.localName}[${ordinalOf(scope, node, parent)}]`,
+    );
+    node = parent;
+  }
+  return segments.reverse().join("/");
+}
+
+/** Projects one {@link Diagnostic} onto the serialisable shape. */
+function project(d: Diagnostic): SerialisableDiagnostic {
+  return {
+    code: d.code,
+    severity: d.severity,
+    message: d.message,
+    path: pathOf(d.element),
+    line: null,
+    column: null,
+    offset: null,
+    rule: d.rule,
+    unit: pathOf(d.unit),
+    channel: d.channel ?? null,
+    source: d.source ?? null,
+  };
+}
+
+/**
+ * **`HDML.diagnostics()`** — every finding of both validator
+ * passes, in a shape that survives `JSON.stringify` and CDP
+ * `Runtime.evaluate` (RFC 019/002 §5, D12).
+ *
+ * The serialisable sibling of {@link diagnosticsOf}, which returns
+ * live `HTMLElement`s and therefore **cannot** be stringified at
+ * all: a Lit element carries own enumerable fields that cycle, so
+ * `JSON.stringify` throws rather than losing a field.
+ *
+ * ★ **With no argument it answers for the whole document**, in
+ * document order: `document.querySelectorAll("hdml-view")`, then
+ * each view's findings, which are already in document order. **This
+ * is the form to call** — it needs no element reference, so it
+ * cannot be given the wrong one.
+ *
+ * ★ **Given an element that is not an `<hdml-view>` it returns
+ * `[]`**, rather than throwing. The surface is read blind over CDP,
+ * where a throw arrives as `exceptionDetails` a caller must
+ * special-case and conflates *you asked the wrong element* with
+ * *the page is broken*. ⚠ **The cost is real and is not hidden**:
+ * that `[]` is indistinguishable from a clean view's `[]`. The
+ * no-arg form has no such state, which is why it is the documented
+ * one.
+ *
+ * ⚠ **Three things it inherits from `diagnosticsOf` and does not
+ * fix** (RFC 019/002 §5.3): it reports what the validator last
+ * produced and does **not** re-run it, so a view that has never
+ * rendered — or a disconnected one, whose memo `forgetView` has
+ * dropped — answers `[]`; the validator reports **one error per
+ * unit**, first in document order, so one pass is not a complete
+ * fault list; and recovery is **silent**, confirmed by this
+ * returning `[]` and by nothing else.
+ *
+ * @param view - An `<hdml-view>`, or omitted for every view in the
+ * document.
+ * @returns The findings, serialisable, in document order.
+ */
+export function diagnostics(
+  view?: Element,
+): readonly SerialisableDiagnostic[] {
+  let views: readonly Element[];
+  if (view === undefined) {
+    views = Array.from(document.querySelectorAll(VIEW_TAG));
+  } else if (view.localName === VIEW_TAG) {
+    views = [view];
+  } else {
+    views = [];
+  }
+  const out: SerialisableDiagnostic[] = [];
+  for (const el of views) {
+    for (const d of diagnosticsOf(<HdmlViewElement>el)) {
+      out.push(project(d));
+    }
+  }
+  return out;
 }

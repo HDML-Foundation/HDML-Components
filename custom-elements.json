@@ -12384,7 +12384,7 @@
               "text": "void"
             }
           },
-          "description": "Registers supports on `globalThis.HDML`, additively.\n\nIdempotent, and it never replaces the object it finds: a second\nbuild importing this module installs the same function beside\nwhatever else already lives in the namespace."
+          "description": "Registers supports and `diagnostics` on `globalThis.HDML`,\nadditively.\n\nIdempotent, and it never replaces the object it finds: a second\nbuild importing this module installs the same functions beside\nwhatever else already lives in the namespace. ★ A **second**\nmember does not weaken that — both are assigned onto the object\nthat was already there, so a host app's own `HDML.whatever`\nsurvives, and so does an `HDML.diagnostics` another build put\nthere first (it is overwritten in place, not by replacing the\nnamespace)."
         }
       ],
       "exports": [
@@ -12778,6 +12778,45 @@
             }
           ],
           "description": "Drops everything remembered about a view. Called from its\n`disconnectedCallback`, so a reconnected view re-reports rather\nthan staying silent about a violation it still has."
+        },
+        {
+          "kind": "function",
+          "name": "pathOf",
+          "return": {
+            "type": {
+              "text": ""
+            }
+          },
+          "parameters": [
+            {
+              "name": "element",
+              "type": {
+                "text": "Element"
+              },
+              "description": "The element to describe."
+            }
+          ],
+          "description": "The tag-and-ordinal path of a live element, root-ward, as\n`hdml-view[0]/hdml-cartesian-plane[0]/hdml-axis[1]`\n(RFC 019/002 §3.4).\n\n★ **The same four decisions as the HDQL emitter, so 022 parses\none format**: `/` separates, the ordinal is **0-based** and\ncounts **same-tag** siblings only, **every** segment carries one\n(an only child of its tag is `[0]`, never bare), and the walk\n**stops at the outermost HDML ancestor and includes it** — so an\nHDVL path begins at its `hdml-view` and there is no\n`html[0]/body[0]` prefix. Same-tag ordinals rather than\nall-children ordinals mean an `<hdml-axis>`'s path does not move\nwhen an `<hdml-label>` is authored above it.\n\n★ **The `hdml-view` segment is not optional**, and a multi-view\npage is why: a path that began *below* the view would give two\nstructurally identical views two identical paths, so a no-arg\ndiagnostics call would hand 022 a set in which half the\nanchors resolved to the wrong chart."
+        },
+        {
+          "kind": "function",
+          "name": "diagnostics",
+          "return": {
+            "type": {
+              "text": ""
+            }
+          },
+          "parameters": [
+            {
+              "name": "view",
+              "optional": true,
+              "type": {
+                "text": "Element"
+              },
+              "description": "An `<hdml-view>`, or omitted for every view in the\ndocument."
+            }
+          ],
+          "description": "**`HDML.diagnostics()`** — every finding of both validator\npasses, in a shape that survives `JSON.stringify` and CDP\n`Runtime.evaluate` (RFC 019/002 §5, D12).\n\nThe serialisable sibling of diagnosticsOf, which returns\nlive `HTMLElement`s and therefore **cannot** be stringified at\nall: a Lit element carries own enumerable fields that cycle, so\n`JSON.stringify` throws rather than losing a field.\n\n★ **With no argument it answers for the whole document**, in\ndocument order: `document.querySelectorAll(\"hdml-view\")`, then\neach view's findings, which are already in document order. **This\nis the form to call** — it needs no element reference, so it\ncannot be given the wrong one.\n\n★ **Given an element that is not an `<hdml-view>` it returns\n`[]`**, rather than throwing. The surface is read blind over CDP,\nwhere a throw arrives as `exceptionDetails` a caller must\nspecial-case and conflates *you asked the wrong element* with\n*the page is broken*. ⚠ **The cost is real and is not hidden**:\nthat `[]` is indistinguishable from a clean view's `[]`. The\nno-arg form has no such state, which is why it is the documented\none.\n\n⚠ **Three things it inherits from `diagnosticsOf` and does not\nfix** (RFC 019/002 §5.3): it reports what the validator last\nproduced and does **not** re-run it, so a view that has never\nrendered — or a disconnected one, whose memo `forgetView` has\ndropped — answers `[]`; the validator reports **one error per\nunit**, first in document order, so one pass is not a complete\nfault list; and recovery is **silent**, confirmed by this\nreturning `[]` and by nothing else."
         }
       ],
       "exports": [
@@ -12866,6 +12905,22 @@
           "name": "forgetView",
           "declaration": {
             "name": "forgetView",
+            "module": "src/hdvl/validate.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "pathOf",
+          "declaration": {
+            "name": "pathOf",
+            "module": "src/hdvl/validate.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "diagnostics",
+          "declaration": {
+            "name": "diagnostics",
             "module": "src/hdvl/validate.ts"
           }
         }
@@ -13393,6 +13448,15 @@
         },
         {
           "kind": "variable",
+          "name": "HDML_TAG_SET",
+          "type": {
+            "text": "ReadonlySet<string>"
+          },
+          "default": "new Set<string>( Object.values(HDML_TAG_NAMES), )",
+          "description": "**Every HDML tag, as a membership set** — the predicate for a\ndiagnostic `path` segment (RFC 019/002 §3.4, item 11).\n\n★ **It is the WHOLE vocabulary, data half included, and that is\nthe point.** The path format is shared with the HDQL emitter, and\n`@hdml/parser`'s `elementPath.ts` builds its own set from exactly\nthis object. Two emitters that answered to two different segment\npredicates would produce two formats wearing one name — the\nfailure RFC §2.1's amendment names — so the set is the same set,\nnot a display-shaped subset of it.\n\n★ **And it is read from `HDML_TAG_NAMES` rather than from\nHDVL_TAG_NAMES for a second, dated reason**: `hdml-text`\nis a **display** tag that ships in `@hdml/types@0.0.2-alpha.25+`\nand is not in `HDVL_TAG_NAMES` here, because this package still\npins `0.0.2-alpha.24` (the bump is step 41's). A set built from\nthe display subset would hand `path: null` to the first\ndiagnostic ever raised against an `<hdml-text>`; built from the\nfull vocabulary it gains the tag the moment the pin moves, with\nno edit here.\n\nMembership, never an `hdml-` prefix test — so a misspelled\n`<hdml-labl>` is not vocabulary and does not become an addressing\nlevel. It lives here for the reason HDQL_SORT_BY_TAG\ndoes: one module imports `@hdml/types` (R8)."
+        },
+        {
+          "kind": "variable",
           "name": "HDVL_FAMILIES",
           "type": {
             "text": "Readonly<\n  Record<HdvlTagName, HdvlFamily>\n>"
@@ -13594,6 +13658,14 @@
           "name": "HDQL_SORT_BY_TAG",
           "declaration": {
             "name": "HDQL_SORT_BY_TAG",
+            "module": "src/hdvl/vocabulary.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "HDML_TAG_SET",
+          "declaration": {
+            "name": "HDML_TAG_SET",
             "module": "src/hdvl/vocabulary.ts"
           }
         },

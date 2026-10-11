@@ -729,12 +729,85 @@ so a bound mark keeps reporting what was delivered to it.
 different edge from `hdml-data`'s and deliberately so: a resize changes a range and therefore
 **does** re-fire this event, while it does not re-fire `hdml-data`.
 
-### `HDML.supports`
+### The `HDML` namespace
 
-Registered additively on `globalThis.HDML` when the `./hdvl` entry is imported.
-It answers from the custom-element registry and the published attribute enums, so
-it cannot drift from what this build actually registers — see
-[decisions.md](decisions.md).
+Two functions, both registered **additively** on `globalThis.HDML` when the
+`./hdvl` entry is imported. The namespace object is reused and never replaced, so
+a page loading two builds — or a host app that already owns `window.HDML` — keeps
+everything else on it.
+
+**`HDML.supports(tag[, attr])`** answers from the custom-element registry and the
+published attribute enums, so it cannot drift from what this build actually
+registers — see [decisions.md](decisions.md).
+
+**`HDML.diagnostics([view])`** returns every finding of **both** validator passes
+as a `SerialisableDiagnostic[]`, in document order. It is the serialisable
+sibling of the internal `diagnosticsOf`, which returns live `HTMLElement`s and
+therefore cannot cross a wire at all: a Lit element carries own enumerable fields
+that cycle, so `JSON.stringify` **throws**, and CDP `Runtime.evaluate` fails
+harder still (see below).
+
+```js
+HDML.diagnostics()        // every <hdml-view> in the document
+HDML.diagnostics(view)    // that one view
+```
+
+Call it with **no argument**. That form needs no element reference, so it cannot
+be given the wrong one; given an element that is not an `<hdml-view>` the
+function returns `[]` rather than throwing, which keeps the call total over a
+remote-debugging channel but means *"you asked the wrong element"* and *"this
+view is clean"* are the same reply.
+
+Each finding is **flat**, with no optional member — every key is present on every
+row, and an inapplicable one is an explicit `null`:
+
+| Member | |
+|---|---|
+| `code` | the `DiagnosticCode` or `WarningCode` |
+| `severity` | `"error"` \| `"warning"` |
+| `message` | SPEC §8.4's verbatim teaching message. Contract, not debug output |
+| `path` | the anchor (below) |
+| `line`, `column`, `offset` | **always `null` here**, permanently |
+| `rule` | the V- or W-number |
+| `unit` | the path of the element that blanks and dispatches |
+| `channel`, `source` | or `null` |
+
+The first seven are a shape **shared with the HDQL parse emitter** in
+`@hdml/parser`, spelled and ordered as it spells them, so one reader parses both.
+The line triple is null here and only here: the browser's "source" is a DOM
+re-serialisation, so a line number computed from it would be a line number of a
+different document.
+
+**`path` is a tag-and-ordinal address**, `/`-joined from the document root:
+
+```
+hdml-view[1]/hdml-cartesian-plane[0]/hdml-continuous-scale[0]/hdml-axis[1]
+```
+
+Four properties, each shared with the parser's emitter: the ordinal is
+**0-based** and counts **same-tag siblings only** (so an `<hdml-axis>`'s address
+does not move when an `<hdml-label>` is authored above it); **every** segment
+carries one, so an only child of its tag is `[0]` and never bare; a segment is a
+member of the HDML vocabulary and **nothing else is**, so intervening HTML is
+invisible and two elements in different wrapper `<div>`s are siblings; and the
+walk stops at the **outermost** vocabulary element and includes it — an HDVL path
+begins at its `hdml-view` and carries no `html[0]/body[0]` prefix. The view
+segment is what makes two structurally identical views addressable apart.
+
+⚠ **Three things it reports honestly and does not fix.** It returns what the
+validator **last produced** and does not re-run it, so a view that has never
+rendered — or a disconnected one, whose memo is dropped in
+`disconnectedCallback` — answers `[]`. The validator reports **one error per
+unit**, first in document order, so a widget missing both `x` and `y` reports
+once and **one pass is not a complete fault list**. And **recovery is silent**:
+there is no resolution event, so a fix is confirmed by this returning `[]` after
+a re-render and by nothing else.
+
+ⓘ Measured over real CDP (`scripts/cdp-diagnostics-probe.mjs`): the projection
+crosses `Runtime.evaluate` with `returnByValue` **byte-equal** to the in-page
+`JSON.stringify`, while the internal shape fails as a *protocol* error —
+`Object reference chain is too long`, with no `exceptionDetails` — so a remote
+caller would get a transport failure rather than a readable fault.
 
 ## Build pipeline
 

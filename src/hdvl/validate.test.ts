@@ -31,7 +31,7 @@ const REF = "?hdml-frame=v2";
  *
  * The annotation is what makes it an assertion rather than a list:
  * a `Record<DiagnosticCode, …>` literal must name **every** member
- * and may name no other, so a twenty-third code is a `compile_tst`
+ * and may name no other, so a twenty-fifth code is a `compile_tst`
  * failure in this file and a deleted one is too. Step 12 landed all
  * twenty-one at once for H5's reason; step 21 added the
  * twenty-second as a §8 amendment; **step 22 added four rules and
@@ -2507,9 +2507,9 @@ suite("hdvl/validate — diagnostics", () => {
     assert.isTrue(paints(okProbe(view).uid));
   });
 
-  test("★ the code space is still twenty-two", () => {
+  test("★ the code space is still twenty-four", () => {
     // A `Record<DiagnosticCode, …>` literal is exhaustive AND
-    // closed, so a twenty-third code fails `compile_tst` — before
+    // closed, so a twenty-fifth code fails `compile_tst` — before
     // any browser starts — and a deleted one fails here. Step 22
     // added four rules and no code: all four were already in the
     // union step 12 landed whole (H5). **Step 29 added three more

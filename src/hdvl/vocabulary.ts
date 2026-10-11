@@ -101,6 +101,37 @@ export const HDVL_TAG_NAMES = {
 export const HDQL_SORT_BY_TAG: string = HDML_TAG_NAMES.SORT_BY;
 
 /**
+ * **Every HDML tag, as a membership set** — the predicate for a
+ * diagnostic `path` segment (RFC 019/002 §3.4, item 11).
+ *
+ * ★ **It is the WHOLE vocabulary, data half included, and that is
+ * the point.** The path format is shared with the HDQL emitter, and
+ * `@hdml/parser`'s `elementPath.ts` builds its own set from exactly
+ * this object. Two emitters that answered to two different segment
+ * predicates would produce two formats wearing one name — the
+ * failure RFC §2.1's amendment names — so the set is the same set,
+ * not a display-shaped subset of it.
+ *
+ * ★ **And it is read from `HDML_TAG_NAMES` rather than from
+ * {@link HDVL_TAG_NAMES} for a second, dated reason**: `hdml-text`
+ * is a **display** tag that ships in `@hdml/types@0.0.2-alpha.25+`
+ * and is not in `HDVL_TAG_NAMES` here, because this package still
+ * pins `0.0.2-alpha.24` (the bump is step 41's). A set built from
+ * the display subset would hand `path: null` to the first
+ * diagnostic ever raised against an `<hdml-text>`; built from the
+ * full vocabulary it gains the tag the moment the pin moves, with
+ * no edit here.
+ *
+ * Membership, never an `hdml-` prefix test — so a misspelled
+ * `<hdml-labl>` is not vocabulary and does not become an addressing
+ * level. It lives here for the reason {@link HDQL_SORT_BY_TAG}
+ * does: one module imports `@hdml/types` (R8).
+ */
+export const HDML_TAG_SET: ReadonlySet<string> = new Set<string>(
+  Object.values(HDML_TAG_NAMES),
+);
+
+/**
  * A display tag name — the value type of {@link HDVL_TAG_NAMES}.
  */
 export type HdvlTagName =

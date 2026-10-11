@@ -6,7 +6,8 @@
 
 /**
  * `HDML.supports()` — the feature-detection surface (RFC 016/001
- * §8.5).
+ * §8.5) — and `HDML.diagnostics()`, the serialisable projection of
+ * the validator's findings (RFC 019/002 §5, item 11).
  *
  * ```ts
  * HDML.supports("hdml-stack")             // → boolean
@@ -26,6 +27,22 @@
  * enum?* A page that never imports `@hdml/components/hdvl` gets
  * `false` for all twenty-one, which is the question a host app is
  * really asking.
+ *
+ * ```ts
+ * HDML.diagnostics()        // → every view in the document
+ * HDML.diagnostics(view)    // → that one <hdml-view>
+ * ```
+ *
+ * **`diagnostics` lives in `validate.ts`, not here, and that is a
+ * decision.** This module is the feature-detection surface; the
+ * projection owns a root-ward DOM walk and is the serialisable
+ * sibling of `diagnosticsOf`, next to the `Diagnostic`, `RuleId`,
+ * `DiagnosticCode` and `WarningCode` it projects. RFC 019/002 §5.1
+ * sketches both the type and the function in this file, which would
+ * make a feature-detection module own a DOM walk and would put the
+ * projection a module away from the only thing that can produce its
+ * input. So this file imports **one function** and stays what its
+ * first paragraph says it is.
  *
  * This module registers **additively** on `globalThis.HDML` at
  * import time, never replacing an existing object: a page may load
@@ -59,10 +76,13 @@ import {
   VIEW_ATTRS_LIST,
   familyOf,
 } from "./vocabulary";
+import { diagnostics } from "./validate";
+import type { SerialisableDiagnostic } from "./validate";
 
 /** What this package puts on `globalThis.HDML`. */
 export interface HdmlNamespace {
   supports(tag: string, attr?: string): boolean;
+  diagnostics(view?: Element): readonly SerialisableDiagnostic[];
 }
 
 declare global {
@@ -138,11 +158,17 @@ export function supports(tag: string, attr?: string): boolean {
 }
 
 /**
- * Registers {@link supports} on `globalThis.HDML`, additively.
+ * Registers {@link supports} and `diagnostics` on `globalThis.HDML`,
+ * additively.
  *
  * Idempotent, and it never replaces the object it finds: a second
- * build importing this module installs the same function beside
- * whatever else already lives in the namespace.
+ * build importing this module installs the same functions beside
+ * whatever else already lives in the namespace. ★ A **second**
+ * member does not weaken that — both are assigned onto the object
+ * that was already there, so a host app's own `HDML.whatever`
+ * survives, and so does an `HDML.diagnostics` another build put
+ * there first (it is overwritten in place, not by replacing the
+ * namespace).
  */
 export function registerNamespace(): void {
   const scope = <{ HDML?: Record<string, unknown> }>(
@@ -150,6 +176,7 @@ export function registerNamespace(): void {
   );
   const ns = scope.HDML ?? {};
   ns.supports = supports;
+  ns.diagnostics = diagnostics;
   scope.HDML = ns;
 }
 

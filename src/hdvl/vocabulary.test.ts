@@ -155,10 +155,26 @@ suite("hdvl/vocabulary", () => {
     // `validate.ts` so this fence keeps counting it: a second data
     // tag leaking down would fail this assertion, which is the
     // whole point of the list being exhaustive.
+    //
+    // ★★ `HDML_TAG_SET` is the SECOND named exception (019 step 32),
+    // and it is a wider one: it is the whole vocabulary, data half
+    // included. ⚠ **This fence went red on it, correctly** — the
+    // guard exists so a display element cannot branch on a data tag,
+    // and a set containing every data tag is exactly the shape it
+    // watches for. It is admitted because it is not a tag reaching
+    // an element: it is the segment predicate of the diagnostic
+    // `path` (RFC 019/002 §3.4), whose one and only requirement is
+    // that it be the SAME set `@hdml/parser`'s `elementPath.ts`
+    // builds — two emitters answering to two predicates would
+    // produce two formats wearing one name. It lives here because
+    // this is the one module allowed to import `@hdml/types` (R8).
+    // The test below pins what it must be, so admitting it to this
+    // list costs no coverage.
     const expected = ATTRS_ENUMS.concat([
       "HDVL_TAG_NAMES",
       "HDVL_FAMILIES",
       "HDQL_SORT_BY_TAG",
+      "HDML_TAG_SET",
       "familyOf",
     ]).sort();
     assert.deepEqual(Object.keys(vocab).sort(), expected);
@@ -171,6 +187,34 @@ suite("hdvl/vocabulary", () => {
       "V7's element must come from the published enum (R8)",
     );
     assert.strictEqual(vocab.HDQL_SORT_BY_TAG, "hdml-sort-by");
+  });
+
+  test("★★ HDML_TAG_SET is the WHOLE published vocabulary", () => {
+    // The claim the path walk rests on, and it is asserted against
+    // the published enum rather than against a count — so step 41's
+    // `@hdml/*` bump, which adds `hdml-text` as the vocabulary's
+    // 34th member and the display half's 22nd, widens the segment
+    // set and this test with it, instead of going red on a number.
+    const all = Object.values(allTags);
+    assert.strictEqual(vocabulary.HDML_TAG_SET.size, all.length);
+    for (const tag of all) {
+      assert.isTrue(
+        vocabulary.HDML_TAG_SET.has(tag),
+        `${tag} must be addressable`,
+      );
+    }
+    // ★ A strict SUPERSET of the display half: the data tags are
+    // the point, not an accident. Without them a `path` emitted
+    // here could not agree with one emitted by the parser.
+    for (const tag of Object.values(HDVL_TAG_NAMES)) {
+      assert.isTrue(vocabulary.HDML_TAG_SET.has(tag), tag);
+    }
+    assert.isTrue(vocabulary.HDML_TAG_SET.has(allTags.MODEL));
+    assert.isTrue(vocabulary.HDML_TAG_SET.has(allTags.FIELD));
+    // Membership, never an `hdml-` prefix test — so a misspelling
+    // is not vocabulary and does not become an addressing level.
+    assert.isFalse(vocabulary.HDML_TAG_SET.has("hdml-labl"));
+    assert.isFalse(vocabulary.HDML_TAG_SET.has("div"));
   });
 
   test("HDVL_FAMILIES covers every tag, once", () => {
