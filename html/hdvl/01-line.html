@@ -16,7 +16,7 @@
   <head>
     <meta charset="utf-8" />
     <title>01 — Line</title>
-    <script src="/bin/components.min.js"></script>
+    <script src="../../bin/index.min.js"></script>
     <style>
       body { margin: 2rem; font-family: system-ui, sans-serif; }
       figure { margin: 0; max-width: 760px; }
@@ -57,6 +57,19 @@
       hdml-line.forecast { --hdml-line-color: #94a3b8; --hdml-line-style: dashed; }
       hdml-rule { --hdml-line-width: 1px; --hdml-line-style: dashed;
         --hdml-line-color: #dc2626; }
+      /* 019 items 18+19 — the TICK MODE and the LABEL SKELETON
+         are CSS, not attributes. `count=` and `format=` are
+         inert; `--hdml-tick-count` / `--hdml-text-format` are
+         the only sources `tickSpecOf` and `textsOf` read.
+         Both are `inherits: false` (SPEC §9's exception), so a
+         rule reaches exactly the elements it selects and a
+         view-qualified rule is how one view's guides differ
+         from another's on the same page. */
+      hdml-grid[channel="y"] { --hdml-tick-count: 5; }
+      hdml-tick[channel="x"] { --hdml-tick-count: 12; }
+      hdml-tick[channel="y"] { --hdml-tick-count: 5; }
+      hdml-label[channel="x"] { --hdml-tick-count: 12; --hdml-text-format: MMM; }
+      hdml-label[channel="y"] { --hdml-tick-count: 5; --hdml-text-format: compact-short; }
     </style>
   </head>
   <body>
@@ -90,16 +103,16 @@
                  second frame, and a literal rule), so no single column
                  is the right ceiling — rule 1 authors it. -->
             <hdml-continuous-scale channel="y" min="0" max="2000000">
-              <hdml-grid channel="y" count="5"></hdml-grid>
+              <hdml-grid channel="y"></hdml-grid>
               
               <hdml-axis channel="x"></hdml-axis>
               <hdml-axis channel="y"></hdml-axis>
               
-              <hdml-tick channel="x" count="12"></hdml-tick>
-              <hdml-tick channel="y" count="5"></hdml-tick>
+              <hdml-tick channel="x"></hdml-tick>
+              <hdml-tick channel="y"></hdml-tick>
               
-              <hdml-label channel="x" count="12" format="MMM"></hdml-label>
-              <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y"></hdml-label>
 
               <!-- inherits source from the plane -->
               <hdml-line x="month" y="revenue"></hdml-line>

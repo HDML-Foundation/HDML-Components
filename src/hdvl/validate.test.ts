@@ -1503,31 +1503,31 @@ suite("hdvl/validate — diagnostics", () => {
     </hdml-cartesian-plane>
   `;
 
-  test("⚠ V16 cannot see a CSS declaration", async () => {
-    // ★★ 019 items 18+19, MEASURED rather than reasoned, because
-    // two binding documents disagreed about it.
+  test("★★ V16 READS a CSS declaration", async () => {
+    // ★★★ THE INVERSE of the step-29 test this replaces, and the
+    // reason the three clauses moved pass.
     //
-    // RFC 019/001 §6.3 states that V16 "still catches
-    // `--hdml-tick-count` declared beside `step=` on one guide",
-    // and that a UA rule declaring the property would therefore
-    // fire V16 across the corpus. **Both are false.** `checkV16`
-    // filters `SPEC_ATTRS` through `declared()`, which is a pure
-    // `getAttribute(attr) !== null && raw.trim() !== ""` — so a
-    // declaration of the CSS half is invisible to it, whatever its
-    // origin. An INLINE `style` is asserted here because it is the
-    // strongest author declaration there is: if V16 cannot see
-    // this, no stylesheet rule and no adopted UA sheet can make it
-    // fire either.
+    // Step 29 measured — and pinned here — that `checkV16`,
+    // `checkV20Legend` and `checkV14` all gated on `declared()`, a
+    // pure `getAttribute`, so a CSS declaration was invisible to
+    // every one of them. Step 30 then moved the corpus's `count=`
+    // and `format=` into CSS, which would have taken four error
+    // clauses out of reach of the documented authoring form.
     //
-    // ⚠ **The consequence is not local to this test.** V16's
-    // mutual exclusion, V20(b)'s four-attribute clause and V14's
-    // two `format` clauses all gate on `declared()`. They keep
-    // every tooth they have over the ATTRIBUTE form, which is what
-    // every shipped page still uses — but a page that states the
-    // value in CSS instead is unchecked by all four. Whether they
-    // follow the value into CSS is the migration step's decision;
-    // this test is here so that it is a decision and not a
-    // discovery.
+    // They now read `stated()`, which consults the computed
+    // property for the two keys that have one, and they run in the
+    // **binding** pass because that is the only place a computed
+    // property is readable: measured at step 30, `getComputedStyle`
+    // inside `validateStructure` returns an entirely EMPTY
+    // declaration on firefox — `display` included — and a forced
+    // reflow does not fix it. `""` is indistinguishable from *not
+    // declared*, so a structural-pass implementation would have
+    // been silently inert on one of three engines.
+    //
+    // An INLINE `style` is used because it is the strongest author
+    // declaration there is: if V16 sees this, a stylesheet rule
+    // reaches it too — and the twelve migrated corpus pages are
+    // the evidence that it does.
     const [, view] = await mount(html`
       <hdml-view
         aria-label="v16css"
@@ -1543,15 +1543,47 @@ suite("hdvl/validate — diagnostics", () => {
       </hdml-view>
     `);
     const el = <Element>view.querySelector("hdml-tick");
-    // The declaration really did land — so the silence below is
-    // about what V16 READS and not about a rule that never applied.
+    // The declaration landed…
     assert.strictEqual(
       getComputedStyle(el)
         .getPropertyValue("--hdml-tick-count")
         .trim(),
       "6",
     );
-    // …and V16 says nothing.
+    // …and V16 now says so, naming the PROPERTY beside the
+    // attribute, because that is what the document says. ⚠ This
+    // is the one report in §8 that is mixed-source.
+    assert.lengthOf(said("V16"), 1);
+    assert.strictEqual(
+      messageOf(said("V16")[0]),
+      "--hdml-tick-count and step are mutually exclusive — " +
+        'keep one on <hdml-tick channel="y">',
+    );
+    assert.isTrue(el.matches(":state(error)"));
+  });
+
+  test("⚠ an INERT count= attribute reports nothing", async () => {
+    // ★★ The other half, and the one a reader would not predict.
+    // `count=` is inert as of item 18 — `tickSpecOf` has no
+    // attribute arm — so a `count=` beside a `step=` is NOT a
+    // conflict: the count cannot reach the scale, and V16 saying
+    // *"keep one"* about it would be a report on a dead key.
+    //
+    // ⓘ This state is never published: step 41 removes the
+    // attribute from the vocabulary and 019's single
+    // `@hdml/components` release (step 45) carries both, so no
+    // author ever writes `count=` and is met with this silence.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="v16inert"
+        style="width: 400px; height: 200px"
+      >
+        ${GUIDES(html`
+          <hdml-tick channel="y" step="0.5" count="6"></hdml-tick>
+        `)}
+      </hdml-view>
+    `);
+    const el = <Element>view.querySelector("hdml-tick");
     assert.lengthOf(said("V16"), 0);
     assert.deepEqual(diagnosticsOf(view), []);
     assert.isFalse(el.matches(":state(error)"));
@@ -1566,8 +1598,8 @@ suite("hdvl/validate — diagnostics", () => {
         ${GUIDES(html`
           <hdml-tick
             channel="y"
-            count="3"
             values="[0, 1]"
+            style="--hdml-tick-count: 3"
           ></hdml-tick>
         `)}
       </hdml-view>
@@ -1576,7 +1608,7 @@ suite("hdvl/validate — diagnostics", () => {
     assert.lengthOf(said("V16"), 1);
     assert.strictEqual(
       messageOf(said("V16")[0]),
-      "count and values are mutually exclusive — " +
+      "--hdml-tick-count and values are mutually exclusive — " +
         'keep one on <hdml-tick channel="y">',
     );
     assert.isTrue(bad.matches(":state(error)"));
@@ -1596,17 +1628,17 @@ suite("hdvl/validate — diagnostics", () => {
         ${GUIDES(html`
           <hdml-label
             channel="y"
-            count="3"
             step="0.5"
             values="[0, 1]"
+            style="--hdml-tick-count: 3"
           ></hdml-label>
         `)}
       </hdml-view>
     `);
     assert.strictEqual(
       messageOf(said("V16")[0]),
-      "count, step and values are mutually exclusive — " +
-        'keep one on <hdml-label channel="y">',
+      "--hdml-tick-count, step and values are mutually " +
+        'exclusive — keep one on <hdml-label channel="y">',
     );
     assert.isTrue(paints(okProbe(view).uid));
   });
@@ -1618,7 +1650,10 @@ suite("hdvl/validate — diagnostics", () => {
         style="width: 400px; height: 200px"
       >
         ${GUIDES(html`
-          <hdml-grid channel="y" count="3"></hdml-grid>
+          <hdml-grid
+            channel="y"
+            style="--hdml-tick-count: 3"
+          ></hdml-grid>
           <hdml-tick channel="y" step="0.5"></hdml-tick>
           <hdml-label channel="y" values="[0, 1]"></hdml-label>
         `)}
@@ -1635,7 +1670,11 @@ suite("hdvl/validate — diagnostics", () => {
         style="width: 400px; height: 200px"
       >
         ${GUIDES(html`
-          <hdml-axis channel="y" count="3" step="0.5"></hdml-axis>
+          <hdml-axis
+            channel="y"
+            step="0.5"
+            style="--hdml-tick-count: 3"
+          ></hdml-axis>
         `)}
       </hdml-view>
     `);
@@ -1644,7 +1683,7 @@ suite("hdvl/validate — diagnostics", () => {
     assert.strictEqual(
       messageOf(said("V16")[0]),
       "hdml-axis takes no count, step or values — it spans the " +
-        "whole range; remove count and step",
+        "whole range; remove --hdml-tick-count and step",
     );
     assert.isTrue(bad.matches(":state(error)"));
     assert.strictEqual(errs[0].detail.code, "exclusive-guide-attrs");
@@ -1661,7 +1700,11 @@ suite("hdvl/validate — diagnostics", () => {
         style="width: 400px; height: 200px"
       >
         ${GUIDES(html`
-          <hdml-tick channel="y" count="3" step=""></hdml-tick>
+          <hdml-tick
+            channel="y"
+            step=""
+            style="--hdml-tick-count: 3"
+          ></hdml-tick>
         `)}
       </hdml-view>
     `);
@@ -1721,7 +1764,11 @@ suite("hdvl/validate — diagnostics", () => {
         style="width: 400px; height: 200px"
       >
         ${GUIDES(html`
-          <hdml-tick channel="color" count="3" step="0.5"></hdml-tick>
+          <hdml-tick
+            channel="color"
+            step="0.5"
+            style="--hdml-tick-count: 3"
+          ></hdml-tick>
         `)}
       </hdml-view>
     `);
@@ -1742,7 +1789,10 @@ suite("hdvl/validate — diagnostics", () => {
         style="width: 400px; height: 200px"
       >
         ${GUIDES(html`
-          <hdml-label channel="x" format="MMM"></hdml-label>
+          <hdml-label
+            channel="x"
+            style="--hdml-text-format: MMM"
+          ></hdml-label>
         `)}
       </hdml-view>
     `);
@@ -1769,7 +1819,10 @@ suite("hdvl/validate — diagnostics", () => {
         style="width: 400px; height: 200px"
       >
         ${GUIDES(html`
-          <hdml-label channel="y" format="compact-short"></hdml-label>
+          <hdml-label
+            channel="y"
+            style="--hdml-text-format: compact-short"
+          ></hdml-label>
         `)}
       </hdml-view>
     `);
@@ -1786,9 +1839,8 @@ suite("hdvl/validate — diagnostics", () => {
         ${GUIDES(html`
           <hdml-label
             channel="x"
-            count="3"
             values='["a"]'
-            format="MMM"
+            style="--hdml-tick-count: 3; --hdml-text-format: MMM"
           ></hdml-label>
         `)}
       </hdml-view>
@@ -1805,7 +1857,11 @@ suite("hdvl/validate — diagnostics", () => {
         style="width: 400px; height: 200px"
       >
         ${GUIDES(html`
-          <hdml-tick channel="y" count="3" step="0.5"></hdml-tick>
+          <hdml-tick
+            channel="y"
+            step="0.5"
+            style="--hdml-tick-count: 3"
+          ></hdml-tick>
         `)}
       </hdml-view>
     `);
@@ -1874,7 +1930,10 @@ suite("hdvl/validate — diagnostics", () => {
         style="width: 400px; height: 200px"
       >
         ${KEY(html`
-          <hdml-legend channel="color" count="4"></hdml-legend>
+          <hdml-legend
+            channel="color"
+            style="--hdml-tick-count: 4"
+          ></hdml-legend>
         `)}
       </hdml-view>
     `);
@@ -1882,8 +1941,9 @@ suite("hdvl/validate — diagnostics", () => {
     assert.lengthOf(said("V20"), 1);
     assert.strictEqual(
       messageOf(said("V20")[0]),
-      "count needs a continuous color scale — this legend's " +
-        "scale is ordinal, and a key always renders the full domain",
+      "--hdml-tick-count needs a continuous color scale — this " +
+        "legend's scale is ordinal, and a key always renders the " +
+        "full domain",
     );
     assert.isTrue(bad.matches(":state(error)"));
     assert.strictEqual(errs[0].detail.code, "channel-guide-fit");
@@ -1903,10 +1963,12 @@ suite("hdvl/validate — diagnostics", () => {
         ${KEY(html`
           <hdml-legend
             channel="color"
-            count="4"
             step="1"
             values='["a"]'
-            format="compact-short"
+            style="
+              --hdml-tick-count: 4;
+              --hdml-text-format: compact-short;
+            "
           ></hdml-legend>
         `)}
       </hdml-view>
@@ -1914,9 +1976,9 @@ suite("hdvl/validate — diagnostics", () => {
     assert.lengthOf(said("V20"), 1);
     assert.strictEqual(
       messageOf(said("V20")[0]),
-      "count, step, values and format need a continuous color " +
-        "scale — this legend's scale is ordinal, and a key always " +
-        "renders the full domain",
+      "--hdml-tick-count, step, values and --hdml-text-format " +
+        "need a continuous color scale — this legend's scale is " +
+        "ordinal, and a key always renders the full domain",
     );
     assert.isTrue(paints(okProbe(view).uid));
   });
@@ -1930,8 +1992,10 @@ suite("hdvl/validate — diagnostics", () => {
         ${RAMP(html`
           <hdml-legend
             channel="color"
-            count="4"
-            format="compact-short"
+            style="
+              --hdml-tick-count: 4;
+              --hdml-text-format: compact-short;
+            "
           ></hdml-legend>
         `)}
       </hdml-view>
@@ -1955,7 +2019,10 @@ suite("hdvl/validate — diagnostics", () => {
       >
         <hdml-cartesian-plane>
           <hdml-continuous-scale channel="y" min="0" max="1">
-            <hdml-legend channel="color" count="4"></hdml-legend>
+            <hdml-legend
+              channel="color"
+              style="--hdml-tick-count: 4"
+            ></hdml-legend>
             <hdvl-probe id="ok"></hdvl-probe>
           </hdml-continuous-scale>
         </hdml-cartesian-plane>
@@ -1981,8 +2048,8 @@ suite("hdvl/validate — diagnostics", () => {
         ${RAMP(html`
           <hdml-legend
             channel="color"
-            count="4"
             step="10"
+            style="--hdml-tick-count: 4"
           ></hdml-legend>
         `)}
       </hdml-view>
@@ -1990,8 +2057,8 @@ suite("hdvl/validate — diagnostics", () => {
     assert.lengthOf(said("V16"), 1);
     assert.strictEqual(
       messageOf(said("V16")[0]),
-      "count and step are mutually exclusive — keep one on " +
-        '<hdml-legend channel="color">',
+      "--hdml-tick-count and step are mutually exclusive — " +
+        'keep one on <hdml-legend channel="color">',
     );
     assert.isTrue(paints(okProbe(view).uid));
   });
@@ -2005,8 +2072,8 @@ suite("hdvl/validate — diagnostics", () => {
         ${KEY(html`
           <hdml-legend
             channel="color"
-            count="4"
             step="10"
+            style="--hdml-tick-count: 4"
           ></hdml-legend>
         `)}
       </hdml-view>
@@ -2025,7 +2092,10 @@ suite("hdvl/validate — diagnostics", () => {
         style="width: 400px; height: 200px"
       >
         ${RAMP(html`
-          <hdml-legend channel="color" format="MMM"></hdml-legend>
+          <hdml-legend
+            channel="color"
+            style="--hdml-text-format: MMM"
+          ></hdml-legend>
         `)}
       </hdml-view>
     `);
@@ -2056,7 +2126,7 @@ suite("hdvl/validate — diagnostics", () => {
           >
             <hdml-label
               channel="x"
-              format="compact-short"
+              style="--hdml-text-format: compact-short"
             ></hdml-label>
             <hdvl-probe id="ok"></hdvl-probe>
           </hdml-datetime-scale>
@@ -2084,7 +2154,7 @@ suite("hdvl/validate — diagnostics", () => {
         ${RAMP(html`
           <hdml-legend
             channel="color"
-            format="MMM compact-short"
+            style="--hdml-text-format: MMM compact-short"
           ></hdml-legend>
         `)}
       </hdml-view>
@@ -2092,8 +2162,9 @@ suite("hdvl/validate — diagnostics", () => {
     assert.lengthOf(said("V14"), 1);
     assert.strictEqual(
       messageOf(said("V14")[0]),
-      'format="MMM compact-short" mixes number stems and date ' +
-        "letters — a CLDR skeleton is one token space or the other",
+      "--hdml-text-format: MMM compact-short mixes number stems " +
+        "and date letters — a CLDR skeleton is one token space or " +
+        "the other",
     );
     assert.isTrue(paints(okProbe(view).uid));
   });
@@ -2105,27 +2176,38 @@ suite("hdvl/validate — diagnostics", () => {
         style="width: 400px; height: 200px"
       >
         ${RAMP(html`
-          <hdml-legend channel="color" format="qqq"></hdml-legend>
+          <hdml-legend
+            channel="color"
+            style="--hdml-text-format: qqq"
+          ></hdml-legend>
         `)}
       </hdml-view>
     `);
     assert.lengthOf(said("V14"), 1);
     assert.strictEqual(
       messageOf(said("V14")[0]),
-      'format="qqq" is not a CLDR skeleton — write number stems ' +
-        "(compact-short) or date letters (MMM)",
+      "--hdml-text-format: qqq is not a CLDR skeleton — write " +
+        "number stems (compact-short) or date letters (MMM)",
     );
     assert.isTrue(paints(okProbe(view).uid));
   });
 
   test("V14 — an empty format reads as absent", async () => {
+    // 019 items 18+19: the ATTRIBUTE no longer speaks, so the
+    // case this pins is an author who writes the declaration and
+    // leaves it empty. It states no skeleton, and reporting it as
+    // *"not a CLDR skeleton"* would be a report about a string
+    // nobody wrote.
     const [, view] = await mount(html`
       <hdml-view
         aria-label="v14h"
         style="width: 400px; height: 200px"
       >
         ${RAMP(html`
-          <hdml-legend channel="color" format=""></hdml-legend>
+          <hdml-legend
+            channel="color"
+            style="--hdml-text-format: ;"
+          ></hdml-legend>
         `)}
       </hdml-view>
     `);
@@ -2232,7 +2314,8 @@ suite("hdvl/validate — diagnostics", () => {
     // R11's SURVIVOR, and the case 017 deliberately left live.
     // Cause 1 — §4.8's ceiling ladder makes `count` an upper bound
     // over a QUANTISED reachable set — was decided at step 02 as
-    // documentation only. Its named cost is this: `count="2"` over
+    // documentation only. Its named cost is this:
+    // `--hdml-tick-count: 2` over
     // `09-polar-area`'s own domain picks a 500 B step, the ladder
     // yields the single tick {0}, and suppressing the degenerate
     // ring at the pole (017 R11's fix) leaves the grid drawing
@@ -2247,7 +2330,10 @@ suite("hdvl/validate — diagnostics", () => {
               min="0"
               max="423559121966"
             >
-              <hdml-grid channel="radius" count="2"></hdml-grid>
+              <hdml-grid
+                channel="radius"
+                style="--hdml-tick-count: 2"
+              ></hdml-grid>
               <hdvl-probe id="ok"></hdvl-probe>
             </hdml-continuous-scale>
           </hdml-continuous-scale>
@@ -2287,7 +2373,11 @@ suite("hdvl/validate — diagnostics", () => {
     // which is what makes this a live rule and not a boot check.
     lines.length = 0;
     errs.length = 0;
-    grid.removeAttribute("count");
+    // ⚠ The count lives in the STYLE now, so clearing the
+    // attribute would leave it in place and the grid would keep
+    // erroring — this is what recovery looks like after items
+    // 18+19.
+    (<HTMLElement>grid).style.removeProperty("--hdml-tick-count");
     grid.setAttribute("step", "100000000000");
     view.markDirty();
     await quiesce(view);
@@ -2315,7 +2405,10 @@ suite("hdvl/validate — diagnostics", () => {
               min="0"
               max="423559121966"
             >
-              <hdml-grid channel="radius" count="5"></hdml-grid>
+              <hdml-grid
+                channel="radius"
+                style="--hdml-tick-count: 5"
+              ></hdml-grid>
               <hdvl-probe id="ok"></hdvl-probe>
             </hdml-continuous-scale>
           </hdml-continuous-scale>

@@ -12575,9 +12575,15 @@
                 "text": "EventQueue"
               },
               "description": "The frame's outward-event queue (§5.11)."
+            },
+            {
+              "name": "measured",
+              "type": {
+                "text": "ReadonlyMap<HdvlElement, Measured>"
+              }
             }
           ],
-          "description": "The **binding pass** (§8.2) — on adopted data and the resolved\nscales, run once per frame.\n\n**Three rules and one clause, each here by necessity.** Both\nhalves of\n**V2** need what the frame produced: the delivered kind is\n`Delivery.type`, and §4.5's `log`-domain clause is checked *after*\ndomain resolution. **V4**'s runtime half needs a `kind:\"absent\"`\ndelivery, which is the seam's own answer to *\"that column is not\nin the result set\"*. **V5** counts *delivered* rows, which is what\n§8.3's *\"against `rows`\"* means. V3, V8, V9, V10, V18 and V19 are\nattribute-only and run in the structural pass beside V1 and V13,\nV4's local-ref half included, as are all of V14, V16 and V20 —\nevery one of them read off attributes and the resolved scale's\n**tag**. **Two clauses** ride along under V2, both because a\ncolumn-derived domain has no size until the frame ran: SPEC §9's\npalette exhaustion (checkPalette) and 017 R8's angular\nband collision (checkAngleCollision). A **third**, 017\nR11's pole-only radius grid, is drained here rather than checked\nhere — it is decided in COMPUTE by the grid that met the ladder\n(reportRadiusGridAtPole). V15 is a\n*behaviour* —\n`nice` moving\nderived endpoints only — and is asserted as one rather than\nreported, because SPEC says it is *\"a no-op, not an error\"*."
+          "description": "The **binding pass** (§8.2) — on adopted data and the resolved\nscales, run once per frame.\n\n**Three rules and one clause, each here by necessity.** Both\nhalves of\n**V2** need what the frame produced: the delivered kind is\n`Delivery.type`, and §4.5's `log`-domain clause is checked *after*\ndomain resolution. **V4**'s runtime half needs a `kind:\"absent\"`\ndelivery, which is the seam's own answer to *\"that column is not\nin the result set\"*. **V5** counts *delivered* rows, which is what\n§8.3's *\"against `rows`\"* means. V3, V8, V9, V10, V18 and V19 are\nattribute-only and run in the structural pass beside V1 and V13,\nV4's local-ref half included, as is V20's **arm (a)** — every one\nof them read off attributes and the resolved scale's **tag**.\n⚠ **V14, V16 and V20(b) used to be in that list and are now\nhere**, for the reason the loop below states: 019 items 18+19\nmoved `count` and `format` into CSS, and a computed property is\nnot readable in the structural pass at all.\n\n**Two clauses** ride along under V2, both because a\ncolumn-derived domain has no size until the frame ran: SPEC §9's\npalette exhaustion (checkPalette) and 017 R8's angular\nband collision (checkAngleCollision). A **third**, 017\nR11's pole-only radius grid, is drained here rather than checked\nhere — it is decided in COMPUTE by the grid that met the ladder\n(reportRadiusGridAtPole). V15 is a\n*behaviour* —\n`nice` moving\nderived endpoints only — and is asserted as one rather than\nreported, because SPEC says it is *\"a no-op, not an error\"*."
         },
         {
           "kind": "function",
@@ -13193,7 +13199,7 @@
                   "description": "The frame's snapshot."
                 }
               ],
-              "description": "Rewrites the state sheet from one frame's snapshot (017 R7).\n\n**Per frame, not per change**, and the choice is deliberate: the\ninputs are `Measured.props`, which MEASURE has already harvested\nfor every element from the one computed style it reads anyway\n(all fifty-one properties, since 019 items 18+19), so building the\ntext costs a walk over data already in hand and **no new style\nread**. A per-change path would need its own invalidation route\ninto a mechanism whose only route is the frame — R24's sentinel\nalready fires a frame for exactly these properties.\n\n`replaceSync` is called **only when the text changed**, so the\ncommon case — no widget declaring a state — is one string\ncomparison against `\"\"`."
+              "description": "Rewrites the state sheet from one frame's snapshot (017 R7).\n\n**Per frame, not per change**, and the choice is deliberate: the\ninputs are `Measured.props`, which MEASURE has already harvested\nfor every element from the one computed style it reads anyway\n(all fifty-one, since 019 items 18+19), so building the\ntext costs a walk over data already in hand and **no new style\nread**. A per-change path would need its own invalidation route\ninto a mechanism whose only route is the frame — R24's sentinel\nalready fires a frame for exactly these properties.\n\n`replaceSync` is called **only when the text changed**, so the\ncommon case — no widget declaring a state — is one string\ncomparison against `\"\"`."
             },
             {
               "kind": "method",

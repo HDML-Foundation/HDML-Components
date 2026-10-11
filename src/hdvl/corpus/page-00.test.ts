@@ -24,7 +24,8 @@ import {
 /**
  * ★ **`00-minimal` — the floor** (RFC §10.1 E, SPEC §4).
  *
- * Forty lines, **no CSS beyond a width**, no `<hdml-io>`, no `source`
+ * Forty lines, **one CSS rule beyond a width** (019 items 18+19
+ * made a tick mode a declaration), no `<hdml-io>`, no `source`
  * anywhere. Everything else is a spec default: the view's `2 / 1`
  * aspect ratio, the UA plane gutter, SPEC §3's guide placement, a
  * bandwidth of `0.8`, and `currentColor` marks. If this page does not
@@ -79,10 +80,21 @@ suite("corpus 00-minimal", () => {
     await assertInvariants("00-minimal");
   });
 
-  test("it renders with no CSS and no provider", async () => {
+  test("it renders with ONE rule and no provider", async () => {
+    // ⚠ **The floor moved at 019 step 30, by one rule.** This page
+    // carried `sheets: 0` because its only non-default instruction
+    // was a `width` in an inline `style`. The y label asks for
+    // five ticks, and items 18+19 make a tick MODE a CSS
+    // declaration and nothing else — `count=` is inert — so the
+    // page now has one `<style>` block holding one rule.
+    //
+    // The alternative was to drop the count, and that was
+    // rejected: five ticks over `[0, 500]` is what makes the y
+    // axis legible, and a floor page that renders badly teaches
+    // the wrong floor. The page's own header states the amendment.
     const page = await mountCorpus("00-minimal");
     assert.lengthOf(page.views, 1);
-    assert.strictEqual(page.sheets, 0);
+    assert.strictEqual(page.sheets, 1);
     assert.strictEqual(page.removedIo, 0);
     assertRenders(page.views[0]);
   });
@@ -108,7 +120,8 @@ suite("corpus 00-minimal", () => {
     // off the axis by HALF its own gutter.** R2's corrected model
     // centres a run on its tick in both dimensions, so with no
     // clearance half of every run would sit over the bars — and on
-    // THIS page, which authors no CSS beyond a width, there would
+    // THIS page, which authors nothing but a tick count, there
+    // would
     // be no author to fix it. The half is derived in `ua.ts`'s
     // `LABEL_CLEARANCE`; here it is re-derived from `GUTTER`, so a
     // clearance that stopped tracking the gutter fails here first.

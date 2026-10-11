@@ -17,6 +17,7 @@ import {
   negativeZeros,
   nodeCount,
   numberCol,
+  propsOf,
   result,
   stringCol,
   stripText,
@@ -359,7 +360,7 @@ suite("corpus 09-polar-area", () => {
     );
     const color = scaleOf(<HdvlElement>(<unknown>hit));
     assert.isNotNull(color);
-    const ticks = color?.ticks(tickSpecOf(el)) ?? [];
+    const ticks = color?.ticks(tickSpecOf(el, propsOf(el))) ?? [];
     // `count="4"` asks for four boundaries; §4.8's ladder answers
     // with three over `[0, 2210]`, and a legend renders what the
     // ladder gave rather than padding to the request.

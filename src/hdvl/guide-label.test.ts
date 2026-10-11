@@ -206,8 +206,7 @@ function xPage(style: string) {
           <hdml-continuous-scale channel="y" min="0" max="200">
             <hdml-label
               channel="x"
-              count="3"
-              style="${style}"
+              style="${style}; --hdml-tick-count: 3"
             ></hdml-label>
             <hdvl-probe></hdvl-probe>
           </hdml-continuous-scale>
@@ -325,9 +324,13 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
     const above = await mount(
       xPage("top: auto; bottom: 100%; height: 24px"),
     );
-    const left = await mount(page('count="3"'));
+    const left = await mount(page("", "--hdml-tick-count: 3;"));
     const right = await mount(
-      page('count="3"', "left: 100%; right: auto; width: 40px;"),
+      page(
+        "",
+        "left: 100%; right: auto; width: 40px; " +
+          "--hdml-tick-count: 3;",
+      ),
     );
     for (const node of [
       ...texts(below, "x"),
@@ -362,9 +365,9 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
     // be canonicalised to degrees on every engine, so `cssAngle`
     // converts; asserting `0.25turn === 90` is the only form of this
     // test that cannot pass by the string happening to match.
-    const plain = await mount(page('count="3"'));
+    const plain = await mount(page("", "--hdml-tick-count: 3;"));
     const turned = await mount(
-      page('count="3"', "--hdml-text-rotate: 0.25turn"),
+      page("", "--hdml-text-rotate: 0.25turn; --hdml-tick-count: 3;"),
     );
     for (const node of texts(plain)) {
       assert.strictEqual(node.rotate, 0);
@@ -406,7 +409,10 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
     for (const want of <const>["start", "end"]) {
       const x = await mount(xPage(`--hdml-text-anchor: ${want}`));
       const y = await mount(
-        page('count="3"', `--hdml-text-anchor: ${want}`),
+        page(
+          "",
+          `--hdml-text-anchor: ${want}; --hdml-tick-count: 3;`,
+        ),
       );
       const runs = [...texts(x, "x"), ...texts(y)];
       assert.isAbove(runs.length, 0);
@@ -425,9 +431,9 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
     // computes to its initial, so "the author said nothing" has to
     // be spelled as a value — and the two spellings must be
     // indistinguishable in the scene.
-    const absent = await mount(page('count="3"'));
+    const absent = await mount(page("", "--hdml-tick-count: 3;"));
     const explicit = await mount(
-      page('count="3"', "--hdml-text-anchor: auto"),
+      page("", "--hdml-text-anchor: auto; --hdml-tick-count: 3;"),
     );
     assert.deepEqual(
       roundDeep(texts(explicit), P.precision),
@@ -503,7 +509,7 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
               <hdml-label
                 channel="y"
                 values="[900000, 1200000, 1500000]"
-                format="compact-short"
+                style="--hdml-text-format: compact-short"
               ></hdml-label>
               <hdvl-probe></hdvl-probe>
             </hdml-continuous-scale>
@@ -546,7 +552,7 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
               <hdml-label
                 channel="y"
                 values="[1200000]"
-                format="compact-long"
+                style="--hdml-text-format: compact-long"
               ></hdml-label>
               <hdvl-probe></hdvl-probe>
             </hdml-continuous-scale>
@@ -604,7 +610,7 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
               <hdml-label
                 channel="x"
                 values='["2026-01-01T02:00:00Z"]'
-                format="MMM"
+                style="--hdml-text-format: MMM"
               ></hdml-label>
               <hdvl-probe></hdvl-probe>
             </hdml-datetime-scale>
@@ -661,17 +667,22 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
     assert.strictEqual(new Set(shown).size, 3);
   });
 
-  test("★ --hdml-text-format wins over format=", async () => {
-    // ★ 019 item 19, and the four cases are mounted rather than
-    // transcribed: the assertion is that the two SOURCES agree or
-    // disagree, never that a particular locale renders `20%`.
+  test("★ --hdml-text-format is the only source", async () => {
+    // ★ 019 items 19 and 30, and the five cases are mounted
+    // rather than transcribed: the assertion is which SOURCE the
+    // reader obeys, never that a particular locale renders `20%`.
     //
-    // ★★ `property` is also the whole proof that MEASURE harvests a
-    // newly registered property for free — the ONLY route from an
-    // inline `style` to `textsOf` is `Measured.props`, which
+    // ★★ `property` is also the whole proof that MEASURE harvests
+    // a newly registered property for free — the ONLY route from
+    // an inline `style` to `textsOf` is `Measured.props`, which
     // `measure.ts` fills by looping `HDVL_PROPERTIES`. If
-    // registration had not been enough, this mount would render
-    // like `bare` instead of like `attribute`.
+    // registration had not been enough, `property` would render
+    // like `bare`.
+    //
+    // ⚠ **The reference moved at step 30.** While both arms
+    // existed, `attribute` was the yardstick every other case was
+    // compared against. The attribute arm is now deleted, so
+    // `attribute` IS `bare`, and the yardstick is `property`.
     const SKELETON = "percent precision-integer";
     // ⚠ `OTHER` must DISCRIMINATE, and the obvious choice does not:
     // this page's domain is `[0, 0.2]`, where `compact-short` is a
@@ -695,40 +706,48 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
     const other = read(await mount(page(`format="${OTHER}"`)));
     const bare = read(await mount(page("")));
 
-    // 1 · property only — identical to the attribute saying it.
-    assert.deepEqual(property, attribute);
-    // 2 · attribute only — and it is NOT the bare rendering, which
-    // is what makes case 3's disagreement meaningful.
-    assert.notDeepEqual(other, bare);
-    assert.notDeepEqual(other, attribute);
-    // 3 · ★ BOTH, DISAGREEING — the property answers. Without this
-    // case a reader that preferred the attribute would pass 1 and
-    // 2 both.
-    assert.deepEqual(both, attribute);
+    // 1 · property only — it FORMATS, and differs from bare.
+    // Without this the four below could all hold on a reader
+    // that formatted nothing at all.
+    assert.notDeepEqual(property, bare);
+    for (const text of property) {
+      assert.include(text, "%");
+    }
+    // 2 · ★★★ ATTRIBUTE ONLY — it renders exactly like BARE,
+    // both for the skeleton the property uses and for a
+    // DIFFERENT one. ⚠ This is the pair that makes the whole
+    // migration non-vacuous: an arm that survived would make
+    // either of these differ from `bare`, and step 30 would be a
+    // no-op that passed every other gate in this file.
+    assert.deepEqual(attribute, bare);
+    assert.deepEqual(other, bare);
+    // 3 · both, disagreeing — the property answers, and it is
+    // now the only thing that could have.
+    assert.deepEqual(both, property);
     assert.notDeepEqual(both, other);
     // 4 · neither — the empty skeleton falls through to the
     // locale's default, exactly as before either source existed.
-    assert.lengthOf(bare, attribute.length);
+    assert.lengthOf(bare, property.length);
   });
 
-  test("★ format= serves when the property is empty", async () => {
-    // ⚠ THE FALLBACK ARM, ASSERTED ON ITS OWN. It is what keeps the
-    // 29 whole-`Scene` goldens and the 13 live pages still through
-    // this step: every page carries `format=` and no rule declares
-    // the property, so `""` is the computed value everywhere and
-    // the attribute is what renders. Step 30 deletes this arm, and
-    // depends on it working until it does.
+  test("★ format= serves NOTHING once the arm is gone", async () => {
+    // ⚠ THE DELETED ARM, ASSERTED ON ITS OWN — the inverse of the
+    // step-29 test this replaces. Until step 30 an empty property
+    // fell through to `format=`, and that arm is what carried the
+    // 29 goldens and the 13 live pages through item 19's
+    // registration. It is now deleted: the attribute is inert, and
+    // the only thing that renders a skeleton is the property.
     const view = await mount(
-      page('format="percent precision-integer"'),
+      page(`format="percent precision-integer"`),
     );
     const shown = texts(view).map((n) => n.text);
     assert.isTrue(shown.length > 0);
     for (const text of shown) {
-      assert.include(text, "%");
+      assert.notInclude(text, "%");
     }
     // …and the computed property really is at its initial here, so
-    // the assertion above is about the FALLBACK and not about a
-    // property that happened to carry the same skeleton.
+    // the silence above is the ARM being gone and not a property
+    // that happened to carry an empty skeleton.
     const label = view.querySelector("hdml-label");
     assert.isNotNull(label);
     assert.strictEqual(
@@ -742,7 +761,7 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
     // ladder: `tickSpecOf` is handed `m.props` at the one
     // production site that paints a label, so a declaration on the
     // element changes the tick SET.
-    const three = await mount(page('count="3"'));
+    const three = await mount(page("", "--hdml-tick-count: 3;"));
     const styled = await mount(
       page('count="3"', "--hdml-tick-count: 6"),
     );
@@ -753,10 +772,18 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
       scaleOf(styled, "y").ticks({ count: 6 }).length,
     );
     assert.notStrictEqual(texts(styled).length, texts(three).length);
+    // ★ And the attribute on its own reaches nothing: `count="3"`
+    // with no rule renders the ladder's answer for an ABSENT
+    // count, not for three.
+    const attrOnly = await mount(page('count="3"'));
+    assert.lengthOf(
+      texts(attrOnly),
+      scaleOf(attrOnly, "y").ticks({}).length,
+    );
   });
 
   test("its role is guide, and the scene round-trips", async () => {
-    const view = await mount(page('count="3"'));
+    const view = await mount(page("", "--hdml-tick-count: 3;"));
     assert.strictEqual(groupOf(view).role, "guide");
     assert.isTrue(view.matches(":state(empty)"));
     const scene = sceneOf(view, P);
@@ -774,7 +801,10 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
         <hdml-polar-plane>
           <hdml-continuous-scale channel="angle" min="0" max="4">
             <hdml-continuous-scale channel="radius" min="0" max="10">
-              <hdml-label channel="angle" count="4"></hdml-label>
+              <hdml-label
+                channel="angle"
+                style="--hdml-tick-count: 4"
+              ></hdml-label>
               <hdvl-probe></hdvl-probe>
             </hdml-continuous-scale>
           </hdml-continuous-scale>
@@ -849,17 +879,18 @@ suite("hdvl/guide-label — rendered strings", () => {
 
   test("SPEC §7's axis reads 0.9M, 1.2M, 1.5M", async () => {
     if (!only) return;
-    assert.deepEqual(await shown('format="compact-short"'), [
-      "0.9M",
-      "1.2M",
-      "1.5M",
-    ]);
+    assert.deepEqual(
+      await shown('style="--hdml-text-format: compact-short"'),
+      ["0.9M", "1.2M", "1.5M"],
+    );
   });
 
   test("a currency skeleton keeps its sign", async () => {
     if (!only) return;
     assert.deepEqual(
-      await shown('format="currency/USD compact-short .#"'),
+      await shown(
+        'style="--hdml-text-format: currency/USD compact-short .#"',
+      ),
       ["$0.9M", "$1.2M", "$1.5M"],
     );
   });

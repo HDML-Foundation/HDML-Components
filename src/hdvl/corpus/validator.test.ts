@@ -8,7 +8,11 @@ import { assert } from "@open-wc/testing";
 import "../index";
 import type { Diagnostic, RuleId } from "../validate";
 import type { HdmlViewElement } from "../view";
-import { mountCorpus, pageSource } from "../../testing/corpus";
+import {
+  mountCorpus,
+  pageSource,
+  quiesce,
+} from "../../testing/corpus";
 import { diagnosticsOf } from "../validate";
 
 /**
@@ -99,6 +103,16 @@ const PAGES: readonly (readonly [string, number])[] = [
  *   the thirteen mounts below, silent on all of them.
  * - `authored` — runs in the binding pass but off an **authored**
  *   domain, so it is live in this file with no provider.
+ *   ⚠ **V14, V16 and V20 moved from `structural` to here at 019
+ *   step 30**: items 18+19 put `count` and `format` into CSS, and
+ *   a computed property is not readable in the structural pass at
+ *   all, so the three clauses that read them run in the frame.
+ *   V20 is **split** — arm (a), a positional guide on a
+ *   non-positional channel, is still structural; only the legend
+ *   arm (b) moved — and the ledger carries one verdict per rule,
+ *   so the wider of the two is recorded. ★ That is why
+ *   {@link reindexed} drives a FRAME and not only a `reindex()`:
+ *   without one this gate would be blind to all three.
  * - `delivered` — runs in the binding pass off delivered columns;
  *   silent across the corpus, asserted by the thirteen
  *   `page-NN.test.ts` suites with each page's own fixture.
@@ -134,15 +148,15 @@ const LEDGER: Readonly<
   V11: "source",
   V12: "source",
   V13: "structural",
-  V14: "structural",
+  V14: "authored",
   // §11: "nice on a fully authored domain is a no-op, not an
   // error" — there is nothing to report, so nothing reports it.
   V15: "behaviour",
-  V16: "structural",
+  V16: "authored",
   V17: "structural",
   V18: "structural",
   V19: "structural",
-  V20: "structural",
+  V20: "authored",
   // ★ W1 — an unknown `hdml-*` element or an unrecognised
   // attribute. `unknown-construct` is in the union and nothing
   // raises it. Found by this pass; the tree claimed one uncalled
@@ -542,9 +556,20 @@ suite("corpus validator gate (the negative control)", () => {
    * T2), so a rule reached by an unpublished attribute would
    * silently never re-run and the control would pass for the
    * wrong reason.
+   *
+   * ⚠⚠ **And a FRAME is driven, not only the reindex** — 019 step
+   * 30. V14, V16 and V20(b) read `count` and `format` off the
+   * computed property, which only `Measured.props` carries, so
+   * they run in the binding pass. `reindex()` alone leaves every
+   * one of them unrun, and a control written against it passes by
+   * reporting nothing. Measured: with the frame these three come
+   * back with their messages byte-identical; without it they are
+   * silent.
    */
-  function reindexed(view: HdmlViewElement): string[] {
+  async function reindexed(view: HdmlViewElement): Promise<string[]> {
     view.reindex();
+    view.markDirty();
+    await quiesce([view]);
     return report([view]);
   }
 
@@ -554,7 +579,7 @@ suite("corpus validator gate (the negative control)", () => {
     const plane = view.querySelector("hdml-cartesian-plane");
     assert.deepEqual(report([view]), []);
     plane?.removeAttribute("source");
-    const found = reindexed(view);
+    const found = await reindexed(view);
     assert.isNotEmpty(found);
     assert.include(
       found.join("\n"),
@@ -574,7 +599,7 @@ suite("corpus validator gate (the negative control)", () => {
     // The x axis moves up one level, beside the y scale — a
     // level that now holds a scale AND a widget.
     outer?.appendChild(<Node>axis);
-    const found = reindexed(view);
+    const found = await reindexed(view);
     assert.include(
       found.join("\n"),
       "scales and widgets cannot share a level — move " +
@@ -589,7 +614,7 @@ suite("corpus validator gate (the negative control)", () => {
     assert.isNotNull(label);
     assert.deepEqual(report([view]), []);
     label?.setAttribute("step", "100");
-    const found = reindexed(view);
+    const found = await reindexed(view);
     assert.include(
       found.join("\n"),
       // The list names the attributes actually written, not the
@@ -618,7 +643,9 @@ suite("corpus validator gate (the negative control)", () => {
     const sort = frame?.querySelector("hdml-sort-by") ?? null;
     assert.isNotNull(sort);
     sort?.remove();
-    const v7 = reindexed(view).filter((l) => l.startsWith("V7 "));
+    const v7 = (await reindexed(view)).filter((l) =>
+      l.startsWith("V7 "),
+    );
     assert.deepEqual(v7, [
       "V7 unpinned-row-order <hdml-line> — row order is slice " +
         'order — pin it with <hdml-sort-by> in "revenue_m"',
@@ -635,7 +662,7 @@ suite("corpus validator gate (the negative control)", () => {
     assert.isNotNull(axis);
     assert.deepEqual(report([view]), []);
     axis?.setAttribute("channel", "color");
-    const found = reindexed(view);
+    const found = await reindexed(view);
     assert.include(
       found.join("\n"),
       "the color channel has no positions — use hdml-legend",

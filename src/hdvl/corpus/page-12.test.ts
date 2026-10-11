@@ -18,6 +18,7 @@ import {
   negativeZeros,
   nodeCount,
   pageSource,
+  propsOf,
   quiesce,
   stripText,
   withoutDeferred,
@@ -687,7 +688,7 @@ suite("corpus 12-coverage (A, the ramp legend)", () => {
       'hdml-continuous-scale[channel="color"]',
     );
     const color = scaleOf(<HdvlElement>(<unknown>hit));
-    const ticks = color?.ticks(tickSpecOf(el)) ?? [];
+    const ticks = color?.ticks(tickSpecOf(el, propsOf(el))) ?? [];
     assert.lengthOf(ticks, 5);
     const key = goldenOf(view).groups.filter(
       (g) => g.tag === "hdml-legend",
@@ -730,7 +731,7 @@ suite("corpus 12-coverage (A, the ramp legend)", () => {
     );
     const color = scaleOf(<HdvlElement>(<unknown>hit));
     assert.isNotNull(color);
-    const ticks = color?.ticks(tickSpecOf(el)) ?? [];
+    const ticks = color?.ticks(tickSpecOf(el, propsOf(el))) ?? [];
     const want = formatCompactSet(
       ticks.map((t) => Number(t.value)),
       "",
@@ -907,7 +908,7 @@ suite("corpus 12-coverage (D, the symlog day)", () => {
     const label = <HdvlElement>(
       (<unknown>view.querySelector('hdml-label[channel="x"]'))
     );
-    const spec = tickSpecOf(label);
+    const spec = tickSpecOf(label, propsOf(label));
     assert.strictEqual(spec.count, 5);
     const [lo, hi] = x?.domain()?.extent ?? [NaN, NaN];
     const got = (x?.ticks(spec) ?? []).map((t) => Number(t.value));

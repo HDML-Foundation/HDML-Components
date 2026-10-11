@@ -504,7 +504,7 @@ export class HdmlViewElement extends HdvlElement {
     // produced — the resolved domain most of all — and because a
     // `writeState` mid-phase would invalidate style in the middle
     // of the pass that is reading it.
-    validateBindings(this, elements, this.events);
+    validateBindings(this, elements, this.events, result.measured);
     // R20's W4. The scene is already painted, deliberately: the
     // rule is "warn and keep rendering", so the warning follows the
     // paint it did not prevent, and the count is of what was

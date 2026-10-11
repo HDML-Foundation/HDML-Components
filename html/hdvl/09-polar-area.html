@@ -19,7 +19,7 @@
   <head>
     <meta charset="utf-8" />
     <title>09 — Polar area</title>
-    <script src="/bin/components.min.js"></script>
+    <script src="../../bin/index.min.js"></script>
     <style>
       body { margin: 2rem; font-family: system-ui, sans-serif; }
       figure { margin: 0 0 3rem; max-width: 480px; }
@@ -52,6 +52,17 @@
          not own — the outline thickens on the hovered wedge only */
       hdml-arc { --hdml-line-width: 1px; --hdml-line-color: #ffffff;
         --hdml-line-width--hover: 2.5px; }
+      /* 019 items 18+19 — the TICK MODE and the LABEL SKELETON
+         are CSS, not attributes. `count=` and `format=` are
+         inert; `--hdml-tick-count` / `--hdml-text-format` are
+         the only sources `tickSpecOf` and `textsOf` read.
+         Both are `inherits: false` (SPEC §9's exception), so a
+         rule reaches exactly the elements it selects and a
+         view-qualified rule is how one view's guides differ
+         from another's on the same page. */
+      hdml-grid[channel="radius"] { --hdml-tick-count: 4; }
+      hdml-label[channel="radius"] { --hdml-tick-count: 4; --hdml-text-format: compact-short; }
+      hdml-legend[channel="color"] { --hdml-tick-count: 4; --hdml-text-format: compact-short; }
     </style>
   </head>
   <body>
@@ -79,8 +90,8 @@
           <hdml-ordinal-scale channel="angle" values="month">
             <hdml-continuous-scale type="sqrt" channel="radius" min="0" values="units" nice>
               <hdml-continuous-scale channel="color" min="0" values="units">
-                <hdml-grid channel="radius" count="4"></hdml-grid>
-                <hdml-label channel="radius" count="4" format="compact-short"></hdml-label>
+                <hdml-grid channel="radius"></hdml-grid>
+                <hdml-label channel="radius"></hdml-label>
 
                 <!-- angle: string ↔ band (equal slices); radius:
                      number ↔ sqrt; color: number ↔ ramp — kinds line
@@ -88,7 +99,7 @@
                 <hdml-arc angle="month" radius="units"
                           color="units"></hdml-arc>
 
-                <hdml-legend channel="color" count="4" format="compact-short"></hdml-legend>
+                <hdml-legend channel="color"></hdml-legend>
               </hdml-continuous-scale>
             </hdml-continuous-scale>
           </hdml-ordinal-scale>
@@ -105,7 +116,7 @@
             <hdml-continuous-scale type="sqrt" channel="radius" min="0" max="20">
               <hdml-ordinal-scale channel="color"
                                     values='["Mon","Tue","Wed","Thu","Fri"]'>
-                <hdml-grid channel="radius" count="4"></hdml-grid>
+                <hdml-grid channel="radius"></hdml-grid>
                 <hdml-arc angle='["Mon","Tue","Wed","Thu","Fri"]'
                           radius="[11, 16, 7, 14, 19]"
                           color='["Mon","Tue","Wed","Thu","Fri"]'></hdml-arc>

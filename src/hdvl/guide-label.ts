@@ -114,10 +114,11 @@ export function textsOf(
   ticks: readonly Tick[],
   props: ReadonlyMap<string, string>,
 ): string[] {
-  const styled = (props.get(P_FORMAT) ?? "").trim();
-  const raw =
-    styled === "" ? el.getAttribute(LABEL_ATTRS_LIST.FORMAT) : styled;
-  const skeleton = (raw ?? "").trim();
+  // ⚠ **No attribute arm, as of 019 item 19.** `format=` is inert:
+  // the skeleton is a CSS declaration or nothing, and an empty
+  // computed value is the author having said nothing — which falls
+  // through to the locale's default, exactly as a bare label does.
+  const skeleton = (props.get(P_FORMAT) ?? "").trim();
   if (scale.kind !== "continuous") {
     return ticks.map((t) => scale.format(t.value, skeleton));
   }

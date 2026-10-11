@@ -10,7 +10,7 @@
   <head>
     <meta charset="utf-8" />
     <title>05 — Scatter</title>
-    <script src="/bin/components.min.js"></script>
+    <script src="../../bin/index.min.js"></script>
     <style>
       body { margin: 2rem; font-family: system-ui, sans-serif; }
       figure { margin: 0 0 3rem; max-width: 720px; }
@@ -32,6 +32,19 @@
       hdml-point { --hdml-tick-style: ellipse; --hdml-tick-width: 8px;
         --hdml-tick-height: 8px; --hdml-fill-color: #1c8cf480;
         --hdml-line-width: 1px; --hdml-line-color: #1c8cf4; }
+      /* 019 items 18+19 — the TICK MODE and the LABEL SKELETON
+         are CSS, not attributes. `count=` and `format=` are
+         inert; `--hdml-tick-count` / `--hdml-text-format` are
+         the only sources `tickSpecOf` and `textsOf` read.
+         Both are `inherits: false` (SPEC §9's exception), so a
+         rule reaches exactly the elements it selects and a
+         view-qualified rule is how one view's guides differ
+         from another's on the same page. */
+      hdml-grid[channel="x"] { --hdml-tick-count: 6; }
+      hdml-label[channel="x"] { --hdml-tick-count: 6; --hdml-text-format: compact-short; }
+      hdml-view[aria-labelledby="cap-scatter"] hdml-label[channel="y"] { --hdml-text-format: percent precision-integer; }
+      hdml-view[aria-labelledby="cap-log"] hdml-grid[channel="y"] { --hdml-tick-count: 4; }
+      hdml-view[aria-labelledby="cap-log"] hdml-label[channel="y"] { --hdml-tick-count: 4; --hdml-text-format: currency/USD compact-short; }
     </style>
   </head>
   <body>
@@ -57,14 +70,14 @@
         <hdml-cartesian-plane source="?hdml-frame=product_stats">
           <hdml-continuous-scale channel="x" min="0" values="units" nice>
             <hdml-continuous-scale channel="y" values="margin" nice>
-              <hdml-grid channel="x" count="6"></hdml-grid>
+              <hdml-grid channel="x"></hdml-grid>
               <!-- step= states the interval exactly and invokes no tick
                    algorithm (SPEC §7); grid and label share it so they align -->
               <hdml-grid channel="y" step="0.05"></hdml-grid>
               <hdml-axis channel="x"></hdml-axis>
               <hdml-axis channel="y"></hdml-axis>
-              <hdml-label channel="x" count="6" format="compact-short"></hdml-label>
-              <hdml-label channel="y" step="0.05" format="percent precision-integer"></hdml-label>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y" step="0.05"></hdml-label>
               <hdml-point x="units" y="margin"></hdml-point>
             </hdml-continuous-scale>
           </hdml-continuous-scale>
@@ -78,11 +91,11 @@
         <hdml-cartesian-plane source="?hdml-frame=product_stats">
           <hdml-continuous-scale channel="x" min="0" values="units" nice>
             <hdml-continuous-scale type="log" channel="y" values="unit_price" nice>
-              <hdml-grid channel="y" count="4"></hdml-grid>
+              <hdml-grid channel="y"></hdml-grid>
               <hdml-axis channel="x"></hdml-axis>
               <hdml-axis channel="y"></hdml-axis>
-              <hdml-label channel="x" count="6" format="compact-short"></hdml-label>
-              <hdml-label channel="y" count="4" format="currency/USD compact-short"></hdml-label>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y"></hdml-label>
               <hdml-point x="units" y="unit_price"></hdml-point>
             </hdml-continuous-scale>
           </hdml-continuous-scale>

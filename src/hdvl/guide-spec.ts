@@ -559,13 +559,17 @@ export function guidePlacement(
  * Every value a `count` / `step` / `values` attribute can carry,
  * read from the attribute the three guides publish in common.
  *
- * `hdml-grid`'s enum is used for all of them because the names are
- * one vocabulary — `hdml-tick` publishes the identical three and
+ * `hdml-grid`'s enum is used for both because the names are one
+ * vocabulary — `hdml-tick` publishes the identical set and
  * `hdml-label` those plus `format` — and R8 asks for the enum
- * rather than the literal, not for a fourth copy of the same three
+ * rather than the literal, not for a second copy of the same
  * strings.
+ *
+ * ⚠ **`count` is NOT among them as of 019 item 18.** Its value is
+ * `--hdml-tick-count` and nothing else, so there is no `A_COUNT`
+ * to read; `step` and `values` have no CSS half and are still
+ * attributes.
  */
-const A_COUNT = GRID_ATTRS_LIST.COUNT;
 const A_STEP = GRID_ATTRS_LIST.STEP;
 const A_VALUES = GRID_ATTRS_LIST.VALUES;
 
@@ -703,12 +707,15 @@ export function tickSpecOf(
   // `"auto"` is the initial, so anything else is a rule that
   // matched this element. `positive` then rejects `0` and a
   // negative — which the registered `<integer>` syntax admits and
-  // the three modes do not — exactly as it does for the attribute.
+  // the three modes do not.
+  //
+  // ⚠ **There is no attribute arm, as of 019 item 18.** `count=`
+  // is inert: a document states the mode in CSS or not at all, and
+  // `props` being absent means *"no snapshot"* — a detached guide,
+  // which has no declaration to read — rather than *"fall back"*.
   const styled = (props?.get(P_COUNT) ?? "").trim();
   const count =
-    styled === "" || styled === "auto"
-      ? positive(textOf(el, A_COUNT))
-      : positive(styled);
+    styled === "" || styled === "auto" ? undefined : positive(styled);
   if (count !== undefined) {
     spec.count = count;
   }

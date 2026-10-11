@@ -17,7 +17,7 @@
   <head>
     <meta charset="utf-8" />
     <title>02 — Area</title>
-    <script src="/bin/components.min.js"></script>
+    <script src="../../bin/index.min.js"></script>
     <style>
       body { margin: 2rem; font-family: system-ui, sans-serif; }
       figure { margin: 0 0 3rem; max-width: 760px; }
@@ -56,6 +56,17 @@
         --hdml-line-style: dashed;
         --hdml-line-color: #dc2626; 
       }
+      /* 019 items 18+19 — the TICK MODE and the LABEL SKELETON
+         are CSS, not attributes. `count=` and `format=` are
+         inert; `--hdml-tick-count` / `--hdml-text-format` are
+         the only sources `tickSpecOf` and `textsOf` read.
+         Both are `inherits: false` (SPEC §9's exception), so a
+         rule reaches exactly the elements it selects and a
+         view-qualified rule is how one view's guides differ
+         from another's on the same page. */
+      hdml-view[aria-labelledby="cap-numeric"] hdml-label[channel="x"] { --hdml-text-format: MMM; }
+      hdml-view[aria-labelledby="cap-numeric"] hdml-label[channel="y"] { --hdml-tick-count: 4; }
+      hdml-view[aria-labelledby="cap-band"] hdml-label[channel="x"] { --hdml-tick-count: 6; }
     </style>
   </head>
   <body>
@@ -69,8 +80,8 @@
             <hdml-continuous-scale channel="y" min="0" max="300">
               <hdml-axis channel="x"></hdml-axis>
               <hdml-axis channel="y"></hdml-axis>
-              <hdml-label channel="x" format="MMM"></hdml-label>
-              <hdml-label channel="y" count="4"></hdml-label>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-label channel="y"></hdml-label>
 
               <!-- y0: numeric scalar broadcast to N=6 -->
               <hdml-area
@@ -94,7 +105,7 @@
             <hdml-ordinal-scale channel="y" values='["seed","sprout","growth","bloom"]'>
               <hdml-axis channel="x"></hdml-axis>
               <hdml-axis channel="y"></hdml-axis>
-              <hdml-label channel="x" count="6"></hdml-label>
+              <hdml-label channel="x"></hdml-label>
               <hdml-label channel="y"></hdml-label>
 
               <!-- y0: string scalar broadcast — replaces the PoC's

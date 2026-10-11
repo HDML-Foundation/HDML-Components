@@ -700,7 +700,7 @@ given domain can produce are a small fixed set and your number is usually not in
 `09-polar-area`'s live radius domain is `0 … 450 B`; its reachable counts are **{1, 3, 5,
 10}** and no `count` yields 4, 6, 7 or 8:
 
-| `count=` | step | ticks |
+| `--hdml-tick-count` | step | ticks |
 |---|---|---|
 | 2 | 500 B | **1** |
 | 3, 4 | 200 B | 3 |
@@ -752,7 +752,8 @@ spells *a filled disc* and merely happens to stroke the same outline over a full
 implementation and not two.
 
 **`--hdml-grid-shape: polygon` walks the ANGLE SCALE's positions**, and *the scale's* is
-load-bearing: `10-radar` writes `hdml-grid channel="radius" count="5"` over six categories,
+load-bearing: `10-radar` declares `hdml-grid[channel="radius"] { --hdml-tick-count: 5 }`
+over six categories,
 so a polygon built from the grid's own spec would have five sides. The vertices are
 `ticks({})` on the other channel — the whole ordinal domain, since §4.8's thinning returns it
 for an empty spec — which is why a radar's rings meet its spokes: one generator, not two that
@@ -777,7 +778,7 @@ position that is not a locus on that axis but the single point every angle share
 `hdml-grid` there has **no extent** (a zero-radius `arc`, or a polygon whose every corner is
 the pole: a node no zoom can show) and an `hdml-label` there has **no direction** to hang its
 run off, and lands under every mark on the page. Both were emitted anyway until R11;
-`09-polar-area` drew three rings for `count="4"` of which one was invisible, and printed its
+`09-polar-area` drew three rings for a count of `4` of which one was invisible, and printed its
 `0B` at the centre underneath the wedges. Both are now **suppressed**, and:
 
 - **it is the projected position, not the domain's first value.** §4.3 gives a radius channel
@@ -794,7 +795,8 @@ run off, and lands under every mark on the page. Both were emitted anyway until 
   all, which is §1.5's silent wrong chart. Filed under **V2** as `radius-grid-at-pole`, on the
   **grid** (the `count` that produced the ladder is the grid's own) and with the grid as its
   own error unit, so nothing else on the page stops painting. This is the case the `count`
-  table above ends at: `count="2"` over `09-polar-area`'s domain yields the single tick `{0}`.
+  table above ends at: `--hdml-tick-count: 2` over `09-polar-area`'s domain yields the
+  single tick `{0}`.
   Suppressing a ring is **not** itself reported — every zero-based radius scale has one at the
   pole, and a rule that fired there would fire on correct documents.
 
@@ -891,11 +893,16 @@ same UA placement, and — since step 27 — the same behaviour under both plane
 division *looks*; swapping →`text` changes *what the reader is told* — the data/style line —
 and text falls on the data side. Two consequences the implementation owes:
 
-- **Their densities are independent.** `hdml-tick count="12"` beside `hdml-label count="6"`
-  — mark every month, label every other — is the corpus idiom, and each element reads its
-  own spec with no coupling to the other.
-- **`format` is content, not presentation**, which is why it is an attribute rather than a
-  property, and why V14 exists.
+- **Their densities are independent.** `hdml-tick[channel="x"] { --hdml-tick-count: 12 }`
+  beside `hdml-label[channel="x"] { --hdml-tick-count: 6 }` — mark every month, label every
+  other — is the corpus idiom, and each element reads its own spec with no coupling to the
+  other. ⚠ Both are **non-inherited** properties, so each rule must name its own element;
+  a rule on an ancestor reaches neither.
+- **`format` is content, not presentation**, and V14 is the rule that holds it to that.
+  ⚠ It was an **attribute** for exactly that reason until 019 item 19 showed the reason was
+  wrong: a *number skeleton* is portable across datasets in a way `values=` is not, so it
+  belongs in CSS, and V14 follows it there (see *Three error clauses follow the value into
+  CSS*).
 
 **A tick's extent is a DIAMETER in both forms.** `--hdml-tick-width` / `-height` size the
 glyph, `--hdml-tick-style` shapes it (registered initial `rect`, not `ellipse`), and an
@@ -1417,17 +1424,64 @@ decision.
 **Why they do not inherit** is a mechanism rather than a preference. A non-inherited
 registered property computes to its initial wherever it is not declared, so *a computed
 value other than the initial means a rule matched **this** element*. That is what lets a
-reader prefer the stylesheet over the attribute without inventing a third state, and it is
-what keeps `format`'s three error clauses — V20(b), V14's ordinal clause and V14's kind
-agreement — off elements the author never addressed. With inheritance, one page-wide
+reader detect a local declaration without inventing a third state, and it is what keeps
+`format`'s three error clauses — V20(b), V14's ordinal clause and V14's kind agreement —
+off elements the author never addressed. With inheritance, one page-wide
 `--hdml-text-format` would fire all three, and **an error blanks the element** (SPEC §3.5).
 
 ⚠ `--hdml-text-rotate` and `--hdml-text-anchor` **do** inherit, because no V-rule reads
 either. The `--hdml-text-*` family is not uniform by necessity.
 
-⚠ **The `count=` and `format=` attributes still work and are still what every shipped page
-uses.** The property wins where both are present; the attribute is the fallback. The
-attributes are removed from the vocabulary in a later 019 step.
+##### ⚠⚠ The property is the ONLY source — `count=` and `format=` are inert
+
+**019 step 30.** The readers' attribute arms are **deleted**. `tickSpecOf` reads `count`
+from `--hdml-tick-count` and from nowhere else; `textsOf` reads the skeleton from
+`--hdml-text-format` and from nowhere else. A `count="5"` attribute drives nothing, and
+there is no fallback: an undeclared property means *the author said nothing*, which is the
+UA default (`Scale.ticks` reads an absent count as 10) and the locale default respectively.
+
+All twelve corpus pages that stated a value now state it as a rule, and `00-minimal` — the
+floor page whose contract was *"no CSS beyond a width"* — carries **one** declaration and
+says so in its header.
+
+★ **`step` and `values` are unaffected**: they have no CSS half, so they are still
+attributes, and still live.
+
+⚠ The attributes remain in the vocabulary until a later 019 step removes them, so a
+document may still carry one. It has no effect, and **nothing reports it** — see below.
+Both steps ship in the same release, so no published version has an inert attribute.
+
+##### ★★ Three error clauses follow the value into CSS
+
+**019 step 30.** V16 (`count`/`step`/`values` mutual exclusion, and `hdml-axis` taking
+none of them), V20(b) (those four on a legend needing a continuous scale) and V14 (a
+`format` on an ordinal channel, and a skeleton disagreeing with its channel's kind) all
+read `getAttribute` until this step. Once the corpus stated its values in CSS they would
+have stopped applying to every shipped page — not because any rule was weakened, but
+because the value left the surface they read.
+
+They now read the **computed property** for `count` and `format`, and the attribute only
+for `step` and `values`. Three consequences a reader should know:
+
+- ⚠ **They run in the binding pass, not the structural one.** A computed property is not
+  readable in the structural pass at all: measured on all three engines, `getComputedStyle`
+  inside `validateStructure` returns an **entirely empty** declaration on firefox —
+  `display` included — and a forced reflow does not change it. Since `""` is
+  indistinguishable from *not declared*, a structural implementation would have been
+  silently inert on one engine of three. They read `Measured.props`, which is the same
+  snapshot the readers act on, so a rule and its reader cannot disagree about which value
+  is live. V20's **arm (a)** — a positional guide on a non-positional channel — is
+  attribute-only and stays structural.
+- ⚠ **V16 is mixed-source, and its message says so.** A label carrying
+  `--hdml-tick-count` beside `step=` reports *"--hdml-tick-count and step are mutually
+  exclusive — keep one"*.
+- ⚠ **An inert attribute reports nothing.** `count="6"` beside `step="0.5"` is not a
+  conflict — the count cannot reach the scale — so V16 is silent. Reporting it would be a
+  claim about a dead key.
+
+★ Rule ordering is unchanged. `applyErrors` takes the first finding per unit and the
+binding pass spreads the structural findings ahead of its own, so V1 still beats V20(b);
+V16 still precedes V14.
 
 The full table of names, syntaxes and initial values is SPEC §9; `properties.ts` exports
 `HDVL_PROPERTIES` so the set can be asserted against without re-deriving it. (Like `./hdql`,

@@ -19,7 +19,7 @@
   <head>
     <meta charset="utf-8" />
     <title>07 — Mixed (bar + line, dual axis)</title>
-    <script src="/bin/components.min.js"></script>
+    <script src="../../bin/index.min.js"></script>
     <style>
       body { margin: 2rem; font-family: system-ui, sans-serif; }
       figure { margin: 0; max-width: 780px; }
@@ -57,6 +57,16 @@
       hdml-point { --hdml-tick-style: ellipse; --hdml-tick-width: 7px;
         --hdml-tick-height: 7px; --hdml-fill-color: #ffffff;
         --hdml-line-width: 2px; --hdml-line-color: #f59e0b; }
+      /* 019 items 18+19 — the TICK MODE and the LABEL SKELETON
+         are CSS, not attributes. `count=` and `format=` are
+         inert; `--hdml-tick-count` / `--hdml-text-format` are
+         the only sources `tickSpecOf` and `textsOf` read.
+         Both are `inherits: false` (SPEC §9's exception), so a
+         rule reaches exactly the elements it selects and a
+         view-qualified rule is how one view's guides differ
+         from another's on the same page. */
+      hdml-label.revenue[channel="y"] { --hdml-tick-count: 5; --hdml-text-format: compact-short; }
+      hdml-label.margin[channel="y"] { --hdml-tick-count: 5; --hdml-text-format: percent precision-integer; }
     </style>
   </head>
   <body>
@@ -94,14 +104,14 @@
               <hdml-label channel="x"></hdml-label>
 
               <hdml-axis channel="y" class="revenue"></hdml-axis>
-              <hdml-label channel="y" class="revenue" count="5" format="compact-short"></hdml-label>
+              <hdml-label channel="y" class="revenue"></hdml-label>
               <hdml-bar x="month" y="revenue"></hdml-bar>
             </hdml-continuous-scale>
 
             <!-- right axis: margin — a sibling, not a child -->
             <hdml-continuous-scale channel="y" min="0" max="0.4">
               <hdml-axis channel="y" class="margin"></hdml-axis>
-              <hdml-label channel="y" class="margin" count="5" format="percent precision-integer"></hdml-label>
+              <hdml-label channel="y" class="margin"></hdml-label>
               <hdml-line x="month" y="margin"></hdml-line>
               <hdml-point x="month" y="margin"></hdml-point>
             </hdml-continuous-scale>

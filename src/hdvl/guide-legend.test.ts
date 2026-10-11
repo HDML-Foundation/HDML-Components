@@ -585,7 +585,7 @@ suite("hdvl/guide-legend — §6.6's continuous ramp", () => {
     // R12: the positions are compared against a real ticks() call
     // made from the test, so a legend with a ladder of its own
     // could not pass at any distance from the real one.
-    const view = await mount(rampPage('count="4"'));
+    const view = await mount(rampPage("", "--hdml-tick-count: 4;"));
     const scale = scaleOf(view, "color");
     const box = legendOf(view).getBoundingClientRect();
     const want = scale.ticks({ count: 4 });
@@ -607,7 +607,10 @@ suite("hdvl/guide-legend — §6.6's continuous ramp", () => {
     // SPEC §7 makes coherence a property of the label set: value
     // by value, one colorbar reads `900K, 1.2M, 1.5M`.
     const view = await mount(
-      rampPage('count="4" format="compact-short"'),
+      rampPage(
+        "",
+        "--hdml-tick-count: 4; --hdml-text-format: compact-short;",
+      ),
     );
     const scale = scaleOf(view, "color");
     const want = formatCompactSet(
@@ -624,7 +627,8 @@ suite("hdvl/guide-legend — §6.6's continuous ramp", () => {
 
   test("★ count is a target, not a guarantee", async () => {
     // Four round numbers beat four arbitrary ones, so a domain of
-    // [0, 100] answers `count="4"` with three ticks — and the
+    // [0, 100] answers `--hdml-tick-count: 4` with three ticks —
+    // and the
     // assertion is the ROUNDNESS, never the cardinality.
     const view = await mount(
       html`
@@ -638,8 +642,7 @@ suite("hdvl/guide-legend — §6.6's continuous ramp", () => {
             >
               <hdml-legend
                 channel="color"
-                count="4"
-                style="${KEY_BOX}"
+                style="${KEY_BOX}; --hdml-tick-count: 4"
               ></hdml-legend>
               <hdvl-probe></hdvl-probe>
             </hdml-continuous-scale>
@@ -656,7 +659,7 @@ suite("hdvl/guide-legend — §6.6's continuous ramp", () => {
   });
 
   test("★ the ramp: nodes, W4 and -0", async () => {
-    const view = await mount(rampPage('count="4"'));
+    const view = await mount(rampPage("", "--hdml-tick-count: 4;"));
     const scene = sceneOf(view);
     assert.lengthOf(<SceneNode[]>nodesOf(view), 36);
     assert.deepEqual(diagnosticsOf(view), []);

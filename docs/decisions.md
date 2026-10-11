@@ -2475,13 +2475,88 @@ no MEASURE snapshot at all: that is a real state, not a test artifact. Omitting 
 attribute-only behaviour, which is exactly what the function did before. ⚠ Recorded here so
 that a later reader does not smooth the two into one.
 
-**What did not change.** Every shipped page still carries its `count=` / `format=`
-attributes and is served by the fallback arm, so the 29 whole-`Scene` goldens and the 13
-live pages are untouched. ⚠ **And V14, V16 and V20(b) still read the attributes through
-`getAttribute`, so none of them can see a CSS declaration** — the mutual-exclusion and
-format-kind checks apply to the attribute form only. A later step migrates the pages and
-deletes the fallback arm; whether those clauses follow the value into CSS is that step's
-decision, not this one's.
+**What did not change at item 18+19's registration step.** Every shipped page still carried
+its `count=` / `format=` attributes and was served by the fallback arm, so the 29
+whole-`Scene` goldens and the 13 live pages were untouched. ⚠ And V14, V16 and V20(b) read
+the attributes through `getAttribute`, so none of them could see a CSS declaration. **That
+is the state the next section closes.**
+
+## The property is the only source, and three V-clauses follow it
+
+**019 step 30, 2026-10-10.** The twelve corpus pages that stated a `count` or a `format`
+now state it as a stylesheet rule (**47 + 25 attributes → 47 rules**), both fallback arms
+are deleted, and V16 · V20(b) · V14 read the computed property. Four decisions, the last
+two taken with the founder because they changed a later step's scope.
+
+**1 · The migration is view-qualified, and three ambiguity classes needed three answers.**
+The plan scoped *"view-qualify the ambiguous keys"*; measured over 49 declaring elements
+there are **three** classes, and view qualification answers only one.
+**(a) cross-view** — the same `tag[channel]` wanting different values in two views: eight
+keys, answered by `hdml-view[aria-labelledby="…"] tag[channel="…"]`.
+**(b) within-view** — `07-mixed` carries two `hdml-label[channel="y"]` in *one* view with
+different skeletons; a view qualifier cannot separate them, and the page's existing
+`.revenue` / `.margin` classes do.
+**(c) ⚠ over-reach** — six keys whose declaring elements *agree*, so (a)'s test calls them
+unambiguous, but which have **non-declaring** instances of the same `tag[channel]`
+elsewhere on the page. A page-level rule would hand those a value they never had and move
+their goldens. They are view-qualified too.
+★ The rule set was chosen by a generator that, for each element, takes the **most general**
+selector matching *only* elements wanting that exact declaration, then **simulates** the
+whole rule set back over every element on the page and asserts each receives exactly what
+it carried as attributes. The 29 unchanged goldens are the behavioural confirmation; the
+simulation is why it was right the first time.
+
+**2 · The readers keep `tickSpecOf(el, props?)` optional.** Deleting the fallback arm is
+not the same as requiring a snapshot. A detached guide has no computed style, and
+`guide-spec.test.ts` exercises fourteen such calls deliberately — they now assert `{}`,
+which is the truthful answer. What is load-bearing is that the reader branches on
+**`"" | "auto"`**, exactly as the step-29 preference did, rather than on a usable value: a
+declared `--hdml-tick-count: 0` is a statement the reader must *not* fall back from.
+
+**3 · ⚠⚠ Three V-clauses moved to the BINDING pass, because the structural pass cannot
+read a computed property at all.** The question *"do V16, V20(b) and V14 follow the value
+into CSS?"* was left open by the registration step and answered here by measurement. The
+obvious implementation — call `getComputedStyle` inside `validateStructure` — is not merely
+costly, it is **broken**: measured on all three engines, that call returns an **entirely
+empty** declaration on firefox, `display` included, and a forced reflow does not change it.
+`""` is indistinguishable from *not declared*, so the three clauses would have been
+**silently inert on one engine of three** — green gates, zero reports. They read
+`Measured.props` in the binding pass instead, which is the same snapshot the readers act
+on, so a rule and its reader cannot disagree about which value is live.
+
+Three riders:
+- **Rule ordering survives for free.** `applyErrors` takes the first finding per unit and
+  `validateBindings` spreads `memo.structural` ahead of its own, so V1 still beats V20(b).
+  V16 still precedes V14 — they moved together.
+- **V20 is split.** Arm (a), a positional guide on a non-positional channel, is
+  attribute-only and stays structural, where its *"must beat V1"* ordering is decided. Only
+  the legend arm moved.
+- ★ **The corpus validator gate had to learn to drive a frame.** Its `reindexed()` helper
+  was a bare synchronous `view.reindex()` with no provider — a structural-pass-only
+  harness by design, and its per-rule ledger said so. A rule in the binding pass is
+  invisible to it, and a control written against it passes by reporting nothing. The
+  three ledger rows moved `structural` → `authored`.
+
+**4 · An inert attribute reports nothing, and that state is never published.** With the arm
+deleted, `count="6"` beside `step="0.5"` is **not** a conflict — the count cannot reach the
+scale — so V16 is silent, and `stated()` consults the property *only* for the two keys that
+have one. Reporting a dead key would be a false positive. The alternative, keeping the
+attribute in the rules' reach, was rejected for that reason. ⚠ The attributes stay in the
+vocabulary until a later 019 step removes them, but this package has published nothing
+since `0.0.2-alpha.25` and both steps ship in the **same** release — so no author ever
+writes `count=` and meets the silence.
+
+**What this costs the corpus harness.** `mountCorpus` injects a page's `<style>` blocks
+into the **shared `document.head`** while mounting its body into a local `<div>`, and the
+injected selectors are global. That was cosmetic until now: **six selectors collide across
+pages with different values** — `hdml-grid[channel="radius"]` is `4` on `09-polar-area` and
+`5` on `10-radar`, `hdml-tick[channel="x"]` is `12` on `01-line` and `5` on `12-coverage` —
+and a tick count or a skeleton changes the **scene**, so a surviving sheet would move
+another page's golden, in another page's suite, with nothing pointing back. `mountCorpus`
+therefore **drops** previously-injected sheets before injecting its own, and
+`corpus/sheet-isolation.test.ts` pins the sharpest pair. ⚠ A first attempt *asserted*
+nothing was injected and was wrong: `assertInvariants` legitimately mounts the same page
+four times inside one test.
 
 ## `hdml-split-by` is published and unimplemented
 

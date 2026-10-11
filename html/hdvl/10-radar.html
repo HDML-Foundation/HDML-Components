@@ -21,7 +21,7 @@
   <head>
     <meta charset="utf-8" />
     <title>10 — Radar</title>
-    <script src="/bin/components.min.js"></script>
+    <script src="../../bin/index.min.js"></script>
     <style>
       body { margin: 2rem; font-family: system-ui, sans-serif; }
       figure { margin: 0; max-width: 520px; }
@@ -47,6 +47,16 @@
       hdml-line.model-a { --hdml-line-width: 2px; --hdml-line-color: #1c8cf4; }
       hdml-area.model-b { --hdml-fill-color: #f59e0b33; }
       hdml-line.model-b { --hdml-line-width: 2px; --hdml-line-color: #f59e0b; }
+      /* 019 items 18+19 — the TICK MODE and the LABEL SKELETON
+         are CSS, not attributes. `count=` and `format=` are
+         inert; `--hdml-tick-count` / `--hdml-text-format` are
+         the only sources `tickSpecOf` and `textsOf` read.
+         Both are `inherits: false` (SPEC §9's exception), so a
+         rule reaches exactly the elements it selects and a
+         view-qualified rule is how one view's guides differ
+         from another's on the same page. */
+      hdml-grid[channel="radius"] { --hdml-tick-count: 5; }
+      hdml-label[channel="radius"] { --hdml-tick-count: 5; }
     </style>
   </head>
   <body>
@@ -80,10 +90,10 @@
           <hdml-ordinal-scale channel="angle"
             values='["comfort","efficiency","price","range","safety","speed"]'>
             <hdml-continuous-scale channel="radius" min="0" max="10">
-              <hdml-grid channel="radius" count="5"></hdml-grid>
+              <hdml-grid channel="radius"></hdml-grid>
               <hdml-grid channel="angle"></hdml-grid>
               <hdml-label channel="angle"></hdml-label>
-              <hdml-label channel="radius" count="5"></hdml-label>
+              <hdml-label channel="radius"></hdml-label>
 
               <!-- literal series: no source needed -->
               <hdml-area class="model-a" closed

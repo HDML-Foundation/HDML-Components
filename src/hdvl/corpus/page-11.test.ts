@@ -20,6 +20,7 @@ import {
   nodeCount,
   numberCol,
   pageSource,
+  propsOf,
   result,
   stringCol,
   stripText,
@@ -328,7 +329,7 @@ suite("corpus 11-multi-plane (A, small multiples)", () => {
     const page = await mountCorpus("11-multi-plane");
     const a = page.views[0];
     const label = el(a, '.north hdml-label[channel="y"]');
-    const spec = tickSpecOf(label);
+    const spec = tickSpecOf(label, propsOf(label));
     assert.strictEqual(spec.count, 4);
     const ticks =
       scale(a, ".north hdml-continuous-scale")?.ticks(spec) ?? [];

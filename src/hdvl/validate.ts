@@ -861,14 +861,16 @@ function numberOnDatetimeMessage(): string {
 
 function mixedSkeletonMessage(skeleton: string): string {
   return (
-    `format="${skeleton}" mixes number stems and date letters — ` +
+    `--hdml-text-format: ${skeleton} mixes number stems and date ` +
+    `letters — ` +
     "a CLDR skeleton is one token space or the other"
   );
 }
 
 function unknownSkeletonMessage(skeleton: string): string {
   return (
-    `format="${skeleton}" is not a CLDR skeleton — write number ` +
+    `--hdml-text-format: ${skeleton} is not a CLDR skeleton — ` +
+    `write number ` +
     "stems (compact-short) or date letters (MMM)"
   );
 }
@@ -1852,7 +1854,10 @@ function checkV20(el: HdvlElement, out: Finding[]): void {
     return;
   }
   if (el.localName === LEGEND_TAG) {
-    checkV20Legend(el, out);
+    // V20(b) runs in the BINDING pass since 019 items 18+19 — two
+    // of its four keys live in CSS, and a computed property is
+    // only readable inside the frame. Arm (a) below stays here,
+    // where its "must beat V1" ordering is decided.
     return;
   }
   if (!POSITIONAL_GUIDES.includes(el.localName)) {
@@ -1891,7 +1896,9 @@ function checkV20(el: HdvlElement, out: Finding[]): void {
  * **It is checked against the resolved scale's TAG** — the static
  * ancestor lookup V2 makes, never a cascade lookup, which SPEC §7
  * says is the line finding 11's modal-tick ban actually draws. That
- * also means it needs no frame: this runs in the structural pass.
+ * also means it needs no DATA — but it does need the frame, since
+ * 019 items 18+19 put two of its four keys in CSS, so it runs in
+ * the binding pass rather than the structural one.
  *
  * **It declines when there is no scale in scope**, and V1 reports
  * that instead. V20 runs first, so an unconditional report here
@@ -1903,8 +1910,14 @@ function checkV20(el: HdvlElement, out: Finding[]): void {
  * which is {@link checkV16}'s rule for the same reason: an author
  * who wrote `count` beside `format` made one mistake.
  */
-function checkV20Legend(el: HdvlElement, out: Finding[]): void {
-  const written = LEGEND_DENSITY.filter((attr) => declared(el, attr));
+function checkV20Legend(
+  el: HdvlElement,
+  props: ReadonlyMap<string, string> | null,
+  out: Finding[],
+): void {
+  const written = LEGEND_DENSITY.filter((attr) =>
+    stated(el, attr, props),
+  ).map(statedAs);
   if (written.length === 0) {
     return;
   }
@@ -1962,7 +1975,11 @@ function checkV20Legend(el: HdvlElement, out: Finding[]): void {
  * hears *"they need a continuous color scale"* — the report that
  * fixes the page — rather than *"keep one"*.
  */
-function checkV16(el: HdvlElement, out: Finding[]): void {
+function checkV16(
+  el: HdvlElement,
+  props: ReadonlyMap<string, string> | null,
+  out: Finding[],
+): void {
   if (
     el.family !== "guide" ||
     !(
@@ -1972,7 +1989,9 @@ function checkV16(el: HdvlElement, out: Finding[]): void {
   ) {
     return;
   }
-  const written = SPEC_ATTRS.filter((attr) => declared(el, attr));
+  const written = SPEC_ATTRS.filter((attr) =>
+    stated(el, attr, props),
+  ).map(statedAs);
   if (written.length === 0) {
     return;
   }
@@ -2056,17 +2075,19 @@ function checkV16(el: HdvlElement, out: Finding[]): void {
  * skeleton, and reporting it as *"not a CLDR skeleton"* would be a
  * report about a string the author did not write.
  */
-function checkV14(el: HdvlElement, out: Finding[]): void {
+function checkV14(
+  el: HdvlElement,
+  props: ReadonlyMap<string, string> | null,
+  out: Finding[],
+): void {
   if (
     el.family !== "guide" ||
     !(el.localName === LABEL_TAG || el.localName === LEGEND_TAG) ||
-    !declared(el, LABEL_ATTRS_LIST.FORMAT)
+    !stated(el, LABEL_ATTRS_LIST.FORMAT, props)
   ) {
     return;
   }
-  const skeleton = (
-    el.getAttribute(LABEL_ATTRS_LIST.FORMAT) ?? ""
-  ).trim();
+  const skeleton = skeletonOf(el, props);
   if (skeleton === "") {
     return;
   }
@@ -2594,6 +2615,101 @@ function declared(el: HdvlElement, attr: string): boolean {
 }
 
 /**
+ * 019 items 18+19 — the two spec keys whose value moved into CSS,
+ * and the value a **non-declaring** element computes for each.
+ *
+ * `--hdml-tick-count`'s registered initial is `auto`;
+ * `--hdml-text-format` carries no initial at all and computes to
+ * exactly `""`. Those two strings are what *"the author said
+ * nothing here"* looks like, and `inherits: false` (RFC 019/001
+ * §6.3) is what makes reading them a **local-declaration**
+ * detector rather than a cascade lookup — without it an ancestor's
+ * rule would read as a declaration on every descendant guide.
+ */
+const SPEC_PROPERTY: Readonly<Record<string, string>> = {
+  [GRID_ATTRS_LIST.COUNT]: "--hdml-tick-count",
+  [LABEL_ATTRS_LIST.FORMAT]: "--hdml-text-format",
+};
+
+const PROPERTY_ABSENT: Readonly<Record<string, string>> = {
+  "--hdml-tick-count": "auto",
+  "--hdml-text-format": "",
+};
+
+/**
+ * Whether the author **stated** a spec key on this element, in
+ * whichever form that key still has.
+ *
+ * **The two halves are asymmetric because the vocabulary is.**
+ * `step` and `values` have no CSS property, so the attribute is
+ * still their only form and still live. `count` and `format` are
+ * **property-only** as of 019 items 18+19: `tickSpecOf`'s and
+ * `textsOf`'s attribute arms are gone, so a `count=` attribute
+ * drives nothing, and a rule that reported on one would be making
+ * a claim about a dead key — *"count and step are mutually
+ * exclusive"* is false when the count cannot reach the scale.
+ *
+ * ★ The property branch mirrors `tickSpecOf`'s and `textsOf`'s own
+ * branch conditions — `=== ""` and `=== "auto"` — and **not** their
+ * usable-value tests. A declared `--hdml-tick-count: 0` is a
+ * statement the readers deliberately refuse to fall back from
+ * (step 29's control pinned that), so it is a statement these
+ * rules have to see.
+ *
+ * @param el - The guide.
+ * @param attr - The spec key, by its attribute name.
+ * @param props - That element's harvested properties, or `null`
+ * where the frame has not measured it.
+ * @returns Whether the key is stated here.
+ */
+function stated(
+  el: HdvlElement,
+  attr: string,
+  props: ReadonlyMap<string, string> | null,
+): boolean {
+  const prop = SPEC_PROPERTY[attr];
+  if (prop === undefined) {
+    return declared(el, attr);
+  }
+  if (props === null) {
+    return false;
+  }
+  const raw = (props.get(prop) ?? "").trim();
+  return raw !== "" && raw !== PROPERTY_ABSENT[prop];
+}
+
+/**
+ * How a report **names** the key it found — the spelling the author
+ * actually wrote, so the message names something they can go and
+ * edit.
+ *
+ * ⚠ This makes V16 a **mixed-source** report: a label carrying
+ * `--hdml-tick-count` beside `step=` hears *"--hdml-tick-count and
+ * step are mutually exclusive"*, naming a property and an attribute
+ * in one sentence, because that is what the document says.
+ */
+function statedAs(attr: string): string {
+  return SPEC_PROPERTY[attr] ?? attr;
+}
+
+/**
+ * The skeleton V14 must judge — the one {@link textsOf} will act
+ * on.
+ *
+ * Reading the attribute here would check a string the renderer is
+ * about to ignore, which is the whole failure mode this helper
+ * exists to prevent: a rule and its reader disagreeing about which
+ * value is live.
+ */
+function skeletonOf(
+  el: HdvlElement,
+  props: ReadonlyMap<string, string> | null,
+): string {
+  void el;
+  return (props?.get("--hdml-text-format") ?? "").trim();
+}
+
+/**
  * V8 — *no implicit scales*. `channel` is mandatory, and **every
  * endpoint must resolve from `min`/`max` or `values`** per SPEC
  * §6's combination table.
@@ -3067,10 +3183,8 @@ export function validateStructure(
     // plane's" is the message that fixes the page.
     checkV9(el, found);
     checkV19(el, found);
-    // V16 before V14: which values there are to format is decided
-    // before how they are formatted.
-    checkV16(el, found);
-    checkV14(el, found);
+    // V16, V14 and V20(b) run in the BINDING pass — see
+    // `validateBindings` for why, and for the order they keep.
     checkV4(el, found);
     checkV7(el, found);
     checkV18(el, found);
@@ -3095,9 +3209,14 @@ export function validateStructure(
  * in the result set"*. **V5** counts *delivered* rows, which is what
  * §8.3's *"against `rows`"* means. V3, V8, V9, V10, V18 and V19 are
  * attribute-only and run in the structural pass beside V1 and V13,
- * V4's local-ref half included, as are all of V14, V16 and V20 —
- * every one of them read off attributes and the resolved scale's
- * **tag**. **Two clauses** ride along under V2, both because a
+ * V4's local-ref half included, as is V20's **arm (a)** — every one
+ * of them read off attributes and the resolved scale's **tag**.
+ * ⚠ **V14, V16 and V20(b) used to be in that list and are now
+ * here**, for the reason the loop below states: 019 items 18+19
+ * moved `count` and `format` into CSS, and a computed property is
+ * not readable in the structural pass at all.
+ *
+ * **Two clauses** ride along under V2, both because a
  * column-derived domain has no size until the frame ran: SPEC §9's
  * palette exhaustion ({@link checkPalette}) and 017 R8's angular
  * band collision ({@link checkAngleCollision}). A **third**, 017
@@ -3117,10 +3236,32 @@ export function validateBindings(
   view: HdmlViewElement,
   elements: readonly HdvlElement[],
   queue: EventQueue,
+  measured: ReadonlyMap<HdvlElement, Measured>,
 ): void {
   const memo = memoOf(view);
   const found: Finding[] = [];
   for (const el of elements) {
+    // 019 items 18+19: V20(b), V16 and V14 read `count` and
+    // `format` off the computed property, so they run here rather
+    // than in the structural pass — `getComputedStyle` is not
+    // usable there at all (on firefox the whole declaration reads
+    // empty mid-reindex, standard properties included), and
+    // `Measured.props` is the snapshot the readers themselves act
+    // on, so a rule and its reader cannot disagree about which
+    // value is live.
+    //
+    // **The structural pass's order is preserved.** V20(b) before
+    // V16 before V14 — which scale the guide addresses, then which
+    // values there are to format, then how they are formatted —
+    // and V1 still beats V20(b), because `applyErrors` takes the
+    // FIRST finding per unit and `memo.structural` is spread ahead
+    // of these below.
+    const props = measured.get(el)?.props ?? null;
+    if (el.localName === LEGEND_TAG) {
+      checkV20Legend(el, props, found);
+    }
+    checkV16(el, props, found);
+    checkV14(el, props, found);
     checkV2(el, found);
     checkPalette(el, found);
     checkAngleCollision(el, found);

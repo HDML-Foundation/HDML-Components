@@ -65,7 +65,9 @@ suite("hdvl/guide-spec — the shared tick spec", () => {
   });
 
   test("each mode arrives on its own", () => {
-    assert.deepEqual(tickSpecOf(grid({ count: "6" })), { count: 6 });
+    // ⚠ `count` arrives through `props` and ONLY through `props`
+    // as of 019 item 18; `step` and `values` are still attributes.
+    assert.deepEqual(tickSpecOf(grid({}), styled("6")), { count: 6 });
     assert.deepEqual(tickSpecOf(grid({ step: "0.05" })), {
       step: 0.05,
     });
@@ -74,9 +76,9 @@ suite("hdvl/guide-spec — the shared tick spec", () => {
     });
   });
 
-  test("an empty attribute reads as absent", () => {
+  test("an empty source reads as absent", () => {
     assert.deepEqual(
-      tickSpecOf(grid({ count: "", step: "  ", values: "" })),
+      tickSpecOf(grid({ step: "  ", values: "" }), styled("")),
       {},
     );
   });
@@ -84,9 +86,9 @@ suite("hdvl/guide-spec — the shared tick spec", () => {
   test("a spec that cannot be read is absent", () => {
     // A guide paints nothing rather than something wrong, and V16
     // is not the rule that would catch any of these.
-    assert.deepEqual(tickSpecOf(grid({ count: "0" })), {});
-    assert.deepEqual(tickSpecOf(grid({ count: "-2" })), {});
-    assert.deepEqual(tickSpecOf(grid({ count: "many" })), {});
+    assert.deepEqual(tickSpecOf(grid({}), styled("0")), {});
+    assert.deepEqual(tickSpecOf(grid({}), styled("-2")), {});
+    assert.deepEqual(tickSpecOf(grid({}), styled("many")), {});
     assert.deepEqual(tickSpecOf(grid({ step: "0" })), {});
     // SPEC §7's `values` is literal JSON, and a tick SET is an
     // array — `mark.ts`'s binding grammar would have read both of
@@ -111,7 +113,10 @@ suite("hdvl/guide-spec — the shared tick spec", () => {
     // second resolution here would be a second ladder entry point
     // in all but name (R12).
     assert.deepEqual(
-      tickSpecOf(grid({ count: "4", step: "0.5", values: "[1, 2]" })),
+      tickSpecOf(
+        grid({ step: "0.5", values: "[1, 2]" }),
+        styled("4"),
+      ),
       { count: 4, step: 0.5, values: [1, 2] },
     );
   });
@@ -134,36 +139,35 @@ function styled(value?: string): ReadonlyMap<string, string> {
   );
 }
 
-suite("hdvl/guide-spec — count's two sources (019 item 18)", () => {
-  test("★ --hdml-tick-count wins over count=", () => {
-    // §6.1's portability rule, as the one assertion that
-    // distinguishes a reader which prefers the property from one
-    // that merely accepts it: the two sources DISAGREE and the
-    // property answers.
+suite("hdvl/guide-spec — count's one source (019 item 18)", () => {
+  test("★ --hdml-tick-count answers, and count= does not", () => {
+    // §6.1's portability rule. The two sources DISAGREE and the
+    // property answers — which distinguished a reader that
+    // preferred the property from one that merely accepted it
+    // while both arms existed, and now pins that only one does.
     assert.deepEqual(tickSpecOf(grid({ count: "5" }), styled("12")), {
       count: 12,
     });
   });
 
-  test("★ count= still serves when the property is auto", () => {
-    // ⚠ THE CASE WITHOUT WHICH A READER THAT IGNORED THE ATTRIBUTE
-    // ENTIRELY WOULD PASS. It is also what keeps the 29 goldens
-    // still through this step: every corpus page carries `count=`
-    // and no rule declares the property, so the fallback arm is
-    // what every page is served by until step 30 migrates them.
+  test("★★ count= serves NOTHING — the arm is gone", () => {
+    // ⚠⚠ THE INVERSE of the step-29 control this replaces, and the
+    // assertion that makes 019 item 18 non-vacuous: an arm that
+    // survived would answer `{count: 5}` to all three of these.
+    //
+    // ★ `props` stays OPTIONAL and the three shapes still differ
+    // in what they MODEL — `"auto"` is the live shape on an
+    // element no rule matched, the omitted key is a hand-built
+    // double's, and no map at all is a DETACHED guide, which has
+    // no computed style to have read. All three mean *the author
+    // stated nothing here*, and none of them may resurrect the
+    // attribute.
     assert.deepEqual(
       tickSpecOf(grid({ count: "5" }), styled("auto")),
-      {
-        count: 5,
-      },
+      {},
     );
-    assert.deepEqual(tickSpecOf(grid({ count: "5" }), styled()), {
-      count: 5,
-    });
-    // …and with no props at all, which is the nineteen test and
-    // corpus callers' shape and the behaviour this function had
-    // before the property existed.
-    assert.deepEqual(tickSpecOf(grid({ count: "5" })), { count: 5 });
+    assert.deepEqual(tickSpecOf(grid({ count: "5" }), styled()), {});
+    assert.deepEqual(tickSpecOf(grid({ count: "5" })), {});
   });
 
   test("★ the property alone is enough", () => {
@@ -180,12 +184,10 @@ suite("hdvl/guide-spec — count's two sources (019 item 18)", () => {
 
   test("a declared-but-unusable property does not fall back", () => {
     // `<integer>` admits `0` and a negative; the three tick MODES
-    // do not, so `positive` rejects them exactly as it rejects
-    // `count="0"`. The attribute is NOT consulted afterwards: a
-    // rule matched this element, so the author stated the mode
-    // here, and what they stated is unusable — reading the
-    // attribute instead would silently resurrect a value the more
-    // specific source overrode.
+    // do not, so `positive` rejects them. The attribute is not
+    // consulted — nothing consults it any more — and these two
+    // cases remain worth pinning because `0` and `-2` are states
+    // the registered syntax admits and the modes refuse.
     assert.deepEqual(
       tickSpecOf(grid({ count: "5" }), styled("0")),
       {},
@@ -197,9 +199,10 @@ suite("hdvl/guide-spec — count's two sources (019 item 18)", () => {
   });
 
   test("the property does not touch step or values", () => {
-    // Item 18 moves ONE of the three modes. `values` and `step` are
-    // data-space instructions — `values="0 100 1000"` is only
-    // correct for that data — and §6.1 keeps them attributes.
+    // Item 18 moved ONE of the three modes. `values` and `step`
+    // are data-space instructions — `values="0 100 1000"` is only
+    // correct for that data — and §6.1 keeps them attributes, so
+    // this is also where the reader stays MIXED-SOURCE.
     assert.deepEqual(
       tickSpecOf(
         grid({ step: "0.05", values: "[1, 2]" }),

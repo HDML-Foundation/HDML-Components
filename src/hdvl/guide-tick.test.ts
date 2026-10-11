@@ -247,7 +247,7 @@ suite("hdvl/guide-tick — §6.5's repeated glyph", () => {
   });
 
   test("★ the registered initial is rect, not ellipse", async () => {
-    const view = await mount(page('count="3"'));
+    const view = await mount(page("", "--hdml-tick-count: 3;"));
     const el = tickOf(view);
     assert.strictEqual(
       getComputedStyle(el)
@@ -265,7 +265,9 @@ suite("hdvl/guide-tick — §6.5's repeated glyph", () => {
     // number: reading a width as a radius doubles every glyph and
     // both readings are internally consistent.
     const styled = "--hdml-tick-width: 3px; --hdml-tick-height: 9px;";
-    const rects = await mount(page('count="3"', styled));
+    const rects = await mount(
+      page("", `${styled} --hdml-tick-count: 3;`),
+    );
     const el = rects.querySelector("hdml-tick");
     assert.isNotNull(el);
     const w = lengthOf(el, "--hdml-tick-width");
@@ -280,7 +282,10 @@ suite("hdvl/guide-tick — §6.5's repeated glyph", () => {
     }
 
     const ovals = await mount(
-      page('count="3"', `${styled} --hdml-tick-style: ellipse;`),
+      page(
+        "",
+        `${styled} --hdml-tick-style: ellipse; --hdml-tick-count: 3;`,
+      ),
     );
     for (const node of nodesOf(ovals)) {
       assert.strictEqual(node.k, "ellipse");
@@ -296,7 +301,7 @@ suite("hdvl/guide-tick — §6.5's repeated glyph", () => {
 
   test("★ it sits on its own near edge", async () => {
     // SPEC §7: "placement is pure CSS… no `position` attribute".
-    const left = await mount(page('count="3"'));
+    const left = await mount(page("", "--hdml-tick-count: 3;"));
     const box = tickOf(left).getBoundingClientRect();
     // ★ 017 R1 changed what a healthy box looks like here. This
     // read used to be `isAbove(box.width, 0)` — "the tick measured a
@@ -313,7 +318,7 @@ suite("hdvl/guide-tick — §6.5's repeated glyph", () => {
         return r.x + r.w / 2;
       });
     const right = await mount(
-      page('count="3"', "left: 100%; right: auto;"),
+      page("", "left: 100%; right: auto; --hdml-tick-count: 3;"),
     );
     // The crossing moves with the BOX, and since R1 that is the
     // whole of it: a zero-extent box has one edge rather than two,
@@ -330,7 +335,7 @@ suite("hdvl/guide-tick — §6.5's repeated glyph", () => {
   });
 
   test("its role is guide, so empty still counts marks", async () => {
-    const view = await mount(page('count="3"'));
+    const view = await mount(page("", "--hdml-tick-count: 3;"));
     assert.strictEqual(groupOf(view).role, "guide");
     // §3.4.1: a chart of ticks over no data is EMPTY, not full.
     assert.isTrue(view.matches(":state(empty)"));
@@ -348,7 +353,7 @@ suite("hdvl/guide-tick — §6.5's repeated glyph", () => {
     // decorative-ness is therefore carried by the node kind it
     // emits, and this is that invariant: nothing it paints is text,
     // so §5.10's aria-hidden floor has nothing to apply to.
-    const view = await mount(page('count="3"'));
+    const view = await mount(page("", "--hdml-tick-count: 3;"));
     for (const node of nodesOf(view)) {
       assert.notStrictEqual(node.k, "text");
       assert.oneOf(node.k, ["rect", "ellipse"]);
@@ -436,7 +441,10 @@ suite("hdvl/guide-tick — §6.5's repeated glyph", () => {
         <hdml-polar-plane>
           <hdml-continuous-scale channel="angle" min="0" max="4">
             <hdml-continuous-scale channel="radius" min="0" max="10">
-              <hdml-tick channel="angle" count="4"></hdml-tick>
+              <hdml-tick
+                channel="angle"
+                style="--hdml-tick-count: 4"
+              ></hdml-tick>
               <hdvl-probe></hdvl-probe>
             </hdml-continuous-scale>
           </hdml-continuous-scale>

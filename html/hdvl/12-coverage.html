@@ -29,7 +29,7 @@
   <head>
     <meta charset="utf-8" />
     <title>12 — Coverage</title>
-    <script src="/bin/components.min.js"></script>
+    <script src="../../bin/index.min.js"></script>
     <style>
       body { margin: 2rem; font-family: system-ui, sans-serif; }
       figure { margin: 0 0 3rem; max-width: 480px; }
@@ -58,6 +58,23 @@
         --hdml-line-style: dotted; --hdml-line-color: #cbd5e1; }
       figure.symlog hdml-line { --hdml-line-width: 2px;
         --hdml-line-color: #1c8cf4; }
+      /* 019 items 18+19 — the TICK MODE and the LABEL SKELETON
+         are CSS, not attributes. `count=` and `format=` are
+         inert; `--hdml-tick-count` / `--hdml-text-format` are
+         the only sources `tickSpecOf` and `textsOf` read.
+         Both are `inherits: false` (SPEC §9's exception), so a
+         rule reaches exactly the elements it selects and a
+         view-qualified rule is how one view's guides differ
+         from another's on the same page. */
+      hdml-tick[channel="x"] { --hdml-tick-count: 5; }
+      hdml-view[aria-labelledby="cap-ramp"] hdml-label[channel="x"] { --hdml-tick-count: 5; }
+      hdml-view[aria-labelledby="cap-ramp"] hdml-label[channel="y"] { --hdml-tick-count: 5; }
+      hdml-view[aria-labelledby="cap-ramp"] hdml-legend[channel="color"] { --hdml-tick-count: 5; }
+      hdml-label[channel="angle"] { --hdml-tick-count: 5; --hdml-text-format: precision-integer; }
+      hdml-view[aria-labelledby="cap-stack"] hdml-label[channel="y"] { --hdml-tick-count: 5; }
+      hdml-grid[channel="y"] { --hdml-tick-count: 5; }
+      hdml-view[aria-labelledby="cap-symlog"] hdml-label[channel="x"] { --hdml-tick-count: 5; --hdml-text-format: MMMd; }
+      hdml-view[aria-labelledby="cap-symlog"] hdml-label[channel="y"] { --hdml-tick-count: 5; --hdml-text-format: compact-short; }
     </style>
   </head>
   <body>
@@ -80,15 +97,15 @@
                    hdml-legend renders the labeled ramp, not swatches (§2) -->
               <hdml-continuous-scale channel="color" min="0" max="40">
                 <hdml-axis channel="x"></hdml-axis>
-                <hdml-tick channel="x" count="5"></hdml-tick>
-                <hdml-label channel="x" count="5"></hdml-label>
+                <hdml-tick channel="x"></hdml-tick>
+                <hdml-label channel="x"></hdml-label>
                 <hdml-axis channel="y"></hdml-axis>
-                <hdml-label channel="y" count="5"></hdml-label>
+                <hdml-label channel="y"></hdml-label>
                 <hdml-point
                   x="[12, 28, 35, 47, 58, 66, 79, 91]"
                   y="[4.1, 3.2, 3.6, 2.4, 1.9, 2.2, 1.1, 0.8]"
                   color="[31, 26, 38, 18, 12, 22, 8, 5]"></hdml-point>
-                <hdml-legend channel="color" count="5"></hdml-legend>
+                <hdml-legend channel="color"></hdml-legend>
               </hdml-continuous-scale>
             </hdml-continuous-scale>
           </hdml-continuous-scale>
@@ -110,8 +127,7 @@
                  the convention for guides the marks would occlude —
                  here the ring would occlude the labels, so paint order
                  is used the other way, on purpose) -->
-            <hdml-label channel="angle" count="5"
-                        format="precision-integer"></hdml-label>
+            <hdml-label channel="angle"></hdml-label>
           </hdml-continuous-scale>
         </hdml-polar-plane>
       </hdml-view>
@@ -129,7 +145,7 @@
                 <hdml-axis channel="x"></hdml-axis>
                 <hdml-label channel="x"></hdml-label>
                 <hdml-axis channel="y"></hdml-axis>
-                <hdml-label channel="y" count="5"></hdml-label>
+                <hdml-label channel="y"></hdml-label>
                 <!-- toggle `hidden` below in DevTools: the two rendered
                      bands rebase (relation re-derives); scale domains
                      never follow a toggle — the ceiling is the author's
@@ -159,11 +175,11 @@
             values='["2026-08-03","2026-08-04","2026-08-05","2026-08-06","2026-08-07"]'>
             <hdml-continuous-scale channel="y" type="symlog" constant="1"
                                    min="-10000" max="10000">
-              <hdml-grid channel="y" count="5"></hdml-grid>
+              <hdml-grid channel="y"></hdml-grid>
               <hdml-axis channel="x"></hdml-axis>
-              <hdml-label channel="x" count="5" format="MMMd"></hdml-label>
+              <hdml-label channel="x"></hdml-label>
               <hdml-axis channel="y"></hdml-axis>
-              <hdml-label channel="y" count="5" format="compact-short"></hdml-label>
+              <hdml-label channel="y"></hdml-label>
               <hdml-line
                 x='["2026-08-03","2026-08-04","2026-08-05","2026-08-06","2026-08-07"]'
                 y="[-8200, -140, 6, 950, 7400]"></hdml-line>

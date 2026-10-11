@@ -200,7 +200,9 @@ suite("hdvl/guide-grid — §6.5's repeated line", () => {
   });
 
   test("count, step and values each reach the scale", async () => {
-    const byCount = await mount(continuous('count="3"'));
+    const byCount = await mount(
+      continuous('style="--hdml-tick-count: 3"'),
+    );
     assert.deepEqual(
       along(byCount, false),
       expected(byCount, "y", { count: 3 }),
@@ -268,7 +270,10 @@ suite("hdvl/guide-grid — §6.5's repeated line", () => {
         <hdml-polar-plane style="padding: 0">
           <hdml-continuous-scale channel="angle" min="0" max="4">
             <hdml-continuous-scale channel="radius" min="0" max="10">
-              <hdml-grid channel="angle" count="4"></hdml-grid>
+              <hdml-grid
+                channel="angle"
+                style="--hdml-tick-count: 4"
+              ></hdml-grid>
               <hdvl-probe></hdvl-probe>
             </hdml-continuous-scale>
           </hdml-continuous-scale>
@@ -300,7 +305,10 @@ suite("hdvl/guide-grid — §6.5's repeated line", () => {
         <hdml-cartesian-plane>
           <hdml-continuous-scale channel="x" min="0" max="4">
             <hdml-continuous-scale channel="y" min="0" max="200">
-              <hdml-grid channel="y" count="4"></hdml-grid>
+              <hdml-grid
+                channel="y"
+                style="--hdml-tick-count: 4"
+              ></hdml-grid>
               <hdvl-probe></hdvl-probe>
             </hdml-continuous-scale>
           </hdml-continuous-scale>

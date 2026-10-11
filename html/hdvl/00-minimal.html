@@ -3,12 +3,23 @@
   00 — Minimal (the floor)
 
   MOCK — see SPEC.md. The smallest legal render: one bar chart, literal
-  data, no server, no hdml-io, and NO CSS beyond a width. Everything
-  else comes from spec defaults: view aspect-ratio 2:1, UA plane padding
-  (the gutter the guides land in) and UA guide placement (x guides below
-  the plot, y guides left — §3), bandwidth 0.8, currentColor marks,
-  system-ui 11px labels (§9 initials). The accessible name is an
-  attribute, not CSS — the zero-CSS claim survives it (§10 floor).
+  data, no server, no hdml-io, and — as of 019 items 18+19 — ONE CSS
+  RULE beyond a width. Everything else comes from spec defaults: view
+  aspect-ratio 2:1, UA plane padding (the gutter the guides land in)
+  and UA guide placement (x guides below the plot, y guides left —
+  §3), bandwidth 0.8, currentColor marks, system-ui 11px labels (§9
+  initials). The accessible name is an attribute, not CSS — the
+  minimal-CSS claim survives it (§10 floor).
+
+  ⚠ THE "NO CSS BEYOND A WIDTH" CONTRACT WAS AMENDED HERE, deliberately
+  and once. The y label asks for five ticks, and a tick MODE is no
+  longer expressible as an attribute: `count=` is inert and
+  `--hdml-tick-count` is the only source `tickSpecOf` reads. So the
+  floor is now "a width and one declaration" rather than "a width".
+  That is the honest cost of items 18+19 and it is stated here rather
+  than left for a reader to notice: the page could have dropped the
+  count instead, but five ticks over [0, 500] is what makes its y axis
+  legible, and a floor page that renders badly teaches the wrong floor.
 
   Every element here is load-bearing — two scales (the space), four
   guides (what the reader is told), one mark (the statement). That is
@@ -20,7 +31,18 @@
   <head>
     <meta charset="utf-8" />
     <title>00 — Minimal</title>
-    <script src="/bin/components.min.js"></script>
+    <style>
+      /* 019 items 18+19 — the TICK MODE and the LABEL SKELETON
+         are CSS, not attributes. `count=` and `format=` are
+         inert; `--hdml-tick-count` / `--hdml-text-format` are
+         the only sources `tickSpecOf` and `textsOf` read.
+         Both are `inherits: false` (SPEC §9's exception), so a
+         rule reaches exactly the elements it selects and a
+         view-qualified rule is how one view's guides differ
+         from another's on the same page. */
+      hdml-label[channel="y"] { --hdml-tick-count: 5; }
+    </style>
+    <script src="../../bin/index.min.js"></script>
   </head>
   <body>
     <hdml-view style="width: 480px" aria-label="Quarterly revenue, Q1–Q4">
@@ -30,7 +52,7 @@
             <hdml-axis channel="x"></hdml-axis>
             <hdml-label channel="x"></hdml-label>
             <hdml-axis channel="y"></hdml-axis>
-            <hdml-label channel="y" count="5"></hdml-label>
+            <hdml-label channel="y"></hdml-label>
             <hdml-bar x='["Q1","Q2","Q3","Q4"]' y="[310, 420, 380, 490]"></hdml-bar>
           </hdml-continuous-scale>
         </hdml-ordinal-scale>

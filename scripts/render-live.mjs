@@ -141,7 +141,10 @@ async function handoff() {
  * `:state(loading)`, which is not exposed to script.
  *
  * ★ Nothing it returns is believed until the caller has checked
- * `upgraded` and `pathname`. See the guard in {@link render}.
+ * `upgraded`, `unregistered` and `pathname`. See the guard in
+ * {@link render} — and note that `upgraded` catches a MISSING
+ * bundle while `unregistered` catches a STALE one, which is a
+ * different failure with no other symptom (019 step 30).
  */
 const PROBE = `(async () => {
   const views = [...document.querySelectorAll("hdml-view")];
@@ -185,6 +188,33 @@ const PROBE = `(async () => {
       views.length > 0 &&
       customElements.get("hdml-view") !== undefined &&
       views[0] instanceof customElements.get("hdml-view"),
+    // ★ 019 step 30 — the STALENESS half, which "upgraded" cannot
+    // see. A registered custom property with a non-empty initial
+    // computes to that initial; an UNREGISTERED one computes to the
+    // empty string. So a bin that predates a property is observable
+    // from the page, where a bin that merely defines hdml-view is
+    // not.
+    //
+    // Measured at step 30: a pre-item-18 bundle rendered the
+    // migrated corpus with upgraded: true, an EMPTY console and a y
+    // axis of 11 raw ticks where the page asks for 5 compact ones.
+    // Nothing in this script could tell it from a correct run.
+    //
+    // NOTE A FLOOR, not an inventory: a property with no initial
+    // (--hdml-text-format) computes to the empty string even when
+    // registered and cannot be probed this way. Extend when a step
+    // registers another property that has one.
+    unregistered:
+      views.length === 0
+        ? []
+        : [["--hdml-tick-count", "auto"]]
+            .filter(
+              ([name, initial]) =>
+                getComputedStyle(views[0])
+                  .getPropertyValue(name)
+                  .trim() !== initial,
+            )
+            .map(([name]) => name),
     views: views.map((v, i) => {
       const s = svgOf(v);
       const r = v.getBoundingClientRect();
@@ -264,8 +294,18 @@ async function render(ctx, path) {
       reasons.push("no <hdml-view> in the document");
     } else if (!probe.upgraded) {
       reasons.push(
-        "<hdml-view> did not upgrade — bin/index.min.js is stale or " +
-          "missing. It is gitignored: run `npm run compile_bin`.",
+        "<hdml-view> did not upgrade — bin/index.min.js is MISSING " +
+          "or failed to define the element. It is gitignored: run " +
+          "`npm run compile_bin`.",
+      );
+    } else if (probe.unregistered.length > 0) {
+      reasons.push(
+        `bin/index.min.js is STALE: ${probe.unregistered.join(", ")} ` +
+          "is not registered, so every page stating a value in CSS " +
+          "renders the UA default instead — silently, and with a " +
+          "plausible result. Run `npm run compile_all` (not just " +
+          "`compile_bin`: it bundles esm/, which tsc may have " +
+          "skipped as up to date).",
       );
     } else if (!probe.settled) {
       const blank = probe.views

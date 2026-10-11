@@ -92,6 +92,7 @@ import type { Scene, SceneGroup, SceneNode } from "../hdvl/scene";
 import type { HdmlViewElement } from "../hdvl/view";
 import type { FakeColumn, FakeResult } from "./FakeIo";
 import { HDVL_TAG_NAMES } from "../hdvl/vocabulary";
+import { HDVL_PROPERTIES } from "../hdvl/properties";
 import { NODE_BUDGET, diagnosticsOf } from "../hdvl/validate";
 import { sceneOf } from "./scene-of";
 
@@ -294,6 +295,31 @@ export async function mountCorpus(
   ios.forEach((el) => el.remove());
 
   const styles = Array.from(doc.head.querySelectorAll("style"));
+  // ★★ 019 step 30 — DROP any sheet a previous mount injected,
+  // before injecting this page's.
+  //
+  // The page sheets go into the shared `document.head` while the
+  // body mounts into a local `<div>`, and their selectors are
+  // global: nothing scopes them to the root. That was a cosmetic
+  // concern until items 18+19 moved `count` and `format` into CSS.
+  // **Six selectors now collide across pages with different
+  // values** — `hdml-grid[channel="radius"]` is `4` on
+  // `09-polar-area` and `5` on `10-radar`; `hdml-tick[channel="x"]`
+  // is `12` on `01-line` and `5` on `12-coverage` — and a tick
+  // count or a skeleton changes the **scene**, not the paint. A
+  // surviving sheet would therefore move another page's golden, in
+  // another page's suite, with nothing pointing back here.
+  //
+  // ⚠ It is a REMOVAL and not an assertion, which was the first
+  // thing tried and was wrong: `assertInvariants` legitimately
+  // mounts the same page FOUR times inside one test (twice per
+  // layout width), so *"nothing was injected before me"* is false
+  // on a correct tree. What must hold is that no OTHER page's
+  // sheet is live, and dropping first makes that true by
+  // construction rather than by the teardown's good behaviour.
+  while (injected.length > 0) {
+    injected.pop()?.remove();
+  }
   for (const style of styles) {
     const live = document.createElement("style");
     live.textContent = style.textContent;
@@ -595,6 +621,42 @@ export function negativeZeros(scene: Scene): string[] {
     }
   };
   walk(scene, "scene");
+  return out;
+}
+
+/**
+ * A MEASURE snapshot's `props` map, rebuilt from a LIVE element.
+ *
+ * ★ **Why a corpus test needs this at all (019 items 18+19).**
+ * `tickSpecOf` reads `count` from the computed `--hdml-tick-count`
+ * and from nowhere else, and its `props` parameter is optional
+ * because 19 of its callers hold no MEASURE snapshot. A corpus test
+ * is one of them: `Measured.props` is built inside the frame and is
+ * not reachable from outside it, so a call that omits `props` sees
+ * no count at all — measured, `{}` where the page asks for four.
+ * This rebuilds the same map the frame would have handed the
+ * reader, by the same loop `measure.ts` uses.
+ *
+ * ⚠ **It must be read AFTER a frame has settled** (C251): a test
+ * that mutates a style and re-reads `getComputedStyle` in the same
+ * synchronous block gets the PREVIOUS value on all three engines.
+ * Every caller below reads it off a page that `mountCorpus` has
+ * already quiesced, which needs no flush.
+ *
+ * ⓘ It deliberately does NOT apply `resolvePaint`, which MEASURE
+ * does: no caller reads a colour through this, and substituting
+ * `currentcolor` would need the element's resolved `color` too.
+ *
+ * @param el - A mounted, styled element.
+ * @returns Its registered `--hdml-*` values, trimmed, as MEASURE
+ * would have harvested them.
+ */
+export function propsOf(el: Element): ReadonlyMap<string, string> {
+  const style = getComputedStyle(el);
+  const out = new Map<string, string>();
+  for (const def of HDVL_PROPERTIES) {
+    out.set(def.name, style.getPropertyValue(def.name).trim());
+  }
   return out;
 }
 

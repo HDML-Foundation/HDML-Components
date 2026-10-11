@@ -270,8 +270,7 @@ suite("hdvl/guide-polar — §6.5 about a pole", () => {
       polar(html`
         <hdml-grid
           channel="radius"
-          count="4"
-          style="--hdml-grid-shape: circle"
+          style="--hdml-grid-shape: circle; --hdml-tick-count: 4"
         ></hdml-grid>
       `),
     );
@@ -309,8 +308,7 @@ suite("hdvl/guide-polar — §6.5 about a pole", () => {
         html`
           <hdml-grid
             channel="radius"
-            count="2"
-            style="--hdml-grid-shape: polygon"
+            style="--hdml-grid-shape: polygon; --hdml-tick-count: 2"
           ></hdml-grid>
         `,
         '["a","b","c","d","e","f"]',
@@ -497,7 +495,10 @@ suite("hdvl/guide-polar — §6.5 about a pole", () => {
       >
         <hdml-polar-plane style="padding: 0">
           <hdml-continuous-scale channel="angle" min="0" max="1">
-            <hdml-label channel="angle" count="4"></hdml-label>
+            <hdml-label
+              channel="angle"
+              style="--hdml-tick-count: 4"
+            ></hdml-label>
             <hdvl-probe></hdvl-probe>
           </hdml-continuous-scale>
         </hdml-polar-plane>
@@ -651,10 +652,12 @@ suite("hdvl/guide-polar — §6.5 about a pole", () => {
           <hdml-axis channel="angle"></hdml-axis>
           <hdml-grid
             channel="radius"
-            count="3"
-            style="--hdml-grid-shape: polygon"
+            style="--hdml-grid-shape: polygon; --hdml-tick-count: 3"
           ></hdml-grid>
-          <hdml-label channel="radius" count="3"></hdml-label>
+          <hdml-label
+            channel="radius"
+            style="--hdml-tick-count: 3"
+          ></hdml-label>
         `,
         '["a","b","c","d"]',
       ),
