@@ -2558,6 +2558,78 @@ therefore **drops** previously-injected sheets before injecting its own, and
 nothing was injected and was wrong: `assertInvariants` legitimately mounts the same page
 four times inside one test.
 
+## `auto` resolves from the available width, and the ordinal path is excluded
+
+**019 step 31, 2026-10-11.** `--hdml-tick-count: auto` — the initial, and until now a
+synonym for *"the literal 10 inside `tickValues`"* — resolves to
+`max(2, floor(range_px / (2 × --hdml-font-size + 2px)))` and **stride-thins** the ladder's
+output down to it. Item 8, and the answer to the gate entry 017 routed here: `02-area`'s x
+axis emitted the same 21 weekly runs at 400 px as at 800 and every adjacent pair collided.
+It now emits **21 / 11 / 7** at 800 / 400 / 300 px, identically on all three engines.
+
+Six decisions, and the first three are the ones a later reader is most likely to re-litigate.
+
+**1 · `auto` is FORWARDED by `tickSpecOf` and resolved in `buildScale`.** `TickSpec.count`
+widened to `number | "auto"`. The resolution cannot live in `tickSpecOf` — that function
+reads declarations and resolves nothing, and its own docblock says why: *"a second
+resolution here would be a second ladder entry point in all but name (R12), and the two
+could disagree."* `buildScale`'s `ticks` closure is the only holder of the pixel `range`, so
+the keyword travels as itself and the closure answers it. The arithmetic is clamped
+**before** the kernel call, which is what keeps `kernel/` pure and its signatures fixed —
+`git diff -- src/hdvl/kernel/` is **zero lines**.
+
+**2 · ⚠ Absent and `auto` are now DIFFERENT answers, and the split is load-bearing in both
+directions.** A live `Measured.props` always carries `--hdml-tick-count`, so an attached
+guide no rule matched forwards `"auto"`; absence models a **detached** guide, which has no
+width to derive from, and also `hdml-axis` and `guide-grid.ts`'s internal `ticks({})` for a
+`polygon` grid's vertices. Collapsing `auto` to absence makes item 8 unreachable; promoting
+absence to `auto` would hand that radial-grid call a width-aware count — and its range is in
+**degrees**, so `floor(360 / 24) = 15` would have silently re-shaped `10-radar`'s and
+`11-multi-plane`'s grids. Both failures are quiet, which is why the split is pinned in three
+places (`guide-spec.test.ts`, `guide-grid.test.ts`, `corpus/tick-auto.test.ts`).
+
+**3 · `auto` never ADDS a tick, so no golden can move.** The ladder is still asked for its
+own default and the cap only removes. `02-area`'s range is 664 px at the golden width, so
+the cap is `floor(664 / 24) = 27` against 21 emitted runs — a stride of 1, and the wide
+layout is unchanged *by construction* rather than by calibration luck. That is what makes
+the 29 goldens a regression guard **on** the fix rather than a cost of it, and it is the
+shape the minimum pitch was chosen to guarantee: the admissible window is
+`16.47 px < p ≤ 30.78 px`, both bounds measured from the gate's own baseline, and 24 px sits
+clear of each. Expressing it as `2 × font-size + 2px` rather than as the constant `24` is
+deliberate — the pitch moves with the type instead of being a magic number.
+
+**4 · Stride-thinning, not a coarser rung.** Re-asking the ladder for a coarser rung turns
+months into quarters and changes the surviving labels' **text**; a stride keeps each
+survivor's text *and* its position, so the axis is visibly the same axis with fewer labels.
+It is `thinOrdinal`'s rule — `every ⌈N / cap⌉-th, index 0 always kept` — so continuous axes
+come to behave as ordinal ones already do. It is **cited rather than shared**: `thinOrdinal`
+is typed to `readonly string[]` and owns the ordinal path, and generalising it would risk
+that path for no behavioural gain.
+
+**5 · The ordinal path is excluded, by decision.** `thinOrdinal` with an empty spec returns
+the whole domain, and dropping every other category leaves bars unlabelled — a different
+failure from a crowded ladder, and not the one item 8 names. `04-grouped-stacked`'s **54**
+accepted narrow-layout collisions therefore stay accepted. So are `angle`, `size` and
+`color`, whose ranges are not in pixels: a pitch in px is only meaningful for `x`, `y` and
+`radius`.
+
+**6 · ⚠ The scale's SIGNATURE no longer covers `ticks()` — named residue.** Found by this
+step's fifth negative control, measured on all three engines: `hdml-scale-change` is
+edge-triggered on `JSON.stringify([domain(), range()])`, and `auto`'s cap depends on a
+**third** input, `--hdml-font-size`. Changing it takes `02-area`'s x axis from 11 runs to 21
+while the pair is byte-identical and the event fires **zero** times. The paint is correct —
+the property carries the UA transition sentinel, so a frame runs and the guides recompute —
+and the event's documented contract is the *pair*, not the tick set, so nothing promised is
+broken. What is stale is a listener that read the event as *"the ticks may have moved"*.
+Shipped as residue rather than widened, because widening the signature to include a tick
+set would make every scale recompute one per frame whether or not a guide asked.
+
+**And one claim the step plan carried was false.** Row 31 scoped `page-02.test.ts`'s goldens
+as moving — *"the one page whose scene changes"*. They do not, and
+`003. RFCs/005. Note — Tick Thinning.md` §5 had already measured why: goldens are recorded
+at the **wide** layout, where nothing thins. The whole commit changes **zero** lines under
+`src/hdvl/corpus/`.
+
 ## `hdml-split-by` is published and unimplemented
 
 Found by step 35's manifest check. `HDML_TAG_NAMES` has **33** members — 12 data + 21

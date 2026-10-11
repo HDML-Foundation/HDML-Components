@@ -773,11 +773,21 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
     );
     assert.notStrictEqual(texts(styled).length, texts(three).length);
     // ★ And the attribute on its own reaches nothing: `count="3"`
-    // with no rule renders the ladder's answer for an ABSENT
-    // count, not for three.
+    // with no rule renders the ladder's answer for the computed
+    // property, which is `auto` — not for three.
+    //
+    // ⚠ **`auto` is not the same request as an absent spec** since
+    // 019 item 8: this fixture's y range is short enough that
+    // `auto`'s cap thins the ladder, so comparing against
+    // `ticks({})` here would be comparing against a spec no
+    // production site ever builds.
     const attrOnly = await mount(page('count="3"'));
     assert.lengthOf(
       texts(attrOnly),
+      scaleOf(attrOnly, "y").ticks({ count: "auto" }).length,
+    );
+    assert.notStrictEqual(
+      scaleOf(attrOnly, "y").ticks({ count: "auto" }).length,
       scaleOf(attrOnly, "y").ticks({}).length,
     );
   });

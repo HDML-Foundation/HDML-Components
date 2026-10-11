@@ -226,8 +226,32 @@ suite("hdvl/guide-grid — §6.5's repeated line", () => {
     const bare = await mount(continuous(""));
     const empty = await mount(continuous('step=""'));
     assert.deepEqual(along(empty, false), along(bare, false));
-    // A bare grid is `ticks({})`, which Contract 2 reads as 10.
-    assert.deepEqual(along(bare, false), expected(bare, "y", {}));
+    // ★★ **A bare grid is `ticks({count: "auto"})`, not
+    // `ticks({})`** — 019 item 8. A registered property always
+    // computes to its initial, so an element no rule matched
+    // carries `auto` and `tickSpecOf` forwards it; absence now
+    // models only a DETACHED guide, which this fixture is not.
+    //
+    // ⚠ The two answers DIFFER on this fixture and that is the
+    // point: the box is 200 px tall, so `auto`'s cap is 6 against
+    // the eleven boundaries the ladder emits, and eleven 11 px
+    // runs in 160 px of range is exactly the collision item 8
+    // exists to prevent. Before item 8 this test compared a
+    // rendered guide against the absent-spec ladder and so
+    // asserted `auto ≡ absent` without ever saying so.
+    assert.deepEqual(
+      along(bare, false),
+      expected(bare, "y", { count: "auto" }),
+    );
+    // …and it really is thinned rather than merely different: the
+    // kept lines are a stride of the unthinned set, index 0 first.
+    const unthinned = expected(bare, "y", {});
+    const kept = along(bare, false);
+    assert.isBelow(kept.length, unthinned.length);
+    for (const at of kept) {
+      assert.include(unthinned, at);
+    }
+    assert.strictEqual(kept[0], unthinned[0]);
   });
 
   test("an ordinal grid lands on band centres", async () => {

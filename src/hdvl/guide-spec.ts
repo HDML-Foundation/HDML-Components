@@ -713,11 +713,28 @@ export function tickSpecOf(
   // is inert: a document states the mode in CSS or not at all, and
   // `props` being absent means *"no snapshot"* — a detached guide,
   // which has no declaration to read — rather than *"fall back"*.
+  //
+  // ★★ **`"auto"` is FORWARDED, not resolved** (019 item 8).
+  // Resolving it needs the scale's pixel `range`, which only
+  // `buildScale` holds, and putting a second resolution here
+  // would be the second ladder entry point this function's
+  // docblock forbids. So the keyword travels as itself and
+  // `scale.ts`'s `autoCap` answers it.
+  //
+  // ⚠ **Absent and `"auto"` are DIFFERENT answers.** Absent means
+  // *"no snapshot"* — a detached guide, which has no declaration
+  // to read — and it stays absent, because a guide with no width
+  // has nothing to derive a width-aware count from. It is also
+  // what `hdml-axis` and `guide-grid`'s bare `ticks({})` mean, and
+  // both must keep the ladder's own default.
   const styled = (props?.get(P_COUNT) ?? "").trim();
-  const count =
-    styled === "" || styled === "auto" ? undefined : positive(styled);
-  if (count !== undefined) {
-    spec.count = count;
+  if (styled === "auto") {
+    spec.count = "auto";
+  } else {
+    const count = styled === "" ? undefined : positive(styled);
+    if (count !== undefined) {
+      spec.count = count;
+    }
   }
   const step = positive(textOf(el, A_STEP));
   if (step !== undefined) {

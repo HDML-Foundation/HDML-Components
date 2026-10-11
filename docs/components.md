@@ -715,6 +715,60 @@ documented and that its sharpest case is no longer silent — see *"A radial gui
 nothing at the pole"*, below. **If you need an exact number of lines, write `step=` or
 `values=`.** `05-scatter` does, and says why in the page itself.
 
+**★★ `auto` is the initial, and since 019 item 8 it is a *derivation* rather than a literal
+10** (2026-10-11). `--hdml-tick-count` computes to `auto` on every guide no rule matched, and
+`auto` now means **"the ladder's own answer, thinned to whatever fits"**:
+
+```
+cap    = max(2, floor(range_px / minPitch))
+minPitch = 2 × --hdml-font-size + 2px     # 24px at the registered 11px initial
+```
+
+The ladder is still asked for its own default, and `cap` only **removes** ticks — `auto`
+never adds one. Surviving ticks are a **stride** of the unthinned set with index 0 always
+kept (`every ⌈N / cap⌉-th`), which is exactly what an ordinal scale's thinning already does,
+so a label keeps **its text and its position** and the axis visibly becomes the same axis
+with fewer labels on it. Asking the ladder for a coarser *rung* instead was rejected: it
+would turn months into quarters and hand an author who wrote `format: MMM` something they
+never asked for.
+
+What this fixes: `02-area`'s x axis declares no count over a five-month datetime domain, and
+the calendar ladder emits **21 weekly runs**. At 800 px that is 30.78 px of pitch against
+17.98 px of ink and they fit; at 400 px the pitch falls to 14.09 px and **every adjacent pair
+collides**. It now emits 21 at 800 px, 11 at 400 and 7 at 300 — measured on all three
+engines.
+
+Four things are deliberate and are the ones to know:
+
+- **`auto` is a geometric estimate, not a measurement.** `measureText` is unreachable from
+  the scale (the same boundary that keeps `::part()` from the legend), so `auto` prevents the
+  gross failure and **cannot guarantee no overlap for an unusually long label**. If you need
+  a guarantee, write a `count`, a `step` or `values`.
+- **It never applies to `step=` or `values=`.** Those are you naming exactly which ticks
+  exist; `auto` is you declining to.
+- **It never applies to an ordinal scale.** `thinOrdinal` with no spec returns the whole
+  domain, and dropping every other category leaves bars unlabelled — a different failure from
+  a crowded ladder. `04-grouped-stacked`'s narrow-layout month labels still collide, by
+  decision.
+- **It never applies to a non-pixel channel.** A scale's range is in its channel's own unit —
+  CSS px for `x`, `y` and `radius`, **degrees** for `angle`, a diameter pair for `size`, and
+  nothing at all for `color` — and a pitch in px is only meaningful for the first three. On
+  the others `auto` falls back to the ladder's default, which is what keeps a radial grid's
+  spokes and a colour legend's graduations where they are.
+
+⚠ **It is author-visible.** A document relying on `auto` gets a different number of ticks
+than before 019, and the number now depends on the rendered width. An explicit
+`--hdml-tick-count` is the opt-out and reproduces the old behaviour exactly (`10` reproduces
+it bit for bit).
+
+⚠ **And the scale's change event does not cover it.** `hdml-scale-change` is edge-triggered
+on the resolved `(domain, range)` pair, which is its documented contract — but `auto`'s cap
+also depends on `--hdml-font-size`, so a font-size change moves the tick set while the pair
+is byte-identical and the event does **not** fire. The paint is still correct (the property
+carries the UA sentinel, so a frame runs and the guides recompute); what is stale is only a
+listener that treated the event as *"the ticks may have moved"*. Measured on all three
+engines at 019 step 31; see `src/hdvl/corpus/tick-auto.test.ts`.
+
 `step=`'s multiples are generated over an **integer index range**, and where the step has an
 integer reciprocal (`0.05`, `0.2`, `0.001` — nearly every one an author writes) as `i /
 divisor`, exactly as §4.8's own ladder is. That is not tidiness: `0.35 / 0.05` is
@@ -1396,10 +1450,16 @@ welding that stylesheet to one document.** So `values` and `step` stay attribute
 `values="0 100 1000"` is only correct for that data — while tick density and number
 formatting become CSS, because both are portable across datasets.
 
-| | Syntax | Initial | Absence reads as |
-|---|---|---|---|
-| `--hdml-tick-count` | `auto \| <integer>` | `auto` | `auto` |
-| `--hdml-text-format` | `*` | **omitted** | exactly `""` |
+| | Syntax | Initial | Absence reads as | What the initial *does* |
+|---|---|---|---|---|
+| `--hdml-tick-count` | `auto \| <integer>` | `auto` | `auto` | the ladder's answer, **stride-thinned to `floor(range / 24px)`** — see [*"`auto` is the initial…"*](#under-a-polar-plane-65-spec-9) above |
+| `--hdml-text-format` | `*` | **omitted** | exactly `""` | the locale's default formatting |
+
+⚠ **`auto` is not a synonym for "no spec".** A guide that *has* a computed style always
+carries `auto` and gets the width-aware derivation; a spec with **no `count` member at all**
+means *"this guide takes no spec"* (`hdml-axis`, and a radial grid's internal
+`ticks({})` for its polygon) and keeps the ladder's bare default. The two were the same
+answer until 019 item 8 and are now deliberately different.
 
 ⚠ **Because they do not inherit, a declaration must name the readers.** This works:
 

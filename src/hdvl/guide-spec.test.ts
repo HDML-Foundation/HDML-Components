@@ -155,16 +155,27 @@ suite("hdvl/guide-spec — count's one source (019 item 18)", () => {
     // assertion that makes 019 item 18 non-vacuous: an arm that
     // survived would answer `{count: 5}` to all three of these.
     //
-    // ★ `props` stays OPTIONAL and the three shapes still differ
-    // in what they MODEL — `"auto"` is the live shape on an
-    // element no rule matched, the omitted key is a hand-built
-    // double's, and no map at all is a DETACHED guide, which has
-    // no computed style to have read. All three mean *the author
-    // stated nothing here*, and none of them may resurrect the
-    // attribute.
+    // ★ `props` stays OPTIONAL and the three shapes differ in
+    // what they MODEL — `"auto"` is the live shape on an element
+    // no rule matched, the omitted key is a hand-built double's,
+    // and no map at all is a DETACHED guide, which has no computed
+    // style to have read. All three mean *the author stated no
+    // NUMBER here*, and **none of them may resurrect the
+    // attribute** — which is this test's claim and is what all
+    // three assertions below still pin.
+    //
+    // ⚠⚠ **They no longer give the same ANSWER, as of 019 item
+    // 8.** `"auto"` is forwarded as itself, because resolving it
+    // needs the scale's pixel range and `buildScale` is the only
+    // holder of one; the other two stay absent, because a guide
+    // with no snapshot has no width to derive anything from. The
+    // split is load-bearing in both directions: collapsing `auto`
+    // to absence makes item 8 unreachable, and promoting absence
+    // to `auto` would give `hdml-axis` and `guide-grid`'s bare
+    // `ticks({})` a width-aware count they never asked for.
     assert.deepEqual(
       tickSpecOf(grid({ count: "5" }), styled("auto")),
-      {},
+      { count: "auto" },
     );
     assert.deepEqual(tickSpecOf(grid({ count: "5" }), styled()), {});
     assert.deepEqual(tickSpecOf(grid({ count: "5" })), {});
@@ -174,11 +185,18 @@ suite("hdvl/guide-spec — count's one source (019 item 18)", () => {
     assert.deepEqual(tickSpecOf(grid({}), styled("3")), { count: 3 });
   });
 
-  test("★ neither source leaves count ABSENT", () => {
-    // Not zero, not a literal default: absent. `Scale.ticks` reads
-    // an empty spec as `count = 10`, and a default here would be a
-    // second entry point into §4.8's ladder (R12).
-    assert.deepEqual(tickSpecOf(grid({}), styled("auto")), {});
+  test("★ neither source leaves a NUMBER in count", () => {
+    // Not zero, not a literal default. `Scale.ticks` reads an
+    // empty spec as `count = 10` and resolves `"auto"` against the
+    // range, and a default here would be a second entry point into
+    // §4.8's ladder (R12) — so this function answers with the
+    // keyword or with nothing, never with arithmetic.
+    //
+    // ⚠ Renamed at 019 item 8: *"leaves count ABSENT"* was true of
+    // both rows and is now true of the second only.
+    assert.deepEqual(tickSpecOf(grid({}), styled("auto")), {
+      count: "auto",
+    });
     assert.deepEqual(tickSpecOf(grid({}), styled()), {});
   });
 

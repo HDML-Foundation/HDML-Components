@@ -94,12 +94,46 @@ export interface ScaleDomain {
 
 /** What a guide asks a scale for (§2.4, §6.5). */
 export interface TickSpec {
-  /** A target, never a promise. */
-  count?: number;
+  /**
+   * A target, never a promise — or **`"auto"`**, which is
+   * `--hdml-tick-count`'s initial and hands the decision to the
+   * runtime (§6.6, 019 item 8).
+   *
+   * ★ **`"auto"` is forwarded, not resolved, by `tickSpecOf`.**
+   * Resolving it needs the scale's pixel `range`, which only
+   * {@link buildScale} holds — see {@link autoCap}. A guide with
+   * no MEASURE snapshot has no declaration to read and so leaves
+   * this **absent**, which is a third state and not a synonym for
+   * `"auto"`: absent means *"this guide takes no spec at all"*
+   * (§6.5's `hdml-axis`) and keeps the ladder's own default.
+   */
+  count?: number | "auto";
   /** An exact interval. */
   step?: number;
   /** Literal JSON. */
   values?: readonly (number | string)[];
+}
+
+/**
+ * A {@link TickSpec} with `auto` already **resolved** — what the
+ * two-function ladder thread (`ticksFor` → `tickValues`) consumes.
+ *
+ * `count` has narrowed back to a number, and `auto`'s answer
+ * arrives as {@link WantedTicks.cap} instead, because the two mean
+ * different things to the ladder: a `count` is a target handed
+ * *to* it, and a `cap` is a ceiling applied *after* it.
+ */
+interface WantedTicks {
+  count?: number;
+  step?: number;
+  values?: readonly (number | string)[];
+  /**
+   * `auto`'s pixel-derived ceiling — stride-thin the ladder's
+   * output down to at most this many (§6.6). Absent whenever
+   * `auto` could not be resolved, which is the whole of today's
+   * behaviour.
+   */
+  cap?: number;
 }
 
 /** One tick (§2.4). */
@@ -1011,7 +1045,14 @@ function buildScale(
       return stops.length === 0 ? null : rampStops(stops, space, t);
     },
     ticks: (want: TickSpec): readonly Tick[] =>
-      ticksFor(kind, spec, domain, zone, want, at),
+      ticksFor(
+        kind,
+        spec,
+        domain,
+        zone,
+        wantedTicks(want, kind, channel, range, m),
+        at,
+      ),
     format: (v: number | string, skeleton?: string): string => {
       if (kind === "ordinal") {
         // SPEC §7: an ordinal channel renders its domain strings
@@ -1093,6 +1134,219 @@ function stepTicks(lo: number, hi: number, step: number): number[] {
 }
 
 /**
+ * ★ **The channels whose `range` is measured in CSS px.**
+ *
+ * `rangeOf`'s table hands back a range *in the channel's own unit*:
+ * px for these three, **degrees** for `angle`, a **diameter** pair
+ * for `size`, and `null` for `color`. A minimum *pitch* in px is
+ * therefore only meaningful here, and item 8's whole derivation is
+ * a pitch. An `angle` range would need the radius it is swept at to
+ * become an arc length, and the angle scale does not know it.
+ *
+ * ⚠ So `auto` on an `angle`, `size` or `color` channel resolves to
+ * **absent** — the ladder's own default, which is exactly today's
+ * behaviour. This is a gap, not a silent wrong answer, and it is
+ * what keeps `guide-grid.ts`'s radial spokes and every colour
+ * legend's graduations where they are.
+ */
+const PX_CHANNELS: readonly Channel[] = ["x", "y", "radius"];
+
+/**
+ * ★★ **A13 — the minimum pitch one tick needs, in CSS px.**
+ *
+ * `2 × --hdml-font-size + 2px`, which is **24 px** at the
+ * registered `11px` initial. The form matters more than the
+ * number: a pitch expressed in font sizes moves with the type
+ * rather than being a magic constant, which is the reason A13
+ * chose 24 over the 20 and 30 that also satisfy the window.
+ *
+ * **The window is measured, not guessed** (Note 005 §4.2): the
+ * upper bound `≤ 30.78 px` is `02-area`'s own wide-layout pitch,
+ * so a larger pitch would thin an axis that fits and move a
+ * golden; the lower bound `> 16.47 px` is `04-grouped-stacked` E's
+ * narrow pitch, so a smaller one would fail to thin a collision
+ * the gate has recorded. **Admissible: `16.47 < p ≤ 30.78`.**
+ *
+ * ★ `m.font.size` is the SAME `--hdml-font-size` read `measure.ts`
+ * already resolves to a number for the text metrics (`:269`), off
+ * the same `getComputedStyle` call `m.props` comes from. Nothing
+ * is plumbed and no second read is introduced — R16 keeps computed
+ * styles in `measure.ts` and this honours it.
+ *
+ * ⚠ **It is the SCALE's font size, not the guide's.** The scale is
+ * the only element `buildScale` has a snapshot of, and a guide's
+ * ticks are the scale's to decide (R12). `--hdml-font-size`
+ * inherits, so the two agree unless a rule targets the guide
+ * alone — in which case `auto` is an estimate made at the wrong
+ * size. That is admissible because `auto` is an estimate either
+ * way (§3.4): it has no access to ink.
+ *
+ * @param m - The scale's own measured snapshot.
+ * @returns The pitch in px, always finite and `> 0`.
+ */
+function minPitch(m: Measured): number {
+  const size =
+    Number.isFinite(m.font.size) && m.font.size > 0
+      ? m.font.size
+      : 11;
+  return 2 * size + 2;
+}
+
+/**
+ * ★★★ **Item 8 — what `--hdml-tick-count: auto` resolves to.**
+ *
+ * `floor(span / minPitch)`, clamped to **at least 2**: an axis
+ * always gets its two ends, however little room there is, because
+ * a one-tick axis reads as a rendering failure rather than as a
+ * crowded one.
+ *
+ * **It is a CEILING, never a target, and it NEVER ADDS a tick.**
+ * The ladder is still asked for its own default, and the cap only
+ * removes what there is no room for — which is item 8's defect
+ * stated exactly (*"a ladder does not thin when the room runs
+ * out"*). Two things follow, both deliberate:
+ *
+ * - **A wide axis is unchanged by construction.** `02-area`'s x
+ *   axis has 664 px of range at the golden width, so the cap is
+ *   `floor(664 / 24) = 27` against the 21 runs the calendar ladder
+ *   emits — a stride of 1, and the golden cannot move. That is why
+ *   the 29 goldens are a regression guard **on** the fix rather
+ *   than a cost of it (Note 005 §4.3).
+ * - **A very wide axis does not sprout ticks.** `auto` is not
+ *   *"fill the room"*; it is *"use the room you have"*.
+ *
+ * ⚠ **The ORDINAL path is excluded.** `thinOrdinal` with an empty
+ * spec returns the whole domain, and a categorical axis that drops
+ * every other month leaves bars unlabelled — a different failure
+ * from a crowded ladder, and not the one item 8 is about. §4.8's
+ * ladders are what *"when the room runs out"* names, and an
+ * ordinal domain has none. `04-grouped-stacked`'s 54 accepted
+ * narrow collisions are therefore still accepted, by decision.
+ *
+ * ⚠ **A `step` or a `values` set is never capped** — see
+ * {@link ticksFor}. Both are the author deciding exactly which
+ * ticks exist; `auto` is the author declining to decide.
+ *
+ * @param kind - The scale's kind.
+ * @param channel - The channel it serves.
+ * @param range - Its resolved range, in the channel's unit.
+ * @param m - The scale's own measured snapshot.
+ * @returns The ceiling, or `undefined` when `auto` cannot be
+ *   resolved — on an ordinal scale, a non-px channel, a `color`
+ *   channel, or a range of no extent.
+ */
+function autoCap(
+  kind: ScaleKind,
+  channel: Channel,
+  range: null | readonly [number, number],
+  m: Measured,
+): number | undefined {
+  if (
+    kind === "ordinal" ||
+    range === null ||
+    !PX_CHANNELS.includes(channel)
+  ) {
+    return undefined;
+  }
+  const span = Math.abs(range[1] - range[0]);
+  if (!Number.isFinite(span) || span <= 0) {
+    return undefined;
+  }
+  return Math.max(2, Math.floor(span / minPitch(m)));
+}
+
+/**
+ * {@link TickSpec} → {@link WantedTicks}: `auto` becomes a
+ * {@link WantedTicks.cap}, or becomes nothing at all.
+ *
+ * ★ **This is the one place `auto` is resolved, and it is NOT
+ * `tickSpecOf`.** That function reads declarations and resolves
+ * nothing, deliberately: *"a second resolution there would be a
+ * second ladder entry point in all but name (R12), and the two
+ * could disagree"*. So `tickSpecOf` forwards the keyword and
+ * `buildScale` — the only holder of the pixel `range` — answers
+ * it.
+ */
+function wantedTicks(
+  want: TickSpec,
+  kind: ScaleKind,
+  channel: Channel,
+  range: null | readonly [number, number],
+  m: Measured,
+): WantedTicks {
+  const out: WantedTicks = {};
+  if (want.step !== undefined) {
+    out.step = want.step;
+  }
+  if (want.values !== undefined) {
+    out.values = want.values;
+  }
+  if (want.count === "auto") {
+    const cap = autoCap(kind, channel, range, m);
+    if (cap !== undefined) {
+      out.cap = cap;
+    }
+  } else if (want.count !== undefined) {
+    out.count = want.count;
+  }
+  return out;
+}
+
+/**
+ * ★ **Stride-thinning — `thinOrdinal`'s rule, on the continuous
+ * side.**
+ *
+ * The mechanism is chosen, not incidental (Note 005 §3.3). The
+ * alternative was re-asking the ladder for a **coarser rung**,
+ * which was rejected because it changes the surviving labels'
+ * *text*: months would become quarters, and an author who wrote
+ * `format: MMM` would get something they never asked for. A
+ * stride keeps every surviving label's text **and its position**,
+ * so thinning is visibly the same axis with fewer labels on it.
+ *
+ * The arithmetic is `kernel/scale-band.ts`'s `thinOrdinal`
+ * verbatim — `every ⌈N / cap⌉-th, starting at index 0` — so
+ * **continuous axes come to behave as ordinal ones already do**.
+ * Consistency, not a new idea. `N = 21, cap = 12` gives a stride
+ * of `⌈21 / 12⌉ = 2` and therefore **eleven** values, not twelve:
+ * a round stride wins over an exact count, which is §4.8's
+ * opening rule and the reason `cap` is a ceiling.
+ *
+ * ⚠ **It is NOT shared with `thinOrdinal`.** That function is
+ * typed to `readonly string[]` and owns the ordinal path, which
+ * {@link autoCap} excludes; generalising it would put the ordinal
+ * path at risk for no behavioural gain, and R12 keeps
+ * `kernel/`'s signatures fixed for exactly this reason. The rule
+ * is cited here instead of copied blind.
+ *
+ * **Index 0 is always kept**, which anchors the axis's first tick
+ * rather than letting it drift with `N`.
+ *
+ * @param values - The ladder's output, in order.
+ * @param cap - At most this many survive.
+ * @returns The kept values, in order.
+ */
+function strideThin(
+  values: readonly (number | string)[],
+  cap: number,
+): (number | string)[] {
+  const raw = Math.ceil(values.length / Math.max(1, cap));
+  // `strideOf`'s guard, for the same reason it gives: a stride
+  // below 1 would loop forever and a non-finite one would blank
+  // the axis, and both are legal arithmetic on a degenerate cap.
+  const stride =
+    Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 1;
+  if (stride <= 1) {
+    return [...values];
+  }
+  const kept: (number | string)[] = [];
+  for (let i = 0; i < values.length; i += stride) {
+    kept.push(values[i]);
+  }
+  return kept;
+}
+
+/**
  * §4.8's ladders, chosen by kind and by which member of the spec
  * the guide supplied. Every one of them is `kernel/`'s (R12).
  */
@@ -1101,13 +1355,26 @@ function ticksFor(
   spec: ContinuousSpec,
   domain: ScaleDomain | null,
   zone: null | string,
-  want: TickSpec,
+  want: WantedTicks,
   at: (v: number | string) => number | null,
 ): readonly Tick[] {
   if (domain === null) {
     return [];
   }
-  const values = tickValues(kind, spec, domain, zone, want);
+  const ladder = tickValues(kind, spec, domain, zone, want);
+  // ⚠ `auto`'s cap applies to a LADDER only. A `step` or a
+  // `values` set is the author naming exactly which ticks exist,
+  // and thinning it would silently overrule them — so the guard
+  // mirrors `tickValues`'s own precedence (`values`, then `step`,
+  // then `count`) rather than trusting V16 to have kept them
+  // apart: V16 diagnoses, and the runtime must still be
+  // deterministic when a document ignores the diagnostic.
+  const values =
+    want.cap !== undefined &&
+    want.step === undefined &&
+    want.values === undefined
+      ? strideThin(ladder, want.cap)
+      : ladder;
   const out: Tick[] = [];
   for (const value of values) {
     const where = at(value);
@@ -1124,7 +1391,7 @@ function tickValues(
   spec: ContinuousSpec,
   domain: ScaleDomain,
   zone: null | string,
-  want: TickSpec,
+  want: WantedTicks,
 ): (number | string)[] {
   if (kind === "ordinal") {
     const list = [...(domain.values ?? [])];

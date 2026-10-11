@@ -236,9 +236,9 @@ function adjacent(
 /**
  * ★ **One `runs-overlap` entry per pair of a crowded ladder.**
  *
- * The narrow width's baseline is **90 entries where the wide one
- * needed 14**, and all but one of them belong to four families of a
- * single ladder each. Copying one argument 20 times — which is what
+ * The narrow width's baseline is **70 entries where the wide one
+ * needed 14**, and all but one of them belong to three families of
+ * a single ladder each. Copying one argument 20 times — which is what
  * the wide baseline's seven symlog entries already do — would bury
  * it, so each family states its mechanism **once** and enumerates
  * its pairs. The entries produced are ordinary {@link Accepted}
@@ -330,16 +330,32 @@ const F4 =
   "2026-09-28; 017 does not fix it, and this entry goes stale the " +
   "day 019 does.";
 
-/** 02-area A — an axis that never thins. A runtime question. */
-const R02 =
-  "★ 11-2 — THE LADDER DOES NOT THIN WITH THE WIDTH. 02-area A's " +
-  "x axis declares no count, and the datetime scale emits the same " +
-  "21 runs at 400 px as at 800: the ink stays 17.98 px while the " +
-  "pitch falls 30.78 -> 14.09, so every adjacent pair collides. A " +
-  "RUNTIME question nobody had asked — should a ladder thin when " +
-  "the room runs out? ROUTED TO 019 — founder's decision " +
-  "2026-09-28; the fix is a width-aware tick count in a kernel " +
-  "every datetime axis shares, which 017 has not scoped.";
+/*
+ * ★★ **R02 is GONE — the first `reason` this file has ever had to
+ * delete, and the record of why belongs here rather than only in a
+ * commit message.**
+ *
+ * It read: *"11-2 — THE LADDER DOES NOT THIN WITH THE WIDTH.
+ * 02-area A's x axis declares no count, and the datetime scale
+ * emits the same 21 runs at 400 px as at 800: the ink stays 17.98
+ * px while the pitch falls 30.78 -> 14.09, so every adjacent pair
+ * collides. A RUNTIME question nobody had asked — should a ladder
+ * thin when the room runs out? ROUTED TO 019."*
+ *
+ * **019 step 31 answered yes.** `--hdml-tick-count: auto` now
+ * resolves to `floor(range / 24px)` clamped at 2 and stride-thins
+ * the ladder's output, so that axis emits 21 runs at 800 px and
+ * **11** at 400 — pitch ~28 px against the same 17.98 px of ink.
+ * Its twenty entries went stale in the same commit and were
+ * deleted with it.
+ *
+ * ⚠ **One prediction in it was wrong and is worth keeping.** *"A
+ * kernel every datetime axis shares"* implied corpus-wide blast
+ * radius; measured, the fix re-resolves **one** guide in the whole
+ * corpus and moves **zero** goldens, because goldens are recorded
+ * at the wide layout where `auto`'s cap already exceeds the
+ * ladder's output. See `003. RFCs/005. Note — Tick Thinning.md` §5.
+ */
 
 /** 04-grouped-stacked — 184 of 400 px spent on chrome. */
 const R04 =
@@ -412,8 +428,10 @@ const A10 =
  * prediction is **refuted**: **two of the three reproduce**, and the
  * predicates found **three more defect families nobody had
  * recorded**. Step 11-2 added {@link NARROW} and found **four
- * more**, so the baseline is **104 entries over seven pages** —
- * 14 at both widths, 90 narrow-only — and **eight families**:
+ * more**, so the baseline was **104 entries over seven pages** —
+ * 14 at both widths, 90 narrow-only — over **eight families**. It
+ * is **84 over six pages** since 019 step 31 took R02's twenty
+ * (below), leaving **seven**:
  *
  * | family | n | what it is | decision |
  * |---|---|---|---|
@@ -423,8 +441,13 @@ const A10 =
  * | `12-coverage` D | 7 | ★ duplicate symlog runs | **019** |
  * | `05-scatter` B | 1 | the origin corner | IGNORE 09-28 |
  * | `00-minimal` | 1 | a 1 px font-metric cross | IGNORE 09-28 |
- * | `02-area` A | 20 | ★ 21 runs at both widths | **019** |
  * | `04`·`11`·`10` narrow | 70 | chrome > plot | IGNORE 09-28 |
+ *
+ * …and the row that is **gone**, which is what the table is for:
+ * `02-area` A, 20 entries, *"21 runs at both widths"*, **CLOSED by
+ * 019 step 31** — the first family the mechanism has ever
+ * retired, and the proof that *"the list can only shrink"* is a
+ * mechanism and not an aspiration.
  *
  * ★ **Recorded is not blessed — and the triage happened.** The
  * first six families were filed by 11-1 and 11-2 with `reason`
@@ -438,12 +461,14 @@ const A10 =
  * defects it finds. Every `reason` now names a decision; none
  * defers to a step.
  *
- * ★ **None of the 90 narrow entries implicates the runtime**, which
- * is what the second viewport was added to find out — they are four
- * crowded ladders plus one escape, not ninety findings, and they
+ * ★ **None of the 70 narrow entries implicates the runtime**, which
+ * is what the second viewport was added to find out — they are three
+ * crowded ladders plus one escape, not seventy findings, and they
  * are enumerated through {@link ladder} so each family argues once.
+ * ⚠ **One of the original 90 DID implicate it** — R02, which 019
+ * step 31 fixed rather than accepted.
  *
- * None of the 104 is red: step 11's decision is *"the gate only
+ * None of the 84 is red: step 11's decision is *"the gate only
  * reports, never reds"*, and a gate red on an appearance its owner
  * has accepted is a gate that gets re-recorded. What keeps that
  * from being a log is the **stale** half of {@link gateDiff}: the
@@ -516,17 +541,13 @@ export const ACCEPTED: readonly Accepted[] = [
     F4,
   ),
 
-  /* ---- NARROW-only, step 11-2 — 90 entries, five families ---- */
+  /* ---- NARROW-only, step 11-2 — 70 entries, four families ---- */
 
-  ...ladder(
-    "02-area",
-    0,
-    "hdml-label[2]",
-    adjacent(0, 20),
-    ALL_ENGINES,
-    NARROW_ONLY,
-    R02,
-  ),
+  /* ★ R02's twenty went at 019 step 31, with item 8: `auto` now
+     thins `02-area` view 0's datetime ladder from 21 runs to 11 at
+     the narrow width, so every adjacent pair it recorded stopped
+     colliding. Deleted in the same commit as the fix, because the
+     stale half of `gateDiff` reds either way round (D8). */
   ...[0, 1, 2, 4].flatMap((view) =>
     ladder(
       "04-grouped-stacked",
