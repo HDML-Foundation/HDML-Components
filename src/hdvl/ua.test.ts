@@ -339,8 +339,8 @@ suite("hdvl/ua — the element sheet", () => {
     // The THIRD longhand (017 R6). Without it a transition runs
     // only on an interpolable property, and fifteen of the
     // THEN-thirty-five registered ones were not (R6's measurement,
-    // left as measured; the registry is 47 since R7's step 09-1,
-    // whose twelve new `*`-typed variants this same line covers).
+    // left as measured; the registry is 52 since 019 item 6,
+    // whose keyword-list entry this same line covers too).
     assert.strictEqual(
       declared.getPropertyValue("transition-behavior"),
       "allow-discrete",
