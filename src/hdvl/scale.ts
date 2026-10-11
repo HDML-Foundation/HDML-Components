@@ -45,7 +45,7 @@ import type { ContinuousSpec } from "./kernel/scale-continuous";
 import type { Delivery } from "../hdio/delivery";
 import { HDML_SCALE_CHANGE, outward } from "./events";
 import { channelOf, resolutionOf } from "./resolve";
-import { bandSlotOf, subdivide } from "./container";
+import { bandSlotOf, bandSlotOwnerOf, subdivide } from "./container";
 import { adoptedOf, sourceOf } from "./subscribe";
 import {
   CONTINUOUS_SCALE_ATTRS_LIST,
@@ -781,6 +781,53 @@ export function cssAngle(
 }
 
 /**
+ * A registered `<number>` resolved to §4.4's `b` — parsed, and
+ * **clamped to `[0, 1]`**.
+ *
+ * ★ **Exported at 019 item 10 / R2's step 34, for its second
+ * caller.** `--hdml-bandwidth` was the registry's only bandwidth
+ * until `--hdml-cluster-bandwidth`, so the clamp lived inline at
+ * the one read site. Two readers make it an implementation, and
+ * R12/R18 gives an implementation one home — the same argument
+ * {@link cssAngle} is here under, with {@link localeOf} as the
+ * older precedent.
+ *
+ * ★ **It is not a second {@link cssNumber}.** `cssNumber` is a bare
+ * parse-with-fallback, and the five private copies of it across
+ * this package are deliberately private because there is nothing
+ * to share. What this function carries is the **band contract**:
+ * {@link import("./kernel/scale-band").bandOf} documents its
+ * `bandwidth` parameter as *"already resolved to a number in
+ * `[0, 1]`"*, the kernel never reads a CSS value, and so the
+ * resolution that discharges that precondition is exactly the
+ * thing R12 says must not exist twice. A second clamp that drifted
+ * — `Math.max` without the `Math.min`, say — would hand the kernel
+ * a `b > 1`, and §4.4 answers that with **overlapping** bands
+ * rather than an error.
+ *
+ * ★ **Above 1 clamps rather than diagnosing**, which is a choice
+ * and not an oversight: `<number>` has no closed set for CSS to
+ * reject against, so the alternatives were a clamp or a new
+ * V-rule, and a V-rule on a value the cascade may deliver from
+ * anywhere would fire on documents whose author never wrote the
+ * property. The outer read has answered it this way since Slice C;
+ * both now answer it in one place. `0` is **legal** at both ends —
+ * the outer band's `0` is §9's point placement, and the inner
+ * band's is its exact analogue: `n` zero-width slots spread
+ * edge-to-edge across the group.
+ *
+ * @param raw - The computed value, or `undefined`.
+ * @param fallback - The value to use when it does not parse.
+ * @returns `b`, in `[0, 1]`.
+ */
+export function cssBandwidth(
+  raw: undefined | string,
+  fallback: number,
+): number {
+  return Math.min(1, Math.max(0, cssNumber(raw, fallback)));
+}
+
+/**
  * §4.3's table. The box is the MEASURE snapshot's **content** box
  * (R5) — never a `getBoundingClientRect()` inside COMPUTE — and
  * `--hdml-angle-*` / `--hdml-size-*` come from the same computed
@@ -956,9 +1003,12 @@ function buildScale(
   const range: null | [number, number] =
     base !== null && has(el, A_REVERSE) ? [base[1], base[0]] : base;
   const clamp = has(el, A_CLAMP) && kind !== "ordinal";
-  const bandwidth = Math.min(
-    1,
-    Math.max(0, cssNumber(m.props.get("--hdml-bandwidth"), 0.8)),
+  // The OUTER band — the gap between *categories*. Its inner
+  // sibling `--hdml-cluster-bandwidth` is read in `chainScaleOf`,
+  // off the cluster, through this same function (019 item 10).
+  const bandwidth = cssBandwidth(
+    m.props.get("--hdml-bandwidth"),
+    0.8,
   );
   const cyclic = isCyclic(channel, kind, range);
   const spec =
@@ -1656,10 +1706,23 @@ export function angleCollisionOf(
  * *scale* a clustered widget sees that differs and not the widget's
  * arithmetic — which is why `hdml-bar` reads `bandOf().width`
  * without knowing whether it is in a cluster. The subdivision
- * itself is `kernel/scale-band.ts` at `b = 1` and lives in
- * `container.ts`; nothing about the outer scale, its domain, its
- * range or its ticks changes, so every guide over the same scale
- * keeps addressing the category and not the slot.
+ * itself is `kernel/scale-band.ts` and lives in `container.ts`;
+ * nothing about the outer scale, its domain, its range or its ticks
+ * changes, so every guide over the same scale keeps addressing the
+ * category and not the slot.
+ *
+ * ★ **This is where `--hdml-cluster-bandwidth` is read** (019 item
+ * 10 / R2), and it is read off the **cluster** rather than off the
+ * widget. The property inherits, so the widget's own computed value
+ * is normally the same number — but a child carrying its own
+ * declaration would compute a different one, and `n` slots derived
+ * from `n` different bandwidths do not tile the band they
+ * subdivide. {@link import("./container").bandSlotOwnerOf} is the
+ * element that owns the subdivision, and it is the only one asked.
+ *
+ * ⚠ The outer `--hdml-bandwidth` is a different band and is read in
+ * {@link buildScale}. The two names differ by one word and nothing
+ * diagnoses a page that sets the wrong one; see `docs/decisions.md`.
  *
  * @param ctx - The frame's snapshot.
  * @param el - The widget.
@@ -1680,11 +1743,20 @@ export function chainScaleOf(
   // is not — a widget asked out of order by a test.
   const resolved = resolveScaleFrame(scale, ctx);
   const slot = bandSlotOf(el);
+  const cluster = bandSlotOwnerOf(el);
   return resolved === null ||
     slot === null ||
+    cluster === null ||
     slot.channel !== channel
     ? resolved
-    : subdivide(resolved, slot);
+    : subdivide(
+        resolved,
+        slot,
+        cssBandwidth(
+          ctx.measured(cluster).props.get("--hdml-cluster-bandwidth"),
+          1,
+        ),
+      );
 }
 
 /**

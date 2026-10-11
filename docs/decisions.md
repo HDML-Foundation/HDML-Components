@@ -2798,3 +2798,90 @@ standard CSS where CSS has the word (`flex-direction`, `gap`, `flex-wrap` — an
 019, because it retires two shipped properties in a release that already breaks
 three things and because `flex-direction` and `gap` do **not** inherit while the
 two they would replace do, so it is a behaviour change rather than a rename.
+
+## A cluster's inner band becomes authorable, and the gap is a ratio
+
+**019 item 10 / R2, 2026-10-11.** `--hdml-cluster-bandwidth` is the registry's **53rd**
+entry — `<number>`, initial `1`, `inherits: true` — read on `hdml-cluster` and passed to
+`kernel/scale-band.ts` where `container.ts`'s `subdivide` used to pass the literal `1`.
+It supersedes **RFC 016/001 §6.4's *"there is no authorable inner gap"*** and the **R19**
+requirement row that states it; R19's other half — *one band formula* — is untouched and
+is the reason the change cost the kernel a comment and no code.
+
+**1 · A ratio, not a length, and the third argument is the decisive one.** A
+`--hdml-cluster-gap: <length>` would read more naturally, and it is wrong three times over.
+*(a)* The band it divides has no author-visible width: it is `outer.width`, which comes from
+the plane's content box and the category count, so a length is a fraction of a number the
+author cannot see and cannot predict across viewports. *(b)* A length needs a rule for
+what happens when `n` gaps exceed the band — clamp, overlap, or diagnose — and every
+answer is a new behaviour. *(c)* **Decisive: `b` already exists.** §4.4's formula takes a
+bandwidth, `--hdml-bandwidth` already supplies one on the outer band, and the inner call
+was already passing a `b`. A ratio changes one argument from a literal to a value; a length
+would be a second way to express the same geometry, which is exactly what R12 forbids and
+what the retired `--hdml-band-slot` pair was retired for.
+
+**2 · The initial is `1` because that is the literal it replaces.** Not *"1 is a sensible
+default"* — `1` is the number `subdivide` passed, so the registered initial makes the entry
+**additive**: all 29 corpus goldens and all 84 invariant baseline entries are unchanged, and
+a document that says nothing gets the bands it got before. The identity is asserted twice,
+on the parsed computed value with `===` and on the whole scene against an explicit `1`.
+
+**3 · One clamp, in `scale.ts`'s exported `cssBandwidth`.** The outer read already clamped
+to `[0, 1]` inline; two readers make that an implementation, and R12/R18 gives an
+implementation one home — the same argument `cssAngle` is exported under. It is **not** a
+second `cssNumber`: `cssNumber` is a bare parse-with-fallback and its five private copies
+are private because there is nothing to share, whereas this function discharges
+`bandOf`'s documented precondition (*"already resolved to a number in `[0, 1]`"*) for a
+kernel that reads no CSS. A second clamp that dropped the `Math.min` would hand the kernel
+a `b > 1`, and §4.4 answers that with **overlapping** bands rather than an error.
+
+**4 · Above `1` clamps; `0` is legal.** `<number>` has no closed set for CSS to reject
+against, so the choice was a clamp or a new V-rule, and a V-rule on a value the cascade may
+deliver from anywhere would fire on documents whose author never wrote the property —
+which is also what keeps `inherits: true` correct. `0` gives `n` zero-width slots spread
+edge-to-edge, the exact analogue of `--hdml-bandwidth: 0`'s point placement, total and
+undiagnosed like the outer one. `CODES` stays **24** and `WARNINGS` **7**.
+
+**5 · It is read off the CLUSTER, and that is structural rather than a convention.** The
+property inherits, so a clustered bar's own computed value is normally its cluster's — but
+a child carrying its own declaration computes something else, and `n` slots derived from
+`n` bandwidths do not tile the band they subdivide. `chainScaleOf` asks
+`container.ts`'s new `bandSlotOwnerOf` for the element that owns the subdivision, so the
+child's declaration is **unreachable** and not merely unread. The value travels as
+`subdivide`'s own third argument and **not** as a fourth `BandSlot` member: SPEC §7's
+argument for retiring `--hdml-band-slot` is that slot and count are *"derived from
+structure — never from CSS"*, and a CSS-derived number on that interface would contradict
+the sentence the interface exists to make true.
+
+**6 · ⚠ `--hdml-bandwidth` vs `--hdml-cluster-bandwidth` is a near-miss, kept knowingly.**
+Not one character like `--hdml-legend-swatch-side`/`-size`, but one **word** — and worse in
+one way, because both are `<number>`, both are legal on any element, and the two act on
+**different bands**. A page that sets the outer one meaning the inner gets a chart that is
+visible, plausible and wrong, with no diagnostic: there is nothing for CSS to reject and
+nothing for the runtime to compare against. The names were kept because
+`--hdml-bandwidth` is SPEC §9's and shipped, and because `cluster-` names the element that
+reads it, which is the one disambiguation an author can act on. The registry puts the two
+entries adjacent so that a reader comparing them does not have to go looking.
+
+**7 · ★ And one argument in the code INVERTED.** `subdivide` passes `cyclic: false`
+explicitly, and its doc comment used to give two reasons — semantic, then *"arithmetically
+it is a no-op, because at `b = 1` the cyclic denominator `n` and the inclusive `n − 1 + b`
+are the same number"* — framed as *"the second is what makes the first safe to get wrong."*
+Below `b = 1` the two denominators are **different numbers**, so the flag is now wrong to
+get wrong: flipping it silently narrows every bar in every cluster. The semantic reason now
+carries the argument alone, the comment says so, and `scale-band.test.ts` gained a case
+asserting the divergence — because the old comment was the kind a later reader deletes a
+parameter on the authority of, and no test guards prose. The same claim had been copied
+into `scale-band.test.ts`'s own comment (*"why a cluster's inner subdivision cannot be
+affected"*) and into `kernel/scale-band.ts`'s item 3; both are corrected.
+
+**8 · The precision rule, measured.** `gap === (1 − b) · step` is a difference of two
+accumulations against a product, and over 175 `(W, n, b)` cells it is bit-exact in **19** —
+and *which* 19 is a property of the triple, not of `b`: at `W = 64` a `b` of `0.75` is
+exact and at `W = 76`, this suite's own fixture width, the same `b` is off by `3.55e-15`.
+So every `b < 1` gap assertion is `closeTo` at `1e-9`, the tolerance
+`scale-band.test.ts` already uses for the band seam, with the worst observed delta
+(`1.688e-14`) recorded beside it; a dyadic positive control asserts `===` where the
+arithmetic allows it, so the tolerance is demonstrably not hiding a wrong formula. ⚠ A
+**far edge** is `closeTo` even at `b = 1`: `W = 16, n = 6` drifts one ulp, which was latent
+before this step and unreached only because the cluster fixtures use `n ≤ 3`.

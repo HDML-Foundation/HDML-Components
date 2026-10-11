@@ -235,10 +235,16 @@ suite("hdvl/kernel/scale-band — cyclic (017 R8)", () => {
   });
 
   test("★ at b = 1 the two denominators are the same number", () => {
-    // Why `09-polar-area` is bit-identical under both, and why a
-    // cluster's inner subdivision cannot be affected: `n - 1 + 1`
+    // Why `09-polar-area` is bit-identical under both: `n - 1 + 1`
     // is exactly `n` in IEEE-754 for integer n. Asserted with
     // deepEqual over all three fields, at every k, for two n.
+    //
+    // ⚠ This used to add *"and why a cluster's inner subdivision
+    // cannot be affected"*, which 019 item 10 / R2 falsified: the
+    // inner `b` is `--hdml-cluster-bandwidth` now, and below 1 the
+    // two denominators are different numbers. The case below says
+    // so, so that the equality here is never read as a claim about
+    // clusters again.
     [5, 12].forEach((n) => {
       for (let k = 0; k < n; k++) {
         assert.deepEqual(
@@ -247,6 +253,23 @@ suite("hdvl/kernel/scale-band — cyclic (017 R8)", () => {
         );
       }
     });
+  });
+
+  test("⚠ below b = 1 the two denominators DIVERGE", () => {
+    // 019 item 10 / R2's whole reason `subdivide` passes `false`
+    // explicitly: the case above is true AT `b = 1` and only
+    // there. `n - 1 + b` is `n` iff `b` is 1, so once a cluster's
+    // inner bandwidth is authorable the flag stops being an
+    // arithmetic no-op — a cyclic subdivision at `b = 0.5` over
+    // four slots steps by `W / 4` where the inclusive one steps by
+    // `W / 3.5`, which is every clustered bar in the wrong place.
+    for (const b of [0.9, 0.75, 0.5, 0.25, 0]) {
+      assert.notStrictEqual(4 - 1 + b, 4);
+      assert.notDeepEqual(
+        bandOf(1, 4, TURN, b, true),
+        bandOf(1, 4, TURN, b, false),
+      );
+    }
   });
 
   test("a cyclic band leaves the same gap after every slot", () => {
@@ -370,6 +393,83 @@ suite("hdvl/kernel/scale-band — b = 1 tiles (R19)", () => {
       assert.strictEqual(last.start + last.width, W);
     });
   }
+
+  // ★ 019 item 10 / R2 — the identity a cluster's AUTHORED inner
+  // band rests on, which nothing asserted while `b` was always 1:
+  // the space between two adjacent slots is `(1 − b) · step`. The
+  // tiling cases above are its `b = 1` corner, where the gap is 0.
+  //
+  // ⚠ It is `closeTo`, and the tolerance is NOT caution. Measured
+  // 2026-10-11 over W ∈ {76, 16, 100, 128, 11.6} × b ∈ {0.9, 0.8,
+  // 0.75, 0.5, 0.25} × n ∈ 2…8: `gap === (1 − b) · step` holds
+  // bit-for-bit in only **19 of 175** cells, and which 19 is a
+  // property of the (W, n, b) triple rather than of `b` — the
+  // corner below spells that out. The reason is the
+  // `step − b · step` the bands compute against the `(1 − b) · step`
+  // the identity states: two roundings against one, exactly as the
+  // seam case above. Worst observed delta **1.688e-14**
+  // (W = 128, b = 0.8, n = 8), five orders below this file's 1e-9
+  // and eight below the six-decimal quantization every scene
+  // assertion goes through.
+  const GAPS: [number, number, number][] = [
+    [16, 3, 0.9],
+    [16, 6, 0.8],
+    [76, 4, 0.75],
+    [100, 5, 0.5],
+    [11.6, 3, 0.25],
+  ];
+
+  for (const [W, n, b] of GAPS) {
+    test(`the gap is (1 − b) · step (W ${W}, n ${n}, b ${b})`, () => {
+      const step = W / (n - 1 + b);
+      for (let k = 0; k + 1 < n; k++) {
+        const band = bandOf(k, n, [0, W], b) as Band;
+        const next = bandOf(k + 1, n, [0, W], b) as Band;
+        assert.closeTo(
+          next.start - (band.start + band.width),
+          (1 - b) * step,
+          1e-9,
+        );
+      }
+      // …and the group's two outer edges are the range's own,
+      // which is what "the inner gap does not move the group"
+      // means at the kernel.
+      assert.strictEqual((bandOf(0, n, [0, W], b) as Band).start, 0);
+      const last = bandOf(n - 1, n, [0, W], b) as Band;
+      assert.closeTo(last.start + last.width, W, 1e-9);
+    });
+  }
+
+  test("★ the exactly-representable corner IS bit-exact", () => {
+    // The positive control for the tolerance above: `closeTo` is
+    // not hiding a wrong formula. Where `step` and `b · step` are
+    // both exactly representable, both sides of the identity round
+    // identically and the gap is `strictEqual`.
+    //
+    // ⚠ The condition is a property of the (W, n, b) TRIPLE and
+    // not of `b` alone, which is the thing worth writing down: at
+    // W = 64, b = 0.75 is exact, and at W = 76 — this file's own
+    // fixture width — the same `b` is off by 3.55e-15, because
+    // 76 / 1.75 is not representable while 64 / 1.75 is. A reader
+    // tempted to "tidy" one of the cases above into a `strictEqual`
+    // has to change W as well, and usually cannot.
+    for (const b of [0.5, 0.25, 0.75]) {
+      const step = 64 / (2 - 1 + b);
+      const a = bandOf(0, 2, [0, 64], b) as Band;
+      const c = bandOf(1, 2, [0, 64], b) as Band;
+      assert.strictEqual(
+        c.start - (a.start + a.width),
+        (1 - b) * step,
+      );
+      // …and the same b at W = 76 is NOT, measured.
+      const d = bandOf(0, 2, [0, 76], 0.75) as Band;
+      const e = bandOf(1, 2, [0, 76], 0.75) as Band;
+      assert.notStrictEqual(
+        e.start - (d.start + d.width),
+        (1 - 0.75) * (76 / 1.75),
+      );
+    }
+  });
 
   test("width equals step exactly at b = 1, for every k", () => {
     // The half of R19 that IS universally exact: b · step with

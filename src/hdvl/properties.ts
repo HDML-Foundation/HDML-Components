@@ -57,8 +57,8 @@ const CURVE_TYPES =
   "cardinal | catmull-rom | monotone | step";
 
 /**
- * SPEC §9's registry, complete at fifty-two: thirty-six base
- * properties plus the sixteen **state variants** — the eight
+ * SPEC §9's registry, complete at fifty-three: thirty-seven
+ * base properties plus the sixteen **state variants** — the eight
  * presentation-attribute properties × `{hover, active}`.
  *
  * **Completeness is deliberate, not premature.** The three
@@ -248,6 +248,18 @@ export const HDVL_PROPERTIES: readonly PropertyDefinition[] = [
     syntax: "<number>",
     inherits: true,
     initialValue: "0.8",
+  },
+  // ★ 019 item 10 / R2 — the INNER band, read on `hdml-cluster`.
+  // Adjacent to its outer sibling on purpose: the two differ by
+  // one word and act on different bands, so a reader comparing
+  // them should not have to go looking. The initial `1` is
+  // bit-identical to the literal `subdivide` used to pass, which
+  // is what makes this entry additive.
+  {
+    name: "--hdml-cluster-bandwidth",
+    syntax: "<number>",
+    inherits: true,
+    initialValue: "1",
   },
   {
     name: "--hdml-palette",

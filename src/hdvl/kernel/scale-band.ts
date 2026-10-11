@@ -33,13 +33,19 @@
  *    ordinal-angle slice, which take `start`/`width`. At `b = 0` the
  *    centre *is* the boundary, which is why {@link Band} returns all
  *    three fields rather than the one a given caller needs.
- * 3. **`b` is an ordinary parameter with no special case.** §6.4's
- *    cluster subdivides an outer band edge-to-edge at inner `b = 1`
- *    — "there is no authorable inner gap" (R19) — so the cluster is
- *    this formula at `b = 1` rather than a second entry point. The
- *    only branch in here is §4.4's own `n = 1, b = 0`, which the
- *    general formula cannot express because its denominator is
- *    zero — and which `cyclic` does not need, see item 4.
+ * 3. **`b` is an ordinary parameter with no special case**, and
+ *    that is what let a cluster's inner band become authorable
+ *    without touching this file. RFC 016/001 §6.4's cluster
+ *    subdivided an outer band edge-to-edge at a hardcoded inner
+ *    `b = 1` — *"there is no authorable inner gap"* (R19) —
+ *    ⚠ **superseded by 019 item 10 / R2**, which passes
+ *    `--hdml-cluster-bandwidth` where that literal was. The
+ *    cluster is still this formula rather than a second entry
+ *    point, which is R19's surviving half and the whole reason the
+ *    change cost the kernel nothing. The only branch in here is
+ *    §4.4's own `n = 1, b = 0`, which the general formula cannot
+ *    express because its denominator is zero — and which `cyclic`
+ *    does not need, see item 4.
  * 4. **`cyclic` is the same formula over `n`, and it is not an
  *    option the kernel decides.** On a range whose two endpoints
  *    denote the *same place* — an angular sweep of a whole turn,
@@ -181,8 +187,10 @@ function num(v: number): number {
  * @param k - The slot index, `0 ≤ k < n`.
  * @param n - The number of domain values.
  * @param range - `[r0, r1]`, ascending or descending.
- * @param bandwidth - `--hdml-bandwidth`, already resolved to a
- * number in `[0, 1]`. The kernel never reads a CSS value.
+ * @param bandwidth - `--hdml-bandwidth` on an outer band and
+ * `--hdml-cluster-bandwidth` on a cluster's inner one, already
+ * resolved to a number in `[0, 1]` by `scale.ts`'s `cssBandwidth`.
+ * The kernel never reads a CSS value.
  * @param cyclic - Whether `r1` denotes the same place as `r0` (an
  * angular sweep of a whole turn). Decided by the caller; the kernel
  * imports nothing and cannot look it up. Defaults to `false`, which

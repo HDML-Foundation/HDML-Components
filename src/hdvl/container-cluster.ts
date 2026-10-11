@@ -37,7 +37,8 @@ const SLOTS: readonly Slot[] = [
 ];
 
 /**
- * §6.4's subdivision: slot *k* of *n* over the rendered children.
+ * RFC 016/001 §6.4's subdivision: slot *k* of *n* over the rendered
+ * children.
  *
  * **Both numbers are structural** — `k` is the child's index in DOM
  * order and `n` is how many children render — which is SPEC §7's
@@ -47,9 +48,20 @@ const SLOTS: readonly Slot[] = [
  * `<li>`s"*. Adding a series and forgetting to update a count is
  * unwritable here.
  *
- * The arithmetic is **not** here: `container.ts`'s `subdivide` asks
- * `kernel/scale-band.ts` for §4.4's band at `b = 1` (R19), and the
- * scale a clustered widget resolves is what carries it.
+ * ★ **`--hdml-cluster-bandwidth` does not change that** (019 item
+ * 10 / R2). What became authorable is the inner band's *width
+ * fraction*, which is one number for the whole group; **slot and
+ * count stay derived**, and the property is deliberately absent
+ * from `BandSlot` for exactly that reason. The two retired
+ * properties were a per-child *addressing* scheme no validator can
+ * check; this is a single group-level dimension, the same shape
+ * `--hdml-bandwidth` already has on the outer band.
+ *
+ * The arithmetic is **not** here, and nor is the CSS read:
+ * `container.ts`'s `subdivide` asks `kernel/scale-band.ts` for
+ * §4.4's band (R19), `scale.ts`'s `chainScaleOf` resolves `b` off
+ * this element, and the scale a clustered widget resolves is what
+ * carries both.
  *
  * @param cluster - The container.
  * @param ctx - The frame's snapshot.
@@ -155,7 +167,8 @@ export class HdmlClusterElement extends HdvlElement {
   /**
    * @override
    *
-   * §6.4: a layout container emits **no nodes of its own** — it
+   * RFC 016/001 §6.4: a layout container emits **no nodes of
+   * its own** — it
    * re-parameterises its children, and the ranged form is the
    * primitive it compiles into. The `null` is permanent; what
    * changed at step 29 is that the call now *does* something, and

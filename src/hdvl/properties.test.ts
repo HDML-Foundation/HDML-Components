@@ -9,7 +9,7 @@ import "./index";
 import { HDVL_PROPERTIES, registerProperties } from "./properties";
 
 /**
- * SPEC §9's registry — complete at fifty-two, and intact after a
+ * SPEC §9's registry — complete at fifty-three, and intact after a
  * double registration (step-plan H5).
  *
  * Every name and initial below is **hardcoded** off SPEC §9. Read
@@ -43,6 +43,10 @@ const EXPECTED: [string, null | string][] = [
   ["--hdml-curve-cubic-monotonicity", "1"],
   ["--hdml-curve-step-change", "middle"],
   ["--hdml-bandwidth", "0.8"],
+  // ★ 019 item 10 / R2 — the INNER band, on `hdml-cluster`. Its
+  // initial is `1` because that is the literal `subdivide` used
+  // to pass, which is what keeps the entry additive.
+  ["--hdml-cluster-bandwidth", "1"],
   ["--hdml-palette", null],
   ["--hdml-color-interpolate", null],
   ["--hdml-color-interpolate-space", "oklch"],
@@ -132,8 +136,8 @@ suite("hdvl/properties", () => {
     probe = null;
   });
 
-  test("the registry is exactly SPEC §9's 52", () => {
-    assert.lengthOf(HDVL_PROPERTIES, 52);
+  test("the registry is exactly SPEC §9's 53", () => {
+    assert.lengthOf(HDVL_PROPERTIES, 53);
     assert.deepEqual(
       HDVL_PROPERTIES.map((p) => p.name),
       EXPECTED.map(([name]) => name),
@@ -169,7 +173,7 @@ suite("hdvl/properties", () => {
     ]);
   });
 
-  test("the other 50 inherit", () => {
+  test("the other 51 inherit", () => {
     // ★ THE POSITIVE CONTROL, and it is not redundant with the
     // allow-list above: an allow-list alone passes unchanged if a
     // THIRD property quietly stops inheriting. Counted as well as
@@ -180,7 +184,7 @@ suite("hdvl/properties", () => {
         def.name !== "--hdml-tick-count" &&
         def.name !== "--hdml-text-format",
     );
-    assert.lengthOf(rest, 50);
+    assert.lengthOf(rest, 51);
     for (const def of rest) {
       assert.isTrue(def.inherits, def.name);
     }
@@ -259,7 +263,7 @@ suite("hdvl/properties", () => {
     assert.strictEqual(valueOf("--hdml-curve-bezier-tangents"), "");
   });
 
-  test("re-registering leaves all 52 intact", () => {
+  test("re-registering leaves all 53 intact", () => {
     // H5: `CSS.registerProperty` throws InvalidModificationError on
     // a duplicate, so a page that loads two builds registers twice.
     // With a LOOP-level try/catch the first duplicate would abort

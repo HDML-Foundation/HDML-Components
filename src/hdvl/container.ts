@@ -33,11 +33,20 @@
  * clustered widget resolves *is* the inner one and no mark divides
  * anything.
  *
- * **★ R19 — one band formula.** The inner band is
- * {@link import("./kernel/scale-band").bandOf} at **`b = 1`**, not
- * `outer.width / n`: *"there is no authorable inner gap"*, and `b`
- * is an ordinary parameter of §4.4's formula with no special case.
- * This module therefore contains no arithmetic of its own for it.
+ * **★ R19 — one band formula, and its `b` is now AUTHORABLE.** The
+ * inner band is {@link import("./kernel/scale-band").bandOf}, not
+ * `outer.width / n`, because `b` is an ordinary parameter of §4.4's
+ * formula with no special case. This module therefore contains no
+ * arithmetic of its own for it.
+ *
+ * ⚠ **RFC 016/001 §6.4's *"there is no authorable inner gap"* was
+ * SUPERSEDED by 019 item 10 / R2.** `--hdml-cluster-bandwidth` is
+ * that gap, read off the **cluster** and passed to `bandOf` where
+ * the literal `1` used to sit. R19's *other* half is untouched and
+ * is what made the change additive: there is still exactly one band
+ * formula, the subdivision is still that formula rather than a
+ * second entry point, and the property's initial is `1`, so a
+ * document that says nothing gets the bands it got before.
  *
  * **★ The overrides are keyed by the CHILD and fenced by its
  * parent.** A container writes onto its **direct** children only —
@@ -70,7 +79,21 @@ import {
   HDVL_TAG_NAMES,
 } from "./vocabulary";
 
-/** §6.4's slot: child *k* of *n*, both derived from structure. */
+/**
+ * RFC 016/001 §6.4's slot: child *k* of *n*, both derived from
+ * structure.
+ *
+ * ★ **Exactly three members, and `--hdml-cluster-bandwidth` is
+ * deliberately not a fourth** (019 item 10). SPEC §7's whole
+ * argument for retiring the authored `--hdml-band-slot` pair is
+ * that slot and count are *"derived from structure, as `<ol>`
+ * numbers its `<li>`s — never from CSS"*, which
+ * `container-cluster.ts` quotes and `container-cluster.test.ts`
+ * asserts with an `order` declaration. A CSS-derived number on this
+ * interface would contradict the sentence the interface exists to
+ * make true. The bandwidth travels as {@link subdivide}'s own third
+ * argument instead, resolved at the one read site.
+ */
 export interface BandSlot {
   /** The channel whose band is subdivided — the shared one. */
   readonly channel: Channel;
@@ -313,14 +336,52 @@ export function clearBandSlot(child: HdvlElement): void {
  * @returns Its slot, or `null`.
  */
 export function bandSlotOf(el: HdvlElement): BandSlot | null {
-  const own = live(slots, el);
-  if (own !== null) {
-    return own;
+  return slotHolderOf(el)?.[1] ?? null;
+}
+
+/**
+ * The **cluster** whose band a widget renders a slot of, or `null`
+ * outside one.
+ *
+ * ★ **The read site for `--hdml-cluster-bandwidth`** (019 item 10),
+ * and the reason there is one. The property `inherits`, so a
+ * clustered child's computed value is normally its cluster's — but
+ * only *normally*: a child carrying its own declaration would
+ * compute something else, and two children of one group answering
+ * differently would make `n` slots that do not tile the band they
+ * subdivide. Reading it here, off the element that owns the
+ * subdivision, is not a convention the readers agree to keep; it is
+ * the only element the resolving code has in hand.
+ *
+ * The walk is {@link bandSlotOf}'s own — one lookup, one chain —
+ * because a cluster writes onto its **direct** children and a bar
+ * inside a clustered stack finds its slot one step up.
+ *
+ * @param el - The widget.
+ * @returns Its cluster, or `null`.
+ */
+export function bandSlotOwnerOf(el: HdvlElement): HdvlElement | null {
+  return slotHolderOf(el)?.[0] ?? null;
+}
+
+/**
+ * The cluster and the slot together, so the two public readers
+ * above cannot disagree about which entry they found.
+ *
+ * @param el - The widget.
+ * @returns `[owner, slot]`, or `null`.
+ */
+function slotHolderOf(
+  el: HdvlElement,
+): [HdvlElement, BandSlot] | null {
+  const own = slots.get(el);
+  if (own !== undefined && own.owner === el.parentElement) {
+    return [own.owner, own.value];
   }
   for (const node of containerChainOf(el)) {
-    const hit = live(slots, node);
-    if (hit !== null) {
-      return hit;
+    const hit = slots.get(node);
+    if (hit !== undefined && hit.owner === node.parentElement) {
+      return [hit.owner, hit.value];
     }
   }
   return null;
@@ -330,29 +391,39 @@ export function bandSlotOf(el: HdvlElement): BandSlot | null {
  * SPEC §7's *"anonymous inner band scale"* — the same `Scale`, with
  * §4.4's band taken **inside** the outer one.
  *
- * **★ R19: `bandOf(k, n, …, 1)`, and no arithmetic here.** The
- * inner bandwidth is `1` because §6.4 gives the subdivision no
- * authorable gap, and `b` is an ordinary parameter of the one band
- * formula — so a cluster is that formula at `b = 1` rather than a
- * second entry point. `--hdml-bandwidth` still opens the gap
- * between *categories*, on the outer band, where the scale reads it.
+ * **★ R19: `bandOf(k, n, …, b)`, and no arithmetic here.** `b` is an
+ * ordinary parameter of the one band formula, so a cluster is that
+ * formula rather than a second entry point. ⚠ **It arrives as an
+ * argument since 019 item 10 / R2**, where it was the literal `1`:
+ * RFC 016/001 §6.4's *"there is no authorable inner gap"* is
+ * superseded, and `--hdml-cluster-bandwidth` is the gap. The caller
+ * resolves it off the **cluster** — see
+ * {@link bandSlotOwnerOf} — because the property inherits and a
+ * child's own declaration must not be able to answer for the group.
+ * `--hdml-bandwidth` is untouched and still opens the gap between
+ * *categories*, on the outer band, where the scale reads it.
  *
- * **★ The subdivision is never cyclic, and it could not matter if it
- * were** (017 R8). Two independent reasons, both worth stating
- * because the second is what makes the first safe to get wrong:
+ * **★ The subdivision is never cyclic** (017 R8), and the
+ * `false` below is **load-bearing arithmetic**, not only semantics:
  *
  * 1. **Semantically**, the interval subdivided is *one outer band* —
  *    `[start, start + width]`. Its two edges are two different
  *    places even when the scale they came from wraps, so the inner
  *    range is inclusive by construction. A cyclic inner range would
- *    mean a cluster whose last child sits on its first.
- * 2. **Arithmetically**, it is a no-op: at `b = 1` the cyclic
- *    denominator `n` and the inclusive `n − 1 + b` are the **same
- *    number** — `n - 1 + 1` is exactly `n` in IEEE-754 for integer
- *    `n` — so this call returns identical bands either way. The
- *    argument is passed explicitly rather than defaulted so that a
- *    later reader finds the answer here instead of inferring it from
- *    a missing parameter.
+ *    mean a cluster whose last child sits on its first. ⚠ **This
+ *    reason now carries the argument alone.**
+ * 2. ⚠⚠ **Arithmetically it WAS a no-op, and 019 item 10 ended
+ *    that.** The claim was that at `b = 1` the cyclic denominator
+ *    `n` and the inclusive `n − 1 + b` are the **same number** —
+ *    true, and `n - 1 + 1` is still exactly `n` in IEEE-754 for
+ *    integer `n`. But `b` is no longer always `1`: at `b < 1`,
+ *    `n − 1 + b ≠ n`, the two divisors give different `step`s, and
+ *    flipping this flag silently narrows every bar in every
+ *    cluster. The original framing had it the other way round —
+ *    *"the second is what makes the first safe to get wrong"* — so
+ *    read this as the inversion it is: **the flag is now wrong to
+ *    get wrong**, and `container-cluster.test.ts` has a case that
+ *    goes red if it flips, which before this step it could not.
  *
  * `project` is re-derived rather than delegated because §4.4 makes
  * an ordinal projection *the band's centre*: leaving it pointing at
@@ -361,10 +432,18 @@ export function bandSlotOf(el: HdvlElement): BandSlot | null {
  *
  * @param scale - The resolved outer scale.
  * @param slot - The widget's slot.
+ * @param bandwidth - The cluster's `--hdml-cluster-bandwidth`,
+ * already resolved and clamped to `[0, 1]` by
+ * {@link import("./scale").cssBandwidth}. This module reads no CSS,
+ * exactly as the kernel below it reads none.
  * @returns The subdivided scale, or `scale` where there is no band
  * to subdivide (V17 reports a non-ordinal shared scale).
  */
-export function subdivide(scale: Scale, slot: BandSlot): Scale {
+export function subdivide(
+  scale: Scale,
+  slot: BandSlot,
+  bandwidth: number,
+): Scale {
   if (scale.kind !== "ordinal") {
     return scale;
   }
@@ -377,9 +456,10 @@ export function subdivide(scale: Scale, slot: BandSlot): Scale {
       slot.index,
       slot.count,
       [outer.start, outer.start + outer.width],
-      1,
+      bandwidth,
       // Never cyclic — an outer band's two edges are two places.
-      // A no-op at `b = 1` either way; see the doc comment.
+      // ⚠ NOT a no-op below `b = 1`: the two divisors are `n` and
+      // `n − 1 + b`. See reason 2 in the doc comment.
       false,
     );
   };

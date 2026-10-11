@@ -1414,10 +1414,27 @@ scale whose domain is the children in DOM order"*.
 | **Scene group** | none — `scene(ctx)` slots and returns `null` |
 | **Requires** | the shared channel's scale to be **ordinal** (V17) |
 
-- **★ The inner band is `kernel/scale-band.ts` at `b = 1`** (R19), not `outer.width / n`:
-  §6.4 gives the subdivision no authorable gap, and `b` is an ordinary parameter of the one
-  band formula. `--hdml-bandwidth` still opens the gap between *categories*, on the outer
-  band, where the scale reads it.
+- **★ The inner band is `kernel/scale-band.ts`** (R19), not `outer.width / n`: `b` is an
+  ordinary parameter of the one band formula, so the subdivision is that formula rather
+  than a second entry point. ⚠ **RFC 016/001 §6.4's *"there is no authorable inner gap"*
+  was superseded by 019 item 10** — `--hdml-cluster-bandwidth` is that gap. R19's other
+  half stands, and is what made the change additive: the property's initial is `1`, the
+  literal the call used to pass, so a document that says nothing gets the bands it got
+  before. `--hdml-bandwidth` is untouched and still opens the gap between *categories*, on
+  the outer band, where the scale reads it.
+- **★ The two bandwidths are read in two places, off two elements.** The outer one is read
+  in `buildScale` off the **scale**; the inner one in `chainScaleOf` off the **cluster**,
+  through `bandSlotOwnerOf`. The property `inherits`, so a clustered bar's own computed
+  value is normally the same number — but a child carrying its own declaration would
+  compute a different one, and `n` slots derived from `n` bandwidths do not tile the band
+  they subdivide, so the child is never asked. Both go through one exported
+  `cssBandwidth`, which is where the clamp to `[0, 1]` lives (R12): a value above `1` is
+  clamped rather than diagnosed, and `0` is legal and gives `n` zero-width slots spread
+  edge-to-edge — the exact analogue of `--hdml-bandwidth: 0`'s point placement.
+- ⚠ **`--hdml-bandwidth` and `--hdml-cluster-bandwidth` differ by one word and act on
+  different bands**, and nothing diagnoses a page that sets the wrong one: both are
+  `<number>`, both are legal on any element, and the chart that comes out is
+  visible-but-wrong. See [docs/decisions.md](decisions.md).
 - **Slot is the child index and slot count the rendered-child count** — both derived from
   structure, *"as `<ol>` numbers its `<li>`s"*. This is what retired the
   `--hdml-band-slot` / `--hdml-band-slots` pair: no validator can check a cascade, and
@@ -1438,13 +1455,19 @@ resolved scale, its own box and its computed style.
 
 ### The `--hdml-*` registry
 
-All chart appearance is CSS custom properties, and the **complete 52-property registry** —
-35 base properties plus the **sixteen state variants** (the eight presentation-attribute
+All chart appearance is CSS custom properties, and the **complete 53-property registry** —
+**37** base properties plus the **sixteen state variants** (the eight presentation-attribute
 properties × `{hover, active}`, 017 R7) — is registered with
 `CSS.registerProperty` at import time
 ([`src/hdvl/properties.ts`](../src/hdvl/properties.ts)). Registration is guarded
 **per property**, so a page that loads two builds of this package ends up with a complete
 registry rather than one truncated at the first duplicate.
+
+The newest entry is **`--hdml-cluster-bandwidth`** (`<number>`, initial `1`, inherits) —
+019 item 10 / R2, the **inner** band of an `hdml-cluster`, documented with the element
+[above](#hdml-cluster--srchdvlcontainer-clusterts). It sits immediately after
+`--hdml-bandwidth` in the registry on purpose: the two differ by one word, act on
+different bands, and a page that sets the wrong one gets no diagnostic.
 
 #### ★ Two properties do not inherit
 
