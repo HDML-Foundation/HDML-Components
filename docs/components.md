@@ -1222,6 +1222,14 @@ forbids.
 | `--hdml-legend-direction` | `column` (initial) or `row` — the entry flow axis, **and** the ramp bar's orientation |
 | `--hdml-legend-swatch-size` | a swatch's extent, and the ramp bar's thickness. **Not `--hdml-tick-width`**, which SPEC §9 gives to `hdml-tick` and `hdml-point` alone |
 | `--hdml-legend-gap` | between swatch and name, **and** between entries — one property for both, deliberately |
+| `--hdml-legend-swatch-side` | `start` (initial) or `end` — whether an entry's swatch precedes its name or follows it. **Inert on a continuous (ramp) legend**, which has no name beside a swatch to reorder. ⚠ One character from `--hdml-legend-swatch-size`, and the two are unrelated: a typo computes to the *size* property's initial silently, with no diagnostic — the name was kept knowingly (see `docs/decisions.md`) |
+
+**Swatch side moves two offsets and nothing else.** At `end` the name starts at the
+entry's origin and the swatch's far edge is the entry's far edge — the mirror image, with
+no gap spent or saved. The entry's **span** is the measured name width either way, so the
+wrap, the entry advance and the cross-axis thickness are all unchanged, and the `start`
+initial reproduces earlier output exactly. The name's `text-anchor` stays `start` at both
+values: its left edge moves, it does not re-anchor.
 
 Entries wrap when the box's extent along the flow axis runs out; a box with **no** extent
 wraps nothing, which is the default case rather than a degenerate one (see below).
@@ -1430,7 +1438,7 @@ resolved scale, its own box and its computed style.
 
 ### The `--hdml-*` registry
 
-All chart appearance is CSS custom properties, and the **complete 51-property registry** —
+All chart appearance is CSS custom properties, and the **complete 52-property registry** —
 35 base properties plus the **sixteen state variants** (the eight presentation-attribute
 properties × `{hover, active}`, 017 R7) — is registered with
 `CSS.registerProperty` at import time

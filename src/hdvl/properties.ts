@@ -57,7 +57,7 @@ const CURVE_TYPES =
   "cardinal | catmull-rom | monotone | step";
 
 /**
- * SPEC §9's registry, complete at fifty-one: thirty-five base
+ * SPEC §9's registry, complete at fifty-two: thirty-six base
  * properties plus the sixteen **state variants** — the eight
  * presentation-attribute properties × `{hover, active}`.
  *
@@ -284,6 +284,36 @@ export const HDVL_PROPERTIES: readonly PropertyDefinition[] = [
     syntax: "<length>",
     inherits: true,
     initialValue: "4px",
+  },
+  // ── ★ 019 item 6 (D3, Note 004): swatch↔name order ──
+  //
+  // The family's fourth, and the one that answers 017 R10 — an
+  // entry's name may precede its swatch. `keyNodes` already
+  // computes both offsets along the entry's own cross axis, so the
+  // property selects which of the two comes first and nothing else:
+  // the entry's SPAN is the measured name width either way, so the
+  // flow does not move.
+  //
+  // ⚠ One character from `--hdml-legend-swatch-size`, in a position
+  // authors mistype, and the two do unrelated things. The hazard
+  // was put to the founder at drafting and the NAME WAS KEPT (A12)
+  // — recorded in docs/decisions.md so it is not re-litigated. A
+  // registered property's invalid value is
+  // invalid-at-computed-value-time and falls back to its initial,
+  // so the typo silently resizes a swatch with NO diagnostic, and
+  // V12 cannot catch it because V12 restricts page CSS to
+  // *registered* properties and both of these are registered.
+  //
+  // ★ No third `auto` keyword. A registered property has no
+  // absence, but here the two states are behaviourally identical,
+  // so `start` is both the initial and the honest default — unlike
+  // `--hdml-text-anchor`, whose `auto` names a DERIVATION that
+  // differs per plane.
+  {
+    name: "--hdml-legend-swatch-side",
+    syntax: "start | end",
+    inherits: true,
+    initialValue: "start",
   },
   {
     name: "--hdml-size-min",

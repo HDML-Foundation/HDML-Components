@@ -2729,3 +2729,72 @@ and stops before any push — set the version, run the full build gate, print th
 list, commit `build(release): <version>`, create the annotated tag. **Pushing that tag is the
 release.** Nobody runs `npm publish` by hand (RFC 018/002 §9.2), and an npm version once
 published can never be reused, which is why the script refuses to push for you.
+
+## The legend's swatch side, and a colliding name kept on purpose
+
+**019 item 6 (D3), 2026-10-11.** `--hdml-legend-swatch-side: start | end`, initial
+`start`, `inherits: true`, is the registry's **52nd** entry and the
+`--hdml-legend-*` family's fourth. It answers **017 R10** — the founder's
+observation that `hdml-legend` fuses the swatch strip and the names, so an
+entry's name cannot sit on the other side of its swatch. `keyNodes` already
+computed both offsets along the entry's own cross axis; the property selects
+which comes first, and nothing else moves. Three decisions are worth recording,
+and the first is the one a future reader is most likely to want to undo.
+
+**1 · ⚠ The one-character collision was raised and the name was KEPT.**
+`--hdml-legend-swatch-**side**` differs from the shipped
+`--hdml-legend-swatch-**size**` by one character, in a position authors mistype,
+and the two do unrelated things. The failure mode is bad: a registered
+property's invalid value is invalid-at-computed-value-time and **falls back to
+its initial**, so `--hdml-legend-swatch-side: 14px` silently resizes nothing and
+`--hdml-legend-swatch-size: end` silently resizes a swatch to `10px` — **with no
+diagnostic**. And **V12 cannot catch it**, because V12's job is to reject
+`--hdml-*` names in page CSS that are *not registered*, and both of these are
+registered. The hazard was put to the founder at drafting and the name was kept
+(decision **A12**). Two spellings were rejected: `--hdml-legend-name-position`
+(names what moves and has no near-miss, but longer) and
+`--hdml-legend-order: swatch-name | name-swatch` (unconfusable, but two-token
+keywords are new to the registry and `order` is already loaded here —
+`hdml-sort-by`'s field attribute and `OrderTypeEnum` both use it for **row**
+order). **Recorded so it is not re-litigated**, and so whoever next notices the
+collision knows it was seen rather than missed.
+
+**2 · No third `auto` keyword, and the contrast is instructive.** A registered
+property has **no absence** — it always computes to its initial, so a reader
+cannot distinguish *"the author said `start`"* from *"the author said nothing"*.
+That is what `--hdml-text-anchor`'s fourth keyword `auto` exists for. Here it
+costs nothing, because the two states are **behaviourally identical**: `start`
+is both the initial and the honest default. `--hdml-text-anchor` needs `auto`
+because there `auto` names a **derivation** that differs per plane, and there is
+no derivation behind a swatch side.
+
+**3 · `inherits: true`, and the reason is specific rather than conventional.**
+It inherits because **no V-rule reads it**. The hazard D5 solved for
+`--hdml-tick-count` — and that A1 extended to `--hdml-text-format` — is that a
+*validator* clause keyed on an attribute's presence becomes a clause keyed on an
+inherited computed value, and then fires on elements the author never addressed,
+where **an error blanks the element** (SPEC §3.5). This property has no clause,
+which puts it with `--hdml-text-rotate` and `--hdml-text-anchor`. ⚠ **If a
+V-rule is ever added for it, the inheritance decision must be re-taken** — it is
+the clause, not the family, that forces `inherits: false`.
+
+**★ And the three alternatives that are permanently closed.** Making the legend
+a **container** (`hdml-legend > hdml-label + hdml-swatch`) was 017 R10's own
+remedy and is **refuted in code**: the Scene is flat and every box is
+`getBoundingClientRect()`, so a nested child takes its position from the
+cascade and the runtime could only *observe* swatch↔name order, never compute
+it — verbatim the *"cascade-determined geometry no validator can check"* that
+016 rejected. `::part(swatch)` is **unavailable**, because the painted nodes
+live in the **view's** shadow tree, not the legend's, and nesting does not move
+them there. And making the entries real DOM laid out by real CSS — the most
+natural fix, which would retire three properties and delete the runtime's only
+`measureText` caller — was **declined by the founder on a first-class
+invariant**: *one render surface, renderer-neutral*, which is what keeps the SVG
+exportable and the renderer swappable. Any future proposal that splits the
+surface is refused on that entry, including one that splits it for a single
+element. The standing counter-argument to a *fifth* `--hdml-legend-*` is to read
+standard CSS where CSS has the word (`flex-direction`, `gap`, `flex-wrap` — and
+`keyNodes` **is** a hand-rolled flexbox); it was raised and **not adopted** for
+019, because it retires two shipped properties in a release that already breaks
+three things and because `flex-direction` and `gap` do **not** inherit while the
+two they would replace do, so it is a behaviour change rather than a rename.

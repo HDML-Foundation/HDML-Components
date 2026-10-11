@@ -53,7 +53,7 @@
  *                      half of the measurement — `allow-discrete`
  *                      can make discrete properties transition from
  *                      their INITIAL values, and a view holds dozens
- *                      of elements each carrying 49 of them, so a
+ *                      of elements each carrying 52 of them, so a
  *                      load-time frame storm is the risk the
  *                      per-change measurement cannot see.
  *

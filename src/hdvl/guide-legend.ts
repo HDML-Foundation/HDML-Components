@@ -34,6 +34,10 @@ const ELLIPSE = "ellipse";
  *  `column`. */
 const ROW = "row";
 
+/** `--hdml-legend-swatch-side`'s other value; the initial is
+ *  `start`. */
+const END = "end";
+
 /**
  * How many rects the continuous ramp bar is sampled into.
  *
@@ -86,6 +90,16 @@ interface Flow {
   swatch: number;
   /** `--hdml-tick-style` — the swatch's shape. */
   style: string;
+  /**
+   * `--hdml-legend-swatch-side` — whether the swatch precedes the
+   * name (`start`, the initial) or follows it (`end`).
+   *
+   * ★ **Read by {@link keyNodes} alone.** It lives on `Flow` for
+   * symmetry — `flowOf` is the one place the element's properties
+   * are resolved — and {@link rampNodes} therefore receives it and
+   * **deliberately ignores it**; see that function's note.
+   */
+  swatchEnd: boolean;
   /** The legend's own **content** box, in view coordinates. */
   box: Rect;
 }
@@ -100,6 +114,8 @@ function flowOf(m: Measured): Flow {
     gap: cssNumber(m.props.get("--hdml-legend-gap"), 4),
     swatch: cssNumber(m.props.get("--hdml-legend-swatch-size"), 10),
     style: (m.props.get("--hdml-tick-style") ?? "").trim(),
+    swatchEnd:
+      (m.props.get("--hdml-legend-swatch-side") ?? "").trim() === END,
     box: m.content,
   };
 }
@@ -267,17 +283,46 @@ function keyNodes(
     }
     const x = flow.horizontal ? along : across;
     const y = flow.horizontal ? across : along;
+    // ★ 019 item 6 (D3, Note 004 §2): the two offsets WITHIN one
+    // entry, and the only thing `--hdml-legend-swatch-side` moves.
+    //
+    // **The name's own width is recovered, never re-measured.** It
+    // is `entry.w - flow.swatch - flow.gap` by construction — the
+    // exact `metrics.width` the entry was built from, since
+    // `entry.w` IS `swatch + gap + width` a few lines above. That
+    // inverse is why `entry.w` must keep that form, and why the
+    // `end` arm needs no second `ctx.measureText`: this element is
+    // the runtime's sole production caller of it (Note 004 §3(a)),
+    // so a second call per entry to learn a number already in hand
+    // would be real cost for no information.
+    //
+    // **The entry's SPAN is identical either way.** `entry.w` and
+    // `entry.h` are what the wrap test and `thickest` read, and
+    // neither mentions the side — so Note 004 §5's constraint
+    // holds structurally: *"the fix must not move the flow, only
+    // the two offsets within an entry"*. At `start` both
+    // expressions below reduce to today's, which is what makes the
+    // initial reproduce the 29 goldens exactly.
+    //
+    // At `end` the swatch's FAR edge is the entry's far edge
+    // (`x + entry.w`), and the name starts at the entry's origin —
+    // the mirror image, with no gap spent or saved.
+    const nameWidth = entry.w - flow.swatch - flow.gap;
+    const swatchAt = flow.swatchEnd ? x + nameWidth + flow.gap : x;
+    const nameAt = flow.swatchEnd ? x : x + flow.swatch + flow.gap;
     nodes.push(
       swatch(
         flow,
-        x + flow.swatch / 2,
+        swatchAt + flow.swatch / 2,
         y + entry.h / 2,
         fillPaint(m, entry.color),
       ),
       {
         k: "text",
         i: -1,
-        x: num(x + flow.swatch + flow.gap),
+        // ★ `anchor` stays `start` at BOTH values: the name's left
+        // edge moves to the entry's origin, it does not re-anchor.
+        x: num(nameAt),
         y: num(y + entry.h / 2),
         text: entry.text,
         anchor: "start",
@@ -324,6 +369,18 @@ function keyNodes(
  * implementation R12 forbids; the cost is that a strongly non-linear
  * transform samples one end of the bar more coarsely than the other,
  * and every sample is still a real value painted where it belongs.
+ *
+ * ★ **`--hdml-legend-swatch-side` is INERT here, deliberately.**
+ * `Flow` carries it because `flowOf` resolves the element's
+ * properties in one place, and this function ignores it: a ramp has
+ * no name beside its swatch to reorder, so the property is an
+ * ordinal-key concept with no second meaning to invent for a bar
+ * (Note 004 §6). ⚠ `off` below reads the same two numbers
+ * `keyNodes`' name offset does, so a swap factored into a shared
+ * helper WOULD reach the bar and move every graduation. The
+ * branches stay separate on purpose, and
+ * `guide-legend.test.ts` deep-equals this whole scene at both
+ * keyword values.
  *
  * **The graduations are formatted over the whole set** — `textsOf`,
  * `hdml-label`'s, called here as its second caller. SPEC §7 makes

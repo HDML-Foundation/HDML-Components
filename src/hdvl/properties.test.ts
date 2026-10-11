@@ -9,7 +9,7 @@ import "./index";
 import { HDVL_PROPERTIES, registerProperties } from "./properties";
 
 /**
- * SPEC §9's registry — complete at fifty-one, and intact after a
+ * SPEC §9's registry — complete at fifty-two, and intact after a
  * double registration (step-plan H5).
  *
  * Every name and initial below is **hardcoded** off SPEC §9. Read
@@ -49,6 +49,7 @@ const EXPECTED: [string, null | string][] = [
   ["--hdml-legend-direction", "column"],
   ["--hdml-legend-swatch-size", "10px"],
   ["--hdml-legend-gap", "4px"],
+  ["--hdml-legend-swatch-side", "start"],
   ["--hdml-size-min", "2px"],
   ["--hdml-size-max", "12px"],
   ["--hdml-angle-start", "0deg"],
@@ -131,8 +132,8 @@ suite("hdvl/properties", () => {
     probe = null;
   });
 
-  test("the registry is exactly SPEC §9's 51", () => {
-    assert.lengthOf(HDVL_PROPERTIES, 51);
+  test("the registry is exactly SPEC §9's 52", () => {
+    assert.lengthOf(HDVL_PROPERTIES, 52);
     assert.deepEqual(
       HDVL_PROPERTIES.map((p) => p.name),
       EXPECTED.map(([name]) => name),
@@ -168,7 +169,7 @@ suite("hdvl/properties", () => {
     ]);
   });
 
-  test("the other 49 inherit", () => {
+  test("the other 50 inherit", () => {
     // ★ THE POSITIVE CONTROL, and it is not redundant with the
     // allow-list above: an allow-list alone passes unchanged if a
     // THIRD property quietly stops inheriting. Counted as well as
@@ -179,7 +180,7 @@ suite("hdvl/properties", () => {
         def.name !== "--hdml-tick-count" &&
         def.name !== "--hdml-text-format",
     );
-    assert.lengthOf(rest, 49);
+    assert.lengthOf(rest, 50);
     for (const def of rest) {
       assert.isTrue(def.inherits, def.name);
     }
@@ -258,7 +259,7 @@ suite("hdvl/properties", () => {
     assert.strictEqual(valueOf("--hdml-curve-bezier-tangents"), "");
   });
 
-  test("re-registering leaves all 51 intact", () => {
+  test("re-registering leaves all 52 intact", () => {
     // H5: `CSS.registerProperty` throws InvalidModificationError on
     // a duplicate, so a page that loads two builds registers twice.
     // With a LOOP-level try/catch the first duplicate would abort

@@ -555,7 +555,7 @@ export class HdmlViewElement extends HdvlElement {
    * **Per frame, not per change**, and the choice is deliberate: the
    * inputs are `Measured.props`, which MEASURE has already harvested
    * for every element from the one computed style it reads anyway
-   * (all fifty-one, since 019 items 18+19), so building the
+   * (all fifty-two, since 019 item 6), so building the
    * text costs a walk over data already in hand and **no new style
    * read**. A per-change path would need its own invalidation route
    * into a mechanism whose only route is the frame — R24's sentinel

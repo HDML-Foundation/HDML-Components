@@ -680,6 +680,236 @@ suite("hdvl/guide-legend — §6.6's continuous ramp", () => {
   });
 });
 
+/**
+ * `--hdml-legend-swatch-side` — 019 item 6 (D3, Note 004).
+ *
+ * **Three claims, and the third is the one a weaker suite misses.**
+ * The two offsets **exchange** — both values pinned absolutely, so a
+ * sign error or a swap that used `flow.swatch` where it needed the
+ * name's width cannot pass. The property is genuinely **read** —
+ * a registered property that nothing reads satisfies every registry
+ * count and every golden. And the entry's **span does not move**:
+ * node count, the group's box, the cross-axis lane and each entry's
+ * occupied interval are identical at both keywords, which is what
+ * a test checking only the two offsets would let through — it would
+ * pass a change that also moved the wrap.
+ */
+suite("hdvl/guide-legend — §6.6's swatch side", () => {
+  setup(() => {
+    installSceneRecorder();
+  });
+
+  teardown(() => {
+    restoreRenderers();
+  });
+
+  const SIDE = "--hdml-legend-swatch-side";
+
+  /** The computed keyword, which is what the runtime reads. */
+  function sideOf(view: HdmlViewElement): string {
+    return getComputedStyle(legendOf(view))
+      .getPropertyValue(SIDE)
+      .trim();
+  }
+
+  /** A swatch's left (or leading) edge, whichever shape it took. */
+  function left(
+    node: Extract<SceneNode, { k: "rect" | "ellipse" }>,
+  ): number {
+    return node.k === "ellipse" ? node.cx - node.rx : node.x;
+  }
+
+  /**
+   * Per entry: the swatch's leading edge, the name's anchor x, and
+   * the interval the pair occupies.
+   *
+   * The interval is the **span** claim's subject. The name's width
+   * comes from the same `measureText` seam the runtime uses (H10),
+   * so these are the numbers that ship — hence `closeTo` at 1e-2
+   * on anything text-derived, matching the seam suite below.
+   */
+  function entriesOf(
+    view: HdmlViewElement,
+  ): { sx: number; nx: number; lo: number; hi: number; y: number }[] {
+    const nodes = groupOf(view).nodes;
+    const size = lengthOf(
+      legendOf(view),
+      "--hdml-legend-swatch-size",
+    );
+    const out = [];
+    for (let k = 0; k < nodes.length / 2; k++) {
+      const mark = <Extract<SceneNode, { k: "rect" | "ellipse" }>>(
+        nodes[k * 2]
+      );
+      const name = <Extract<SceneNode, { k: "text" }>>(
+        nodes[k * 2 + 1]
+      );
+      const w = measureText(name.text, name.font).width;
+      const sx = left(mark);
+      out.push({
+        sx,
+        nx: name.x,
+        lo: Math.min(sx, name.x),
+        hi: Math.max(sx + size, name.x + w),
+        y: name.y,
+      });
+    }
+    return out;
+  }
+
+  test("★ the initial is start, and start is today", async () => {
+    // A registered property has no absence, so the reader cannot
+    // tell "the author said start" from "the author said nothing"
+    // — which is why there is no third `auto` keyword here (the
+    // two states are behaviourally identical) and why the 29
+    // goldens cannot move.
+    const bare = await mount(keyPage());
+    assert.strictEqual(sideOf(bare), "start");
+    const said = await mount(keyPage("", `${SIDE}: start;`));
+    assert.strictEqual(sideOf(said), "start");
+    assert.deepEqual(entriesOf(said), entriesOf(bare));
+  });
+
+  test("★ the offsets EXCHANGE, both values pinned", async () => {
+    // ★ Pinned, never merely unequal. `assert.notEqual` on the two
+    // offsets passes a sign error and passes a swap that used
+    // `flow.swatch` where it needed the name's width — both give
+    // two different-but-wrong numbers.
+    for (const dir of ["column", "row"]) {
+      const d = `--hdml-legend-direction: ${dir};`;
+      const from = await mount(keyPage("", d));
+      const to = await mount(keyPage("", `${d} ${SIDE}: end;`));
+      assert.strictEqual(sideOf(to), "end");
+      const el = legendOf(to);
+      const size = lengthOf(el, "--hdml-legend-swatch-size");
+      const gap = lengthOf(el, "--hdml-legend-gap");
+      const a = entriesOf(from);
+      const b = entriesOf(to);
+      assert.lengthOf(b, a.length, dir);
+      for (let k = 0; k < a.length; k++) {
+        const nodes = groupOf(to).nodes;
+        const name = <Extract<SceneNode, { k: "text" }>>(
+          nodes[k * 2 + 1]
+        );
+        const w = measureText(name.text, name.font).width;
+        // The entry's origin: where the swatch's edge was at
+        // `start`, and where the NAME begins at `end`.
+        const origin = a[k].sx;
+        assert.closeTo(
+          a[k].nx,
+          origin + size + gap,
+          1e-2,
+          `${dir} a`,
+        );
+        assert.closeTo(b[k].nx, origin, 1e-2, `${dir} name`);
+        assert.closeTo(
+          b[k].sx,
+          origin + w + gap,
+          1e-2,
+          `${dir} mark`,
+        );
+        // …and the swatch's FAR edge is the entry's far edge.
+        assert.closeTo(b[k].sx + size, a[k].hi, 1e-2, `${dir} far`);
+      }
+    }
+  });
+
+  test("★ the span, the lane and the wrap do not move", async () => {
+    // ★ The claim the offset test cannot make. `row` at this box
+    // width WRAPS (three ~49px entries in 140px), so an entry's
+    // interval moving would be a moved wrap — and a side that
+    // leaked into `entry.w` would move it.
+    for (const dir of ["column", "row"]) {
+      const d = `--hdml-legend-direction: ${dir};`;
+      const from = await mount(keyPage("", d));
+      const to = await mount(keyPage("", `${d} ${SIDE}: end;`));
+      assert.lengthOf(
+        <SceneNode[]>nodesOf(to),
+        nodesOf(from).length,
+        dir,
+      );
+      assert.deepEqual(groupOf(to).box, groupOf(from).box, dir);
+      const a = entriesOf(from);
+      const b = entriesOf(to);
+      for (let k = 0; k < a.length; k++) {
+        assert.closeTo(b[k].lo, a[k].lo, 1e-2, `${dir} lo ${k}`);
+        assert.closeTo(b[k].hi, a[k].hi, 1e-2, `${dir} hi ${k}`);
+        // The cross axis — the lane the flow advances in.
+        assert.closeTo(b[k].y, a[k].y, 1e-9, `${dir} lane ${k}`);
+      }
+      assert.deepEqual(diagnosticsOf(to), [], dir);
+    }
+  });
+
+  test("★ the name keeps its anchor and its rotation", async () => {
+    // At `end` the name's LEFT EDGE moves to the entry's origin;
+    // it does not re-anchor. And a legend name is never rotated
+    // (017 R2) — the flow laying it out is horizontal by
+    // construction, whichever side the swatch is on.
+    const view = await mount(keyPage("", `${SIDE}: end;`));
+    const names = groupOf(view).nodes.filter((n) => n.k === "text");
+    assert.lengthOf(<SceneNode[]>names, DOMAIN.length);
+    for (const t of names) {
+      assert.strictEqual(t.anchor, "start");
+      assert.strictEqual(t.rotate, 0);
+      assert.isFalse(t.decorative);
+    }
+  });
+
+  test("★ an invalid value falls back SILENTLY", async () => {
+    // ⚠ A12's kept hazard, demonstrated rather than described.
+    // `--hdml-legend-swatch-side` is one character from
+    // `--hdml-legend-swatch-size`, and a registered property's
+    // invalid value is invalid-at-computed-value-time: it computes
+    // to the inherited value, which is the initial here. So the
+    // typo produces today's layout with NO diagnostic, and V12
+    // cannot help — V12 rejects UNREGISTERED `--hdml-*` names in
+    // page CSS and both of these are registered.
+    const bare = await mount(keyPage());
+    const typo = await mount(keyPage("", `${SIDE}: sideways;`));
+    assert.strictEqual(sideOf(typo), "start");
+    assert.deepEqual(entriesOf(typo), entriesOf(bare));
+    assert.deepEqual(diagnosticsOf(typo), []);
+    // …and the sibling it is one character from still works, which
+    // is what makes the collision undiagnosable rather than loud.
+    const sized = await mount(
+      keyPage("", "--hdml-legend-swatch-size: 14px;"),
+    );
+    assert.strictEqual(
+      lengthOf(legendOf(sized), "--hdml-legend-swatch-size"),
+      14,
+    );
+  });
+
+  test("★ the ramp is INERT at both values", async () => {
+    // Note 004 §6: swatch-side is an ordinal-key concept and a
+    // ramp has no name beside a swatch to reorder, so no second
+    // meaning is invented for it. ⚠ `rampNodes`' `off` reads the
+    // same two numbers `keyNodes`' name offset does, so a swap
+    // factored into a shared helper WOULD reach the bar — this
+    // deep-equals the WHOLE scene, which is what would catch it.
+    const from = await mount(rampPage("", "--hdml-tick-count: 4;"));
+    const to = await mount(
+      rampPage("", `--hdml-tick-count: 4; ${SIDE}: end;`),
+    );
+    assert.strictEqual(sideOf(to), "end");
+    assert.deepEqual(
+      roundDeep(groupOf(to).nodes, P.precision),
+      roundDeep(groupOf(from).nodes, P.precision),
+    );
+    // …and in `row`, where the graduations hang off the far side.
+    const across = "--hdml-legend-direction: row; width: 140px;";
+    const rowFrom = await mount(rampPage("", across));
+    const rowTo = await mount(
+      rampPage("", `${across} ${SIDE}: end;`),
+    );
+    assert.deepEqual(
+      roundDeep(groupOf(rowTo).nodes, P.precision),
+      roundDeep(groupOf(rowFrom).nodes, P.precision),
+    );
+  });
+});
+
 /** The one seam a legend needs that a positional guide also uses. */
 suite("hdvl/guide-legend — the text-metric seam", () => {
   setup(() => {
