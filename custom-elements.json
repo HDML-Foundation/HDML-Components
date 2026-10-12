@@ -6382,7 +6382,7 @@
               "type": {
                 "text": "number"
               },
-              "description": "The target tick count, per region."
+              "description": "The target tick count, **shared** across the\n  regions since 019 step 35."
             },
             {
               "name": "constant",
@@ -6399,7 +6399,7 @@
               "description": "The log base used outside the linear region."
             }
           ],
-          "description": "§4.8's symlog ladder: the numeric ladder inside the linear region\n`|v| ≤ C`, the log ladder outside it, **always including 0 when\nthe domain spans it**.\n\nTwo things §4.8 leaves open, decided here and stated so a later\nreader does not read them as accidents:\n\n- **The join.** The linear region's last tick and the log\n  region's first are both `C`, so they coincide. They are\n  de-duplicated by value, keeping one — the same answer the plan\n  gives DST-collapsed calendar ticks at step 16.\n- **The budget.** Each region is asked for `count` ticks of its\n  own rather than sharing one budget, because the two regions are\n  qualitatively different scales and splitting the target would\n  make the linear region's spacing depend on how far the log\n  region reaches. `count` is a target, so the sum may exceed it."
+          "description": "§4.8's symlog ladder: the numeric ladder inside the linear region\n`|v| ≤ C`, the log ladder outside it, **always including 0 when\nthe domain spans it**.\n\nTwo things §4.8 leaves open, decided here and stated so a later\nreader does not read them as accidents:\n\n- **The join.** The linear region's last tick and the log\n  region's first are both `C`, so they coincide. They are\n  de-duplicated by value, keeping one — the same answer the plan\n  gives DST-collapsed calendar ticks at step 16.\n- **The budget.** Each region is asked for `count` ticks of its\n  own, because the two regions are qualitatively different\n  scales. ⚠ **That now generates the *candidate* set, not the\n  answer** — shareBudget thins it.\n\n⚠ **AMENDED 2026-10-12, 019 step 35, item 7. The clause above\nis kept because its reason is true; what changed is that the\nreason is now a cost rather than a decision.** It used to end:\n*\"…rather than sharing one budget, because the two regions are\nqualitatively different scales and splitting the target would\nmake the linear region's spacing depend on how far the log\nregion reaches. `count` is a target, so the sum may exceed it.\"*\n\n**The linear region's spacing does now depend on how far the log\nregion reaches, and that is correct**, because the two regions\nshare one axis, one pixel budget and one reader. The cost the\nold clause named is accepted in full and stated here rather than\ndeleted: a symlog axis is **not** two independent ladders drawn\nside by side, and pretending it was is what put five linear\nticks into 4.12 px of `12-coverage` D.\n\nⓘ `count` remains a **target in both directions**: the thinned\nresult may fall **short** of it (candidates are dropped, never\ninvented) and may exceed it by **at most one**, since the kept\nticks span at most `t(hi) − t(lo)` with at least one slot\nbetween each adjacent pair."
         },
         {
           "kind": "function",

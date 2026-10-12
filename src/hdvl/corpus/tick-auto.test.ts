@@ -175,7 +175,7 @@ suite("corpus — auto resolves from the width (019 item 8)", () => {
     }
   });
 
-  test("C3b — the baseline is 84, and 04's 54 are untouched", () => {
+  test("C3b — the baseline is 77, and 04's 54 are untouched", () => {
     const by = new Map<string, number>();
     for (const a of ACCEPTED) {
       by.set(a.page, (by.get(a.page) ?? 0) + 1);
@@ -184,11 +184,16 @@ suite("corpus — auto resolves from the width (019 item 8)", () => {
       `C3b ACCEPTED.length=${ACCEPTED.length} ` +
         JSON.stringify([...by.entries()].sort()),
     );
-    assert.lengthOf(ACCEPTED, 84);
+    // ⚠ **84 -> 77 at 019 step 35**, which also took
+    // `12-coverage` from 11 to 4: item 7's fix retired F4's
+    // seven `ALL_WIDTHS` entries, leaving A's one and C's three.
+    // `02-area`'s absence is step 31's twenty; `04` and `11` are
+    // narrow-only families neither step touched.
+    assert.lengthOf(ACCEPTED, 77);
     assert.strictEqual(by.get("02-area"), undefined);
     assert.strictEqual(by.get("04-grouped-stacked"), 54);
     assert.strictEqual(by.get("11-multi-plane"), 15);
-    assert.strictEqual(by.get("12-coverage"), 11);
+    assert.strictEqual(by.get("12-coverage"), 4);
   });
 
   test("C4 — a snapshot-less guide still resolves to absent", () => {

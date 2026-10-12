@@ -95,8 +95,17 @@
  *
  * **This module is pure.** No DOM, no `getComputedStyle`, no
  * import side effect, and no import at all — `src/hdvl/kernel/`
- * carries that rule as a directory-wide invariant, asserted by
- * grep.
+ * carries the purity half as a directory-wide invariant.
+ *
+ * ⚠ **The "no import at all" half is this MODULE's, not the
+ * directory's**, and this sentence read *"carries that rule as a
+ * directory-wide invariant, asserted by grep"* until 019 step 35.
+ * The directory has had an intra-directory edge since step 16
+ * (`ticks-calendar.ts` → `ticks-numeric.ts`, R12) and a second
+ * since step 35 (`ticks-numeric.ts` → `scale-continuous.ts`,
+ * R12 again). What is still directory-wide is that **nothing in
+ * `kernel/` imports from outside it**, `zone.ts`'s ponyfill
+ * excepted.
  *
  * @module hdvl/kernel/scale-band
  */

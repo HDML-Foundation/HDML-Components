@@ -5,6 +5,8 @@
  */
 
 import { assert } from "@open-wc/testing";
+import { formatCompactSet } from "./format-skeleton";
+import { continuousSpec, transform } from "./scale-continuous";
 import {
   niceLog,
   niceNumeric,
@@ -303,13 +305,20 @@ suite("hdvl/kernel/ticks-numeric — ticksSymlog", () => {
     // Outside it the log ladder, subdivided by {2, 5} and
     // mirrored through the origin. The join value 1 is
     // produced by both regions and de-duplicated.
-    assert.deepEqual(
-      ticksSymlog(-100, 100, 5, 1, 10),
-      [
-        -100, -50, -20, -10, -5, -2, -1, -0.5, 0, 0.5, 1, 2, 5, 10,
-        20, 50, 100,
-      ],
-    );
+    //
+    // ⚠ **MOVED at 019 step 35, item 7.** Those 17 values are now
+    // the CANDIDATE set; the shared budget keeps 5 of them for a
+    // `count` of 5. Every survivor is one of the 17 — the thinning
+    // drops candidates and never invents one.
+    const candidates = [
+      -100, -50, -20, -10, -5, -2, -1, -0.5, 0, 0.5, 1, 2, 5, 10, 20,
+      50, 100,
+    ];
+    const ticks = ticksSymlog(-100, 100, 5, 1, 10);
+    assert.deepEqual(ticks, [-100, -10, 0, 10, 100]);
+    for (const v of ticks) {
+      assert.include(candidates, v, `${v} is a candidate`);
+    }
   });
 
   test("always includes 0 when the domain spans it", () => {
@@ -323,9 +332,16 @@ suite("hdvl/kernel/ticks-numeric — ticksSymlog", () => {
   test("honours a constant other than 1", () => {
     // C = 10, so [0, 10] is the numeric ladder and (10, 1000]
     // is the log one.
+    //
+    // ⚠ **MOVED at 019 step 35.** The 12 candidates thin to 4 for
+    // a `count` of 5, and the TOP ENDPOINT goes: `t(1000)` is
+    // 0.68 of a slot above `t(500)`, and a minimum pitch cannot
+    // also promise an endpoint. `ticksLog` already drops its top
+    // endpoint for the same kind of reason, so this is the
+    // kernel's existing contract rather than a new concession.
     assert.deepEqual(
       ticksSymlog(0, 1000, 5, 10, 10),
-      [0, 2, 4, 6, 8, 10, 20, 50, 100, 200, 500, 1000],
+      [0, 20, 100, 500],
     );
   });
 
@@ -337,10 +353,345 @@ suite("hdvl/kernel/ticks-numeric — ticksSymlog", () => {
   });
 
   test("stays inside a domain that never leaves C", () => {
+    // ★ **Also the shared budget's second decision**, asserted
+    // here rather than in a test of its own: a domain living
+    // wholly inside |v| <= C touches ONE region, so there is no
+    // budget to share and nothing is thinned. Without that guard
+    // this would lose a tick, because `log1p` is not linear even
+    // inside C.
     assert.deepEqual(
       ticksSymlog(-1, 1, 4, 1, 10),
       ticksNumeric(-1, 1, 4),
     );
+  });
+});
+
+/* -------------------------------------------------------------- */
+/* ★ The shared tick budget — 019 item 7, step 35                 */
+/* -------------------------------------------------------------- */
+
+/**
+ * ★★ **`12-coverage` D's exact parameters, verbatim from the page.**
+ *
+ * `html/hdvl/12-coverage.html`:
+ * `<hdml-continuous-scale channel="y" type="symlog" constant="1"
+ *  min="-10000" max="10000">`, with
+ * `hdml-view[aria-labelledby="cap-symlog"] hdml-label[channel="y"]
+ *  { --hdml-tick-count: 5; --hdml-text-format: compact-short; }`.
+ *
+ * ⚠ **This suite is the kernel half of the gate, and a kernel unit
+ * can pass over a function no page calls with these numbers** —
+ * which is why the browser half lives in `corpus/page-12.test.ts`
+ * and asserts the rendered y-label group itself.
+ */
+const D = { lo: -10000, hi: 10000, count: 5, c: 1, base: 10 };
+
+/** §4.5's `t(v)` for D — the space the budget is measured in. */
+const tD = (v: number): number =>
+  transform(continuousSpec("symlog", { constant: D.c }), v);
+
+suite("hdvl/kernel/ticks-numeric — the shared budget", () => {
+  test("★ 12-coverage D emits no two equal formatted runs", () => {
+    // THE assertion item 7 exists for. Before the shared budget
+    // this returned 13 ticks of which `-1`/`-0.5` both rendered
+    // `-0.001K` and `0.5`/`1` both rendered `0.001K` — gate entry
+    // F4, 4.12 px apart in 13 px-tall runs.
+    //
+    // ⚠ It is a STRING identity, not a float comparison: the
+    // values were always distinct. `compact-short` gives ONE
+    // prefix to the whole SET (§4.9), which is why the collision
+    // is in `formatCompactSet` and not in `Intl` alone.
+    const ticks = ticksSymlog(D.lo, D.hi, D.count, D.c, D.base);
+    assert.deepEqual(ticks, [-10000, -100, 0, 100, 10000]);
+
+    const runs = formatCompactSet(ticks, "compact-short", "en-US");
+    assert.deepEqual(runs, ["-10K", "-0.1K", "0K", "0.1K", "10K"]);
+    assert.lengthOf(
+      new Set(runs),
+      runs.length,
+      `duplicate formatted run in ${JSON.stringify(runs)}`,
+    );
+  });
+
+  test("★ the split, as numbers", () => {
+    // The budget split stated rather than implied, so a later
+    // reader can check the mechanism without re-deriving it.
+    //
+    //   span  = t(10000) - t(-10000) = 18.420881
+    //   slot  = span / count         =  3.684176
+    //   linear region |v| <= 1 : 2·ln(2)          =  1.386294
+    //                            share = 7.526 % -> 0.376 ticks
+    //   each log region        : ln(10001) - ln(2) = 8.517293
+    //                            share = 46.237 % -> 2.312 ticks
+    //
+    // So the linear region's share rounds to NOTHING, and the
+    // origin survives because it is the ANCHOR rather than a
+    // member of that region's allocation (decision 1).
+    const span = tD(D.hi) - tD(D.lo);
+    const slot = span / D.count;
+    const linear = tD(Math.min(D.hi, D.c)) - tD(Math.max(D.lo, -D.c));
+    const log = tD(D.hi) - tD(D.c);
+
+    assert.closeTo(span, 18.420881, 1e-6);
+    assert.closeTo(slot, 3.684176, 1e-6);
+    assert.closeTo(linear, 1.386294, 1e-6);
+    assert.closeTo(log, 8.517293, 1e-6);
+    assert.closeTo((D.count * linear) / span, 0.376, 1e-3);
+    assert.closeTo((D.count * log) / span, 2.312, 1e-3);
+    assert.isBelow(linear, slot, "the linear region is under a slot");
+
+    // And the kept set spends the budget: `count` ticks, with the
+    // linear region contributing none of its own.
+    const ticks = ticksSymlog(D.lo, D.hi, D.count, D.c, D.base);
+    assert.lengthOf(ticks, D.count);
+    assert.deepEqual(
+      ticks.filter((v) => v !== 0 && Math.abs(v) <= D.c),
+      [],
+      "the linear region contributed nothing but the anchor",
+    );
+  });
+
+  test("★ no two kept ticks are closer than one slot", () => {
+    // The mechanism is a MINIMUM PITCH, and that is the property
+    // the proportional share is a consequence of. A slot-index
+    // quantisation would give the same count here and let two
+    // ticks either side of one boundary survive arbitrarily
+    // close — so the guarantee is asserted, not the count.
+    const span = tD(D.hi) - tD(D.lo);
+    const slot = span / D.count;
+    const ticks = ticksSymlog(D.lo, D.hi, D.count, D.c, D.base);
+    for (let i = 1; i < ticks.length; i++) {
+      assert.isAtLeast(
+        tD(ticks[i]) - tD(ticks[i - 1]),
+        slot,
+        `${ticks[i - 1]} -> ${ticks[i]}`,
+      );
+    }
+  });
+
+  test("★ the budget is in transform space, not pixels", () => {
+    // Two halves, and the second is the one that matters.
+    //
+    // (a) Behaviour: the same domain gives the same ticks, every
+    //     time. A memoisation bug or a hidden layout read would
+    //     break this.
+    assert.deepEqual(
+      ticksSymlog(D.lo, D.hi, D.count, D.c, D.base),
+      ticksSymlog(D.lo, D.hi, D.count, D.c, D.base),
+    );
+    // (b) ★ Structure: there is NO viewport to vary. A claim that
+    //     the kernel reads no pixel is asserted on the SIGNATURE,
+    //     because behaviour cannot distinguish "ignores the range"
+    //     from "was never given one". Five parameters, all of them
+    //     domain or transform.
+    assert.strictEqual(ticksSymlog.length, 5);
+    assert.strictEqual(ticksNumeric.length, 3);
+    assert.strictEqual(ticksLog.length, 4);
+  });
+
+  /** The sweep's grid: 4 × 5 × 4 = 80 symmetric ladders. */
+  const CONSTANTS = [1, 10, 1000, 100000];
+  const SPANS = [10, 1000, 10000, 1e6, 1e9];
+  const COUNTS = [3, 5, 8, 12];
+
+  /** Whether a domain touches more than one region. */
+  const multiRegion = (span: number, c: number): boolean => span > c;
+
+  test("★ the pitch holds over the whole grid", () => {
+    // ★ C284 — a measurement is a prediction too, and its
+    // generality is bounded by the parameter it held fixed. The
+    // point cases above hold `constant`, the domain AND the count
+    // fixed; this varies all three, and asserts the property that
+    // IS universal.
+    //
+    // ⚠ Scoped to the multi-region cases DELIBERATELY, and that
+    // scoping is decision 2 rather than a convenience: a domain
+    // inside |v| <= C is the numeric ladder untouched, and the
+    // numeric ladder makes no pitch promise in transform space
+    // (`C=10, span=10, count=12` puts -10 and -8 one slot apart
+    // in VALUE space, which `log1p` compresses). Both halves are
+    // asserted — the thinned ones keep the pitch, the untouched
+    // ones are byte-identical to `ticksNumeric`.
+    let thinned = 0;
+    let untouched = 0;
+    for (const c of CONSTANTS) {
+      for (const span of SPANS) {
+        for (const count of COUNTS) {
+          const ticks = ticksSymlog(-span, span, count, c, 10);
+          const where = `C=${c} span=${span} count=${count}`;
+          assert.include(ticks, 0, `${where}: origin`);
+          if (!multiRegion(span, c)) {
+            assert.deepEqual(
+              ticks,
+              ticksNumeric(-span, span, count),
+              `${where}: one region, untouched`,
+            );
+            untouched++;
+            continue;
+          }
+          const t = (v: number): number =>
+            transform(continuousSpec("symlog", { constant: c }), v);
+          const slot = (t(span) - t(-span)) / count;
+          for (let i = 1; i < ticks.length; i++) {
+            assert.isAtLeast(
+              t(ticks[i]) - t(ticks[i - 1]) + 1e-12,
+              slot,
+              `${where}: ${ticks[i - 1]} -> ${ticks[i]}`,
+            );
+          }
+          thinned++;
+        }
+      }
+    }
+    assert.strictEqual(thinned + untouched, 80);
+    // C=1 none; C=10 one span; C=1000 two; C=100000 three.
+    assert.strictEqual(untouched, 24);
+  });
+
+  test("★★ the formatter's limit is NOT the ladder's", () => {
+    // ★★★ **The finding this step did not set out to make, and
+    // the one that narrows what item 7 delivers.**
+    //
+    // Note 005 §8 states item 7's acceptance as *"emits no two
+    // ticks whose FORMATTED runs are equal"*. That holds for
+    // `12-coverage` D and is asserted above — but it is **NOT a
+    // property `ticksSymlog` can promise**, and measuring the
+    // grid is what showed it. 77 of these 80 ladders render
+    // distinctly; **three do not**, and in all three the VALUES
+    // are correctly spaced — every adjacent pair clears a slot,
+    // asserted in the test above, which these three also pass.
+    //
+    // The collision is §4.9's: `compact-short` gives ONE prefix
+    // to the whole SET (axis coherence — `900K, 1.2M, 1.5M` is
+    // what it exists to prevent), and under a single `M` or `B`
+    // prefix a value four or more orders below it has no decimals
+    // left. `0` and `50` both read `0M` beside `200M`. No tick
+    // SPACING can fix that, because nothing is wrong with the
+    // spacing.
+    //
+    // ⇒ The budget's job is the PITCH, which it guarantees
+    // universally. Formatted-run distinctness is a consequence of
+    // pitch only while the set's dynamic range stays inside what
+    // one prefix can express. `page-12.test.ts`'s own docblock
+    // already records the shared prefix as *"the author's
+    // spelling meeting a normative rule, not a defect"*.
+    //
+    // The exception set is ENUMERATED rather than tolerated, so a
+    // change that widens it is red.
+    const COLLIDING = new Set([
+      "1/1000000000/12",
+      "10/1000000/12",
+      "10/1000000000/5",
+    ]);
+    let distinct = 0;
+    const collided: string[] = [];
+    for (const c of CONSTANTS) {
+      for (const span of SPANS) {
+        for (const count of COUNTS) {
+          const ticks = ticksSymlog(-span, span, count, c, 10);
+          const runs = formatCompactSet(
+            ticks,
+            "compact-short",
+            "en-US",
+          );
+          const key = `${c}/${span}/${count}`;
+          if (new Set(runs).size === runs.length) {
+            distinct++;
+            assert.isFalse(
+              COLLIDING.has(key),
+              `${key} was listed as colliding and does not`,
+            );
+          } else {
+            collided.push(key);
+            assert.isTrue(
+              COLLIDING.has(key),
+              `${key} collides unlisted: ${JSON.stringify(runs)}`,
+            );
+          }
+        }
+      }
+    }
+    assert.strictEqual(distinct, 77);
+    assert.sameMembers(collided, [...COLLIDING]);
+
+    // And the three are a DYNAMIC-RANGE limit, not a crowding
+    // one: each spans at least four orders of magnitude between
+    // its smallest non-zero tick and its largest.
+    for (const key of COLLIDING) {
+      const [c, span, count] = key.split("/").map(Number);
+      const ticks = ticksSymlog(-span, span, count, c, 10);
+      const mags = ticks.filter((v) => v !== 0).map(Math.abs);
+      assert.isAtLeast(
+        Math.max(...mags) / Math.min(...mags),
+        1e4,
+        `${key}: dynamic range`,
+      );
+    }
+    // 12-coverage D, by contrast, spans 100 after the fix — two
+    // orders, comfortably inside one prefix.
+    const d = ticksSymlog(D.lo, D.hi, D.count, D.c, D.base);
+    const dm = d.filter((v) => v !== 0).map(Math.abs);
+    assert.strictEqual(Math.max(...dm) / Math.min(...dm), 100);
+  });
+
+  test("★ asymmetric and one-sided domains keep the origin", () => {
+    // The anchor is the candidate nearest the origin in transform
+    // space, so a domain that does NOT span zero anchors on its
+    // own innermost tick rather than on a value it never had.
+    assert.deepEqual(
+      ticksSymlog(1, 10000, 5, 1, 10),
+      [1, 10, 100, 1000, 10000],
+    );
+    assert.deepEqual(
+      ticksSymlog(-10000, -1, 5, 1, 10),
+      [-10000, -1000, -100, -10, -1],
+    );
+    // And a domain that does span zero always labels it (§4.8).
+    for (const [lo, hi] of [
+      [-10000, 1],
+      [-1, 10000],
+      [-5, 500],
+    ]) {
+      assert.include(
+        ticksSymlog(lo, hi, 5, 1, 10),
+        0,
+        `[${lo}, ${hi}]`,
+      );
+    }
+  });
+
+  test("★ count is a target in BOTH directions", () => {
+    // It may fall short — candidates are dropped, never invented
+    // — and it may exceed by at most one, since the kept ticks
+    // span at most `span` with at least one slot between each
+    // adjacent pair, giving at most `count` gaps.
+    for (const c of [1, 10, 1000]) {
+      for (const span of [100, 10000, 1e8]) {
+        for (const count of [2, 3, 5, 10, 20]) {
+          const n = ticksSymlog(-span, span, count, c, 10).length;
+          assert.isAtMost(
+            n,
+            count + 1,
+            `C=${c} span=${span} count=${count} gave ${n}`,
+          );
+        }
+      }
+    }
+  });
+
+  test("★ surviving ticks keep their value", () => {
+    // Note 005 §3.3's adopted mechanism, one item along: the
+    // budget THINS what the ladder produced rather than re-asking
+    // it for a coarser rung, so every survivor is a value the
+    // un-thinned ladder would have emitted — which is what lets
+    // `page-12`'s golden keep the y coordinates it already had.
+    for (const count of [3, 5, 8, 12]) {
+      const thinned = ticksSymlog(-10000, 10000, count, 1, 10);
+      const rich = ticksSymlog(-10000, 10000, 40, 1, 10);
+      for (const v of thinned) {
+        assert.include(rich, v, `${v} at count ${count}`);
+      }
+    }
   });
 });
 

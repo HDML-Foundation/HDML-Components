@@ -320,15 +320,39 @@ const F3 =
   "decision 2026-09-28: the pages are evidence, not the " +
   "deliverable.";
 
-/** 12-coverage D — a runtime defect, and 019's. */
-const F4 =
-  "★ F4 — the symlog ladder emits DUPLICATE runs at the origin. " +
-  "12-coverage D's y axis prints -0.001K twice and 0.001K twice, " +
-  "4.12 px apart in 13 px-tall runs. Not recorded anywhere before " +
-  "11-1, and a RUNTIME defect: a scale emitting the same tick " +
-  "twice is src/hdvl/kernel/'s. ROUTED TO 019 — founder's decision " +
-  "2026-09-28; 017 does not fix it, and this entry goes stale the " +
-  "day 019 does.";
+/*
+ * ★★ **F4 is GONE — the second `reason` this file has had to
+ * delete, on the precedent R02 set at 019 step 31 (below).**
+ *
+ * It read: *"★ F4 — the symlog ladder emits DUPLICATE runs at the
+ * origin. 12-coverage D's y axis prints -0.001K twice and 0.001K
+ * twice, 4.12 px apart in 13 px-tall runs. Not recorded anywhere
+ * before 11-1, and a RUNTIME defect: a scale emitting the same
+ * tick twice is src/hdvl/kernel/'s. ROUTED TO 019 — founder's
+ * decision 2026-09-28; 017 does not fix it, and this entry goes
+ * stale the day 019 does."*
+ *
+ * **019 step 35 answered it.** `ticksSymlog` now shares ONE tick
+ * budget across its regions instead of asking each for `count` of
+ * its own, as a minimum pitch of `span / count` in **transform**
+ * space anchored at the origin. `12-coverage` D's y ladder goes
+ * from 13 ticks to 5 — `-10K -0.1K 0K 0.1K 10K` — with 65.86 px
+ * between adjacent runs where the tightest pair had 4.12. Its
+ * seven entries went stale in the same commit and were deleted
+ * with it.
+ *
+ * ⚠ **Its own wording was more right than the step plan's, and
+ * that is worth keeping.** It says *"duplicate RUNS"*, not
+ * duplicate ticks — the values were always distinct and only the
+ * formatted text collided. ★ But the predicate that recorded it
+ * is `runs-overlap`, which is **geometry**, so fixing the text
+ * would not have retired the entry: measured at step 35, a
+ * proportional per-region budget removes both duplicate strings
+ * and still leaves `-1`, `0` and `1` within 9.93 px of each
+ * other, because `t(C) - t(0)` is `ln 2` whatever the domain. The
+ * entry could only go once the near-origin CLUSTER went.
+ * See `003. RFCs/005. Note — Tick Thinning.md` §2.
+ */
 
 /*
  * ★★ **R02 is GONE — the first `reason` this file has ever had to
@@ -430,24 +454,26 @@ const A10 =
  * recorded**. Step 11-2 added {@link NARROW} and found **four
  * more**, so the baseline was **104 entries over seven pages** —
  * 14 at both widths, 90 narrow-only — over **eight families**. It
- * is **84 over six pages** since 019 step 31 took R02's twenty
- * (below), leaving **seven**:
+ * is **77 over six pages** since 019 step 31 took R02's twenty and
+ * 019 step 35 took F4's seven (both below), leaving **six**:
  *
  * | family | n | what it is | decision |
  * |---|---|---|---|
  * | `10-radar` A | 1 | ★ the live overprint | IGNORE 09-26 |
  * | `12-coverage` A | 1 | ★ the live ramp legend | IGNORE 09-26 |
  * | `12-coverage` C | 3 | the UA default escaping | IGNORE 09-28 |
- * | `12-coverage` D | 7 | ★ duplicate symlog runs | **019** |
  * | `05-scatter` B | 1 | the origin corner | IGNORE 09-28 |
  * | `00-minimal` | 1 | a 1 px font-metric cross | IGNORE 09-28 |
  * | `04`·`11`·`10` narrow | 70 | chrome > plot | IGNORE 09-28 |
  *
- * …and the row that is **gone**, which is what the table is for:
- * `02-area` A, 20 entries, *"21 runs at both widths"*, **CLOSED by
- * 019 step 31** — the first family the mechanism has ever
- * retired, and the proof that *"the list can only shrink"* is a
- * mechanism and not an aspiration.
+ * …and the **two** rows that are gone, which is what the table is
+ * for: `02-area` A, 20 entries, *"21 runs at both widths"*,
+ * **CLOSED by 019 step 31**; and `12-coverage` D, 7 entries,
+ * *"duplicate symlog runs"*, **CLOSED by 019 step 35**. ★ Both
+ * were the two families 017 routed to 019 as **runtime**
+ * questions, and both are now answered — so every family left is
+ * a founder `IGNORE`, and *"the list can only shrink"* is a
+ * mechanism rather than an aspiration twice over.
  *
  * ★ **Recorded is not blessed — and the triage happened.** The
  * first six families were filed by 11-1 and 11-2 with `reason`
@@ -466,14 +492,17 @@ const A10 =
  * crowded ladders plus one escape, not seventy findings, and they
  * are enumerated through {@link ladder} so each family argues once.
  * ⚠ **One of the original 90 DID implicate it** — R02, which 019
- * step 31 fixed rather than accepted.
+ * step 31 fixed rather than accepted. ⓘ The other runtime one,
+ * F4, was an `ALL_WIDTHS` entry and so was never in this 70; 019
+ * step 35 fixed it.
  *
- * None of the 84 is red: step 11's decision is *"the gate only
+ * None of the 77 is red: step 11's decision is *"the gate only
  * reports, never reds"*, and a gate red on an appearance its owner
  * has accepted is a gate that gets re-recorded. What keeps that
  * from being a log is the **stale** half of {@link gateDiff}: the
- * list can only shrink, so the day 019 de-dupes the symlog ladder,
- * `12-coverage`'s seven entries go red until they are deleted.
+ * list can only shrink, and it has — twice, at 019 steps 31 and
+ * 35, each time because the fix made the entries go red until
+ * they were deleted.
  *
  * @see DEFERRED_TO_SLICE_H
  */
@@ -523,23 +552,13 @@ export const ACCEPTED: readonly Accepted[] = [
     widths: ALL_WIDTHS,
     reason: F3,
   })),
-  ...ladder(
-    "12-coverage",
-    3,
-    "hdml-label[4]",
-    [
-      [4, 5],
-      [4, 6],
-      [5, 6],
-      [5, 7],
-      [6, 7],
-      [6, 8],
-      [7, 8],
-    ],
-    ALL_ENGINES,
-    ALL_WIDTHS,
-    F4,
-  ),
+
+  /* ★ F4's seven went at 019 step 35, with item 7: `ticksSymlog`
+     now shares one tick budget across its regions, so 12-coverage
+     D's y ladder is five runs 65.86 px apart where it was 13 with
+     a tightest pair at 4.12. Deleted in the same commit as the
+     fix, because the stale half of `gateDiff` reds either way
+     round (D8). */
 
   /* ---- NARROW-only, step 11-2 — 70 entries, four families ---- */
 

@@ -678,11 +678,20 @@ A suppression list that only ever grows stops meaning anything. This one is
 gated from **both** sides: an unlisted violation is red, and a listed one that
 no longer fires is red too. So the baseline empties itself as defects are fixed,
 and every entry in it is a claim someone argued once and that the suite re-checks
-on every run. It is **104 entries over seven pages** and **eight families** —
-each family's `reason` names a decision, either a founder `IGNORE` or a routing
-to project 019, and the two routed there are runtime defects (a symlog ladder
-that emits the same tick twice; a ladder that does not thin when the room runs
-out) that 017 deliberately did not scope a fix for.
+on every run. It was **104 entries over seven pages** and **eight families** at
+017's closeout; it is **77 over six pages** and **six families** today, and
+**every family left is a founder `IGNORE`**.
+
+⚠ **This paragraph read `104` / `eight` until 019 step 35, and had been stale
+since step 31** — a count in prose has no test behind it, which is why the two
+assertions that *do* have one (`tick-auto.test.ts`'s `lengthOf(ACCEPTED, 77)`
+and its sibling per-page counts) are the authority and this is a summary of
+them. The two families that went were exactly the **two runtime defects 017
+routed to project 019** rather than accepting: a ladder that does not thin when
+the room runs out (`02-area` A, 20 entries, **closed at 019 step 31**) and a
+symlog ladder whose near-origin runs collide (`12-coverage` D, 7 entries,
+**closed at 019 step 35**). Each was deleted in the same commit as its fix,
+because the stale half of the comparison reds either way round.
 
 ★ **Recorded is not blessed.** A baseline entry is a *record* that a violation
 exists and has been looked at — never an approval of the appearance.
@@ -698,7 +707,9 @@ genuinely can be true in one place and false in another:
   the whole baseline. Reach for it only after running the three engines separately.
 - **`widths`** — the gate lays every page out at **two** widths and compares them
   **independently**, so a violation the narrow box creates is not owed at the wide
-  one. 90 of the 104 entries are narrow-only.
+  one. **70 of the 77 entries are narrow-only** (90 of the original 104 were; the
+  twenty step 31 retired were all narrow-only, and the seven step 35 retired were
+  all `ALL_WIDTHS`).
 
 Neither is a way to quiet a red. An entry scoped to one engine because you only ran
 one engine is a hole with a field name on it.

@@ -769,6 +769,50 @@ carries the UA sentinel, so a frame runs and the guides recompute); what is stal
 listener that treated the event as *"the ticks may have moved"*. Measured on all three
 engines at 019 step 31; see `src/hdvl/corpus/tick-auto.test.ts`.
 
+**★★ A `symlog` scale shares one tick budget across its regions** (019 item 7, 2026-10-12).
+`type="symlog"` has up to three regions — the numeric ladder inside `|v| ≤ C`, the log ladder
+either side of it — and each used to be asked for `count` ticks **of its own**. On a domain
+like `12-coverage` D's `constant="1" min="-10000" max="10000"` with `--hdml-tick-count: 5`
+that gave **13** ticks, five of them inside `|v| ≤ 1` — a region holding **7.5 %** of the
+transformed extent, so five labels landed in **9.9 px** of a 264 px axis and `compact-short`
+rendered `-1` and `-0.5` both as `-0.001K`.
+
+Each region now keeps about its **proportional share**, and the mechanism is a minimum pitch:
+
+```
+span = t(hi) - t(lo)                      # t(v) = sign(v) · log1p(|v| / C)
+slot = span / count
+```
+
+…with no two ticks kept closer than one `slot`, walking **outward from the origin**. A region
+of transformed extent `E` therefore keeps about `count · E / span` ticks, which *is* its
+share — the proportion falls out of the pitch rather than being a second rule. The same
+domain gives the same ticks at every viewport, because the budget is computed in **transform
+space and never from pixels**: a scale's projection is affine in `t`, so a region's share of
+the transformed domain already *is* its share of the rendered extent, and a tick set that
+depended on the window would be §4.2's *"`nice` never reads a pixel, so a resize cannot move
+the data"* broken one function along.
+
+Three things are deliberate:
+
+- **A region whose share rounds to nothing gets nothing, and the origin is still labelled.**
+  `12-coverage` D's linear region contributes **zero** ticks of its own; `0` survives because
+  it is the budget's **anchor**, not a member of that region's allocation. So §4.8's *"always
+  including 0 when the domain spans it"* needs no floor to protect it.
+- **Nothing is thinned unless the domain actually spans more than one region.** A symlog
+  domain living wholly inside `|v| ≤ C` is the numeric ladder and is byte-identical to it.
+- **`count` is a target in both directions.** The result may fall short (candidates are
+  dropped, never invented) and may exceed it by **at most one**. `12-coverage` D now emits
+  exactly 5: `-10K -0.1K 0K 0.1K 10K`, 65.86 px apart.
+
+⚠ **This removes the crowding, not every possible duplicate label.** `compact-short` gives
+one prefix to the whole set (§4.9 — axis coherence is the point), so a set spanning four or
+more orders of magnitude has no decimals left for its near-origin members: `0` and `50` both
+read `0M` beside `200M`, at any spacing. Measured over an 80-ladder sweep, 77 render
+distinctly and **three do not**, all three with a dynamic range ≥ 10⁴ and all three correctly
+*spaced*. Distinct labels are a consequence of pitch only while the set stays inside what one
+prefix can express; if you need a guarantee, write `format` with an explicit precision.
+
 `step=`'s multiples are generated over an **integer index range**, and where the step has an
 integer reciprocal (`0.05`, `0.2`, `0.001` — nearly every one an author writes) as `i /
 divisor`, exactly as §4.8's own ladder is. That is not tidiness: `0.35 / 0.05` is

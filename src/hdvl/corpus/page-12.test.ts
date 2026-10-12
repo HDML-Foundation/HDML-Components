@@ -968,6 +968,58 @@ suite("corpus 12-coverage (D, the symlog day)", () => {
     assert.strictEqual(new Set(texts).size, 4);
   });
 
+  test("★★ the symlog y ladder emits no two equal runs", async () => {
+    // ★★★ **019 item 7, step 35 — and the proof the fix is
+    // reached by the PAGE.** A kernel unit can pass over a
+    // function no corpus page calls with these parameters, so
+    // this asserts the rendered y-label group itself.
+    //
+    // This is the assertion gate entry F4's own text described:
+    // *"12-coverage D's y axis prints -0.001K twice and 0.001K
+    // twice, 4.12 px apart in 13 px-tall runs"*. The ladder was
+    // 13 runs, five of them inside |v| <= 1 — a region holding
+    // 7.5 % of the transformed extent — and is now 5.
+    //
+    // ⚠ Two claims, and only the second retires F4: the TEXT no
+    // longer duplicates, AND the near-origin cluster is gone.
+    // `runs-overlap` is a geometry predicate, so distinct strings
+    // 9.93 px apart would still have fired it (measured: a
+    // proportional per-region budget leaves exactly that). The
+    // pitch assertion below is therefore the load-bearing half.
+    const page = await mountCorpus("12-coverage");
+    const view = page.views[SYMLOG];
+    const groups = goldenOf(view).groups.filter(
+      (g) => g.tag === "hdml-label",
+    );
+    assert.lengthOf(groups, 2, "an x label group and a y one");
+    const y = groups[1];
+    assert.lengthOf(y.nodes, 5, "five y runs, not thirteen");
+
+    // The pitch, on all three engines: every adjacent pair clears
+    // a 13 px run with room to spare. F4's tightest was 4.12.
+    const ys = y.nodes.map((n) => (n.k === "text" ? n.y : NaN));
+    const gaps = ys.slice(1).map((v, i) => Math.abs(v - ys[i]));
+    gaps.forEach((g) =>
+      assert.isAbove(g, 13, `adjacent y runs ${gaps.join(", ")}`),
+    );
+    assert.closeTo(Math.min(...gaps), 65.858113, 1e-6);
+
+    // And the strings, chromium-scoped (rule 4) because they are
+    // ICU data — which is also why the golden's own text
+    // assertion is guarded the same way.
+    assert.notStrictEqual(ENGINE, "unclassified");
+    if (ENGINE !== "chromium") {
+      return;
+    }
+    const texts = y.nodes.map((n) => (n.k === "text" ? n.text : ""));
+    assert.deepEqual(texts, ["-10K", "-0.1K", "0K", "0.1K", "10K"]);
+    assert.strictEqual(
+      new Set(texts).size,
+      texts.length,
+      `duplicate formatted run in ${JSON.stringify(texts)}`,
+    );
+  });
+
   test("★ literal ISO days parse as instants", async () => {
     // §6's explicit parse, and the page's own comment. The domain
     // is the two UTC midnights the strings name — the `zone` does
@@ -1023,9 +1075,14 @@ suite("corpus 12-coverage (D, the symlog day)", () => {
     const scene = goldenOf(view);
     assert.deepEqual(structuredClone(scene), scene);
     assert.deepEqual(negativeZeros(sceneOf(view)), []);
-    // Thirteen grid lines, thirteen y labels, eight x labels, two
-    // axes and one path.
-    assert.strictEqual(nodeCount(scene), 37);
+    // ⚠ **MOVED at 019 step 35, item 7: 37 -> 21.** Five grid
+    // lines, five y labels, eight x labels, two axes and one
+    // path. The grid and the y labels were THIRTEEN each until
+    // `ticksSymlog` started sharing one tick budget across its
+    // regions: the linear region |v| <= 1 holds 7.5 % of the
+    // transformed extent and was being asked for five ticks of
+    // its own, which is what printed `-0.001K` twice.
+    assert.strictEqual(nodeCount(scene), 21);
     assert.isBelow(nodeCount(scene), 20000);
   });
 });
@@ -3025,7 +3082,12 @@ const GOLDEN_D: Scene = {
       widget: "",
       tag: "hdml-grid",
       role: "guide",
-      box: { x: 64, y: 16, w: 392, h: 264 },
+      box: {
+        x: 64,
+        y: 16,
+        w: 392,
+        h: 264,
+      },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -3037,41 +3099,18 @@ const GOLDEN_D: Scene = {
           i: -1,
           subpaths: [
             {
-              start: { x: 64, y: 280 },
-              segments: [{ k: "line", to: { x: 456, y: 280 } }],
-            },
-          ],
-          closed: false,
-          vertices: [],
-          fill: null,
-          stroke: "rgb(203, 213, 225)",
-          strokeWidth: 1,
-          dash: [1, 2],
-        },
-        {
-          k: "path",
-          i: -1,
-          subpaths: [
-            {
-              start: { x: 64, y: 247.01325 },
-              segments: [{ k: "line", to: { x: 456, y: 247.01325 } }],
-            },
-          ],
-          closed: false,
-          vertices: [],
-          fill: null,
-          stroke: "rgb(203, 213, 225)",
-          strokeWidth: 1,
-          dash: [1, 2],
-        },
-        {
-          k: "path",
-          i: -1,
-          subpaths: [
-            {
-              start: { x: 64, y: 214.141887 },
+              start: {
+                x: 64,
+                y: 280,
+              },
               segments: [
-                { k: "line", to: { x: 456, y: 214.141887 } },
+                {
+                  k: "line",
+                  to: {
+                    x: 456,
+                    y: 280,
+                  },
+                },
               ],
             },
           ],
@@ -3087,9 +3126,18 @@ const GOLDEN_D: Scene = {
           i: -1,
           subpaths: [
             {
-              start: { x: 64, y: 182.365586 },
+              start: {
+                x: 64,
+                y: 214.141887,
+              },
               segments: [
-                { k: "line", to: { x: 456, y: 182.365586 } },
+                {
+                  k: "line",
+                  to: {
+                    x: 456,
+                    y: 214.141887,
+                  },
+                },
               ],
             },
           ],
@@ -3105,9 +3153,18 @@ const GOLDEN_D: Scene = {
           i: -1,
           subpaths: [
             {
-              start: { x: 64, y: 157.933882 },
+              start: {
+                x: 64,
+                y: 148,
+              },
               segments: [
-                { k: "line", to: { x: 456, y: 157.933882 } },
+                {
+                  k: "line",
+                  to: {
+                    x: 456,
+                    y: 148,
+                  },
+                },
               ],
             },
           ],
@@ -3123,9 +3180,18 @@ const GOLDEN_D: Scene = {
           i: -1,
           subpaths: [
             {
-              start: { x: 64, y: 153.810948 },
+              start: {
+                x: 64,
+                y: 81.858113,
+              },
               segments: [
-                { k: "line", to: { x: 456, y: 153.810948 } },
+                {
+                  k: "line",
+                  to: {
+                    x: 456,
+                    y: 81.858113,
+                  },
+                },
               ],
             },
           ],
@@ -3141,110 +3207,19 @@ const GOLDEN_D: Scene = {
           i: -1,
           subpaths: [
             {
-              start: { x: 64, y: 148 },
-              segments: [{ k: "line", to: { x: 456, y: 148 } }],
-            },
-          ],
-          closed: false,
-          vertices: [],
-          fill: null,
-          stroke: "rgb(203, 213, 225)",
-          strokeWidth: 1,
-          dash: [1, 2],
-        },
-        {
-          k: "path",
-          i: -1,
-          subpaths: [
-            {
-              start: { x: 64, y: 142.189052 },
+              start: {
+                x: 64,
+                y: 16,
+              },
               segments: [
-                { k: "line", to: { x: 456, y: 142.189052 } },
+                {
+                  k: "line",
+                  to: {
+                    x: 456,
+                    y: 16,
+                  },
+                },
               ],
-            },
-          ],
-          closed: false,
-          vertices: [],
-          fill: null,
-          stroke: "rgb(203, 213, 225)",
-          strokeWidth: 1,
-          dash: [1, 2],
-        },
-        {
-          k: "path",
-          i: -1,
-          subpaths: [
-            {
-              start: { x: 64, y: 138.066118 },
-              segments: [
-                { k: "line", to: { x: 456, y: 138.066118 } },
-              ],
-            },
-          ],
-          closed: false,
-          vertices: [],
-          fill: null,
-          stroke: "rgb(203, 213, 225)",
-          strokeWidth: 1,
-          dash: [1, 2],
-        },
-        {
-          k: "path",
-          i: -1,
-          subpaths: [
-            {
-              start: { x: 64, y: 113.634414 },
-              segments: [
-                { k: "line", to: { x: 456, y: 113.634414 } },
-              ],
-            },
-          ],
-          closed: false,
-          vertices: [],
-          fill: null,
-          stroke: "rgb(203, 213, 225)",
-          strokeWidth: 1,
-          dash: [1, 2],
-        },
-        {
-          k: "path",
-          i: -1,
-          subpaths: [
-            {
-              start: { x: 64, y: 81.858113 },
-              segments: [{ k: "line", to: { x: 456, y: 81.858113 } }],
-            },
-          ],
-          closed: false,
-          vertices: [],
-          fill: null,
-          stroke: "rgb(203, 213, 225)",
-          strokeWidth: 1,
-          dash: [1, 2],
-        },
-        {
-          k: "path",
-          i: -1,
-          subpaths: [
-            {
-              start: { x: 64, y: 48.98675 },
-              segments: [{ k: "line", to: { x: 456, y: 48.98675 } }],
-            },
-          ],
-          closed: false,
-          vertices: [],
-          fill: null,
-          stroke: "rgb(203, 213, 225)",
-          strokeWidth: 1,
-          dash: [1, 2],
-        },
-        {
-          k: "path",
-          i: -1,
-          subpaths: [
-            {
-              start: { x: 64, y: 16 },
-              segments: [{ k: "line", to: { x: 456, y: 16 } }],
             },
           ],
           closed: false,
@@ -3260,7 +3235,12 @@ const GOLDEN_D: Scene = {
       widget: "",
       tag: "hdml-axis",
       role: "guide",
-      box: { x: 64, y: 280, w: 392, h: 0 },
+      box: {
+        x: 64,
+        y: 280,
+        w: 392,
+        h: 0,
+      },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -3272,8 +3252,19 @@ const GOLDEN_D: Scene = {
           i: -1,
           subpaths: [
             {
-              start: { x: 64, y: 280 },
-              segments: [{ k: "line", to: { x: 456, y: 280 } }],
+              start: {
+                x: 64,
+                y: 280,
+              },
+              segments: [
+                {
+                  k: "line",
+                  to: {
+                    x: 456,
+                    y: 280,
+                  },
+                },
+              ],
             },
           ],
           closed: false,
@@ -3289,7 +3280,12 @@ const GOLDEN_D: Scene = {
       widget: "",
       tag: "hdml-label",
       role: "guide",
-      box: { x: 64, y: 292, w: 392, h: 0 },
+      box: {
+        x: 64,
+        y: 292,
+        w: 392,
+        h: 0,
+      },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -3470,7 +3466,12 @@ const GOLDEN_D: Scene = {
       widget: "",
       tag: "hdml-axis",
       role: "guide",
-      box: { x: 64, y: 16, w: 0, h: 264 },
+      box: {
+        x: 64,
+        y: 16,
+        w: 0,
+        h: 264,
+      },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -3482,8 +3483,19 @@ const GOLDEN_D: Scene = {
           i: -1,
           subpaths: [
             {
-              start: { x: 64, y: 280 },
-              segments: [{ k: "line", to: { x: 64, y: 16 } }],
+              start: {
+                x: 64,
+                y: 280,
+              },
+              segments: [
+                {
+                  k: "line",
+                  to: {
+                    x: 64,
+                    y: 16,
+                  },
+                },
+              ],
             },
           ],
           closed: false,
@@ -3499,7 +3511,12 @@ const GOLDEN_D: Scene = {
       widget: "",
       tag: "hdml-label",
       role: "guide",
-      box: { x: 44, y: 16, w: 0, h: 264 },
+      box: {
+        x: 44,
+        y: 16,
+        w: 0,
+        h: 264,
+      },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -3512,27 +3529,6 @@ const GOLDEN_D: Scene = {
           x: 44,
           y: 280,
           text: "-10K",
-          anchor: "middle",
-          baseline: "middle",
-          font: {
-            family: "system-ui",
-            size: 11,
-            weight: "normal",
-            style: "normal",
-          },
-          rotate: 0,
-          decorative: false,
-          fill: "rgb(0, 0, 0)",
-          stroke: null,
-          strokeWidth: 0,
-          dash: null,
-        },
-        {
-          k: "text",
-          i: -1,
-          x: 44,
-          y: 247.01325,
-          text: "-1K",
           anchor: "middle",
           baseline: "middle",
           font: {
@@ -3573,69 +3569,6 @@ const GOLDEN_D: Scene = {
           k: "text",
           i: -1,
           x: 44,
-          y: 182.365586,
-          text: "-0.01K",
-          anchor: "middle",
-          baseline: "middle",
-          font: {
-            family: "system-ui",
-            size: 11,
-            weight: "normal",
-            style: "normal",
-          },
-          rotate: 0,
-          decorative: false,
-          fill: "rgb(0, 0, 0)",
-          stroke: null,
-          strokeWidth: 0,
-          dash: null,
-        },
-        {
-          k: "text",
-          i: -1,
-          x: 44,
-          y: 157.933882,
-          text: "-0.001K",
-          anchor: "middle",
-          baseline: "middle",
-          font: {
-            family: "system-ui",
-            size: 11,
-            weight: "normal",
-            style: "normal",
-          },
-          rotate: 0,
-          decorative: false,
-          fill: "rgb(0, 0, 0)",
-          stroke: null,
-          strokeWidth: 0,
-          dash: null,
-        },
-        {
-          k: "text",
-          i: -1,
-          x: 44,
-          y: 153.810948,
-          text: "-0.001K",
-          anchor: "middle",
-          baseline: "middle",
-          font: {
-            family: "system-ui",
-            size: 11,
-            weight: "normal",
-            style: "normal",
-          },
-          rotate: 0,
-          decorative: false,
-          fill: "rgb(0, 0, 0)",
-          stroke: null,
-          strokeWidth: 0,
-          dash: null,
-        },
-        {
-          k: "text",
-          i: -1,
-          x: 44,
           y: 148,
           text: "0K",
           anchor: "middle",
@@ -3657,92 +3590,8 @@ const GOLDEN_D: Scene = {
           k: "text",
           i: -1,
           x: 44,
-          y: 142.189052,
-          text: "0.001K",
-          anchor: "middle",
-          baseline: "middle",
-          font: {
-            family: "system-ui",
-            size: 11,
-            weight: "normal",
-            style: "normal",
-          },
-          rotate: 0,
-          decorative: false,
-          fill: "rgb(0, 0, 0)",
-          stroke: null,
-          strokeWidth: 0,
-          dash: null,
-        },
-        {
-          k: "text",
-          i: -1,
-          x: 44,
-          y: 138.066118,
-          text: "0.001K",
-          anchor: "middle",
-          baseline: "middle",
-          font: {
-            family: "system-ui",
-            size: 11,
-            weight: "normal",
-            style: "normal",
-          },
-          rotate: 0,
-          decorative: false,
-          fill: "rgb(0, 0, 0)",
-          stroke: null,
-          strokeWidth: 0,
-          dash: null,
-        },
-        {
-          k: "text",
-          i: -1,
-          x: 44,
-          y: 113.634414,
-          text: "0.01K",
-          anchor: "middle",
-          baseline: "middle",
-          font: {
-            family: "system-ui",
-            size: 11,
-            weight: "normal",
-            style: "normal",
-          },
-          rotate: 0,
-          decorative: false,
-          fill: "rgb(0, 0, 0)",
-          stroke: null,
-          strokeWidth: 0,
-          dash: null,
-        },
-        {
-          k: "text",
-          i: -1,
-          x: 44,
           y: 81.858113,
           text: "0.1K",
-          anchor: "middle",
-          baseline: "middle",
-          font: {
-            family: "system-ui",
-            size: 11,
-            weight: "normal",
-            style: "normal",
-          },
-          rotate: 0,
-          decorative: false,
-          fill: "rgb(0, 0, 0)",
-          stroke: null,
-          strokeWidth: 0,
-          dash: null,
-        },
-        {
-          k: "text",
-          i: -1,
-          x: 44,
-          y: 48.98675,
-          text: "1K",
           anchor: "middle",
           baseline: "middle",
           font: {
@@ -3785,7 +3634,12 @@ const GOLDEN_D: Scene = {
       widget: "",
       tag: "hdml-line",
       role: "mark",
-      box: { x: 64, y: 16, w: 392, h: 264 },
+      box: {
+        x: 64,
+        y: 16,
+        w: 392,
+        h: 264,
+      },
       opacity: 1,
       filter: "none",
       visibility: "visible",
@@ -3797,22 +3651,69 @@ const GOLDEN_D: Scene = {
           i: -1,
           subpaths: [
             {
-              start: { x: 64, y: 277.156203 },
+              start: {
+                x: 64,
+                y: 277.156203,
+              },
               segments: [
-                { k: "line", to: { x: 162, y: 218.923461 } },
-                { k: "line", to: { x: 260, y: 120.112067 } },
-                { k: "line", to: { x: 358, y: 49.72111 } },
-                { k: "line", to: { x: 456, y: 20.314803 } },
+                {
+                  k: "line",
+                  to: {
+                    x: 162,
+                    y: 218.923461,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 260,
+                    y: 120.112067,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 358,
+                    y: 49.72111,
+                  },
+                },
+                {
+                  k: "line",
+                  to: {
+                    x: 456,
+                    y: 20.314803,
+                  },
+                },
               ],
             },
           ],
           closed: false,
           vertices: [
-            { x: 64, y: 277.156203, i: 0 },
-            { x: 162, y: 218.923461, i: 1 },
-            { x: 260, y: 120.112067, i: 2 },
-            { x: 358, y: 49.72111, i: 3 },
-            { x: 456, y: 20.314803, i: 4 },
+            {
+              x: 64,
+              y: 277.156203,
+              i: 0,
+            },
+            {
+              x: 162,
+              y: 218.923461,
+              i: 1,
+            },
+            {
+              x: 260,
+              y: 120.112067,
+              i: 2,
+            },
+            {
+              x: 358,
+              y: 49.72111,
+              i: 3,
+            },
+            {
+              x: 456,
+              y: 20.314803,
+              i: 4,
+            },
           ],
           fill: null,
           stroke: "rgb(28, 140, 244)",

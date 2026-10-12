@@ -43,7 +43,7 @@ import type { Accepted, Observed, Violation } from "./invariants";
 // `<svg>`. That failure mode makes the whole gate vacuous and is
 // invisible here; it is covered by `collectInvariants` calling
 // `restoreRenderers()` between its passes, and by the fact that the
-// thirteen page gates report 84 violations rather than zero. A
+// thirteen page gates report 77 violations rather than zero. A
 // baseline that emptied itself all at once is the symptom, and
 // `docs/development.md` § The geometry invariants says so.
 //
@@ -531,7 +531,7 @@ suite("invariants: the gate", () => {
   });
 
   test("★ a narrow-only entry is not owed at the wide width", () => {
-    // The inverse, and the shape 70 of the 84 entries have.
+    // The inverse, and the shape 70 of the 77 entries have.
     const [wide, narrow] = gateDiff(
       "stunt",
       [seen(NARROW, "hdml-label[0]#0")],

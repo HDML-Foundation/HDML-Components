@@ -2885,3 +2885,100 @@ So every `b < 1` gap assertion is `closeTo` at `1e-9`, the tolerance
 arithmetic allows it, so the tolerance is demonstrably not hiding a wrong formula. ⚠ A
 **far edge** is `closeTo` even at `b = 1`: `W = 16, n = 6` drifts one ulp, which was latent
 before this step and unreached only because the cluster fixtures use `n ≤ 3`.
+
+## A symlog scale shares one tick budget, measured in transform space
+
+019 item 7, step 35, 2026-10-12. `ticksSymlog` asked **each** of its up-to-three regions
+for `count` ticks of its own. On `12-coverage` D — `symlog constant="1" min="-10000"
+max="10000"` with `--hdml-tick-count: 5` — that put five of the thirteen ticks inside
+`|v| ≤ 1`, a region holding **7.5 %** of the transformed extent and **9.9 px** of a 264 px
+axis, with the tightest pair **4.12 px** apart in 13 px-tall runs. It is now one budget
+shared across the whole ladder. Eight things were decided.
+
+**1 · The budget is a minimum pitch, and the proportional share falls out of it.**
+RFC 019 Note 005 §2.2 asks for *"one budget shared across the regions, proportionally to
+each region's share of the rendered extent"*. That was implemented as `slot = span /
+count` with no two kept ticks closer than one slot, rather than as an apportionment of
+counts per region, because a region of transformed extent `E` then keeps about
+`count · E / span` ticks — **exactly its share**, with no rounding to do and no remainder
+to hand out. ⚠ **And a minimum pitch is the only form that guarantees the thing the defect
+was.** Quantising each tick to a slot *index* gives the same count on this page and lets
+two ticks either side of one slot boundary survive arbitrarily close together; measured,
+not assumed, which is why the test asserts the pitch and not the count.
+
+**2 · ★★ It is computed in transform space, never from pixels — and the two are the same
+number.** `span` is `t(hi) − t(lo)` where `t(v) = sign(v) · log1p(|v| / C)`. A continuous
+scale projects *through* `t` and the projection is affine in it, so a region's share of the
+transformed domain **is** its share of the rendered extent and Note 005's wording and this
+implementation agree. Two reasons it had to be this one: `kernel/` reads no pixel and no
+CSS value (R16 confines `getComputedStyle` to `measure.ts`, and a range in px would either
+put a pixel in the kernel or add a parameter every caller threads); and `ticksSymlog` is
+handed a **domain**, so the same domain must give the same ticks at every viewport — §4.2's
+*"`nice` never reads a pixel, so a resize cannot move the data"*, one function along. The
+claim is asserted on the **signature and the import block**, because no behavioural test
+can tell *"ignores the range"* from *"was never given one"*.
+
+**3 · A region whose share rounds to nothing gets nothing, and the origin survives
+anyway.** `12-coverage` D's linear region contributes **zero** ticks of its own. No floor
+was added to keep `0` labelled, because `0` is the budget's **anchor** rather than a member
+of that region's allocation — §4.8's *"always including 0 when the domain spans it"* is
+what makes the anchor well defined, and the anchor is what makes the floor unnecessary.
+The anchor is picked as the candidate of smallest `|t|`, so a domain that does not span
+zero anchors on its own innermost tick and the result does not depend on which end the walk
+starts from.
+
+**4 · Nothing is thinned unless the domain spans more than one region.** A budget is only
+*shared* when there is something to share it with, and a symlog domain living wholly inside
+`|v| ≤ C` is the numeric ladder, which must stay byte-identical to it.
+⚠ **Load-bearing rather than tidy:** `log1p` is not linear even inside `C`, so without the
+guard a near-linear symlog domain loses ticks — `[-0.5, 0.5]` at `count` 5 drops to three.
+It is also what keeps the pre-existing `ticksSymlog(-1, 1, 4, 1, 10) === ticksNumeric(-1,
+1, 4)` test passing unmodified.
+
+**5 · The clause stating the old per-region budget was amended, not deleted.** Its reason —
+*"splitting the target would make the linear region's spacing depend on how far the log
+region reaches"* — is **true**, and is now the cost being accepted rather than the reason
+for a decision. A symlog axis is not two independent ladders drawn side by side; the two
+regions share one axis, one pixel budget and one reader. The clause also still correctly
+describes **candidate generation**, which is unchanged — what moved is that generation is
+no longer the answer.
+
+**6 · ★★★ Distinct labels are a consequence of the pitch, not a promise of the ladder — and
+the sweep is what showed it.** Note 005 §8 states item 7's acceptance as *"emits no two
+ticks whose **formatted** runs are equal"*. That holds for `12-coverage` D and is asserted
+on all three engines, but it is **not** a property `ticksSymlog` can guarantee: §4.9 gives
+`compact-short` one prefix for the whole **set** (axis coherence — `900K, 1.2M, 1.5M` is
+what that rule exists to prevent), so under a single `M` or `B` prefix a value four or more
+orders below it has no decimals left. Over an 80-ladder sweep, **77 render distinctly and
+three do not**, and in all three the *values* clear a slot — `0` and `50` both read `0M`
+beside `200M`, and no spacing can fix that because nothing is wrong with the spacing. The
+exception set is **enumerated in the test** rather than tolerated, so a change that widens
+it is red. The budget's job is the pitch; the formatter's limit is the formatter's.
+
+**7 · `count` is a target in both directions, and the endpoints are not promised.** The
+result may fall short (candidates are dropped, never invented) and may exceed `count` by
+**at most one**, since the kept ticks span at most `span` with at least one slot between
+each adjacent pair. ⚠ A minimum pitch cannot also promise a domain endpoint:
+`ticksSymlog(0, 1000, 5, 10, 10)` drops `1000`, whose `t` is 0.68 of a slot above `500`'s.
+`ticksLog` already drops its top endpoint for the same kind of reason, so this is the
+kernel's existing contract rather than a new concession.
+
+**8 · The gate entry was deleted with the fix, and its reason was kept as a comment.**
+`ACCEPTED`'s **F4** — seven `runs-overlap` pairs on `12-coverage` view 3 — went stale the
+moment the fix landed, and `gateDiff` reds on a stale entry as loudly as on an unlisted
+one, so the fix and the deletion are **one commit** and the intermediate state is never
+green. `const F4` was deleted rather than kept: nothing referenced it, so `eslint` would
+have flagged it, and the precedent is **R02 at 019 step 31 in this same file** — its text
+survives as a comment block carrying the measurement and the dated decision. The baseline
+is **77**. ★ Its own wording turned out sharper than the plan's: it said *"duplicate
+**runs**"*, and the values were always distinct — only the rendered text collided, while
+the predicate that recorded it measures **geometry**. Fixing the text alone would therefore
+*not* have retired it, which is the finding below.
+
+**⚠ The finding, and it inverted a premise.** A proportional per-region budget — Note 005
+§2.2 read literally — gives `[-1000, -1, 0, 1, 1000]` on this page: five distinct strings,
+**and `-1`/`0`/`1` still 9.93 px apart**, because `t(C) − t(0)` is `ln 2` whatever the
+domain and the first log rung is always `C`. Two of F4's seven pairs would have persisted
+as *unlisted* violations and the gate would have gone red. **The entry could only go once
+the near-origin cluster went**, which is what a minimum pitch does and an apportionment of
+counts does not. `12-coverage` D's new ladder is `-10K -0.1K 0K 0.1K 10K`, 65.86 px apart.

@@ -33,12 +33,25 @@
  * round values win over an exact count.
  *
  * **This module is pure.** No DOM, no `getComputedStyle`, no
- * import side effect, and no import at all — `src/hdvl/kernel/`
- * carries that rule as a directory-wide invariant, asserted by
- * grep.
+ * import side effect — `src/hdvl/kernel/` carries that rule as a
+ * directory-wide invariant.
+ *
+ * ⚠ **It is no longer import-free, and this sentence used to read
+ * *"and no import at all … asserted by grep"*.** Since 019 step 35
+ * it takes §4.5's `t(v)` from {@link transform}, because
+ * {@link ticksSymlog}'s shared budget is measured in **transform
+ * space** and re-deriving `sign(v) · log1p(|v| / C)` down here
+ * would be a second copy of a normative formula — exactly what R12
+ * forbids. This is the **second** intra-directory edge in
+ * `kernel/`, and the argument is the one `ticks-calendar.ts:25-28`
+ * made for the first: an edge between two pure modules is still
+ * pure. `scale-continuous.ts` imports nothing at all, so there is
+ * no cycle, and the purity invariant is untouched.
  *
  * @module hdvl/kernel/ticks-numeric
  */
+
+import { continuousSpec, transform } from "./scale-continuous";
 
 /**
  * §4.8's step, in the form the ladder must generate from.
@@ -289,17 +302,40 @@ export function ticksPow(
  *   de-duplicated by value, keeping one — the same answer the plan
  *   gives DST-collapsed calendar ticks at step 16.
  * - **The budget.** Each region is asked for `count` ticks of its
- *   own rather than sharing one budget, because the two regions are
- *   qualitatively different scales and splitting the target would
- *   make the linear region's spacing depend on how far the log
- *   region reaches. `count` is a target, so the sum may exceed it.
+ *   own, because the two regions are qualitatively different
+ *   scales. ⚠ **That now generates the *candidate* set, not the
+ *   answer** — {@link shareBudget} thins it.
+ *
+ * ⚠ **AMENDED 2026-10-12, 019 step 35, item 7. The clause above
+ * is kept because its reason is true; what changed is that the
+ * reason is now a cost rather than a decision.** It used to end:
+ * *"…rather than sharing one budget, because the two regions are
+ * qualitatively different scales and splitting the target would
+ * make the linear region's spacing depend on how far the log
+ * region reaches. `count` is a target, so the sum may exceed it."*
+ *
+ * **The linear region's spacing does now depend on how far the log
+ * region reaches, and that is correct**, because the two regions
+ * share one axis, one pixel budget and one reader. The cost the
+ * old clause named is accepted in full and stated here rather than
+ * deleted: a symlog axis is **not** two independent ladders drawn
+ * side by side, and pretending it was is what put five linear
+ * ticks into 4.12 px of `12-coverage` D.
+ *
+ * ⓘ `count` remains a **target in both directions**: the thinned
+ * result may fall **short** of it (candidates are dropped, never
+ * invented) and may exceed it by **at most one**, since the kept
+ * ticks span at most `t(hi) − t(lo)` with at least one slot
+ * between each adjacent pair.
  *
  * @param d0 - One domain endpoint.
  * @param d1 - The other domain endpoint.
- * @param count - The target tick count, per region.
+ * @param count - The target tick count, **shared** across the
+ *                regions since 019 step 35.
  * @param constant - §4.5's `C`.
  * @param base - The log base used outside the linear region.
- * @returns The ticks, ascending and duplicate-free.
+ * @returns The ticks, ascending, duplicate-free and thinned to one
+ *          shared budget.
  */
 export function ticksSymlog(
   d0: number,
@@ -329,7 +365,7 @@ export function ticksSymlog(
     out.push(0);
   }
   const seen = new Set<number>();
-  return out
+  const candidates = out
     .map(num)
     .filter((v) => v >= lo && v <= hi)
     .sort((a, b) => a - b)
@@ -340,6 +376,136 @@ export function ticksSymlog(
       seen.add(v);
       return true;
     });
+  return shareBudget(candidates, lo, hi, count, c, base);
+}
+
+/**
+ * ★ **The shared tick budget — 019 item 7's fix, step 35.**
+ *
+ * {@link ticksSymlog} generates its candidates **per region**, each
+ * asked for the full `count`. On a domain like `12-coverage` D's
+ * `symlog constant="1" min="-10000" max="10000"` with `count="5"`
+ * that is 13 ticks, five of which land inside `|v| ≤ C` — a region
+ * holding **7.5 %** of the transformed extent and therefore 9.9 px
+ * of a 264 px axis. This thins that set to one budget shared across
+ * the whole ladder.
+ *
+ * ### The mechanism, and why it is a minimum pitch
+ *
+ * A budget of `count` ticks over a transformed extent of `span`
+ * buys one tick per `span / count` of that extent. So the budget is
+ * spent by **keeping no two ticks closer than one slot** —
+ * `slot = span / count` — walking **outward from the origin**:
+ *
+ * - A region of transformed extent `E` then keeps about `E / slot`
+ *   `= count · E / span` ticks — **exactly its proportional share**,
+ *   which is what RFC 019 Note 005 §2.2 asks for. The
+ *   proportion is a *consequence* of the pitch, not a second rule,
+ *   so there is no apportionment to round and no remainder to hand
+ *   out.
+ * - A minimum pitch is also the only form that **guarantees** the
+ *   thing the defect was: quantising each tick to a slot index
+ *   would let two ticks on either side of one slot boundary survive
+ *   arbitrarily close together. Measured, not assumed.
+ *
+ * ### ★★ It is computed in TRANSFORM space, never from pixels
+ *
+ * `span` is `t(hi) − t(lo)`, and a region's share of the
+ * **rendered** extent *is* its share of the transformed domain,
+ * because {@link transform} is what a continuous scale projects
+ * through and the projection is affine in `t`. So the two
+ * formulations are the same number, and the transform-space one is
+ * the only one this module may compute:
+ *
+ * - `kernel/` reads no pixel and no CSS value. R16 confines
+ *   `getComputedStyle` to `measure.ts`, and a range in px would
+ *   either put a pixel in here or add a parameter every caller
+ *   must thread.
+ * - ★ **And it would be wrong for a second reason.** This function
+ *   is handed a **domain**, and the same domain must give the same
+ *   ticks whatever the viewport — §4.2's *"`nice` never reads a
+ *   pixel, so a resize cannot move the data"*, one function along.
+ *   A pixel budget would make a tick set a function of the window.
+ *
+ * ### Two decisions the mechanism needs, taken here
+ *
+ * 1. **A region whose share rounds to nothing gets nothing — and
+ *    the origin is still labelled.** The linear region of
+ *    `12-coverage` D contributes **zero** ticks of its own, because
+ *    `0` is the **anchor** rather than a member of its allocation.
+ *    So no floor is needed to keep the origin: §4.8's *"always
+ *    including 0 when the domain spans it"* is what makes the
+ *    anchor well-defined, and the anchor is what makes the floor
+ *    unnecessary.
+ * 2. **Nothing is thinned unless the domain actually spans more
+ *    than one region.** A budget is only *shared* when there is
+ *    something to share it with; a symlog domain living entirely
+ *    inside `|v| ≤ C` is the numeric ladder and must stay
+ *    byte-identical to it. ⚠ This is load-bearing — without it a
+ *    near-linear symlog domain loses ticks to the fact that
+ *    `log1p` is not linear even inside `C`.
+ *
+ * ⓘ **Surviving ticks keep their value and their text.** This
+ * thins what the ladder produced rather than re-asking it for a
+ * coarser rung — the same choice Note 005 §3.3 made for item 8,
+ * and the same shape `thinOrdinal` already had.
+ *
+ * @param ticks - The candidates, ascending and duplicate-free.
+ * @param lo - The domain's lower endpoint.
+ * @param hi - The domain's upper endpoint.
+ * @param count - The shared target tick count.
+ * @param constant - §4.5's `C`.
+ * @param base - The log base, for the transform's spec.
+ * @returns The kept ticks, ascending.
+ */
+function shareBudget(
+  ticks: readonly number[],
+  lo: number,
+  hi: number,
+  count: number,
+  constant: number,
+  base: number,
+): number[] {
+  const regions =
+    (Math.max(lo, -constant) <= Math.min(hi, constant) ? 1 : 0) +
+    (lo < -constant ? 1 : 0) +
+    (hi > constant ? 1 : 0);
+  if (regions < 2 || ticks.length < 2) {
+    return [...ticks];
+  }
+  const spec = continuousSpec("symlog", { base, constant });
+  const t = (v: number): number => transform(spec, v);
+  const span = t(hi) - t(lo);
+  if (!Number.isFinite(span) || span <= 0) {
+    return [...ticks];
+  }
+  const slot = span / Math.max(1, count);
+  // The anchor is the candidate nearest the origin in transform
+  // space — `0` itself whenever the domain spans it, which is the
+  // one tick §4.8 guarantees. Picking it by `|t|` rather than by
+  // index keeps the result independent of which end we walk from.
+  let anchor = 0;
+  for (let i = 1; i < ticks.length; i++) {
+    if (Math.abs(t(ticks[i])) < Math.abs(t(ticks[anchor]))) {
+      anchor = i;
+    }
+  }
+  const keep = [ticks[anchor]];
+  let last = t(ticks[anchor]);
+  for (let i = anchor + 1; i < ticks.length; i++) {
+    if (t(ticks[i]) - last >= slot) {
+      keep.push(ticks[i]);
+      last = t(ticks[i]);
+    }
+  }
+  last = t(ticks[anchor]);
+  for (let i = anchor - 1; i >= 0; i--) {
+    if (last - t(ticks[i]) >= slot) {
+      keep.push(ticks[i]);
+      last = t(ticks[i]);
+    }
+  }
+  return keep.sort((a, b) => a - b);
 }
 
 /**
