@@ -836,16 +836,17 @@ It exists because the runtime detects a declarative style change with one instru
 only on an interpolable property**. `ua.test.ts` asserts the sentinel *lists* every
 registered property and never that being listed works, and under exactly that guard
 **fifteen of the first thirty-five were silently unobserved** (project 017, R6). The
-registry is **53** since 019 item 10; R7's step 09-1 took it to 47 and every one of the
+registry is **57** since 019 item 9; R7's step 09-1 took it to 47 and every one of the
 twelve properties it added is `*`-typed — the class that measurement found silent — and
-019's four additions are `--hdml-text-format` (`*`), `--hdml-tick-count`
+019's **eight** additions are `--hdml-text-format` (`*`), `--hdml-tick-count`
 (`auto | <integer>`, the mixed class), `--hdml-legend-swatch-side` (`start | end`, a
-keyword list) and `--hdml-cluster-bandwidth` (`<number>`, whose precedent
-`--hdml-bandwidth` is already a gated class) — all four in classes `schedule.test.ts`
+keyword list), `--hdml-cluster-bandwidth` (`<number>`, whose precedent
+`--hdml-bandwidth` is already a gated class) and R1's **four** channel state variants
+(`*`, the same class as R7's twelve) — all eight in classes `schedule.test.ts`
 already gates by syntax class.
 
 ```bash
-HDIO_TENANT_TOKEN=$TT node scripts/probe-sentinel.mjs                      # the 53-row sweep, 01-line
+HDIO_TENANT_TOKEN=$TT node scripts/probe-sentinel.mjs                      # the 57-row sweep, 01-line
 HDIO_TENANT_TOKEN=$TT node scripts/probe-sentinel.mjs html/hdvl-live/03-bar.html
 HDIO_TENANT_TOKEN=$TT PROBE_BROWSER=webkit node scripts/probe-sentinel.mjs
 HDIO_TENANT_TOKEN=$TT PROBE_LOADS=2 node scripts/probe-sentinel.mjs        # frames at load, all 13 pages

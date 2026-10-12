@@ -145,10 +145,18 @@ const SOURCE = "?hdml-frame=nums";
 suite("hdvl/scale — Contract 2 is whole", () => {
   // §2.4's members, enumerated. The mechanical half of H1.
   //
-  // There are NINE of them, not the eleven the step-18 prompt says
-  // in five places: two `readonly` fields and seven methods, and
-  // the RFC's own code block is the count. Asserted here so the
-  // number is a test rather than a memory.
+  // There were NINE of them, not the eleven the step-18 prompt
+  // says in five places: two `readonly` fields and seven methods,
+  // and the RFC's own code block is the count. ★ 019 R1 adds
+  // `paintState`, so it is **ten**, and `scale.ts`'s two
+  // "eleven-member" docblocks were corrected to match — they had
+  // been wrong in the OTHER direction the whole time.
+  //
+  // ★ Asserted BOTH ways since R1, because the old forward-only
+  // loop plus `MEMBERS.length` was not in fact "a test rather
+  // than a memory": a new interface member that nobody added here
+  // left both assertions green, which is how `paintState` would
+  // have landed unlisted.
   const MEMBERS = [
     "kind",
     "channel",
@@ -157,6 +165,7 @@ suite("hdvl/scale — Contract 2 is whole", () => {
     "project",
     "bandOf",
     "paint",
+    "paintState",
     "ticks",
     "format",
   ];
@@ -221,9 +230,14 @@ suite("hdvl/scale — Contract 2 is whole", () => {
           `${kind}.${name}`,
         );
       }
+      // …and nothing the object carries is missing from the list.
+      const listed = new Set(MEMBERS);
+      for (const name of Object.keys(scale)) {
+        assert.isTrue(listed.has(name), `${kind}.${name} unlisted`);
+      }
       assert.strictEqual(scale.kind, kind);
     }
-    assert.strictEqual(MEMBERS.length, 9);
+    assert.strictEqual(MEMBERS.length, 10);
   });
 
   test("x runs left to right over the content box", async () => {
@@ -427,6 +441,268 @@ suite("hdvl/scale — paint and the color channel", () => {
     const view = await ordinalColor();
     assert.isNull(must(view, "color").range());
     assert.isNull(must(view, "color").project("north"));
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // ★ 019 R1 — `paintState`, and the reason these tests exist.
+  //
+  // The 29 whole-`Scene` goldens CANNOT see any of this: nothing
+  // below changes a base paint, and a state colour is not a field
+  // a `Scene` holds (that is why `stateSheetOf` exists). A green
+  // golden sweep says only *"the base paint did not move"*, which
+  // is necessary and not sufficient — so this block is what
+  // measures the new behaviour, and control 3 below is what pins
+  // the base path the goldens guard.
+  // ─────────────────────────────────────────────────────────────
+
+  async function ordinalStateColor(
+    hover: string,
+  ): Promise<HdmlViewElement> {
+    return mount(html`
+      <hdml-view
+        aria-label="state palette"
+        style="width: 400px; height: 76px; --hdml-palette: ${PALETTE};
+               --hdml-palette--hover: ${hover}"
+      >
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-ordinal-scale
+            channel="color"
+            values='["north", "south", "east"]'
+          >
+            <hdvl-probe></hdvl-probe>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+  }
+
+  test("★ R1 — a state palette paints per datum", async () => {
+    // ★★ CONTROL 2: the four registrations are NOT inert. A
+    // registered property nothing reads is R1's own named failure
+    // mode, and this is the assertion that the reader shipped with
+    // them. Per DATUM, not per widget: three values, three
+    // distinct state colours, in palette order.
+    const view = await ordinalStateColor("#111111 #222222 #333333");
+    const scale = must(view, "color");
+    const el = <HTMLElement>view.querySelector("hdml-ordinal-scale");
+    const computed = splitColorList(
+      getComputedStyle(el).getPropertyValue("--hdml-palette--hover"),
+    );
+    assert.strictEqual(computed.length, 3);
+    assert.strictEqual(
+      scale.paintState("north", "hover"),
+      computed[0],
+    );
+    assert.strictEqual(
+      scale.paintState("south", "hover"),
+      computed[1],
+    );
+    assert.strictEqual(
+      scale.paintState("east", "hover"),
+      computed[2],
+    );
+    // …and it is a DIFFERENT colour from the base, which is the
+    // whole point of R1 and the one thing a per-datum read could
+    // get right while still being useless.
+    assert.notStrictEqual(
+      scale.paintState("north", "hover"),
+      scale.paint("north"),
+    );
+  });
+
+  test("★ R1 — an unauthored state is null", async () => {
+    // ★★ OPEN QUESTION 3, as a test. `null` means "no state rule
+    // applies" so the node keeps the base paint `paint()` gave it;
+    // returning the BASE would make every channel-coloured mark
+    // carry a rule that changes nothing, and would make "has a
+    // state colour" untestable from outside.
+    const view = await ordinalColor();
+    const scale = must(view, "color");
+    assert.isNotNull(scale.paint("north"));
+    for (const state of ["hover", "active"]) {
+      assert.isNull(scale.paintState("north", state));
+    }
+    // `active` is independent of `hover`: authoring one must not
+    // supply the other.
+    const only = await ordinalStateColor("#111111 #222222 #333333");
+    const s2 = must(only, "color");
+    assert.isNotNull(s2.paintState("north", "hover"));
+    assert.isNull(s2.paintState("north", "active"));
+  });
+
+  test("★ R1 — an unknown state name is null", async () => {
+    // `paintState` does not validate against `HDVL_STATES` —
+    // importing it would close `scale → states → mark → scale`.
+    // It needs no validation: an unknown state spells a property
+    // nobody registered, whose computed value is `undefined`.
+    const view = await ordinalStateColor("#111111 #222222 #333333");
+    const scale = must(view, "color");
+    assert.isNull(scale.paintState("north", "focus"));
+    assert.isNull(scale.paintState("north", ""));
+  });
+
+  test("★ R1 — a state ramp uses the BASE space", async () => {
+    // ★ D3: `--hdml-color-interpolate-space` carries no variant,
+    // so a state ramp uses the base space. Asserted by giving the
+    // view a non-default space and reading the state ramp's
+    // output: `color-mix(in <space>, …)` names it.
+    const view = await mount(html`
+      <hdml-view
+        aria-label="state ramp"
+        style="width: 400px; height: 76px;
+               --hdml-color-interpolate: #000000 #ffffff;
+               --hdml-color-interpolate--hover: #ff0000 #0000ff;
+               --hdml-color-interpolate-space: srgb"
+      >
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-continuous-scale channel="color" min="0" max="10">
+            <hdvl-probe></hdvl-probe>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    const scale = must(view, "color");
+    const mid = scale.paintState(5, "hover");
+    assert.isNotNull(mid);
+    assert.include(mid, "color-mix(");
+    assert.include(mid, "srgb");
+    // The ends come from the STATE stops, not the base ones.
+    const el = <HTMLElement>(
+      view.querySelector("hdml-continuous-scale")
+    );
+    const stops = splitColorList(
+      getComputedStyle(el).getPropertyValue(
+        "--hdml-color-interpolate--hover",
+      ),
+    );
+    assert.strictEqual(scale.paintState(0, "hover"), stops[0]);
+    assert.strictEqual(scale.paintState(10, "hover"), stops[1]);
+    // …and the base read is untouched by any of it.
+    assert.isNotNull(scale.paint(5));
+    assert.isNull(scale.paintState(5, "active"));
+  });
+
+  test("★ R1 — a state palette inherits", async () => {
+    // ★★ CONTROL 5 ⓐ: `--hdml-palette--hover` is `inherits: true`,
+    // and the documented theming idiom declares at the VIEW while
+    // the scale is two levels down. MEASURE harvests the scale's
+    // own computed style, so this asserts the cascade actually
+    // delivers — and it is the same path `--hdml-palette` relies
+    // on, never asserted for a VARIANT before. The `color-mix()`
+    // member is `splitColorList`'s paren-awareness, on a STATE
+    // list for the first time.
+    const view = await mount(html`
+      <hdml-view
+        aria-label="inherited state palette"
+        style="width: 400px; height: 76px; --hdml-palette: ${PALETTE};
+               --hdml-palette--hover:
+                 color-mix(in oklch, #111111 50%, white) #222222
+                 #333333"
+      >
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-ordinal-scale
+            channel="color"
+            values='["north", "south", "east"]'
+          >
+            <hdvl-probe></hdvl-probe>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    const scale = must(view, "color");
+    const first = scale.paintState("north", "hover");
+    assert.isNotNull(first);
+    // One member, not two: the comma inside `color-mix()` must not
+    // split the list, or `south` would get the fragment.
+    assert.include(first, "color-mix(");
+    const seen = new Set(
+      ["north", "south", "east"].map((v) =>
+        scale.paintState(v, "hover"),
+      ),
+    );
+    assert.strictEqual(seen.size, 3);
+    assert.notInclude([...seen], null);
+  });
+
+  test("★ R1 — a short state palette exhausts to null", async () => {
+    // Two colours, three values: `paletteColor` returns `null` for
+    // the third exactly as it does on a short BASE palette. The
+    // DIAGNOSTIC for this is step 39's, deliberately not here —
+    // what is asserted is that the resolver behaves identically in
+    // both classes, so step 39 has one rule to report on.
+    const view = await ordinalStateColor("#111111 #222222");
+    const scale = must(view, "color");
+    assert.isNotNull(scale.paintState("north", "hover"));
+    assert.isNotNull(scale.paintState("south", "hover"));
+    assert.isNull(scale.paintState("east", "hover"));
+    // …and the BASE palette still paints all three.
+    assert.isNotNull(scale.paint("east"));
+  });
+
+  test("★ R1 — paintState is null off color", async () => {
+    // ★★ CONTROL 3's structural half: `paintState` guards on
+    // `channel` and `domain` exactly as `paint()` does, so a state
+    // palette on an x scale resolves to nothing rather than to a
+    // colour nobody can use.
+    const view = await mount(html`
+      <hdml-view
+        aria-label="state on x"
+        style="width: 400px; height: 76px;
+               --hdml-palette--hover: #111111 #222222"
+      >
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-continuous-scale channel="x" min="0" max="10">
+            <hdvl-probe></hdvl-probe>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    assert.isNull(must(view, "x").paintState(5, "hover"));
+  });
+
+  test("★ R1 — the BASE read stays exact", async () => {
+    // ★★ CONTROL 3, the one the goldens would also catch but
+    // which is worth having at the unit level: with a state
+    // palette authored, every base answer is byte-identical to the
+    // same fixture WITHOUT one — ordinal and continuous, including
+    // `paletteColor`'s exhaustion `null`.
+    const bare = must(await ordinalColor(), "color");
+    const withState = must(
+      await ordinalStateColor("#111111 #222222 #333333"),
+      "color",
+    );
+    for (const v of ["north", "south", "east", "nowhere"]) {
+      assert.strictEqual(
+        withState.paint(v),
+        bare.paint(v),
+        `base ordinal paint moved for ${v}`,
+      );
+    }
+    const bareRamp = must(await rampView("#000000 #ffffff"), "color");
+    const stateRamp = must(
+      await mount(html`
+        <hdml-view
+          aria-label="ramp both"
+          style="width: 400px; height: 76px;
+                 --hdml-color-interpolate: #000000 #ffffff;
+                 --hdml-color-interpolate--hover: #ff0000 #0000ff"
+        >
+          <hdml-cartesian-plane style="padding: 0">
+            <hdml-continuous-scale channel="color" min="0" max="10">
+              <hdvl-probe></hdvl-probe>
+            </hdml-continuous-scale>
+          </hdml-cartesian-plane>
+        </hdml-view>
+      `),
+      "color",
+    );
+    for (const v of [0, 2.5, 5, 10]) {
+      assert.strictEqual(
+        stateRamp.paint(v),
+        bareRamp.paint(v),
+        `base ramp paint moved for ${v}`,
+      );
+    }
   });
 
   test("paint is null on a non-color channel", async () => {

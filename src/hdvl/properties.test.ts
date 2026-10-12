@@ -9,7 +9,7 @@ import "./index";
 import { HDVL_PROPERTIES, registerProperties } from "./properties";
 
 /**
- * SPEC §9's registry — complete at fifty-three, and intact after a
+ * SPEC §9's registry — complete at fifty-seven, and intact after a
  * double registration (step-plan H5).
  *
  * Every name and initial below is **hardcoded** off SPEC §9. Read
@@ -88,16 +88,33 @@ const EXPECTED: [string, null | string][] = [
   ["--hdml-font-weight--active", null],
   ["--hdml-font-style--hover", null],
   ["--hdml-font-style--active", null],
+  // ★ 019 item 9 / R1 — the CHANNEL class. Read per datum by
+  // `Scale.paintState`, never by a generated rule, and `-space`
+  // gets no variant (D3), which is what holds this at four.
+  ["--hdml-palette--hover", null],
+  ["--hdml-palette--active", null],
+  ["--hdml-color-interpolate--hover", null],
+  ["--hdml-color-interpolate--active", null],
 ];
 
 /**
- * The sixteen "no change in that state" sentinels (SPEC §9, 017 R7)
- * — the eight presentation-attribute properties × `{hover, active}`.
+ * The twenty "no change in that state" sentinels (SPEC §9, 017 R7 +
+ * 019 R1) — the eight presentation-attribute properties and the two
+ * channel-colour sources, each × `{hover, active}`.
  *
  * Hardcoded off SPEC §9 like everything else here. Derived from
  * `HDVL_PROPERTIES` it would assert nothing, and the point of the
- * list is that **only these eight** carry variants: a ninth would
- * register a property no generated rule can ever reach.
+ * list is that **only these ten bases** carry variants: an eleventh
+ * would register a property neither reader can reach.
+ *
+ * ⚠ This list used to say *"only these **eight**"*, on the argument
+ * that a ninth *"would register a property no generated rule can
+ * ever reach"*. A generated rule is no longer the only reader —
+ * `Scale.paintState` reads the four below per datum — so the test
+ * for a new variant is **name the reader**, not *is it a
+ * presentation attribute*. `states.test.ts` enforces that; what
+ * this list buys is the registration SHAPE (`*`, no
+ * `initialValue`), which is a different claim and still exhaustive.
  */
 const VARIANTS = [
   "--hdml-line-width--hover",
@@ -116,6 +133,10 @@ const VARIANTS = [
   "--hdml-font-weight--active",
   "--hdml-font-style--hover",
   "--hdml-font-style--active",
+  "--hdml-palette--hover",
+  "--hdml-palette--active",
+  "--hdml-color-interpolate--hover",
+  "--hdml-color-interpolate--active",
 ];
 
 let probe: null | HTMLElement = null;
@@ -136,8 +157,8 @@ suite("hdvl/properties", () => {
     probe = null;
   });
 
-  test("the registry is exactly SPEC §9's 53", () => {
-    assert.lengthOf(HDVL_PROPERTIES, 53);
+  test("the registry is exactly SPEC §9's 57", () => {
+    assert.lengthOf(HDVL_PROPERTIES, 57);
     assert.deepEqual(
       HDVL_PROPERTIES.map((p) => p.name),
       EXPECTED.map(([name]) => name),
@@ -173,7 +194,7 @@ suite("hdvl/properties", () => {
     ]);
   });
 
-  test("the other 51 inherit", () => {
+  test("the other 55 inherit", () => {
     // ★ THE POSITIVE CONTROL, and it is not redundant with the
     // allow-list above: an allow-list alone passes unchanged if a
     // THIRD property quietly stops inheriting. Counted as well as
@@ -184,7 +205,9 @@ suite("hdvl/properties", () => {
         def.name !== "--hdml-tick-count" &&
         def.name !== "--hdml-text-format",
     );
-    assert.lengthOf(rest, 51);
+    // ★ THE DERIVED COUNT, `N − 2`. No `57` grep reaches it, and
+    // it fails the BUILD rather than reading false.
+    assert.lengthOf(rest, 55);
     for (const def of rest) {
       assert.isTrue(def.inherits, def.name);
     }
@@ -193,7 +216,7 @@ suite("hdvl/properties", () => {
   test("--hdml-text-format carries no initial value", () => {
     // With syntax `*`, an OMITTED initialValue is the platform's
     // own spelling of "empty"; `""` is not equivalent everywhere.
-    // The sixteen state variants assert the same combination below;
+    // All twenty state variants assert the same combination below;
     // this is the first NON-variant to rely on it alongside
     // `--hdml-curve-bezier-tangents`.
     const def = HDVL_PROPERTIES.find(
@@ -213,6 +236,27 @@ suite("hdvl/properties", () => {
     assert.strictEqual(def?.syntax, "auto | <integer>");
     assert.isFalse(def?.inherits);
     assert.strictEqual(def?.initialValue, "auto");
+  });
+
+  test("VARIANTS is exactly the registry's state entries", () => {
+    // ★★ CONTROL 5 ⓑ (019 R1, step 36), and it found a REAL gap:
+    // with R1's four omitted from `VARIANTS` the whole file still
+    // passed, 18/18 on all three engines. `VARIANTS` is hand-kept
+    // — deliberately, so that it asserts SPEC §9 rather than
+    // reading the registry back at itself — but nothing tied its
+    // MEMBERSHIP to the registry, so a variant registered with the
+    // wrong shape (a typed syntax, or an `initialValue`) simply
+    // escaped the two loops below. That is R7's own silent-failure
+    // shape, living in the test instead of the runtime.
+    //
+    // This closes it without giving up the hardcoding: the NAMES
+    // are compared as sets, while the SHAPE each one must have
+    // stays asserted against the hardcoded list below.
+    const fromRegistry = HDVL_PROPERTIES.map((def) => def.name)
+      .filter((n) => n.endsWith("--hover") || n.endsWith("--active"))
+      .sort();
+    assert.deepEqual(Array.from(VARIANTS).sort(), fromRegistry);
+    assert.lengthOf(VARIANTS, 20);
   });
 
   test("the sentinels carry no initial value", () => {
@@ -256,14 +300,14 @@ suite("hdvl/properties", () => {
     assert.lengthOf(found, 2, value);
   });
 
-  test("the sixteen state variants are empty", () => {
+  test("all twenty state variants are empty", () => {
     for (const name of VARIANTS) {
       assert.strictEqual(valueOf(name), "", name);
     }
     assert.strictEqual(valueOf("--hdml-curve-bezier-tangents"), "");
   });
 
-  test("re-registering leaves all 53 intact", () => {
+  test("re-registering leaves all 57 intact", () => {
     // H5: `CSS.registerProperty` throws InvalidModificationError on
     // a duplicate, so a page that loads two builds registers twice.
     // With a LOOP-level try/catch the first duplicate would abort

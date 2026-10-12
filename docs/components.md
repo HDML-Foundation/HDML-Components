@@ -1499,9 +1499,11 @@ resolved scale, its own box and its computed style.
 
 ### The `--hdml-*` registry
 
-All chart appearance is CSS custom properties, and the **complete 53-property registry** —
-**37** base properties plus the **sixteen state variants** (the eight presentation-attribute
-properties × `{hover, active}`, 017 R7) — is registered with
+All chart appearance is CSS custom properties, and the **complete 57-property registry** —
+**37** base properties plus the **twenty state variants** in two classes (the eight
+presentation-attribute properties × `{hover, active}`, 017 R7; plus the two channel-colour
+sources `--hdml-palette` and `--hdml-color-interpolate` × `{hover, active}`, 019 R1) — is
+registered with
 `CSS.registerProperty` at import time
 ([`src/hdvl/properties.ts`](../src/hdvl/properties.ts)). Registration is guarded
 **per property**, so a page that loads two builds of this package ends up with a complete
@@ -1669,7 +1671,8 @@ A grep for `fillPaint(` finds the file, not the host.
 The dash pattern is `strokePaint`'s own — a multiple of the stroke width, so `dashed` is
 `[w × 4, w × 3]` and `dotted` is `[w, w × 2]`. One function serves both halves.
 
-The sixteen state variants are **live since 017 R7's step 09-2**, and the sentence that used
+The sixteen presentation-attribute state variants are **live since 017 R7's step 09-2**,
+and the sentence that used
 to stand here — *"a per-mark hover value needs the renderer to know which node is hovered,
 which the scene's `Paint` cannot express"* — was false as a **reason**. `NodeBase extends
 Paint`, so every scene node has carried a full per-node paint, and its own `i`, since Slice
@@ -1688,17 +1691,22 @@ perfectly legal to the platform and simply never reaches an element, so from ins
 element there is nothing to see. Since step 34 `scripts/check-dist.mjs` reads
 `properties.ts` — the registry itself, never a second list — and checks every `--hdml-*`
 token in each corpus page's `<style>` bodies and inline `style=` attributes against it, the
-sixteen state variants included. **V11** is source-time for the mirror reason (a data
+twenty state variants included. **V11** is source-time for the mirror reason (a data
 element is inert in the display half) and is checked in the same place, against
 `@hdml/types`: known tags, published attributes on data elements, and the `{table}_{field}`
 compound on every `origin`/`field` inside a **model**-sourced frame.
 
 #### Interaction states are generated rules
 
-Project 017 R7, implementation step 09-2. SPEC §9 registers **sixteen state variants** — the
-eight presentation-attribute properties × `{hover, active}`, spelled with a doubled dash
-(`--hdml-fill-color--hover`) — and [`src/hdvl/states.ts`](../src/hdvl/states.ts) is the half
-that reads them. **The runtime never chooses a value per node. It emits both rules and the
+Project 017 R7, implementation step 09-2. SPEC §9 registers **twenty state variants** in
+**two classes**, spelled with a doubled dash (`--hdml-fill-color--hover`). **Class 1** is
+the eight presentation-attribute properties × `{hover, active}`, and
+[`src/hdvl/states.ts`](../src/hdvl/states.ts) is the half that reads them.
+**Class 2** is 019 R1's two channel-colour sources × `{hover, active}`; a palette feeds `n`
+colours through one declaration, so no single rule can carry it and
+[`Scale.paintState`](../src/hdvl/scale.ts) reads it **per datum** instead. The two reader
+lists — `STATE_PROPERTIES` and `CHANNEL_STATE_PROPERTIES` — are asserted exhaustive against
+the registry *and disjoint*, so a registered variant with no reader fails the suite. **The runtime never chooses a value per node. It emits both rules and the
 browser chooses**, per node, natively:
 
 ```css

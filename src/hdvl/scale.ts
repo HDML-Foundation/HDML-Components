@@ -155,8 +155,13 @@ export interface ScaleBand {
 }
 
 /**
- * Contract 2 — eleven members, and every one of them answers from
+ * Contract 2 — ten members, and every one of them answers from
  * the frame the scale last resolved in.
+ *
+ * ⚠ This said **eleven** until 019 R1 added `paintState`, and
+ * eleven was never right: `scale.test.ts`'s `MEMBERS` has counted
+ * **nine** since step 18 and records that the step-18 prompt said
+ * eleven *"in five places"*. Nine + `paintState` = **ten**.
  */
 export interface Scale {
   readonly kind: ScaleKind;
@@ -186,10 +191,62 @@ export interface Scale {
   bandOf(v: string): ScaleBand | null;
   /** `color` only: the resolved CSS <color> for a value. */
   paint(v: number | string): string | null;
+  /** ★ 019 R1. `color` only: the value's colour in an
+   *  INTERACTION state, from `--hdml-palette--{state}` or
+   *  `--hdml-color-interpolate--{state}`.
+   *
+   *  **`null` means "no state rule applies"** and never
+   *  "re-state the base" — see {@link CHANNEL_STATE_PROPERTIES}.
+   *  That is why this is a sibling of {@link Scale.paint} rather
+   *  than a second parameter on it: `paint()`'s `null` means
+   *  *exhausted / not a colour channel*, and one return channel
+   *  may not carry two meanings a caller must tell apart. */
+  paintState(v: number | string, state: string): string | null;
   ticks(spec: TickSpec): readonly Tick[];
   /** CLDR skeleton → formatted text (§4.9). */
   format(v: number | string, skeleton?: string): string;
 }
+
+/**
+ * ★ 019 R1 — the **channel class** of SPEC §9's state variants:
+ * the base properties whose `--hover` / `--active` variants are
+ * read **per datum** by {@link Scale.paintState} rather than
+ * emitted into a generated CSS rule by `states.ts`.
+ *
+ * **Exported for exactly one reason**, and it is the same reason
+ * `STATE_PROPERTIES` is: it is the only thing that makes the
+ * registry↔reader boundary **enforced** rather than remembered.
+ * `states.test.ts` asserts both lists against `HDVL_PROPERTIES` in
+ * both directions and asserts they are **disjoint**, so a
+ * registered variant with no reader fails, a listed base with no
+ * registration fails, and a base claimed by both classes fails.
+ *
+ * ── Why this is a SECOND list and not two more members of
+ * `STATE_PROPERTIES` ──
+ *
+ * `STATE_PROPERTIES` is *"the base properties `states.ts` can
+ * state-vary"*, and `states.ts` cannot state-vary either of these.
+ * A palette is a `<color>+` list feeding `n` colours through one
+ * declaration: `fill: #1c8cf4 #f59e0b …` is not a paint value, so
+ * there is no literal for the generator to emit and no single rule
+ * that could carry it. Adding them there would have widened a list
+ * whose docblock promises its members are generated — which is
+ * precisely R7's silent-failure shape, reintroduced by the step
+ * that was closing it. Two lists, each exhaustive against its own
+ * reader, keep the boundary sharp in both directions.
+ *
+ * ── ★ `--hdml-color-interpolate-space` is absent (D3) ──
+ *
+ * It is the ramp's interpolation space, not a colour. A per-state
+ * space would change *how* the ramp is computed — a different
+ * picture on hover rather than a different colour — so a state ramp
+ * interpolates in the base space. That is what holds the registry
+ * at 57 rather than 59.
+ */
+export const CHANNEL_STATE_PROPERTIES: readonly string[] = [
+  "--hdml-palette",
+  "--hdml-color-interpolate",
+];
 
 // ---------------------------------------------------------------
 // Attributes — every key from a published enum (R8)
@@ -986,7 +1043,7 @@ export function localeOf(el: HdvlElement): string {
   return root !== "" ? root : navigator.language;
 }
 
-/** Builds the eleven-member object for one frame. */
+/** Builds the ten-member object for one frame. */
 function buildScale(
   el: HdvlElement,
   kind: ScaleKind,
@@ -1089,6 +1146,57 @@ function buildScale(
       const stops = splitColorList(
         m.props.get("--hdml-color-interpolate") ?? "",
       );
+      const space = (
+        m.props.get("--hdml-color-interpolate-space") ?? "oklch"
+      ).trim();
+      return stops.length === 0 ? null : rampStops(stops, space, t);
+    },
+    paintState: (
+      v: number | string,
+      state: string,
+    ): string | null => {
+      if (channel !== "color" || domain === null) {
+        return null;
+      }
+      // ★ R1's `null` contract, and the ONE place it is decided.
+      // An unauthored state source is the empty sentinel (these
+      // four OMIT `initialValue`), so `""` here means "the author
+      // wrote no state rule" and the node keeps the base paint
+      // `paint()` already gave it. Returning the BASE instead
+      // would make every channel-coloured mark carry a state rule
+      // that changes nothing — which is a cost per node for no
+      // author-visible effect, and it would also make "has a
+      // state colour" untestable from the outside.
+      //
+      // `state` is not validated against `HDVL_STATES`: importing
+      // it would close the cycle `scale → states → mark → scale`.
+      // It needs no validation — an unknown state spells a
+      // property nobody registered, whose computed value is
+      // `undefined`, which falls out here as `null`.
+      if (kind === "ordinal") {
+        const raw = m.props.get(`--hdml-palette--${state}`) ?? "";
+        if (raw.trim() === "") {
+          return null;
+        }
+        return paletteColor(
+          splitColorList(raw),
+          values.indexOf(String(v)),
+        );
+      }
+      const raw =
+        m.props.get(`--hdml-color-interpolate--${state}`) ?? "";
+      if (raw.trim() === "") {
+        return null;
+      }
+      const t = fraction(v);
+      if (t === null) {
+        return null;
+      }
+      const stops = splitColorList(raw);
+      // ★ D3 — the interpolation SPACE has no variant and is read
+      // off the base. It is the ramp's geometry, not a colour: a
+      // per-state space would redraw the ramp on hover instead of
+      // recolouring it.
       const space = (
         m.props.get("--hdml-color-interpolate-space") ?? "oklch"
       ).trim();

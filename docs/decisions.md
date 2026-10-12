@@ -1816,7 +1816,7 @@ derivation would not have*.
 
 **Not `syntax: "*"` with an omitted initial**, which is the other idiom in this registry for
 exactly this semantics (`--hdml-curve-bezier-tangents` is *"empty — auto tangents"*, and so
-are the sixteen state variants). It would work. What it costs is typing: `*` accepts any
+are all twenty state variants). It would work. What it costs is typing: `*` accepts any
 string, so `--hdml-text-anchor: centre` would compute to `centre` and the reader would have to
 either ignore it silently — the defect class 017 exists to close — or invent a diagnostic for
 something CSS already diagnoses. With a closed enum the typo is invalid at computed-value
@@ -1978,7 +1978,8 @@ geometry moved anywhere: `Paint` is spread into nodes whose coordinates are comp
 company with `strokePaint`. `09-polar-area`'s own comment depends on it: a hover cue on
 channel-coloured wedges uses *"what the channel does not own"*.
 
-The sixteen state variants are **read since 017 R7's step 09-2**, and what used to stand here
+The sixteen presentation-attribute state variants are **read since 017 R7's step 09-2**,
+and what used to stand here
 — *"a per-mark hover value needs the renderer to know which node is hovered, which `Paint`
 cannot express"* — was false as a **reason**, which R7 measured. `NodeBase extends Paint`, so
 every scene node already carries a full per-node paint and its own `i`. The mechanism never
@@ -2982,3 +2983,96 @@ domain and the first log rung is always `C`. Two of F4's seven pairs would have 
 as *unlisted* violations and the gate would have gone red. **The entry could only go once
 the near-origin cluster went**, which is what a minimum pitch does and an apportionment of
 counts does not. `12-coverage` D's new ladder is `-10K -0.1K 0K 0.1K 10K`, 65.86 px apart.
+
+## A colour scale may supply `--hover` and `--active` palettes
+
+**019 item 9 / R1, 2026-10-12.** `--hdml-palette--hover`, `--hdml-palette--active`,
+`--hdml-color-interpolate--hover` and `--hdml-color-interpolate--active` are the registry's
+54th–57th entries, all `syntax: "*"`, `inherits: true`, and all **omitting
+`initialValue`** — the sentinel idiom the other sixteen variants and
+`--hdml-curve-bezier-tangents` already use. `Scale.paintState(v, state)` reads them. This
+step registers them **and ships the reader**; §9's *"docs follow code"* aside, the two
+could not be separated, for the reason in decision 1.
+
+**1 · The registrations could not land alone — that is a red test, not a style
+preference.** R1's own step-01 sketch said *"the registrations land first, nothing reads
+them yet"*. `states.test.ts` asserts the registry↔generator boundary in **both**
+directions, and the reverse half fails for any registered `--hover` / `--active` variant
+whose base is not in the reader's list. Measured: with the four registered and the reader
+list empty, the suite reds on `--hdml-palette--hover is registered but has no reader`, on
+all three engines. The boundary R7 added to stop a variant being registered-and-unread did
+exactly its job on the step that needed to add one.
+
+**2 · The boundary became TWO classes, and the decisive question is "name the reader".**
+The alternative was to add the two channel bases to `STATE_PROPERTIES` and teach
+`states.ts` a second emission mode. Rejected: `STATE_PROPERTIES` is documented as *"the
+base properties this module can state-vary"*, and `states.ts` cannot state-vary a palette
+at all — `fill: #1c8cf4 #f59e0b …` is not a paint value, because one declaration feeds `n`
+colours. Adding them there would have widened a list whose docblock promises its members
+are generated, which is R7's silent-failure shape reintroduced by the step closing it. So:
+
+| Class | List | Reader | Members |
+|---|---|---|---|
+| generated sheet | `STATE_PROPERTIES` (`states.ts`) | a CSS rule the browser applies per node | 8 bases |
+| per-datum | `CHANNEL_STATE_PROPERTIES` (`scale.ts`) | `Scale.paintState` | 2 bases |
+
+Each list is asserted exhaustive against the registry, the reverse half runs against their
+**union**, and a clause asserts they are **disjoint**. ⚠ `properties.ts`'s *"why exactly
+eight carry variants"* paragraph previously **forbade** this outright, on the argument that
+a channel-colour source's variant *"would register a property nothing can ever read"*. The
+argument was sound; its conclusion rested on an unexamined premise — that the only reader a
+variant can have is a CSS rule. The paragraph now states the surviving prohibition, which
+is **geometry**, and the test for a third class is *name the reader*.
+
+**3 · `paintState` is a SIBLING of `paint`, not a second parameter.** `Scale.paint(v)` is
+public API reached by `guide-legend.ts` and `mark.ts`'s `channelColor`, and an optional
+parameter would have been additive for callers too — so the reason is not churn. It is that
+the two `null`s mean different things: `paint()`'s means *"not a colour channel, or the
+palette is exhausted"*, while `paintState()`'s means *"no state rule applies"*. One return
+channel may not carry two meanings a caller must tell apart, and row 37's `channelColor`
+has to tell them apart. A side effect worth having: `paint()` is byte-untouched, so *"the
+base paint did not move"* is structural rather than merely tested.
+
+**4 · An unauthored state is `null`, never the base.** The four omit `initialValue`, so an
+unauthored state computes to the empty sentinel and `paintState` returns `null`; the node
+keeps the base paint `paint()` already gave it. Returning the base instead would make every
+channel-coloured mark carry a state rule that changes nothing — a per-node cost for no
+author-visible effect — and would make *"has a state colour"* untestable from outside.
+
+**5 · D1 taken: a state palette is the mechanism, not `--hdml-fill-color--hover`.** This
+is forced rather than preferred. §6.1 is channel-first: a channel-coloured node's fill is a
+presentation attribute, and `suppressedOf` already drops `fill` from the generated sheet for
+exactly those widgets. So `--hdml-fill-color--hover` **cannot reach** a channel-coloured
+mark by construction, and without R1 such a mark has no hover colour available at all.
+
+**6 · D2 taken: `hdml-legend` swatches follow, and it is a fix rather than a cost.** The
+legend binds `channel="color"`, not `color`, so `suppressedOf` suppresses nothing for it and
+its `--hdml-fill-color--hover` reaches swatches *and* both text runs — already recorded as a
+deliberate wart. A state palette read per swatch is the only thing that can recolour
+swatches without touching the text runs. R1's stated cost stands for the *presentation*
+variant: one selector still cannot separate the two node kinds. Implementation is row 38's.
+
+**7 · D3 taken: `--hdml-color-interpolate-space` carries no variant.** It is the ramp's
+interpolation space, not a colour; a per-state space would change *how* the ramp is
+computed — a different picture on hover rather than a different colour. A state ramp
+interpolates in the **base** space, asserted against a non-default `srgb`. This is what
+holds the registry at **57** rather than 59.
+
+**8 · Two counts were wrong in the other direction, and one test was not the gate it said
+it was.** `scale.ts` called `Scale` an *"eleven-member"* contract in two docblocks while
+`scale.test.ts`'s `MEMBERS` had counted **nine** since step 18 and recorded that the
+step-18 prompt said eleven *"in five places"*. With `paintState` it is **ten**, and the
+docblocks now say so. Separately, `MEMBERS` was forward-only — every listed member must
+exist, plus `MEMBERS.length === 9` — so a new interface member nobody listed left both
+assertions green, which is how `paintState` could have landed unlisted. It is now asserted
+both ways. And `properties.test.ts`'s hardcoded `VARIANTS` had **nothing** tying its
+membership to the registry: measured, omitting all four left the file passing 18/18 on three
+engines, so a variant registered with the wrong shape simply escaped. `VARIANTS` is now
+compared to the registry's state entries as a set, while the per-entry shape stays asserted
+against the hardcoded list.
+
+**9 · This was the last registry move in project 019.** Rows 41–45 move a tag count, a
+corpus page count and the diagnostic code space; none reads the property registry, and
+`scripts/check-dist.mjs` derives its `REGISTERED` set off `properties.ts` and asserts only
+that it is non-empty. Two registry-count literals remain in the tree, both at 57:
+`properties.test.ts`'s `lengthOf(HDVL_PROPERTIES, 57)` and one comment in `ua.test.ts`.

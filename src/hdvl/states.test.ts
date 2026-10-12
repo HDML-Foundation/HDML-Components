@@ -21,6 +21,7 @@ import {
   suppressedOf,
 } from "./states";
 import { HDVL_PROPERTIES } from "./properties";
+import { CHANNEL_STATE_PROPERTIES } from "./scale";
 
 /**
  * 017 R7's generator — the **output** half of SPEC §9's state
@@ -150,18 +151,51 @@ suite("hdvl/states — the generated rule text", () => {
     ]);
   });
 
-  test("the eight-property boundary is enforced both ways", () => {
+  test("the two-class boundary is enforced both ways", () => {
     // ★ R7's boundary was otherwise structural-but-SILENT. A ninth
     // entry in the generator's map would look for a variant nobody
     // registered, `props.get` would return `undefined`, and nothing
     // at all would be emitted — the property would simply never
     // work, which is the defect R7 exists to close. This is the only
     // thing that fails instead.
+    //
+    // ★★ 019 R1 WIDENED IT TO TWO CLASSES, and the reverse half is
+    // why R1's four registrations could not land on their own. A
+    // registered variant must have **a** reader; it need not have
+    // `states.ts` as that reader. So:
+    //
+    //   class 1 `STATE_PROPERTIES`         → a generated CSS rule
+    //   class 2 `CHANNEL_STATE_PROPERTIES` → `Scale.paintState`
+    //
+    // Both are asserted exhaustive against the registry, the
+    // reverse half runs against their UNION, and they are asserted
+    // DISJOINT — without which the union would be a way to satisfy
+    // the boundary while naming no reader at all.
     const registered = new Set(
       HDVL_PROPERTIES.map((def) => def.name),
     );
     assert.lengthOf(STATE_PROPERTIES, 8);
-    for (const base of STATE_PROPERTIES) {
+    assert.lengthOf(CHANNEL_STATE_PROPERTIES, 2);
+    const varied = new Set([
+      ...STATE_PROPERTIES,
+      ...CHANNEL_STATE_PROPERTIES,
+    ]);
+    // Disjoint, and therefore twenty variants over ten bases. A
+    // base in both lists would be read twice with two different
+    // `null` contracts.
+    //
+    // ⚠ Asserted as a SUM, not as `lengthOf(varied, 10)`. The
+    // literal 10 was the first spelling and control 1c found it
+    // weak: one base added to class 2 while still in class 1
+    // leaves the union at ten, so the assertion passes on exactly
+    // the input it was written to reject. The sum cannot.
+    assert.strictEqual(
+      varied.size,
+      STATE_PROPERTIES.length + CHANNEL_STATE_PROPERTIES.length,
+      "the two reader classes overlap",
+    );
+    assert.strictEqual(varied.size, 10);
+    for (const base of varied) {
       for (const state of HDVL_STATES) {
         assert.isTrue(
           registered.has(`${base}--${state}`),
@@ -169,8 +203,7 @@ suite("hdvl/states — the generated rule text", () => {
         );
       }
     }
-    // …and no registered variant is left without a generator entry.
-    const varied = new Set(STATE_PROPERTIES);
+    // …and no registered variant is left without a reader.
     for (const def of HDVL_PROPERTIES) {
       for (const state of HDVL_STATES) {
         const tail = `--${state}`;
@@ -179,9 +212,34 @@ suite("hdvl/states — the generated rule text", () => {
         }
         assert.isTrue(
           varied.has(def.name.slice(0, -tail.length)),
-          `${def.name} is registered but never generated`,
+          `${def.name} is registered but has no reader`,
         );
       }
+    }
+    // The twenty are exactly the registry's `--hover`/`--active`
+    // entries: a count, so that a THIRD class added to `varied`
+    // without registrations cannot pass the two loops above.
+    const variants = HDVL_PROPERTIES.filter((def) =>
+      HDVL_STATES.some((st) => def.name.endsWith(`--${st}`)),
+    );
+    assert.lengthOf(variants, 20);
+  });
+
+  test("the channel class is NOT in the generated sheet", () => {
+    // ★ THE NEGATIVE CONTROL for the two-class split, and the one
+    // thing that stops class 2 from being a list nobody honours. A
+    // palette is a `<color>+` list, so `fill: #1c8cf4 #f59e0b …`
+    // would be nonsense in a rule — assert the generator ignores a
+    // channel variant entirely rather than emitting it badly.
+    const text = stateRules([
+      input({
+        [`${P}palette--hover`]: "#111111 #222222",
+        [`${P}color-interpolate--hover`]: "#111111, #222222",
+      }),
+    ]);
+    assert.strictEqual(text, "");
+    for (const base of CHANNEL_STATE_PROPERTIES) {
+      assert.notInclude(Array.from(STATE_PROPERTIES), base);
     }
   });
 

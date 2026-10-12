@@ -8,11 +8,15 @@
  * SPEC §9's **interaction states**, generated (017 R7, step
  * 09-2).
  *
- * `properties.ts` registers sixteen state variants — the eight
- * presentation-attribute properties × `{hover, active}` — and this
- * module is the half that reads them. **The runtime never chooses a
- * value per node. It emits both rules and the browser chooses**,
- * per node, natively:
+ * `properties.ts` registers twenty state variants in two classes,
+ * and this module reads **sixteen** of them — the eight
+ * presentation-attribute properties × `{hover, active}`. The other
+ * four are 019 R1's channel-colour sources, which no generated rule
+ * can carry and `Scale.paintState` reads per datum instead; see
+ * `CHANNEL_STATE_PROPERTIES` in `scale.ts`.
+ *
+ * **The runtime never chooses a value per node. It emits both
+ * rules and the browser chooses**, per node, natively:
  *
  * ```css
  * g[data-w="{uid}"] > *:hover  { fill: …; stroke-width: … }
@@ -128,7 +132,7 @@ const STROKE_PAINTED: ReadonlySet<string> = new Set<string>([
 export interface StateInput {
   /** `HdvlElement.uid` — the renderer's `data-w`. */
   uid: string;
-  /** The widget's harvested properties, all fifty-three. */
+  /** The widget's harvested properties, all fifty-seven. */
   props: ReadonlyMap<string, string>;
   /**
    * The presentation attributes this widget may not state-vary —
@@ -208,6 +212,23 @@ const DIRECT: readonly (readonly [string, string])[] = [
  * property would simply never work, which is exactly the defect R7
  * exists to close. `states.test.ts` closes it by asserting this list
  * against `HDVL_PROPERTIES` in both directions.
+ *
+ * ── ★ It is now ONE of TWO classes (019 R1) ──
+ *
+ * *"This module can state-vary"* is the whole of what this list
+ * claims, and R1 did not widen it. A registered variant must have
+ * **a** reader; it need not have **this** reader. R1's four are read
+ * per datum by `Scale.paintState` and are listed by
+ * `CHANNEL_STATE_PROPERTIES` (`scale.ts`), because a palette feeds
+ * `n` colours through one declaration and there is no literal for
+ * the generator to emit.
+ *
+ * So the reverse half of `states.test.ts`'s assertion now runs
+ * against the **union** of the two lists, and a new clause asserts
+ * they are **disjoint** — which is what stops the union from being
+ * a way to satisfy the boundary without naming a reader. A ninth
+ * entry here still has to be generated, and a third class still has
+ * to arrive with its own list and its own reader.
  */
 export const STATE_PROPERTIES: readonly string[] = [
   ...DIRECT.map(([base]) => base),
@@ -236,8 +257,10 @@ function valueOf(
   state: string,
 ): string | null {
   // ★ Trap 11: a registered property always computes to its initial
-  // value, and these sixteen OMIT one — so the test for "is there a
+  // value, and all twenty OMIT one — so the test for "is there a
   // value here" is `=== ""`, and NO literal default may be passed.
+  // `Scale.paintState` relies on the identical sentinel, which is
+  // what makes its `null` mean "no state rule" (019 R1).
   const raw = (props.get(`${base}--${state}`) ?? "").trim();
   return raw === "" || UNSAFE.test(raw) ? null : raw;
 }

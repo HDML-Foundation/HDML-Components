@@ -2215,6 +2215,42 @@ suite("hdvl/validate — diagnostics", () => {
     assert.isTrue(paints(okProbe(view).uid));
   });
 
+  test("★ R1 — a short STATE palette does not fire V2", async () => {
+    // ★★ CONTROL 4 (019 R1, step 36). `paletteGapOf` reads
+    // `--hdml-palette` and nothing else, so a short `--hover`
+    // palette must NOT be reported as `palette-exhausted`: the
+    // base palette is complete and the page is valid. A false
+    // positive here would ERROR a valid page, which is strictly
+    // worse than the missing diagnostic.
+    //
+    // The state diagnostic is **step 39's**, reusing this same
+    // code from a per-state site. This test is what proves step 39
+    // has something to add rather than something to fix.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="r1sp"
+        style="width: 400px; height: 200px"
+      >
+        <hdml-cartesian-plane>
+          <hdml-continuous-scale channel="y" min="0" max="1">
+            <hdml-ordinal-scale
+              channel="color"
+              values='["a","b","c"]'
+              style="--hdml-palette: #ff0000 #00ff00 #0000ff;
+                     --hdml-palette--hover: #111111 #222222"
+            >
+              <hdvl-probe id="ok"></hdvl-probe>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    const scale = <Element>view.querySelector("hdml-ordinal-scale");
+    assert.lengthOf(said("V2"), 0);
+    assert.isFalse(scale.matches(":state(error)"));
+    assert.lengthOf(errs, 0);
+  });
+
   test("★ palette exhaustion errors on the SCALE", async () => {
     // SPEC §9: ":state(error) on the scale, the message naming
     // both counts". The unit is the scale whether or not any

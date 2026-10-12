@@ -57,33 +57,62 @@ const CURVE_TYPES =
   "cardinal | catmull-rom | monotone | step";
 
 /**
- * SPEC §9's registry, complete at fifty-three: thirty-seven
- * base properties plus the sixteen **state variants** — the eight
- * presentation-attribute properties × `{hover, active}`.
+ * SPEC §9's registry, complete at fifty-seven: thirty-seven
+ * base properties plus the twenty **state variants** — the eight
+ * presentation-attribute properties and the two channel-colour
+ * sources, each × `{hover, active}`.
  *
  * **Completeness is deliberate, not premature.** The three
  * `--hdml-legend-*` properties had no reader until Slice H and the
- * sixteen state variants had none until 017 R7's generator in
- * `states.ts` (step 09-2), and in both cases the registry came
- * first: V12's premise — *every `--hdml-*` in page CSS is
- * registered* — is untestable while any member is missing, and V12
- * gates the corpus. A property registered "when its reader arrives"
- * also falls back to unregistered-custom-property semantics
- * meanwhile: no syntax, no initial value, and no transition, which
- * would silently exclude it from the frame sentinel.
+ * sixteen presentation-attribute variants had none until 017 R7's
+ * generator in `states.ts` (step 09-2), and in both cases the
+ * registry came first: V12's premise — *every `--hdml-*` in page CSS
+ * is registered* — is untestable while any member is missing, and
+ * V12 gates the corpus. A property registered "when its reader
+ * arrives" also falls back to unregistered-custom-property
+ * semantics meanwhile: no syntax, no initial value, and no
+ * transition, which would silently exclude it from the frame
+ * sentinel. ★ **019 R1 is the one exception, and deliberately so**:
+ * its four entries land in the same commit as their reader, because
+ * `states.test.ts` asserts in *reverse* that no registered variant
+ * lacks one (below).
  *
- * ── Why exactly eight carry variants (017 R7) ──
+ * ── Why twenty carry variants, in TWO classes (017 R7, 019 R1) ──
  *
- * The boundary is **architectural, not budgetary**: a generated
- * state rule can only override what the renderer writes as a
- * **presentation attribute** per node, and that is exactly these
- * eight — `stroke-width`, `stroke`, `stroke-dasharray`, `fill` and
- * the four `font-*`. Every other registered property is either
- * geometry, which COMPUTE bakes into the scene where no CSS rule can
- * reach it, or a channel-colour *source* resolved into per-node
- * fills. Adding a variant to one of those would register a property
- * nothing can ever read — which is the defect R7 exists to close,
- * not to repeat.
+ * The boundary is **architectural, not budgetary**, and 019 R1 did
+ * not widen it — it found a **second** architecture under it.
+ *
+ * **Class 1 — the generated sheet (sixteen).** A generated state
+ * rule can only override what the renderer writes as a
+ * **presentation attribute** per node, and that is exactly eight
+ * base properties — `stroke-width`, `stroke`, `stroke-dasharray`,
+ * `fill` and the four `font-*`. `states.ts` emits a literal into
+ * each, the browser picks the node, and `STATE_PROPERTIES` is the
+ * exhaustive list.
+ *
+ * **Class 2 — the per-datum read (four).** `--hdml-palette` and
+ * `--hdml-color-interpolate` are channel-colour *sources*: one
+ * declaration feeds `n` different colours, so `fill: <palette>` is
+ * not a value a rule could carry and class 1 cannot express them at
+ * all. They are read **per datum** instead, by
+ * `Scale.paintState(v, state)`, and `CHANNEL_STATE_PROPERTIES`
+ * (`scale.ts`) is that class's exhaustive list.
+ *
+ * ⚠ **This paragraph used to say that a channel-colour source may
+ * NOT carry a variant**, on the argument that it "would register a
+ * property nothing can ever read". The argument was sound and its
+ * conclusion was wrong by one unexamined premise: it assumed the
+ * only reader a variant can have is a CSS rule. A second reader
+ * class makes the four readable, and what keeps them out of R7's
+ * defect is **not** the registration — it is that the reader ships
+ * with them and is asserted exhaustively against them.
+ *
+ * ⛔ **What is still forbidden, and now for the surviving reason:**
+ * **geometry**. COMPUTE bakes it into the scene where no CSS rule
+ * can reach it and no per-datum reader exists for it either, so a
+ * `--hdml-bandwidth--hover` would register a property nothing can
+ * ever read. The test for a third class is therefore *"name the
+ * reader"*, not *"is it a presentation attribute"*.
  *
  * ── The separator is `--`, on the founder's call (017 R7) ──
  *
@@ -93,8 +122,9 @@ const CURVE_TYPES =
  *
  * ── The initial is OMITTED, never `""` ──
  *
- * The sixteen state variants and `--hdml-curve-bezier-tangents`
- * **omit `initialValue`** rather than passing `""`. Their SPEC
+ * All twenty state variants — both classes — and
+ * `--hdml-curve-bezier-tangents` **omit `initialValue`** rather
+ * than passing `""`. Their SPEC
  * initial is the empty "no change in that state" sentinel, and with
  * syntax `*` an omitted initial is the platform's own spelling of
  * that; `""` is not equivalent on every engine. **Nothing may fall
@@ -407,7 +437,7 @@ export const HDVL_PROPERTIES: readonly PropertyDefinition[] = [
     // (§6.7). `initialValue` is therefore **OMITTED, never `""`**:
     // with syntax `*` an omitted initial is the platform's own
     // spelling of "empty", `""` is not equivalent on every engine,
-    // and the sixteen state variants below rely on the identical
+    // and all twenty state variants below rely on the identical
     // combination.
     name: "--hdml-text-format",
     syntax: "*",
@@ -490,6 +520,35 @@ export const HDVL_PROPERTIES: readonly PropertyDefinition[] = [
   },
   {
     name: "--hdml-font-style--active",
+    syntax: "*",
+    inherits: true,
+  },
+  // ★ 019 item 9 / R1 — the CHANNEL class, and the four entries
+  // the paragraph above used to forbid. They are variants of a
+  // channel-colour SOURCE, so no generated CSS rule can reach
+  // them; `Scale.paintState` reads them **per datum**, which is
+  // the second reader class and the reason these are not the
+  // defect R7 closed. `--hdml-color-interpolate-space` gets none
+  // (D3): it is the ramp's interpolation space, not a colour, and
+  // varying it on hover would redraw the ramp rather than recolour
+  // it. A state ramp interpolates in the BASE space.
+  {
+    name: "--hdml-palette--hover",
+    syntax: "*",
+    inherits: true,
+  },
+  {
+    name: "--hdml-palette--active",
+    syntax: "*",
+    inherits: true,
+  },
+  {
+    name: "--hdml-color-interpolate--hover",
+    syntax: "*",
+    inherits: true,
+  },
+  {
+    name: "--hdml-color-interpolate--active",
     syntax: "*",
     inherits: true,
   },

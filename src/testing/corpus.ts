@@ -682,10 +682,14 @@ export function textsOf(scene: Scene): string[] {
 /**
  * The **state sheet** a view generated this frame, as rule text.
  *
- * `states.ts` is the one reader of SPEC §9's sixteen state variants,
- * and it writes a constructed sheet rather than anything a `Scene`
- * can hold — so a page's `--hdml-fill-color--hover` is **invisible
- * to every golden in this directory**, in both directions. Before
+ * `states.ts` reads **sixteen** of SPEC §9's twenty state variants
+ * — ⚠ it was *"the one reader"* until 019 R1 gave the four
+ * channel-colour variants a second one, `Scale.paintState`, which
+ * resolves per datum and whose output DOES reach a `Scene`. This
+ * helper covers the sheet half only. `states.ts` writes a
+ * constructed sheet rather than anything a `Scene` can hold — so a
+ * page's `--hdml-fill-color--hover` is **invisible to every golden
+ * in this directory**, in both directions. Before
  * this helper, a corpus page's state declaration was checked by
  * `check-dist`'s V12 for its *spelling* and by nothing at all for
  * its *effect*: a variant authored on a host whose paint cannot say

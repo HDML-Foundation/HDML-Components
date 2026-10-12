@@ -160,7 +160,7 @@ function len(value: string, fallback: number): number {
  * The behaviour list is read **at the marker's own index**, cycling
  * as CSS does when the coordinating lists differ in length, rather
  * than at index 0: our own declaration is a single value against
- * fifty-three properties, but an author who writes a list is
+ * fifty-seven properties, but an author who writes a list is
  * entitled to have it read positionally.
  *
  * An **empty** computed value means the engine does not implement
