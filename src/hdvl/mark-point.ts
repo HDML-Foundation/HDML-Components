@@ -20,6 +20,7 @@ import { paintSuppressed } from "./subscribe";
 import {
   CHANNEL_SLOTS,
   channelColor,
+  channelStates,
   datumOf,
   fillPaint,
   markBindings,
@@ -303,7 +304,11 @@ export class HdmlPointElement extends HdvlElement {
         tallyDrop(tally, this, projection, second, v);
         continue;
       }
-      const paint = fillPaint(m, channelColor(ctx, this, i));
+      const paint = {
+        ...fillPaint(m, channelColor(ctx, this, i)),
+        // R1: per row, and spread into whichever glyph kind below.
+        ...channelStates(ctx, this, i, "fill"),
+      };
       nodes.push(
         style === ELLIPSE
           ? {

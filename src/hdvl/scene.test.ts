@@ -5,7 +5,14 @@
  */
 
 import { assert } from "@open-wc/testing";
-import { Scene, SceneGroup, SceneNode, emptyScene } from "./scene";
+import {
+  Paint,
+  PaintStates,
+  Scene,
+  SceneGroup,
+  SceneNode,
+  emptyScene,
+} from "./scene";
 import { createSvgRenderer } from "./renderer-svg";
 
 /**
@@ -35,6 +42,10 @@ function everyKind(): SceneNode[] {
       stroke: "#123456",
       strokeWidth: 2,
       dash: [4, 2],
+      // ★ 019 R1 — the one OPTIONAL field on `Paint`. It is on a
+      // STROKED node on purpose: a stroked host's channel colour is
+      // its stroke, and `prop` is what keeps that honest.
+      states: { prop: "stroke", colors: { hover: "#abcdef" } },
       closed: false,
       subpaths: [
         {
@@ -155,14 +166,30 @@ function kitchenSink(): Scene {
   return { width: 400, height: 200, groups: [group, guide] };
 }
 
-function deepFreeze(scene: Scene): Scene {
-  for (const g of scene.groups) {
-    g.nodes.forEach((n) => Object.freeze(n));
-    Object.freeze(g.nodes);
-    Object.freeze(g);
+/**
+ * ★ **Corrected at step 37 (019 R1) — it was NOT deep.**
+ *
+ * It froze exactly three levels — the group, its `nodes` array and
+ * each node — and nothing a node points *at*. `dash` is an array
+ * and `subpaths`/`vertices` are arrays of objects, so *"a frozen
+ * scene renders twice"* has never constrained a renderer that wrote
+ * into one of them. The hole was harmless while every such
+ * reference was geometry the renderer only reads.
+ *
+ * R1 is what makes it matter: {@link Paint.states} is the first
+ * field whose value is a nested MUTABLE object a renderer is
+ * expected to *look up a key in* — row 38's `applyPaint` reads
+ * `node.states.colors[state]` — and a one-character slip from a
+ * read to a write would have passed this test. Freezing
+ * transitively is what turns R2 from a claim about the top three
+ * levels into one about the whole value.
+ */
+function deepFreeze<T>(value: T): T {
+  if (value === null || typeof value !== "object") {
+    return value;
   }
-  Object.freeze(scene.groups);
-  return Object.freeze(scene);
+  Object.values(<Record<string, unknown>>value).forEach(deepFreeze);
+  return Object.freeze(value);
 }
 
 function host(): ShadowRoot {
@@ -211,12 +238,128 @@ suite("hdvl/scene — the scene is data", () => {
 
   test("a frozen scene renders twice", () => {
     const scene = deepFreeze(kitchenSink());
+    // ★ Step 37: the freeze now reaches what a node POINTS AT, so
+    // this is a constraint on the renderer rather than on three
+    // levels of wrapper. `states` is the field that made it
+    // necessary; `dash` is the one that had the hole all along.
+    const first = scene.groups[0].nodes[0];
+    assert.isTrue(Object.isFrozen(first.dash));
+    assert.isTrue(Object.isFrozen(first.states));
+    assert.isTrue(Object.isFrozen(first.states?.colors));
     const r = createSvgRenderer();
     r.mount(host());
     r.resize(400, 200, 1);
     r.render(scene);
     r.render(scene);
     assert.isTrue(Object.isFrozen(scene));
+    r.unmount();
+  });
+
+  test("★ R1 — Paint.states is the one optional field", () => {
+    // ★★ 019 R1, step 37. `NodeBase extends Paint` and five
+    // `SceneNode` variants spread `NodeBase`, so a field that were
+    // ALWAYS present would land on every node of every group — and
+    // measured at this step, that re-baselines **all 29** corpus
+    // goldens (every one of the 17 golden suites reds). The four
+    // required fields are therefore asserted present and `states`
+    // asserted ABSENT on a node nobody authored a state for.
+    const bare: Paint = {
+      fill: "#000000",
+      stroke: null,
+      strokeWidth: 0,
+      dash: null,
+    };
+    assert.deepStrictEqual(Object.keys(bare), [
+      "fill",
+      "stroke",
+      "strokeWidth",
+      "dash",
+    ]);
+    assert.isFalse("states" in bare);
+  });
+
+  test("★ R1 — absent is NOT undefined", () => {
+    // ★★★ The distinction this whole step turns on, as an
+    // executable statement rather than a warning. MEASURED at step
+    // 37, in all three engines:
+    //
+    //   • chai's `deepEqual` DOES separate the two, so the 29
+    //     committed golden literals witness a present-but-undefined
+    //     field — which is why an always-present field reds the
+    //     corpus rather than passing it.
+    //   • `structuredClone` KEEPS an undefined-valued key, so the
+    //     14 clone round-trip assertions witness NEITHER.
+    //   • `assert.isUndefined` passes for both and so can witness
+    //     nothing at all.
+    //
+    // The first bullet is the half the step-37 prompt recorded as
+    // unmeasured, and it is the reassuring half.
+    const absent: Record<string, unknown> = { fill: "#000000" };
+    const undef: Record<string, unknown> = {
+      fill: "#000000",
+      states: undefined,
+    };
+    assert.isFalse("states" in absent);
+    assert.isTrue("states" in undef);
+    assert.deepEqual(Object.keys(undef), ["fill", "states"]);
+    // `structuredClone` keeps it — the clone gate is blind here.
+    assert.deepEqual(Object.keys(structuredClone(undef)), [
+      "fill",
+      "states",
+    ]);
+    // `deepEqual` does not — the golden gate is not blind.
+    assert.throws(() => assert.deepEqual(undef, absent));
+    // And the check that cannot tell them apart, named so nobody
+    // reaches for it again.
+    assert.isUndefined(absent.states);
+    assert.isUndefined(undef.states);
+  });
+
+  test("★ R1 — a states-carrying node clones and renders", () => {
+    const states: PaintStates = {
+      prop: "fill",
+      colors: { hover: "#ff0000", active: "#00ff00" },
+    };
+    const node = <SceneNode>{
+      k: "rect",
+      i: 3,
+      x: 0,
+      y: 0,
+      w: 10,
+      h: 10,
+      fill: "#123456",
+      stroke: null,
+      strokeWidth: 0,
+      dash: null,
+      states,
+    };
+    const scene: Scene = {
+      width: 100,
+      height: 100,
+      groups: [
+        {
+          widget: "w",
+          tag: "hdml-bar",
+          role: "mark",
+          box: { x: 0, y: 0, w: 100, h: 100 },
+          opacity: 1,
+          filter: "none",
+          visibility: "visible",
+          clip: false,
+          clipPath: null,
+          nodes: [node],
+        },
+      ],
+    };
+    assert.deepEqual(structuredClone(scene), scene);
+    // The renderer ignores it at this step — row 38 is where it
+    // reaches the DOM — and must not mutate the scene reading it.
+    const before = structuredClone(scene);
+    const r = createSvgRenderer();
+    r.mount(host());
+    r.resize(100, 100, 1);
+    r.render(scene);
+    assert.deepEqual(scene, before);
     r.unmount();
   });
 

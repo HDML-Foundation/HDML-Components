@@ -703,4 +703,75 @@ suite("hdvl/mark-point — §6.1's glyph", () => {
     const scene = sceneOf(view);
     assert.deepEqual(structuredClone(scene), scene);
   });
+
+  /**
+   * ★ **019 R1, step 37.** `hdml-point` is the one widget whose
+   * paint is built ONCE and spread into **two** node kinds — an
+   * `ellipse` or a `rect`, per `--hdml-tick-style`. Both branches
+   * must carry the field, which is why the state colours are merged
+   * into `paint` rather than spread at each literal.
+   */
+  function hued(glyph: string, states = ""): ReturnType<typeof html> {
+    return html`
+      <hdml-view
+        aria-label="states"
+        style="width: 400px; height: 200px;
+               --hdml-palette: #111111 #222222;
+               --hdml-tick-style: ${glyph};
+               ${states}"
+      >
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-continuous-scale channel="x" min="0" max="4">
+            <hdml-continuous-scale channel="y" min="0" max="200">
+              <hdml-ordinal-scale channel="color" values='["N","S"]'>
+                <hdml-point
+                  x="[0, 1]"
+                  y="[0, 200]"
+                  color='["N","S"]'
+                ></hdml-point>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `;
+  }
+
+  test("★ R1 — no state palette, no `states` key", async () => {
+    for (const glyph of ["ellipse", "rect"]) {
+      const view = await mount(hued(glyph));
+      const nodes = only(view).nodes;
+      assert.lengthOf(nodes, 2, glyph);
+      nodes.forEach((node) => {
+        assert.isNotNull(node.fill, glyph);
+        assert.isFalse("states" in node, glyph);
+      });
+    }
+  });
+
+  test("★ R1 — BOTH glyph kinds carry the field", async () => {
+    for (const glyph of ["ellipse", "rect"]) {
+      const view = await mount(
+        hued(glyph, "--hdml-palette--hover: #aa0000 #00aa00"),
+      );
+      const nodes = only(view).nodes;
+      assert.lengthOf(nodes, 2, glyph);
+      assert.deepStrictEqual(
+        nodes.map((n) => n.k),
+        glyph === "ellipse"
+          ? ["ellipse", "ellipse"]
+          : ["rect", "rect"],
+      );
+      assert.deepStrictEqual(
+        nodes.map((n) => n.states?.colors.hover),
+        ["#aa0000", "#00aa00"],
+        glyph,
+      );
+      nodes.forEach((node) => {
+        assert.strictEqual(node.states?.prop, "fill", glyph);
+      });
+      const scene = sceneOf(view);
+      assert.deepEqual(structuredClone(scene), scene);
+    }
+  });
 });

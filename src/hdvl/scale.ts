@@ -248,6 +248,33 @@ export const CHANNEL_STATE_PROPERTIES: readonly string[] = [
   "--hdml-color-interpolate",
 ];
 
+/**
+ * ★ 019 R1 — the states {@link Scale.paintState} is asked for, per
+ * datum, when a mark builds its {@link PaintStates}.
+ *
+ * ── Why this is a SECOND spelling of `HDVL_STATES` ──
+ *
+ * It is the same two names, and that is deliberate rather than
+ * sloppy. `HDVL_STATES` lives in `states.ts`, which imports
+ * `CHANNEL_SLOTS` and `dashOf` from `mark.ts`; `mark.ts` is this
+ * list's only consumer, so importing the canonical one would close
+ * a `mark → states → mark` cycle — a **tighter** one than the
+ * `scale → states → mark → scale` that {@link Scale.paintState}
+ * already declined to close for exactly this reason. The list sits
+ * here, beside {@link CHANNEL_STATE_PROPERTIES} and the reader that
+ * consumes it, because `scale.ts` is upstream of both `mark.ts` and
+ * `states.ts`.
+ *
+ * **A duplicated list is only safe while something enforces it**,
+ * and a loop over a hand-kept list asserts nothing about what the
+ * list omits. `states.test.ts` therefore asserts this equals
+ * `HDVL_STATES` **element-for-element and in order**, beside the
+ * two registry↔reader exhaustiveness checks it already carries, so
+ * a state added to one and not the other fails rather than silently
+ * painting nothing.
+ */
+export const CHANNEL_STATES: readonly string[] = ["hover", "active"];
+
 // ---------------------------------------------------------------
 // Attributes — every key from a published enum (R8)
 // ---------------------------------------------------------------

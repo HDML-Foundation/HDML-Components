@@ -9162,7 +9162,7 @@
               "description": "The resolved `color`-channel paint, or `null`."
             }
           ],
-          "description": "The paint of a **stroked** mark (§6.1: `hdml-line` is *\"stroked,\n`fill: null`\"*).\n\n§6.1's paint-resolution sentence — *a bound `color` channel wins\nover `--hdml-fill-color` and over its `--hover` variant* — is\nwritten for the filled marks that are its common case. A stroked\nmark's series colour is its **stroke**, and SPEC §9 gives\n`--hdml-line-color` to *\"stroked widgets\"*, so that is what a\nbound `color` wins over here. Both readings agree on the part\nthat matters: the channel wins.\n\n**★ No state variant is read HERE, and the reason is not that\n`Paint` cannot express one — it is that the runtime does not\nchoose.** `NodeBase extends Paint`, so every scene node already\ncarries its own paint and its own `i`; the sentence this replaced\nclaimed the type was the obstacle and was measured false at 017\nR7. What is true of the **scene** is that it holds one value per\nnode, and a state needs two simultaneously. The mechanism never\nasks it to: `states.ts` emits a `:hover` and an `:active` rule\nover `g[data-w] > *` and the browser applies whichever matches,\nper node. So this function resolves the **base** paint and\nnothing else — and SPEC §9's channel rule is honoured there, by\nsuppressing the paint property a bound channel owns."
+          "description": "The paint of a **stroked** mark (§6.1: `hdml-line` is *\"stroked,\n`fill: null`\"*).\n\n§6.1's paint-resolution sentence — *a bound `color` channel wins\nover `--hdml-fill-color` and over its `--hover` variant* — is\nwritten for the filled marks that are its common case. A stroked\nmark's series colour is its **stroke**, and SPEC §9 gives\n`--hdml-line-color` to *\"stroked widgets\"*, so that is what a\nbound `color` wins over here. Both readings agree on the part\nthat matters: the channel wins.\n\n**★ No state variant is read HERE, and since 019 R1 that is a\nstatement about this FUNCTION rather than about the mechanism.**\n`NodeBase extends Paint`, so every scene node already carries its\nown paint and its own `i`; the sentence this replaced claimed the\ntype was the obstacle and was measured false at 017 R7.\n\nThere are now **two** state classes, and the split is where the\nold *\"the runtime does not choose\"* stops being the whole answer.\nFor `STATE_PROPERTIES` — the eight bases with a one-to-one\npresentation attribute — it still holds exactly: `states.ts`\nemits a `:hover` and an `:active` rule over `g[data-w] > *` and\nthe browser applies whichever matches, per node, so the scene\nneeds one value and not two. For `CHANNEL_STATE_PROPERTIES` it\n**cannot** hold: a palette is `n` colours behind one declaration,\nso there is no literal a single rule could carry and the runtime\nhas to resolve per datum. That resolution is\nchannelStates, and it lands in Paint.states on\nthe node — not here. This function stays the **base** paint, and\nSPEC §9's channel rule is honoured in `suppressedOf`, by\nsuppressing the paint property a bound channel owns."
         },
         {
           "kind": "function",
@@ -9188,7 +9188,7 @@
               "description": "The resolved `color`-channel paint, or `null`."
             }
           ],
-          "description": "The paint of a **filled** widget — `hdml-area`'s band,\n`hdml-bar`'s rect, a point's glyph, an arc's sector (§6.1), and\nthe three fill-painted guides (`hdml-tick`'s glyph,\n`hdml-label`'s text, `hdml-legend`'s four parts).\n\nThe fill is §6.1's paint sentence read literally: *a bound\n`color` channel wins over `--hdml-fill-color` and over its\n`--hover` variant*.\n\n── The outline, 017 R4 ──\n\n**A filled widget DOES also stroke, and the hazard that once said\notherwise is real and is closed elsewhere.** This function used to\nhard-code `stroke: null` / `strokeWidth: 0`, with a correct\nargument for its time: `--hdml-line-width`'s registered initial is\n**`1.5px`** and `--hdml-line-color`'s is `currentColor`, so a\nwidget that simply started reading them would *\"put a visible edge\non every bar in the corpus that no author asked for and none could\nturn off\"*. Every clause of that is still true of the **registry**.\n\nWhat defuses it is that the initial is **neutralised per element in\nthe UA sheet** — `ua.ts`'s `OUTLINED` list declares\n`--hdml-line-width: 0` on each of the eight hosts that reach this\nfunction — `hdml-pie` among them, via `layout-pie`'s reuse of\n`sectorScene` — so the effective default is `0`, no widget gains an\nedge nobody asked for, and *\"none could turn it off\"* inverts:\na **normal** declaration is what any author rule beats. The\nregistry is untouched, which is what keeps `hdml-line`,\n`hdml-rule`, `hdml-axis` and `hdml-grid` — strokePaint's\nhosts — on `1.5px`.\n\nFive of the thirteen corpus pages authored an outline on a filled\nmark and got nothing for it: `05`/`06`/`07` on `hdml-point`,\n`08`/`09` on `hdml-arc`. `08`'s white slice separators are the\nclearest case — authored, and never once painted.\n\n**★ A bound `color` channel is the FILL here, never the stroke**,\nwhich is where this parts company with strokePaint. There\nthe series colour *is* the stroke; here the stroke is\n`--hdml-line-color` alone, so an outline stays the author's\ndecision even on a channel-coloured widget. That is what\n`09-polar-area`'s comment relies on — *\"a hover cue on\nchannel-colored wedges uses what the channel does not own\"*.\n\n**No state variant is read**, here or in strokePaint —\nand since 017 R7's step 09-2 that is **not** because\nPaint cannot express one. It carries a full per-node\npaint already. It is because the runtime **does not choose**:\n`states.ts` emits both rules and the browser applies the one that\nmatches, so the scene stays the base paint and the variants reach\nthe DOM as CSS. `09`'s `--hdml-line-width--hover: 2.5px` is\ntherefore **live**, through a generated rule rather than through\nthis function."
+          "description": "The paint of a **filled** widget — `hdml-area`'s band,\n`hdml-bar`'s rect, a point's glyph, an arc's sector (§6.1), and\nthe three fill-painted guides (`hdml-tick`'s glyph,\n`hdml-label`'s text, `hdml-legend`'s four parts).\n\nThe fill is §6.1's paint sentence read literally: *a bound\n`color` channel wins over `--hdml-fill-color` and over its\n`--hover` variant*.\n\n── The outline, 017 R4 ──\n\n**A filled widget DOES also stroke, and the hazard that once said\notherwise is real and is closed elsewhere.** This function used to\nhard-code `stroke: null` / `strokeWidth: 0`, with a correct\nargument for its time: `--hdml-line-width`'s registered initial is\n**`1.5px`** and `--hdml-line-color`'s is `currentColor`, so a\nwidget that simply started reading them would *\"put a visible edge\non every bar in the corpus that no author asked for and none could\nturn off\"*. Every clause of that is still true of the **registry**.\n\nWhat defuses it is that the initial is **neutralised per element in\nthe UA sheet** — `ua.ts`'s `OUTLINED` list declares\n`--hdml-line-width: 0` on each of the eight hosts that reach this\nfunction — `hdml-pie` among them, via `layout-pie`'s reuse of\n`sectorScene` — so the effective default is `0`, no widget gains an\nedge nobody asked for, and *\"none could turn it off\"* inverts:\na **normal** declaration is what any author rule beats. The\nregistry is untouched, which is what keeps `hdml-line`,\n`hdml-rule`, `hdml-axis` and `hdml-grid` — strokePaint's\nhosts — on `1.5px`.\n\nFive of the thirteen corpus pages authored an outline on a filled\nmark and got nothing for it: `05`/`06`/`07` on `hdml-point`,\n`08`/`09` on `hdml-arc`. `08`'s white slice separators are the\nclearest case — authored, and never once painted.\n\n**★ A bound `color` channel is the FILL here, never the stroke**,\nwhich is where this parts company with strokePaint. There\nthe series colour *is* the stroke; here the stroke is\n`--hdml-line-color` alone, so an outline stays the author's\ndecision even on a channel-coloured widget. That is what\n`09-polar-area`'s comment relies on — *\"a hover cue on\nchannel-colored wedges uses what the channel does not own\"*.\n\n**No state variant is read**, here or in strokePaint —\nand since 017 R7's step 09-2 that is **not** because\nPaint cannot express one. It carries a full per-node\npaint already, and since 019 R1 it carries an optional\nPaint.states as well. For the eight presentation-attribute\nbases the reason stays *the runtime does not choose*: `states.ts`\nemits both rules and the browser applies the one that matches, so\nthe scene stays the base paint and the variants reach the DOM as\nCSS. `09`'s `--hdml-line-width--hover: 2.5px` is therefore\n**live**, through a generated rule rather than through this\nfunction. A **channel** palette is the case that mechanism cannot\ncarry, and channelStates answers it per datum — beside\nthis function's result, never inside it, because these two\nhelpers also serve ten guide and legend nodes that have no\nchannel at all."
         },
         {
           "kind": "function",
@@ -9221,7 +9221,47 @@
               "description": "The row whose colour is wanted."
             }
           ],
-          "description": "§6.1's paint resolution: the `color` channel's contribution, or\n`null` when the widget binds none.\n\nA scalar `color='\"North\"'` — SPEC §5's authoring convention, and\nevery corpus use — broadcasts one colour to every row, and `row`\nis then the only colour there is.\n\n**A *varying* `color` on a path widget is an error** — the plan's\nsecond scheduled D1 escalation, decided with the user on\n2026-08-23. §2.5's `path` node carries **one** `Paint`, so a\n`hdml-line`/`hdml-area` binding `color` to a column or a literal\narray cannot be painted honestly; `validate.ts`'s `checkPathColor`\nreports it as **V3** under the `varying-path-color` code and the\nunit blanks. `hdml-bar` is deliberately **not** in that rule: it\nemits one node per row and calls this per row, which is a per-row\ncolour carried honestly. So on a path widget this function is only\never reached with a scalar binding, for which every row's answer\nis the same one — it is not a live fallback for the varying case."
+          "description": "§6.1's paint resolution: the `color` channel's contribution, or\n`null` when the widget binds none.\n\nA scalar `color='\"North\"'` — SPEC §5's authoring convention, and\nevery corpus use — broadcasts one colour to every row, and `row`\nis then the only colour there is.\n\n**A *varying* `color` on a path widget is an error** — the plan's\nsecond scheduled D1 escalation, decided with the user on\n2026-08-23. §2.5's `path` node carries **one** `Paint`, so a\n`hdml-line`/`hdml-area` binding `color` to a column or a literal\narray cannot be painted honestly; `validate.ts`'s `checkPathColor`\nreports it as **V3** under the `varying-path-color` code and the\nunit blanks. `hdml-bar` is deliberately **not** in that rule: it\nemits one node per row and calls this per row, which is a per-row\ncolour carried honestly. So on a path widget this function is only\never reached with a scalar binding, for which every row's answer\nis the same one — it is not a live fallback for the varying case.\n\n★ **It has FIVE call sites, not six** — `mark-bar`, `mark-area`,\n`mark-point`, `mark-arc` and `mark-line`. `layout-pie` reaches\nnone of its own: §6.3 makes a pie's geometry `hdml-arc`'s *to the\nnode*, so `mark-arc`'s `sectorScene` serves both hosts and a grep\nfor this name finds the file, not the host.\n\n★ **019 R1 resolves the state colours in a SIBLING**,\nchannelStates, and this function is byte-untouched by it.\nThat is deliberate: this expression produces the base paint of\nevery node in all 29 whole-`Scene` goldens, and leaving it alone\nmakes *\"no golden moves\"* structural rather than merely tested."
+        },
+        {
+          "kind": "function",
+          "name": "channelStates",
+          "return": {
+            "type": {
+              "text": ""
+            }
+          },
+          "parameters": [
+            {
+              "name": "ctx",
+              "type": {
+                "text": "FrameContext"
+              },
+              "description": "The frame's snapshot."
+            },
+            {
+              "name": "el",
+              "type": {
+                "text": "HdvlElement"
+              },
+              "description": "The widget."
+            },
+            {
+              "name": "row",
+              "type": {
+                "text": "number"
+              },
+              "description": "The row whose state colours are wanted."
+            },
+            {
+              "name": "prop",
+              "type": {
+                "text": "PaintStates[\"prop\"]"
+              },
+              "description": "The paint property the channel owns here. The call\n * site knows it and the node cannot re-derive it, which is why\n * {@link PaintStates}carries it: `\"stroke\"` on a stroked host,\n * `\"fill\"` on a filled one.\n * "
+            }
+          ],
+          "description": "★ **019 R1 — the `color` channel's INTERACTION-state colours for\none row**, ready to spread beside a Paint.\n\n── Why a sibling, and not a parameter on channelColor ──\n\nThe same reason Scale.paintState is a sibling of\n`Scale.paint` rather than a second argument to it, and one\nstronger reason of its own. Widening `channelColor`'s return\nwould have rewritten the expression that produces the **base**\npaint of every node in all 29 whole-`Scene` goldens. Leaving it\nbyte-untouched makes *\"no golden moves\"* a property of the module\ngraph instead of a property the gate has to catch — and the gate\nis the only witness there is, so the structural guarantee is\nworth one duplicated lookup. `slotValuesOf` and `chainScaleOf`\nare already called per row by `channelColor`; this adds a second\ncall of the same order, not a new order.\n\n── Why it returns a PARTIAL `Paint` ──\n\n`{}` spreads to nothing. A caller writes\n`...fillPaint(…), ...channelStates(…)` and the `states` key is\n**never written** on a node that has no state colour — as opposed\nto written as `undefined`, which chai's `deepEqual` sees and\nevery one of the 29 goldens would then red on. The absence is\nstructural; no caller can get it wrong.\n\n── The four ways this answers \"no state\" ──\n\n1. **No `color` binding**, or a malformed one — the ten guide and\n   legend nodes, and every unbound mark.\n2. **No colour scale in scope** — already V1 `no-scale-in-scope`,\n   an error, so the document paints nothing anyway.\n3. **A missing cell** (§4.7).\n4. ★ **A `null` BASE colour** — D-level decision, and the short\n   palette is what makes it obvious rather than a corner. An\n   exhausted ordinal palette returns `null` *deliberately*, so\n   the mark falls back to `--hdml-fill-color` \"visibly and\n   uniformly\" instead of wrapping into a colour another series\n   owns. A **complete** state palette over a **short** base one\n   would undo exactly that: the uniform fallback would jump, on\n   hover, to the per-datum colour the base refused to give it —\n   reintroducing §1.5's silent wrong chart through the state\n   door. More generally a state colour on a node with no base\n   paint is a rule nothing can apply: it would make a mark\n   *appear* on hover rather than recolour.\n5. **No authored variant** — `paintState` returns `null` for\n   every state in CHANNEL_STATES. This is the common\n   case, and it is what holds the corpus at zero movement: no\n   page authors a channel state palette until `09-polar-area`\n   does, at row 40."
         },
         {
           "kind": "function",
@@ -9438,6 +9478,14 @@
           "name": "channelColor",
           "declaration": {
             "name": "channelColor",
+            "module": "src/hdvl/mark.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "channelStates",
+          "declaration": {
+            "name": "channelStates",
             "module": "src/hdvl/mark.ts"
           }
         },
@@ -11379,6 +11427,15 @@
         },
         {
           "kind": "variable",
+          "name": "CHANNEL_STATES",
+          "type": {
+            "text": "readonly string[]"
+          },
+          "default": "[\"hover\", \"active\"]",
+          "description": "★ 019 R1 — the states Scale.paintState is asked for, per\ndatum, when a mark builds its PaintStates.\n\n── Why this is a SECOND spelling of `HDVL_STATES` ──\n\nIt is the same two names, and that is deliberate rather than\nsloppy. `HDVL_STATES` lives in `states.ts`, which imports\n`CHANNEL_SLOTS` and `dashOf` from `mark.ts`; `mark.ts` is this\nlist's only consumer, so importing the canonical one would close\na `mark → states → mark` cycle — a **tighter** one than the\n`scale → states → mark → scale` that Scale.paintState\nalready declined to close for exactly this reason. The list sits\nhere, beside CHANNEL_STATE_PROPERTIES and the reader that\nconsumes it, because `scale.ts` is upstream of both `mark.ts` and\n`states.ts`.\n\n**A duplicated list is only safe while something enforces it**,\nand a loop over a hand-kept list asserts nothing about what the\nlist omits. `states.test.ts` therefore asserts this equals\n`HDVL_STATES` **element-for-element and in order**, beside the\ntwo registry↔reader exhaustiveness checks it already carries, so\na state added to one and not the other fails rather than silently\npainting nothing."
+        },
+        {
+          "kind": "variable",
           "name": "VALUES_SLOT",
           "type": {
             "text": "string"
@@ -11725,6 +11782,14 @@
           "name": "CHANNEL_STATE_PROPERTIES",
           "declaration": {
             "name": "CHANNEL_STATE_PROPERTIES",
+            "module": "src/hdvl/scale.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "CHANNEL_STATES",
+          "declaration": {
+            "name": "CHANNEL_STATES",
             "module": "src/hdvl/scale.ts"
           }
         },

@@ -602,4 +602,71 @@ suite("hdvl/mark-line — §6.1's stroked path", () => {
     const scene = sceneOf(view);
     assert.deepEqual(structuredClone(scene), scene);
   });
+
+  /**
+   * ★ **019 R1, step 37 — and `hdml-line` is the whole reason
+   * `PaintStates` carries its property.**
+   *
+   * This is a {@link strokePaint} host: its `fill` is structurally
+   * `null` and a bound `color` channel is its **stroke**. A field
+   * named `stateFill` would have lied here, and `applyPaint` sees
+   * the node and nothing else, so the property cannot be
+   * re-derived downstream. The same rule is encoded from the sheet
+   * side by `suppressedOf`'s `STROKE_PAINTED`, and
+   * `states.test.ts` asserts the two agree.
+   */
+  function hued(states = ""): ReturnType<typeof html> {
+    return html`
+      <hdml-view
+        aria-label="states"
+        style="width: 400px; height: 200px;
+               --hdml-palette: #111111 #222222;
+               ${states}"
+      >
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-continuous-scale channel="x" min="0" max="4">
+            <hdml-continuous-scale channel="y" min="0" max="200">
+              <hdml-ordinal-scale channel="color" values='["N","S"]'>
+                <hdml-line
+                  x="[0, 1, 2]"
+                  y="[0, 100, 200]"
+                  color='"N"'
+                ></hdml-line>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `;
+  }
+
+  test("★ R1 — no state palette, no `states` key", async () => {
+    const view = await mount(hued());
+    const nodes = only(view).nodes;
+    assert.lengthOf(nodes, 1);
+    // The channel resolved a real STROKE, so this is not vacuous.
+    assert.isNotNull(nodes[0].stroke);
+    assert.isNull(nodes[0].fill);
+    assert.isFalse("states" in nodes[0]);
+  });
+
+  test("★ R1 — a stroked host's state is its STROKE", async () => {
+    const view = await mount(
+      html`${hued("--hdml-palette--hover: #aa0000 #00aa00")}`,
+    );
+    const nodes = only(view).nodes;
+    assert.lengthOf(nodes, 1);
+    const node = nodes[0];
+    assert.isTrue("states" in node);
+    // ★ `"stroke"`, not `"fill"` — the one assertion in this file
+    // that a `stateFill`-shaped field could not have made.
+    assert.strictEqual(node.states?.prop, "stroke");
+    assert.strictEqual(node.states?.colors.hover, "#aa0000");
+    assert.notStrictEqual(node.states?.colors.hover, node.stroke);
+    // A path carries ONE paint: a varying `color` here is V3, so
+    // the scalar binding gives one state colour for the series.
+    assert.lengthOf(said("hdml V3 "), 0);
+    const scene = sceneOf(view);
+    assert.deepEqual(structuredClone(scene), scene);
+  });
 });

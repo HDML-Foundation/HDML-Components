@@ -290,4 +290,53 @@ suite("hdvl/guide-axis — §6.5's spanning line", () => {
     // emphasis line dashes proportionally (`mark.ts`'s `dashOf`).
     assert.deepEqual(<number[]>node.dash, [12, 9]);
   });
+
+  test("★★ R1 — a guide node carries NO `states` key", async () => {
+    // ★★ **Negative control 4, step 37.** This is the defence
+    // against the cheapest shape of 019 R1: putting the state field
+    // in `fillPaint`/`strokePaint`. Those two have **fifteen** call
+    // sites and **ten** pass a `null` colour — every one a guide or
+    // legend node that appears in a corpus golden — so the field
+    // would have landed on all of them, meaninglessly, and
+    // re-baselined the whole corpus.
+    //
+    // The axis is the sharpest of the ten: it is `strokePaint`'s,
+    // like `hdml-line`, so a field keyed off the HELPER rather than
+    // off the channel would be indistinguishable here from the
+    // legitimate `hdml-line` case.
+    const view = await mount(html`
+      <hdml-view
+        aria-label="axis states"
+        style="width: 400px; height: 200px;
+               --hdml-palette: #111111 #222222;
+               --hdml-palette--hover: #aa0000 #00aa00;
+               --hdml-fill-color--hover: lime;
+               --hdml-line-color--hover: lime"
+      >
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-continuous-scale channel="x" min="0" max="10">
+            <hdml-continuous-scale channel="y" min="0" max="10">
+              <hdml-ordinal-scale channel="color" values='["N","S"]'>
+                <hdml-axis channel="x"></hdml-axis>
+                <hdml-axis channel="y"></hdml-axis>
+                <hdvl-probe></hdvl-probe>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    let seen = 0;
+    for (const channel of ["x", "y"]) {
+      for (const node of groupOf(view, channel).nodes) {
+        assert.isFalse(
+          "states" in node,
+          `the ${channel} axis carries states`,
+        );
+        seen++;
+      }
+    }
+    // A green loop over nothing is not a control (C294).
+    assert.isAbove(seen, 1);
+  });
 });

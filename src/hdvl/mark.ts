@@ -46,13 +46,19 @@
 import type { HdvlElement } from "./base";
 import type { FrameContext, Measured } from "./measure";
 import type { Channel } from "./resolve";
-import type { Paint, Point, SceneGroup, SceneNode } from "./scene";
+import type {
+  Paint,
+  PaintStates,
+  Point,
+  SceneGroup,
+  SceneNode,
+} from "./scene";
 import type { Scale } from "./scale";
 import type { Binding, CellValue, Slot } from "./subscribe";
 import type { CurveOptions, CurveType } from "./kernel/curves";
 import { CURVE_TYPES } from "./kernel/curves";
 import { rangedOverrideOf } from "./container";
-import { chainScaleOf } from "./scale";
+import { CHANNEL_STATES, chainScaleOf } from "./scale";
 import { adoptedColumn, sourceOf } from "./subscribe";
 import { noticeOutOfDomain, reportAllRowsDropped } from "./validate";
 import {
@@ -740,17 +746,25 @@ export function dashOf(
  * bound `color` wins over here. Both readings agree on the part
  * that matters: the channel wins.
  *
- * **★ No state variant is read HERE, and the reason is not that
- * `Paint` cannot express one — it is that the runtime does not
- * choose.** `NodeBase extends Paint`, so every scene node already
- * carries its own paint and its own `i`; the sentence this replaced
- * claimed the type was the obstacle and was measured false at 017
- * R7. What is true of the **scene** is that it holds one value per
- * node, and a state needs two simultaneously. The mechanism never
- * asks it to: `states.ts` emits a `:hover` and an `:active` rule
- * over `g[data-w] > *` and the browser applies whichever matches,
- * per node. So this function resolves the **base** paint and
- * nothing else — and SPEC §9's channel rule is honoured there, by
+ * **★ No state variant is read HERE, and since 019 R1 that is a
+ * statement about this FUNCTION rather than about the mechanism.**
+ * `NodeBase extends Paint`, so every scene node already carries its
+ * own paint and its own `i`; the sentence this replaced claimed the
+ * type was the obstacle and was measured false at 017 R7.
+ *
+ * There are now **two** state classes, and the split is where the
+ * old *"the runtime does not choose"* stops being the whole answer.
+ * For `STATE_PROPERTIES` — the eight bases with a one-to-one
+ * presentation attribute — it still holds exactly: `states.ts`
+ * emits a `:hover` and an `:active` rule over `g[data-w] > *` and
+ * the browser applies whichever matches, per node, so the scene
+ * needs one value and not two. For `CHANNEL_STATE_PROPERTIES` it
+ * **cannot** hold: a palette is `n` colours behind one declaration,
+ * so there is no literal a single rule could carry and the runtime
+ * has to resolve per datum. That resolution is
+ * {@link channelStates}, and it lands in {@link Paint.states} on
+ * the node — not here. This function stays the **base** paint, and
+ * SPEC §9's channel rule is honoured in `suppressedOf`, by
  * suppressing the paint property a bound channel owns.
  *
  * @param m - The widget's measured snapshot.
@@ -819,12 +833,18 @@ export function strokePaint(
  * **No state variant is read**, here or in {@link strokePaint} —
  * and since 017 R7's step 09-2 that is **not** because
  * {@link Paint} cannot express one. It carries a full per-node
- * paint already. It is because the runtime **does not choose**:
- * `states.ts` emits both rules and the browser applies the one that
- * matches, so the scene stays the base paint and the variants reach
- * the DOM as CSS. `09`'s `--hdml-line-width--hover: 2.5px` is
- * therefore **live**, through a generated rule rather than through
- * this function.
+ * paint already, and since 019 R1 it carries an optional
+ * {@link Paint.states} as well. For the eight presentation-attribute
+ * bases the reason stays *the runtime does not choose*: `states.ts`
+ * emits both rules and the browser applies the one that matches, so
+ * the scene stays the base paint and the variants reach the DOM as
+ * CSS. `09`'s `--hdml-line-width--hover: 2.5px` is therefore
+ * **live**, through a generated rule rather than through this
+ * function. A **channel** palette is the case that mechanism cannot
+ * carry, and {@link channelStates} answers it per datum — beside
+ * this function's result, never inside it, because these two
+ * helpers also serve ten guide and legend nodes that have no
+ * channel at all.
  *
  * @param m - The widget's measured snapshot.
  * @param color - The resolved `color`-channel paint, or `null`.
@@ -873,6 +893,18 @@ export function fillPaint(m: Measured, color: string | null): Paint {
  * ever reached with a scalar binding, for which every row's answer
  * is the same one — it is not a live fallback for the varying case.
  *
+ * ★ **It has FIVE call sites, not six** — `mark-bar`, `mark-area`,
+ * `mark-point`, `mark-arc` and `mark-line`. `layout-pie` reaches
+ * none of its own: §6.3 makes a pie's geometry `hdml-arc`'s *to the
+ * node*, so `mark-arc`'s `sectorScene` serves both hosts and a grep
+ * for this name finds the file, not the host.
+ *
+ * ★ **019 R1 resolves the state colours in a SIBLING**,
+ * {@link channelStates}, and this function is byte-untouched by it.
+ * That is deliberate: this expression produces the base paint of
+ * every node in all 29 whole-`Scene` goldens, and leaving it alone
+ * makes *"no golden moves"* structural rather than merely tested.
+ *
  * @param ctx - The frame's snapshot.
  * @param el - The widget.
  * @param row - The row whose colour is wanted.
@@ -893,6 +925,102 @@ export function channelColor(
   }
   const value = values.at(row);
   return value === null ? null : scale.paint(value);
+}
+
+/**
+ * ★ **019 R1 — the `color` channel's INTERACTION-state colours for
+ * one row**, ready to spread beside a {@link Paint}.
+ *
+ * ── Why a sibling, and not a parameter on {@link channelColor} ──
+ *
+ * The same reason {@link Scale.paintState} is a sibling of
+ * `Scale.paint` rather than a second argument to it, and one
+ * stronger reason of its own. Widening `channelColor`'s return
+ * would have rewritten the expression that produces the **base**
+ * paint of every node in all 29 whole-`Scene` goldens. Leaving it
+ * byte-untouched makes *"no golden moves"* a property of the module
+ * graph instead of a property the gate has to catch — and the gate
+ * is the only witness there is, so the structural guarantee is
+ * worth one duplicated lookup. `slotValuesOf` and `chainScaleOf`
+ * are already called per row by `channelColor`; this adds a second
+ * call of the same order, not a new order.
+ *
+ * ── Why it returns a PARTIAL `Paint` ──
+ *
+ * `{}` spreads to nothing. A caller writes
+ * `...fillPaint(…), ...channelStates(…)` and the `states` key is
+ * **never written** on a node that has no state colour — as opposed
+ * to written as `undefined`, which chai's `deepEqual` sees and
+ * every one of the 29 goldens would then red on. The absence is
+ * structural; no caller can get it wrong.
+ *
+ * ── The four ways this answers "no state" ──
+ *
+ * 1. **No `color` binding**, or a malformed one — the ten guide and
+ *    legend nodes, and every unbound mark.
+ * 2. **No colour scale in scope** — already V1 `no-scale-in-scope`,
+ *    an error, so the document paints nothing anyway.
+ * 3. **A missing cell** (§4.7).
+ * 4. ★ **A `null` BASE colour** — D-level decision, and the short
+ *    palette is what makes it obvious rather than a corner. An
+ *    exhausted ordinal palette returns `null` *deliberately*, so
+ *    the mark falls back to `--hdml-fill-color` "visibly and
+ *    uniformly" instead of wrapping into a colour another series
+ *    owns. A **complete** state palette over a **short** base one
+ *    would undo exactly that: the uniform fallback would jump, on
+ *    hover, to the per-datum colour the base refused to give it —
+ *    reintroducing §1.5's silent wrong chart through the state
+ *    door. More generally a state colour on a node with no base
+ *    paint is a rule nothing can apply: it would make a mark
+ *    *appear* on hover rather than recolour.
+ * 5. **No authored variant** — `paintState` returns `null` for
+ *    every state in {@link CHANNEL_STATES}. This is the common
+ *    case, and it is what holds the corpus at zero movement: no
+ *    page authors a channel state palette until `09-polar-area`
+ *    does, at row 40.
+ *
+ * @param ctx - The frame's snapshot.
+ * @param el - The widget.
+ * @param row - The row whose state colours are wanted.
+ * @param prop - The paint property the channel owns here. The call
+ * site knows it and the node cannot re-derive it, which is why
+ * {@link PaintStates} carries it: `"stroke"` on a stroked host,
+ * `"fill"` on a filled one.
+ * @returns `{ states }`, or `{}` when no state colour applies.
+ */
+export function channelStates(
+  ctx: FrameContext,
+  el: HdvlElement,
+  row: number,
+  prop: PaintStates["prop"],
+): Pick<Paint, "states"> {
+  const values = slotValuesOf(el, CHANNEL_SLOTS.color.simple);
+  if (values === null) {
+    return {};
+  }
+  const scale = chainScaleOf(ctx, el, "color");
+  if (scale === null) {
+    return {};
+  }
+  const value = values.at(row);
+  if (value === null || scale.paint(value) === null) {
+    return {};
+  }
+  // A plain object, not a null-prototype one: this is cloned by
+  // `structuredClone` and compared by `deepEqual` against committed
+  // golden literals, and both of those are shape-sensitive.
+  const colors: Record<string, string> = {};
+  for (const state of CHANNEL_STATES) {
+    const color = scale.paintState(value, state);
+    if (color !== null) {
+      colors[state] = color;
+    }
+  }
+  // NEVER an empty map — `PaintStates` promises that, and an empty
+  // object is as much of a golden move as an extra key is.
+  return Object.keys(colors).length === 0
+    ? {}
+    : { states: { prop, colors } };
 }
 
 /** The eight values, as a set the resolver can test against. */

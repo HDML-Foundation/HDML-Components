@@ -22,6 +22,7 @@ import { paintSuppressed } from "./subscribe";
 import {
   CHANNEL_SLOTS,
   channelColor,
+  channelStates,
   datumOf,
   fillPaint,
   markBindings,
@@ -372,6 +373,9 @@ export function sectorScene(
       a0: num(sector[0]),
       a1: num(sector[1]),
       ...fillPaint(m, channelColor(ctx, el, i)),
+      // R1: per sector. `layout-pie` reuses this call site, so a
+      // pie's wedges gain the field without `layout-pie` moving.
+      ...channelStates(ctx, el, i, "fill"),
     });
   }
   reportDrops(el, projection, tally, rows, nodes.length);

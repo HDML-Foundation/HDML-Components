@@ -1676,14 +1676,37 @@ and the sentence that used
 to stand here — *"a per-mark hover value needs the renderer to know which node is hovered,
 which the scene's `Paint` cannot express"* — was false as a **reason**. `NodeBase extends
 Paint`, so every scene node has carried a full per-node paint, and its own `i`, since Slice
-B. What is true of the scene is only that it holds **one** value per node where a state needs
-two at once — and the runtime never asks it to, because **the runtime does not choose**. It
-emits both rules and the browser applies whichever matches, per node:
+B. For those sixteen the runtime still **does not choose**: it emits both rules and the
+browser applies whichever matches, per node:
 [`src/hdvl/states.ts`](../src/hdvl/states.ts) generates
 `g[data-w="{uid}"] > *:hover` and `…:active` from the widget's harvested variants and the
 view adopts the result on its own shadow root. `09-polar-area`'s
 `--hdml-line-width--hover: 2.5px` is therefore live. See
 [§ Interaction states](#interaction-states-are-generated-rules).
+
+⚠ **Since 019 R1's step 37 that is no longer the whole mechanism, and the old
+*"it holds one value per node where a state needs two at once"* is retired.** There are
+**two** state classes. The eight presentation-attribute bases are generated rules, as
+above. The **channel** class — `--hdml-palette` and `--hdml-color-interpolate`, with their
+four registered variants — *cannot* be: a palette is `n` colours behind one declaration,
+so `fill: #1c8cf4 #f59e0b …` is not a paint value, there is no literal a rule could carry,
+and `hdml-bar` calls the resolver **once per row**, so one `<g data-w>` holds `n`
+differently-coloured rects and a single `:hover` rule could carry at most one of their
+hover colours. That class resolves **per datum**, in
+[`src/hdvl/mark.ts`](../src/hdvl/mark.ts)'s `channelStates`, and lands on the node as
+`Paint.states` — `{ prop, colors }`, where `prop` is `"fill"` or `"stroke"` and `colors`
+is keyed by state name. So the scene now *does* hold more than one value per node, for
+exactly the one class the sheet cannot express.
+
+Three properties of that field are decisions rather than details. It is **absent unless a
+state palette is authored** — an always-present field re-baselines all 29 goldens,
+measured. It carries its **target property** because `applyPaint` sees the node and
+nothing else and cannot tell a channel-resolved `fill` from a `--hdml-fill-color` one;
+that is the same rule `suppressedOf`'s stroked-host list encodes from the sheet side, and
+`states.test.ts` asserts the two agree. And a node whose **base** colour is `null` carries
+no state at all: an exhausted ordinal palette returns `null` *on purpose*, so a complete
+state palette over a short base one would make the uniform fallback jump, on hover, to the
+per-datum colour the base refused to give it.
 
 **V12 — *"only registered `--hdml-*` properties appear in page CSS"* — is enforced at
 source, not at runtime**, and could not be otherwise: an unregistered custom property is

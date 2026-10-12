@@ -801,4 +801,61 @@ suite("hdvl/mark-arc — §2.5's parameterised sector", () => {
     // R2/R26 — the renderer never wrote to what it was handed.
     assert.deepEqual(sceneOf(view), scene);
   });
+
+  /**
+   * ★ **019 R1, step 37.** Per sector, like `hdml-bar` per row —
+   * and this is the call site `layout-pie` reuses, so a pie's
+   * wedges gain the field with a zero-line diff to `layout-pie.ts`.
+   */
+  function hued(states = ""): ReturnType<typeof html> {
+    return html`
+      <hdml-view
+        aria-label="states"
+        style="width: 200px; height: 200px;
+               --hdml-palette: #111111 #222222;
+               ${states}"
+      >
+        <hdml-polar-plane style="padding: 0">
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-continuous-scale channel="radius" min="0" max="1">
+              <hdml-ordinal-scale channel="color" values='["N","S"]'>
+                <hdml-arc
+                  a0="[0, 0.5]"
+                  a1="[0.5, 1]"
+                  color='["N","S"]'
+                ></hdml-arc>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `;
+  }
+
+  test("★ R1 — no state palette, no `states` key", async () => {
+    const view = await mount(hued());
+    const nodes = only(view).nodes;
+    assert.lengthOf(nodes, 2);
+    nodes.forEach((node) => {
+      assert.isNotNull(node.fill);
+      assert.isFalse("states" in node);
+    });
+  });
+
+  test("★ R1 — each sector carries its state colour", async () => {
+    const view = await mount(
+      html`${hued("--hdml-palette--hover: #aa0000 #00aa00")}`,
+    );
+    const nodes = only(view).nodes;
+    assert.lengthOf(nodes, 2);
+    assert.deepStrictEqual(
+      nodes.map((n) => n.states?.colors.hover),
+      ["#aa0000", "#00aa00"],
+    );
+    nodes.forEach((node) =>
+      assert.strictEqual(node.states?.prop, "fill"),
+    );
+    const scene = sceneOf(view);
+    assert.deepEqual(structuredClone(scene), scene);
+  });
 });

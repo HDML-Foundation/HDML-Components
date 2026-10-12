@@ -21,7 +21,12 @@ import {
   suppressedOf,
 } from "./states";
 import { HDVL_PROPERTIES } from "./properties";
-import { CHANNEL_STATE_PROPERTIES } from "./scale";
+import { CHANNEL_STATE_PROPERTIES, CHANNEL_STATES } from "./scale";
+import {
+  installSceneRecorder,
+  restoreRenderers,
+  sceneOf,
+} from "../testing/scene-of";
 
 /**
  * 017 R7's generator — the **output** half of SPEC §9's state
@@ -149,6 +154,24 @@ suite("hdvl/states — the generated rule text", () => {
       "hover",
       "active",
     ]);
+  });
+
+  test("★ R1 — CHANNEL_STATES is HDVL_STATES, exactly", () => {
+    // ★★ 019 R1, step 37. `mark.ts` cannot import `HDVL_STATES`:
+    // this module imports `CHANNEL_SLOTS` and `dashOf` from
+    // `mark.ts`, so the import would close a `mark → states → mark`
+    // cycle — tighter than the `scale → states → mark → scale` that
+    // `Scale.paintState` already declined to close. `scale.ts`
+    // carries a second spelling, `CHANNEL_STATES`, and THIS is what
+    // makes the duplicate safe: a loop over a hand-kept list
+    // asserts nothing about what the list omits, so the two are
+    // asserted element-for-element and in ORDER. A state added to
+    // one and not the other fails here rather than silently
+    // painting nothing on every channel-coloured mark.
+    assert.deepStrictEqual(
+      Array.from(CHANNEL_STATES),
+      Array.from(HDVL_STATES),
+    );
   });
 
   test("the two-class boundary is enforced both ways", () => {
@@ -649,6 +672,102 @@ suite("hdvl/states — the sheet on a live view", () => {
       </hdml-view>
     `);
     assert.strictEqual(sheetText(view), "");
+  });
+
+  test("★★ R1 — states.prop IS suppressedOf's drop", async () => {
+    // ★★★ **Negative control 5, step 37** — the one nobody asked
+    // for, and it is a genuine cross-check rather than a restated
+    // assertion. The same rule is now encoded TWICE, from opposite
+    // ends: `STROKE_PAINTED` here decides which presentation
+    // attribute a channel-bound host may not state-vary, and
+    // `PaintStates.prop` at the five `channelStates` call sites
+    // decides which property the per-datum state colour lands on.
+    // Neither can import the other — `mark.ts` cannot reach into
+    // this module — so nothing but this test makes them agree.
+    //
+    // It is also the assertion that would catch the mistake the
+    // field's NAME was chosen to prevent: a `stateFill` would have
+    // put `hdml-line`'s hover colour on the one property a stroked
+    // host structurally has none of.
+    installSceneRecorder();
+    try {
+      const view = await mount(html`
+        <hdml-view
+          aria-label="prop"
+          style="width: 200px; height: 200px;
+                 --hdml-palette: #111111 #222222;
+                 --hdml-palette--hover: #aaaaaa #bbbbbb"
+        >
+          <hdml-cartesian-plane style="padding: 0">
+            <hdml-ordinal-scale channel="x" values='["a", "b"]'>
+              <hdml-continuous-scale channel="y" min="0" max="10">
+                <hdml-ordinal-scale
+                  channel="color"
+                  values='["N", "S"]'
+                >
+                  <hdml-bar
+                    x='["a", "b"]'
+                    y="[1, 2]"
+                    color='["N", "S"]'
+                  ></hdml-bar>
+                  <hdml-line
+                    x='["a", "b"]'
+                    y="[3, 4]"
+                    color='"N"'
+                  ></hdml-line>
+                  <hdml-area
+                    x='["a", "b"]'
+                    y="[5, 6]"
+                    color='"N"'
+                  ></hdml-area>
+                  <hdml-point
+                    x='["a", "b"]'
+                    y="[7, 8]"
+                    color='["N", "S"]'
+                  ></hdml-point>
+                </hdml-ordinal-scale>
+              </hdml-continuous-scale>
+            </hdml-ordinal-scale>
+          </hdml-cartesian-plane>
+        </hdml-view>
+      `);
+      const scene = sceneOf(view);
+      let checked = 0;
+      for (const tag of [
+        "hdml-bar",
+        "hdml-line",
+        "hdml-area",
+        "hdml-point",
+      ]) {
+        const el = <HdvlElement>view.querySelector(tag);
+        const group = scene.groups.find((g) => g.widget === el.uid);
+        assert.isDefined(group, `${tag} painted no group`);
+        const dropped = suppressedOf(el);
+        // The property the CHANNEL owns, read off `suppressedOf`
+        // alone: a stroked host drops `fill` unconditionally and
+        // its channel takes `stroke`, so the channel's property is
+        // `stroke` exactly when both are dropped.
+        const expected =
+          dropped.has("fill") && dropped.has("stroke")
+            ? "stroke"
+            : "fill";
+        // The two encodings, asserted against each other.
+        assert.strictEqual(
+          expected,
+          tag === "hdml-line" ? "stroke" : "fill",
+          `suppressedOf(${tag}) names the wrong paint`,
+        );
+        for (const node of group?.nodes ?? []) {
+          assert.isTrue("states" in node, `${tag} carries no states`);
+          assert.strictEqual(node.states?.prop, expected, tag);
+          checked++;
+        }
+      }
+      // A green loop over an empty set is not a check (C294).
+      assert.isAbove(checked, 4);
+    } finally {
+      restoreRenderers();
+    }
   });
 
   test("suppressedOf reads the ATTRIBUTE, not a scale", async () => {

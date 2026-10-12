@@ -20,6 +20,7 @@ import { paintSuppressed } from "./subscribe";
 import {
   CHANNEL_SLOTS,
   channelColor,
+  channelStates,
   curveOptionsOf,
   curveTypeOf,
   datumOf,
@@ -315,6 +316,11 @@ export class HdmlLineElement extends HdvlElement {
         measured,
         channelColor(ctx, this, vertices[0].i),
       ),
+      // ★ R1, and the reason `PaintStates` carries its property: a
+      // stroked host's channel colour is its STROKE. The same rule
+      // `suppressedOf`'s `STROKE_PAINTED` encodes from the sheet
+      // side — a field named for `fill` would lie here.
+      ...channelStates(ctx, this, vertices[0].i, "stroke"),
     };
     return markGroup(this, measured, [node]);
   }

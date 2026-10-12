@@ -18,6 +18,7 @@ import type { Binding, Slot } from "./subscribe";
 import { paintSuppressed } from "./subscribe";
 import {
   channelColor,
+  channelStates,
   curveOptionsOf,
   curveTypeOf,
   datumOf,
@@ -463,6 +464,9 @@ export class HdmlAreaElement extends HdvlElement {
       // a varying `color` is a V3 error, so every row would answer
       // the same anyway.
       ...fillPaint(measured, channelColor(ctx, this, vertices[0].i)),
+      // R1: the same row the base paint came from — a varying
+      // `color` on a path widget is V3, so there is only one.
+      ...channelStates(ctx, this, vertices[0].i, "fill"),
     };
     return markGroup(this, measured, [node]);
   }

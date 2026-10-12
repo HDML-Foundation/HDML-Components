@@ -365,4 +365,66 @@ suite("hdvl/layout-pie — §6.3's derive", () => {
     const scene = sceneOf(view, P);
     assert.deepEqual(structuredClone(<unknown>scene), <unknown>scene);
   });
+
+  test("★★ R1 — a pie carries states it never wired", async () => {
+    // ★★★ **Negative control 5 ⓒ, step 37.** `layout-pie.ts` has
+    // ZERO occurrences of `channelColor` and gains none of
+    // `channelStates`: §6.3 makes a pie's geometry `hdml-arc`'s *to
+    // the node*, so `sectorScene` serves both hosts and R1 reaches
+    // `hdml-pie` through a file the step never opened.
+    //
+    // That is the correct outcome — a pie IS an arc here, and the
+    // alternative is a host whose wedges silently cannot take a
+    // state colour — but it is exactly the kind of reach a step
+    // asserts nowhere and discovers in a bug report. Asserted here
+    // instead, and on the HOST rather than on the shared function.
+    const view = await mount(
+      html`
+        <hdml-view
+          aria-label="pie states"
+          style="width: 200px; height: 200px;
+                 --hdml-palette: #111111 #222222 #333333;
+                 --hdml-palette--hover: #aa0000 #00aa00 #0000aa"
+        >
+          <hdml-polar-plane style="padding: 0">
+            <hdml-continuous-scale channel="angle" min="0" max="1">
+              <hdml-continuous-scale
+                channel="radius"
+                min="0"
+                max="100"
+              >
+                <hdml-ordinal-scale
+                  channel="color"
+                  values='["N","S","E"]'
+                >
+                  <hdml-pie
+                    angle="[1, 1, 2]"
+                    color='["N","S","E"]'
+                  ></hdml-pie>
+                </hdml-ordinal-scale>
+              </hdml-continuous-scale>
+            </hdml-continuous-scale>
+          </hdml-polar-plane>
+        </hdml-view>
+      `,
+    );
+    const got = arcs(view);
+    assert.lengthOf(got, 3);
+    assert.deepStrictEqual(
+      got.map((n) => n.states?.colors.hover),
+      ["#aa0000", "#00aa00", "#0000aa"],
+    );
+    got.forEach((node) =>
+      assert.strictEqual(node.states?.prop, "fill"),
+    );
+  });
+
+  test("★ R1 — an unstyled pie carries no `states` key", async () => {
+    const view = await mount(
+      polar(html`<hdml-pie angle="[1, 1, 2]"></hdml-pie>`),
+    );
+    const got = arcs(view);
+    assert.lengthOf(got, 3);
+    got.forEach((node) => assert.isFalse("states" in node));
+  });
 });

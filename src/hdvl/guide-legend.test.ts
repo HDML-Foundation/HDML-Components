@@ -939,4 +939,34 @@ suite("hdvl/guide-legend — the text-metric seam", () => {
     const line = Math.max(size, m.ascent + m.descent);
     assert.closeTo(marks[1][1] - marks[0][1], line + gap, 1e-2);
   });
+
+  test("★★ R1 — a legend node carries NO `states` key", async () => {
+    // ★★ **Negative control 4, step 37**, the legend half.
+    //
+    // `guide-legend.ts` resolves channel colour through **two call
+    // sites of its own** — `scale.paint(v)` per entry and
+    // `fillPaint(m, scale.paint(…))` for the ramp bar — and reaches
+    // `channelColor` nowhere. So the claim *"`channelColor` is the
+    // channel-colour resolver"* is already false, and the legend's
+    // swatches are exactly the nodes a reader would expect the
+    // field on. **D2 routes them to row 38**; row 37 leaves
+    // `guide-legend.ts` zero-diff on purpose, and this is the
+    // assertion that records that as a decision rather than an
+    // oversight — and that will have to be UPDATED when row 38
+    // makes the swatches follow.
+    for (const page of [
+      keyPage("", "--hdml-palette--hover: #aa0000 #00aa00 #0000aa"),
+      rampPage(
+        "",
+        "--hdml-color-interpolate--hover: #ff0000 #0000ff",
+      ),
+    ]) {
+      const view = await mount(page);
+      const nodes = nodesOf(view);
+      assert.isAbove(nodes.length, 1);
+      nodes.forEach((node, i) =>
+        assert.isFalse("states" in node, `legend node ${i}`),
+      );
+    }
+  });
 });

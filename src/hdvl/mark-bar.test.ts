@@ -578,4 +578,121 @@ suite("hdvl/mark-bar — §6.1's band-filling rect", () => {
     const scene = sceneOf(view);
     assert.deepEqual(structuredClone(scene), scene);
   });
+
+  /**
+   * ★ **019 R1, step 37** — the per-datum channel state colours.
+   *
+   * `hdml-bar` is the widget that makes the mechanism necessary
+   * rather than merely convenient: it calls `channelColor` ONCE PER
+   * ROW, so one `<g data-w>` holds `n` differently-coloured rects
+   * and a single generated `:hover` rule could carry at most one of
+   * their hover colours. That is why R1's channel class resolves on
+   * the node and the other eight bases stay in the sheet.
+   */
+  function hued(
+    palette: string,
+    states = "",
+  ): ReturnType<typeof html> {
+    return html`
+      <hdml-view
+        aria-label="states"
+        style="width: 76px; height: 200px;
+               --hdml-palette: ${palette};
+               ${states}"
+      >
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-ordinal-scale channel="x" values='["a","b","c"]'>
+            <hdml-continuous-scale channel="y" min="0" max="200">
+              <hdml-ordinal-scale
+                channel="color"
+                values='["N","S","E"]'
+              >
+                <hdml-bar
+                  x='["a","b","c"]'
+                  y="[50, 100, 150]"
+                  color='["N","S","E"]'
+                ></hdml-bar>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `;
+  }
+
+  test("★ R1 — no state palette, no `states` key", async () => {
+    // ★★★ THE invariant. Not `undefined` — ABSENT, asserted with
+    // `in` because `assert.isUndefined` passes for both and so
+    // cannot witness the difference the 29 goldens turn on.
+    const view = await mount(hued("#111111 #222222 #333333"));
+    const got = rects(view);
+    assert.lengthOf(got, 3);
+    got.forEach((node, i) => {
+      // The BASE colour is resolved, so this is not the vacuous
+      // pass of a widget that painted no channel at all.
+      assert.isNotNull(node.fill, `row ${i} has no base fill`);
+      assert.isFalse("states" in node, `row ${i} carries states`);
+      assert.notInclude(Object.keys(node), "states");
+    });
+  });
+
+  test("★ R1 — a state palette lands per ROW", async () => {
+    const view = await mount(
+      hued(
+        "#111111 #222222 #333333",
+        "--hdml-palette--hover: #aa0000 #00aa00 #0000aa",
+      ),
+    );
+    const got = rects(view);
+    assert.lengthOf(got, 3);
+    const hovers = got.map((n) => n.states?.colors.hover);
+    // ★ More than one row, and they DIFFER: a per-widget
+    // implementation would give three identical answers and pass
+    // any single-row assertion.
+    assert.deepStrictEqual(hovers, ["#aa0000", "#00aa00", "#0000aa"]);
+    assert.lengthOf(new Set(hovers), 3);
+    got.forEach((node) => {
+      assert.isTrue("states" in node);
+      // A filled host: the channel owns `fill`.
+      assert.strictEqual(node.states?.prop, "fill");
+      // `active` was not authored, so it is not a key — the two
+      // states are independent, and an unauthored one is absent
+      // rather than a copy of the base.
+      assert.deepStrictEqual(Object.keys(node.states?.colors ?? {}), [
+        "hover",
+      ]);
+      // And the state colour is not the base one.
+      assert.notStrictEqual(node.states?.colors.hover, node.fill);
+    });
+    // ★ Negative control 3: the clone round-trip still holds WITH
+    // the field populated.
+    const scene = sceneOf(view);
+    assert.deepEqual(structuredClone(scene), scene);
+  });
+
+  test("★ R1 — a SHORT base palette carries no state", async () => {
+    // ★★ Open question 3, and the short palette is what makes the
+    // answer obvious rather than a corner. `paletteColor` returns
+    // `null` on exhaustion ON PURPOSE, so the third bar falls back
+    // to `--hdml-fill-color` "visibly and uniformly" instead of
+    // wrapping into a colour another series owns. A COMPLETE state
+    // palette over a SHORT base one would undo exactly that: the
+    // uniform fallback would jump, on hover, to the per-datum
+    // colour the base refused to give it — §1.5's silent wrong
+    // chart, through the state door.
+    const view = await mount(
+      hued(
+        "#111111 #222222",
+        "--hdml-palette--hover: #aa0000 #00aa00 #0000aa",
+      ),
+    );
+    const got = rects(view);
+    assert.lengthOf(got, 3);
+    assert.isTrue("states" in got[0]);
+    assert.isTrue("states" in got[1]);
+    // Row 2's base is `null` ⇒ no state, although its state colour
+    // exists. A state colour on a node with no base paint is a rule
+    // nothing can apply: it would make a mark APPEAR on hover.
+    assert.isFalse("states" in got[2]);
+  });
 });

@@ -21,6 +21,7 @@ import type { Projection } from "./mark";
 import { paintSuppressed } from "./subscribe";
 import {
   channelColor,
+  channelStates,
   datumOf,
   fillPaint,
   markBindings,
@@ -341,6 +342,9 @@ export class HdmlBarElement extends HdvlElement {
         // zero-extent rect. §4.7's "absent, never zero" is the
         // opposite case — a value that is missing.
         ...fillPaint(measured, channelColor(ctx, this, i)),
+        // R1: the channel's state colours for THIS row. One `<g>`
+        // holds `n` of them, which is why they cannot be a rule.
+        ...channelStates(ctx, this, i, "fill"),
       });
     }
     reportDrops(this, projection, tally, rows, nodes.length);

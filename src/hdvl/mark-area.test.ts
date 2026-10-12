@@ -579,4 +579,53 @@ suite("hdvl/mark-area — §6.1's filled band", () => {
     await quiesce(view);
     assert.isFalse(line.matches(":state(error)"));
   });
+
+  /** ★ **019 R1, step 37** — the band's one node, one state set. */
+  function hued(states = ""): ReturnType<typeof html> {
+    return html`
+      <hdml-view
+        aria-label="states"
+        style="width: 400px; height: 200px;
+               --hdml-palette: #111111 #222222;
+               ${states}"
+      >
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-continuous-scale channel="x" min="0" max="6">
+            <hdml-continuous-scale channel="y" min="0" max="200">
+              <hdml-ordinal-scale channel="color" values='["N","S"]'>
+                <hdml-area
+                  x="[0, 1, 2]"
+                  y="[50, 100, 150]"
+                  color='"S"'
+                ></hdml-area>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `;
+  }
+
+  test("★ R1 — no state palette, no `states` key", async () => {
+    const view = await mount(hued());
+    const nodes = only(view).nodes;
+    assert.lengthOf(nodes, 1);
+    assert.isNotNull(nodes[0].fill);
+    assert.isFalse("states" in nodes[0]);
+  });
+
+  test("★ R1 — the band carries its one state colour", async () => {
+    const view = await mount(
+      html`${hued("--hdml-palette--hover: #aa0000 #00aa00")}`,
+    );
+    const nodes = only(view).nodes;
+    assert.lengthOf(nodes, 1);
+    assert.isTrue("states" in nodes[0]);
+    // A filled host, and the SECOND palette slot: the row the state
+    // colour is read for is the same one the base came from.
+    assert.strictEqual(nodes[0].states?.prop, "fill");
+    assert.strictEqual(nodes[0].states?.colors.hover, "#00aa00");
+    const scene = sceneOf(view);
+    assert.deepEqual(structuredClone(scene), scene);
+  });
 });

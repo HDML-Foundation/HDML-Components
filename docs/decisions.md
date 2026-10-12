@@ -1982,11 +1982,91 @@ The sixteen presentation-attribute state variants are **read since 017 R7's step
 and what used to stand here
 — *"a per-mark hover value needs the renderer to know which node is hovered, which `Paint`
 cannot express"* — was false as a **reason**, which R7 measured. `NodeBase extends Paint`, so
-every scene node already carries a full per-node paint and its own `i`. The mechanism never
-needed the type to reach further, because **the runtime does not choose**: `states.ts` emits a
-`:hover` and an `:active` rule and the browser applies whichever matches, per node. `09`'s
-`--hdml-line-width--hover: 2.5px` is live. This function still reads no variant, and that is
-now a statement about *where* the variants land rather than about what `Paint` can hold.
+every scene node already carries a full per-node paint and its own `i`. For those sixteen the
+mechanism never needed the type to reach further, because **the runtime does not choose**:
+`states.ts` emits a `:hover` and an `:active` rule and the browser applies whichever matches,
+per node. `09`'s `--hdml-line-width--hover: 2.5px` is live. `fillPaint`/`strokePaint` still
+read no variant, and that is now a statement about *where* the variants land rather than about
+what `Paint` can hold — see the next decision, which is where the other class lands.
+
+## A scene node carries its channel state colours, and the field is ABSENT by default
+
+Project 019 R1, implementation step 37, and the shape is three decisions deep.
+
+**(1) `Paint` gains ONE optional field, not two and not a widened return.** `states?:
+PaintStates`, where `PaintStates` is `{ prop: "fill" | "stroke"; colors: Record<string,
+string> }`. `colors` is a **map keyed by state name** because `HDVL_STATES` is *"a list, not
+two hard-coded branches"* — v2's `focus`/`selected` are a row there, never a second pair of
+fields here — and it is **never empty**, because an empty object is as much of a golden move
+as an extra key is. `prop` is carried rather than inferred: `renderer-svg.ts`'s
+`applyPaint(el, node)` sees the node and nothing else, so from the node alone there is no way
+to tell a channel-resolved `fill` from a `--hdml-fill-color` one, and a renderer that guessed
+would stamp the state colour onto the wrong property on exactly the widgets where it matters.
+`hdml-line` is the whole reason the field exists in this shape: it is a `strokePaint` host, so
+its channel colour is its **stroke**, and a field named `stateFill` would have lied there. It
+is the same rule `suppressedOf`'s stroked-host list encodes from the sheet side, the two
+cannot import each other, and `states.test.ts` asserts they agree for all five hosts.
+
+**(2) The resolver is a SIBLING, `channelStates`, and `channelColor` is byte-untouched.**
+Step 36 took the sibling route for `Scale.paintState` for return-contract disambiguation;
+here there is a stronger reason. `channelColor`'s expression produces the **base** paint of
+every node in all 29 whole-`Scene` goldens, so leaving it alone makes *"no golden moves"* a
+property of the module graph rather than something the gate has to catch — and the gate is
+the only witness there is. The price is one duplicated `slotValuesOf`/`chainScaleOf` lookup
+per row, of the same order as the call that was already there (`resolveScaleFrame` is
+memoised per frame context, and the colour channel never reaches `subdivide`). The sibling
+returns a **partial `Paint`** — `{}` or `{ states }` — so a caller writes
+`...fillPaint(…), ...channelStates(…)` and the key is *never written* rather than written as
+`undefined`. No call site can get the absence wrong.
+
+**(3) Absence is the invariant, and it is not the same thing as `undefined`.** `NodeBase
+extends Paint` and five `SceneNode` variants spread `NodeBase`, so an always-present field
+lands on every node of every group — including the ten guide and legend nodes that
+`fillPaint`/`strokePaint` build with a `null` colour and that have no channel at all.
+**Measured at step 37: an always-present `states`, valued `undefined` when unauthored, reds
+all 17 golden suites on all 13 corpus pages — every one of the 29 goldens.** That is why the
+field is populated by the five channel call sites and never inside the two paint helpers,
+whose **fifteen** call sites include those ten. Three measurements pin the distinction:
+chai's `deepEqual` **does** separate an absent key from an `undefined`-valued one, so the
+goldens witness both mistakes; `structuredClone` **keeps** an `undefined`-valued key, so the
+clone round-trip assertions witness neither; and `assert.isUndefined` passes for both and so
+witnesses nothing. The tests use `in` and `Object.keys`.
+
+**A `null` base colour carries no state.** A row with no binding, no scale in scope, a
+missing cell, or an exhausted palette gets no `states` key even when a state palette is
+authored. The short palette is what makes this obvious rather than a corner: `paletteColor`
+returns `null` on exhaustion *deliberately*, so the mark falls back to `--hdml-fill-color`
+"visibly and uniformly" instead of wrapping into a colour another series owns — and a
+complete state palette over a short base one would undo exactly that, making the uniform
+fallback jump on hover to the per-datum colour the base refused to give it. More generally a
+state colour on a node with no base paint is a rule nothing can apply: it would make a mark
+*appear* on hover rather than recolour.
+
+**`layout-pie` gains the field with a zero-line diff**, because §6.3 makes a pie's geometry
+`hdml-arc`'s *to the node* and `sectorScene` serves both hosts. That is correct — a pie *is*
+an arc here — but it is a reach the step asserts nowhere by construction, so
+`layout-pie.test.ts` asserts it on the **host**.
+
+**The state list is spelled twice, and one of the two is enforced.** `mark.ts` cannot import
+`HDVL_STATES`: `states.ts` imports `CHANNEL_SLOTS` and `dashOf` from `mark.ts`, so the import
+would close a `mark → states → mark` cycle — tighter than the `scale → states → mark → scale`
+that `Scale.paintState` already declined to close. `scale.ts` therefore carries
+`CHANNEL_STATES` beside `CHANNEL_STATE_PROPERTIES` and the reader that consumes it, and
+`states.test.ts` asserts it equals `HDVL_STATES` element-for-element and in order. A loop
+over a hand-kept list asserts nothing about what the list omits; that assertion is what makes
+the duplicate safe.
+
+**`scene.test.ts`'s `deepFreeze` was not deep, and R1 is what made it matter.** It froze the
+group, its `nodes` array and each node, and nothing a node points *at* — so *"a frozen scene
+renders twice"* had never constrained a renderer that wrote into `dash`, `subpaths` or
+`vertices`. Harmless while every such reference was geometry a renderer only reads;
+`Paint.states` is the first one a renderer is expected to *look up a key in*, and row 38's
+`applyPaint` will do exactly that. It freezes transitively now, and the test still passes,
+which is the evidence that the renderer writes into none of it.
+
+**No consumer surface changes.** `Paint` is exported from `scene.ts`, but `./hdvl`'s entry
+point re-exports only `./vocabulary` and `package.json#exports` declares no wildcard subpath,
+so the type is unreachable from outside the package. The field is internal at this step.
 
 ## A point's glyph default is the sheet's, and it is 6px square
 

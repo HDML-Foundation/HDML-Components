@@ -79,7 +79,67 @@ export interface Subpath {
   segments: readonly Segment[];
 }
 
-/** The resolved paint of one node. */
+/**
+ * ★ **019 R1 — one node's channel-owned paint in each INTERACTION
+ * state**, and the one field on {@link Paint} that may be ABSENT.
+ *
+ * ── Why the property is carried, not inferred ──
+ *
+ * `renderer-svg.ts`'s `applyPaint(el, node)` sees the **node** and
+ * nothing else. From the node alone there is no way to tell a
+ * `fill` the `color` channel resolved from a `fill` that came off
+ * `--hdml-fill-color`, so a renderer that guessed would stamp a
+ * state colour onto the wrong property on exactly the widgets where
+ * it matters. `prop` is therefore decided where it is **known** —
+ * at the five {@link Paint}-building mark sites — and carried.
+ *
+ * It is the same rule `states.ts`'s `suppressedOf` already encodes
+ * from the other side (`STROKE_PAINTED` ⇒ a stroked host's channel
+ * is its stroke), which is what makes the two independently
+ * checkable against each other rather than merely consistent by
+ * hand. `mark-line` is the whole reason the field exists: a name
+ * like `stateFill` would **lie** there.
+ *
+ * ── Keyed by state name ──
+ *
+ * `colors` is a map because `HDVL_STATES` is *"a list, not two
+ * hard-coded branches"*: v2's `focus`/`selected` are a row there,
+ * never a second pair of fields here. **It is never empty** — a
+ * node with no authored state variant carries no
+ * {@link Paint.states} at all.
+ */
+export interface PaintStates {
+  /** The paint property this node's `color` channel owns. */
+  prop: "fill" | "stroke";
+  /** State name → the resolved CSS `<color>`. NEVER empty. */
+  colors: Readonly<Record<string, string>>;
+}
+
+/**
+ * The resolved paint of one node.
+ *
+ * ── ★ `states` is OPTIONAL, and *absent* is not *`undefined`* ──
+ *
+ * {@link NodeBase} extends this, and five `SceneNode` variants
+ * spread `NodeBase`, so a field that were **always present** would
+ * land on every node of every group — including the ten guide and
+ * legend nodes built through `fillPaint`/`strokePaint` with a
+ * `null` colour, which have no channel and therefore no state. That
+ * is a corpus-wide re-baseline of all 29 whole-`Scene` goldens, for
+ * a field that would be meaningless on most of the nodes carrying
+ * it.
+ *
+ * So the field is populated **only** by the five mark sites that
+ * resolve a `color` channel, **only** when a state palette is
+ * authored, and the populate site spreads a `{}` otherwise — the
+ * key is never written, not written as `undefined`. The difference
+ * is load-bearing and is measured, not assumed: chai's `deepEqual`
+ * **does** separate a present-but-`undefined` key from an absent
+ * one (so the 29 goldens witness both mistakes), while
+ * `structuredClone` **keeps** an undefined-valued key (so the
+ * clone round-trip assertions witness neither). `assert.isUndefined`
+ * cannot tell them apart at all; the tests use `in` / `Object.keys`.
+ */
 export interface Paint {
   /** Resolved CSS `<color>`, or null for none. */
   fill: string | null;
@@ -88,6 +148,12 @@ export interface Paint {
   strokeWidth: number;
   /** null = solid; else the dash pattern in CSS px. */
   dash: readonly number[] | null;
+  /**
+   * ★ 019 R1. The channel colour's interaction-state variants —
+   * **absent unless the author wrote one**, never `undefined`.
+   * See {@link PaintStates}.
+   */
+  states?: PaintStates;
 }
 
 /**

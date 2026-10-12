@@ -330,6 +330,19 @@ That is what makes a **scene assertion** — not a DOM assertion — the primary
 mechanism for the display half: a widget test builds no page, reads back no attributes,
 and compares one plain object.
 
+**One field on a node is OPTIONAL, and it is the only one** — `Paint.states`, 019 R1's
+per-datum channel state colours. It is **absent unless the author wrote a state palette**,
+not present-and-`undefined`, and the difference is load-bearing rather than stylistic:
+`NodeBase extends Paint` and five `SceneNode` variants spread `NodeBase`, so an
+always-present field lands on every node of every group. Measured at step 37, an
+always-present `states` re-baselines **all 29 goldens** — every one of the 17 golden
+suites reds — including the ten guide and legend nodes that have no `color` channel at
+all. So the field is written only by the five mark call sites that resolve one, and only
+when `Scale.paintState` answers; the populate site spreads a `{}` otherwise, which makes
+the absence structural rather than remembered. Chai's `deepEqual` separates an absent key
+from an `undefined`-valued one and `structuredClone` does not, so the goldens witness the
+mistake and the clone round-trips cannot.
+
 It is also what makes the **acceptance suite** a text file rather than a screenshot
 corpus. [src/hdvl/corpus/](../src/hdvl/corpus/) mounts the committed pages from
 [html/hdvl/](../html/hdvl/) and compares each view's whole scene against a golden
