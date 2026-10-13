@@ -172,6 +172,27 @@ function rectOf(
  *
  * @attribute {string} source - The data source for this subtree,
  * nearest-ancestor-wins (SPEC §4.5).
+ *
+ * @attribute {string} initial-x - A literal `x` to paint
+ * before the subscription resolves (019 item 3).
+ *
+ * @attribute {string} initial-x0 - A literal `x0` to paint
+ * before the subscription resolves (019 item 3).
+ *
+ * @attribute {string} initial-x1 - A literal `x1` to paint
+ * before the subscription resolves (019 item 3).
+ *
+ * @attribute {string} initial-y - A literal `y` to paint
+ * before the subscription resolves (019 item 3).
+ *
+ * @attribute {string} initial-y0 - A literal `y0` to paint
+ * before the subscription resolves (019 item 3).
+ *
+ * @attribute {string} initial-y1 - A literal `y1` to paint
+ * before the subscription resolves (019 item 3).
+ *
+ * @attribute {string} initial-color - A literal `color` to paint
+ * before the subscription resolves (019 item 3).
  */
 @customElement(HDVL_TAG_NAMES.BAR)
 export class HdmlBarElement extends HdvlElement {
@@ -245,6 +266,50 @@ export class HdmlBarElement extends HdvlElement {
    */
   @property({ type: String })
   [BAR_ATTRS_LIST.SOURCE]: null | string = null;
+
+  /**
+   * 019 item 3's literals — declared here, **read by row 44**.
+   *
+   * @internal
+   */
+  @property({ type: String })
+  [BAR_ATTRS_LIST.INITIAL_X]: null | string = null;
+
+  /**
+   * @internal
+   */
+  @property({ type: String })
+  [BAR_ATTRS_LIST.INITIAL_X0]: null | string = null;
+
+  /**
+   * @internal
+   */
+  @property({ type: String })
+  [BAR_ATTRS_LIST.INITIAL_X1]: null | string = null;
+
+  /**
+   * @internal
+   */
+  @property({ type: String })
+  [BAR_ATTRS_LIST.INITIAL_Y]: null | string = null;
+
+  /**
+   * @internal
+   */
+  @property({ type: String })
+  [BAR_ATTRS_LIST.INITIAL_Y0]: null | string = null;
+
+  /**
+   * @internal
+   */
+  @property({ type: String })
+  [BAR_ATTRS_LIST.INITIAL_Y1]: null | string = null;
+
+  /**
+   * @internal
+   */
+  @property({ type: String })
+  [BAR_ATTRS_LIST.INITIAL_COLOR]: null | string = null;
 
   /**
    * §7.2's request path — one subscription per column-bound slot,

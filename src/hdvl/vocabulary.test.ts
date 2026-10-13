@@ -13,7 +13,7 @@ import {
   familyOf,
 } from "./vocabulary";
 
-// The twenty attribute enums the display half publishes — every
+// The twenty-one attribute enums the display half publishes — every
 // display element except `hdml-fallback`, which has no attributes by
 // design (RFC 016/001 §9.6, S3). Hardcoded, never derived from the
 // module under test: a list that imports its own answer asserts
@@ -31,6 +31,7 @@ const ATTRS_ENUMS = [
   "POINT_ATTRS_LIST",
   "ARC_ATTRS_LIST",
   "RULE_ATTRS_LIST",
+  "TEXT_ATTRS_LIST",
   "PIE_ATTRS_LIST",
   "CLUSTER_ATTRS_LIST",
   "STACK_ATTRS_LIST",
@@ -89,6 +90,7 @@ const FAMILY_TABLE: [string, string][] = [
   ["hdml-point", "mark"],
   ["hdml-arc", "mark"],
   ["hdml-rule", "mark"],
+  ["hdml-text", "mark"],
   ["hdml-pie", "mark"],
   ["hdml-cluster", "container"],
   ["hdml-stack", "container"],
@@ -105,8 +107,8 @@ const tags = <Record<string, string>>HDVL_TAG_NAMES;
 const allTags = <Record<string, string>>(<unknown>HDML_TAG_NAMES);
 
 suite("hdvl/vocabulary", () => {
-  test("HDVL_TAG_NAMES has exactly 21 members", () => {
-    assert.lengthOf(Object.keys(tags), 21);
+  test("HDVL_TAG_NAMES has exactly 22 members", () => {
+    assert.lengthOf(Object.keys(tags), 22);
   });
 
   test("every tag is the @hdml/types member of that name", () => {
@@ -127,25 +129,27 @@ suite("hdvl/vocabulary", () => {
     }
   });
 
-  test("21 display + 12 data + hdml-text = the published 34", () => {
+  test("22 display + 12 data = the published 34", () => {
     assert.lengthOf(Object.keys(allTags), 34);
     assert.lengthOf(
       Object.keys(allTags).filter((k) => k in tags),
-      21,
+      22,
     );
-    // ★ 21 + 12 = 33, not 34, and the gap is the POINT: step 41
-    // bumped `@hdml/types` to `0.0.2-alpha.27`, which publishes
-    // `hdml-text`, and row 42 is the step that gives it an
-    // element. Until then the published vocabulary is one wider
-    // than the implemented one, which is the same fact
-    // `UNREGISTERED_TAGS` states in `scripts/check-dist.mjs`.
-    // ⚠ When `hdml-text` lands, BOTH numbers move: 34 stays and
-    // the display count becomes 22.
-    assert.isUndefined(tags.TEXT, "row 42 implements hdml-text");
+    // ★★ 22 + 12 = 34, and the identity CLOSED at step 42. It read
+    // twenty-one + twelve = thirty-three from step 41's bump to
+    // `@hdml/types@0.0.2-alpha.27` until this step gave `hdml-text`
+    // an element: the published vocabulary was one tag wider than
+    // the implemented one, which is the same fact
+    // `UNREGISTERED_TAGS` stated in `scripts/check-dist.mjs` and
+    // which that step's removal of the member asserts. ⚠ The two
+    // assertions below are step 41's, INVERTED — `tags.TEXT` is
+    // now defined, and it is the published tag.
+    assert.strictEqual(tags.TEXT, "hdml-text");
     assert.strictEqual(allTags.TEXT, "hdml-text");
+    assert.strictEqual(tags.TEXT, allTags.TEXT);
   });
 
-  test("all 20 display attribute enums are exported", () => {
+  test("all 21 display attribute enums are exported", () => {
     for (const name of ATTRS_ENUMS) {
       assert.isObject(vocab[name], name);
     }
@@ -231,7 +235,7 @@ suite("hdvl/vocabulary", () => {
     const keys = Object.keys(HDVL_FAMILIES).sort();
     const expected = FAMILY_TABLE.map(([tag]) => tag).sort();
     assert.deepEqual(keys, expected);
-    assert.lengthOf(keys, 21);
+    assert.lengthOf(keys, 22);
   });
 
   test("every tag has its RFC §2.2 family", () => {

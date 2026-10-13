@@ -53,13 +53,13 @@ import type {
   SceneGroup,
   SceneNode,
 } from "./scene";
-import type { Scale } from "./scale";
+import type { Scale, ScaleKind } from "./scale";
 import type { Binding, CellValue, Slot } from "./subscribe";
 import type { CurveOptions, CurveType } from "./kernel/curves";
 import { CURVE_TYPES } from "./kernel/curves";
 import { rangedOverrideOf } from "./container";
-import { CHANNEL_STATES, chainScaleOf } from "./scale";
-import { adoptedColumn, sourceOf } from "./subscribe";
+import { CHANNEL_STATES, chainScaleOf, kindOfColumn } from "./scale";
+import { adoptedColumn, adoptedOf, sourceOf } from "./subscribe";
 import { noticeOutOfDomain, reportAllRowsDropped } from "./validate";
 import {
   ARC_ATTRS_LIST,
@@ -410,6 +410,68 @@ export function slotValuesOf(
     rows: column.rows,
     scalar: false,
     at: (row: number): CellValue => column.at(row),
+  };
+}
+
+/**
+ * A bound slot's §4.9 **formatting kind**, and the zone that kind
+ * may need — 019 item 5's half of Note 003 §2.3.
+ */
+export interface SlotKind {
+  /** Which of §4.9's three cases the slot's values fall in. */
+  readonly kind: ScaleKind;
+  /** The column's IANA zone hint, `null` when it carries none. */
+  readonly zone: string | null;
+}
+
+/**
+ * A bound slot's {@link SlotKind}.
+ *
+ * ★ **It is not a channel question, and that is the point.** A
+ * `text` slot resolves no scale (Note 003 §2.2), so the three cases
+ * §4.9 dispatches over have to come from somewhere else, and the
+ * delivered column already carries the answer: D9's `ColumnType` is
+ * exactly what {@link kindOfColumn} maps, and V2 maps it the same
+ * way for a bound *channel*. One mapping, two readers (R12).
+ *
+ * `ColumnType` itself is unreachable from `src/hdvl/` —
+ * `check-dist.mjs` check 6 forbids `../hdio/decode` outright and
+ * allows `../hdio/delivery` as a **type only**, to two modules. This
+ * needs neither import: the narrowed {@link adoptedOf} result
+ * carries the type, so it is read by inference and this module's
+ * reach into `../hdio/` stays **none**.
+ *
+ * ⚠ **A LITERAL slot has no delivery**, and `text='["a", "b"]'` is
+ * legal SPEC §5 markup. There the kind comes from the values' own
+ * shape — a string is ordinal, anything else continuous — which is
+ * the only reading available with no column behind it. A literal
+ * cannot be *datetime*: an instant has no literal spelling in §5's
+ * grammar.
+ *
+ * @param el - The widget.
+ * @param slot - The attribute name.
+ * @param sample - Any present value of the slot, for the literal
+ *   case; `null` is treated as continuous.
+ * @returns Its kind, and its zone where one applies.
+ */
+export function slotKindOf(
+  el: HdvlElement,
+  slot: Slot,
+  sample: CellValue,
+): SlotKind {
+  const d = adoptedOf(el, slot);
+  if (d !== null && d.kind === "data") {
+    return {
+      kind: kindOfColumn(d.type),
+      // A `date` is UTC by specification and a zone-less
+      // `Timestamp` reads as UTC too, so `null` is correct for
+      // both — only a zoned timestamp carries a display hint.
+      zone: d.type.kind === "timestamp" ? d.type.zone ?? null : null,
+    };
+  }
+  return {
+    kind: typeof sample === "string" ? "ordinal" : "continuous",
+    zone: null,
   };
 }
 
@@ -808,7 +870,7 @@ export function strokePaint(
  *
  * What defuses it is that the initial is **neutralised per element in
  * the UA sheet** — `ua.ts`'s `OUTLINED` list declares
- * `--hdml-line-width: 0` on each of the eight hosts that reach this
+ * `--hdml-line-width: 0` on each of the nine hosts that reach this
  * function — `hdml-pie` among them, via `layout-pie`'s reuse of
  * `sectorScene` — so the effective default is `0`, no widget gains an
  * edge nobody asked for, and *"none could turn it off"* inverts:

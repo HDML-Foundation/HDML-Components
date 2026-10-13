@@ -19,7 +19,7 @@ import { registerNamespace, supports } from "./supports";
  * It is **registration-based**: it answers what this build
  * registers and which attributes the published enums give that tag.
  * A page that never imports `@hdml/components/hdvl` gets `false`
- * for all twenty-one, which is the question a host app is asking.
+ * for all twenty-two, which is the question a host app is asking.
  */
 
 /** `globalThis` as a bag, so an unrelated key can be planted. */
@@ -71,10 +71,10 @@ suite("hdvl/supports — HDML.supports", () => {
 
   test("every display tag answers true", () => {
     // It reads the published enums, so it cannot drift from what is
-    // registered: all twenty-one, `hdml-fallback` included, which
+    // registered: all twenty-two, `hdml-fallback` included, which
     // is registered precisely so this answers for it.
     const tags = Object.values(HDVL_TAG_NAMES);
-    assert.lengthOf(tags, 21);
+    assert.lengthOf(tags, 22);
     for (const tag of tags) {
       assert.isTrue(supports(tag), tag);
     }

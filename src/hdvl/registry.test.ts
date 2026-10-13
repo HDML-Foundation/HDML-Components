@@ -10,15 +10,24 @@ import { HdvlElement } from "./base";
 import { HDVL_FAMILIES, HDVL_TAG_NAMES } from "./vocabulary";
 
 /**
- * The tag surface, asserted whole. Step 09 registers all twenty-one
- * display tags and they never move again, so this file is the
- * standing description of that surface: tag, family and observed
- * attributes, per element.
+ * The tag surface, asserted whole. Step 09 registered twenty-one
+ * display tags and 019 step 42 added the twenty-second, `hdml-text`,
+ * so this file is the standing description of that surface: tag,
+ * family and observed attributes, per element.
  *
  * Every list below is **hardcoded**, read off
  * `@hdml/types`' published `*_ATTRS_LIST` enums by hand. Deriving
  * them from the same enum the element imports would assert nothing
  * — it would only prove the element compiled.
+ *
+ * ★★ **019 item 3, step 42 — this is the table nothing predicted
+ * would move.** The step's payload is fifty `initial-{slot}`
+ * `@property` declarations across **ten** elements, and a
+ * `@property` is an *observed attribute*: the test below deep-equals
+ * each element's `observedAttributes` against its row, so nine rows
+ * that have nothing to do with `hdml-text` grew between five and
+ * eleven members each. ⚠ **No count catches that** — only the exact
+ * key set does, which is the reason this table is hand-written.
  */
 
 interface Observing {
@@ -72,7 +81,20 @@ const EXPECTED: [string, string, string[]][] = [
   [
     "hdml-line",
     "mark",
-    ["x", "y", "angle", "radius", "color", "closed", "source"],
+    [
+      "x",
+      "y",
+      "angle",
+      "radius",
+      "color",
+      "closed",
+      "source",
+      "initial-x",
+      "initial-y",
+      "initial-angle",
+      "initial-radius",
+      "initial-color",
+    ],
   ],
   [
     "hdml-area",
@@ -92,30 +114,133 @@ const EXPECTED: [string, string, string[]][] = [
       "closed",
       "hidden",
       "source",
+      "initial-x",
+      "initial-x0",
+      "initial-x1",
+      "initial-y",
+      "initial-y0",
+      "initial-y1",
+      "initial-angle",
+      "initial-radius",
+      "initial-r0",
+      "initial-r1",
+      "initial-color",
     ],
   ],
   [
     "hdml-bar",
     "mark",
-    ["x", "x0", "x1", "y", "y0", "y1", "color", "hidden", "source"],
+    [
+      "x",
+      "x0",
+      "x1",
+      "y",
+      "y0",
+      "y1",
+      "color",
+      "hidden",
+      "source",
+      "initial-x",
+      "initial-x0",
+      "initial-x1",
+      "initial-y",
+      "initial-y0",
+      "initial-y1",
+      "initial-color",
+    ],
   ],
   [
     "hdml-point",
     "mark",
-    ["x", "y", "angle", "radius", "color", "size", "source"],
+    [
+      "x",
+      "y",
+      "angle",
+      "radius",
+      "color",
+      "size",
+      "source",
+      "initial-x",
+      "initial-y",
+      "initial-angle",
+      "initial-radius",
+      "initial-color",
+      "initial-size",
+    ],
   ],
   [
     "hdml-arc",
     "mark",
-    ["a0", "a1", "angle", "radius", "r0", "r1", "color", "source"],
+    [
+      "a0",
+      "a1",
+      "angle",
+      "radius",
+      "r0",
+      "r1",
+      "color",
+      "source",
+      "initial-a0",
+      "initial-a1",
+      "initial-angle",
+      "initial-radius",
+      "initial-r0",
+      "initial-r1",
+      "initial-color",
+    ],
   ],
-  ["hdml-rule", "mark", ["x", "y", "source"]],
-  ["hdml-pie", "mark", ["angle", "color", "source"]],
-  ["hdml-cluster", "container", ["x", "y", "source"]],
+  [
+    "hdml-rule",
+    "mark",
+    ["x", "y", "source", "initial-x", "initial-y"],
+  ],
+  // ★ 019 item 5, step 42 — the twenty-second display tag and the
+  // seventh mark. Thirteen members, read off `TEXT_ATTRS_LIST` by
+  // hand: the six slots, `source`, and one `initial-` per slot.
+  // ⚠ `size` is deliberately absent and `text` is deliberately
+  // present — step 14's control 2b measured that the COUNT alone
+  // does not catch a wrong key set, so the set is what is written.
+  [
+    "hdml-text",
+    "mark",
+    [
+      "x",
+      "y",
+      "angle",
+      "radius",
+      "color",
+      "text",
+      "source",
+      "initial-x",
+      "initial-y",
+      "initial-angle",
+      "initial-radius",
+      "initial-color",
+      "initial-text",
+    ],
+  ],
+  [
+    "hdml-pie",
+    "mark",
+    ["angle", "color", "source", "initial-angle", "initial-color"],
+  ],
+  [
+    "hdml-cluster",
+    "container",
+    ["x", "y", "source", "initial-x", "initial-y"],
+  ],
   [
     "hdml-stack",
     "container",
-    ["x", "y", "offset", "hidden", "source"],
+    [
+      "x",
+      "y",
+      "offset",
+      "hidden",
+      "source",
+      "initial-x",
+      "initial-y",
+    ],
   ],
   ["hdml-axis", "guide", ["channel"]],
   // ★ 019 items 18+19 — `count` and `format` are NOT on these four
@@ -152,8 +277,8 @@ function observedOf(tag: string): string[] {
 }
 
 suite("hdvl/registry", () => {
-  test("all 21 display tags are defined", () => {
-    assert.lengthOf(EXPECTED, 21);
+  test("all 22 display tags are defined", () => {
+    assert.lengthOf(EXPECTED, 22);
     for (const [tag] of EXPECTED) {
       assert.isFunction(customElements.get(tag), tag);
     }

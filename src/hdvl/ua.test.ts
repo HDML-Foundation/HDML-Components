@@ -20,7 +20,7 @@ import {
 import { HDVL_PROPERTIES } from "./properties";
 
 /**
- * 017 R4's two halves of the `--hdml-line-width` cascade: the eight
+ * 017 R4's two halves of the `--hdml-line-width` cascade: the nine
  * hosts whose paint comes from `fillPaint` and whose initial the UA
  * sheet neutralises, and the four whose paint comes from
  * `strokePaint` and which must keep the registry's `1.5px`.
@@ -42,6 +42,12 @@ const OUTLINED_TAGS = [
   "hdml-arc",
   "hdml-area",
   "hdml-pie",
+  // ★ The NINTH, 019 step 42. `hdml-text` reaches `fillPaint` like
+  // the other eight, and — exactly as with `hdml-pie` above — no
+  // corpus golden can catch its absence: a `1.5px` outline round a
+  // printed run is legal, plausible paint. This list is the only
+  // thing that catches it.
+  "hdml-text",
   "hdml-tick",
   "hdml-label",
   "hdml-legend",
@@ -873,7 +879,7 @@ suite("hdvl/ua — the element sheet", () => {
     assert.strictEqual(getComputedStyle(view).position, "relative");
   });
 
-  test("★ the outline default is zero on eight hosts", async () => {
+  test("★ the outline default is zero on nine hosts", async () => {
     // 017 R4. `--hdml-line-width`'s REGISTERED initial is 1.5px —
     // `properties.test.ts` still asserts that on a bare div, which
     // is the positive control saying the registry was not touched.
@@ -893,6 +899,7 @@ suite("hdvl/ua — the element sheet", () => {
           <hdml-rule y="1"></hdml-rule>
           <hdml-axis channel="y"></hdml-axis>
           <hdml-grid channel="y"></hdml-grid>
+          <hdml-text x="a" y="b" text="c"></hdml-text>
         </hdml-cartesian-plane>
         <hdml-polar-plane>
           <hdml-pie angle="a"></hdml-pie>
@@ -990,7 +997,7 @@ suite("hdvl/ua — the element sheet", () => {
       style.getPropertyValue("--hdml-line-style"),
       "",
     );
-    // Every one of the eight hosts is in this one rule, and none of
+    // Every one of the nine hosts is in this one rule, and none of
     // the four stroked ones is.
     const selector = (<CSSStyleRule>rule).selectorText;
     for (const tag of OUTLINED_TAGS) {

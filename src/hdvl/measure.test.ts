@@ -255,7 +255,7 @@ suite("hdvl/measure — the one computed-style pass", () => {
 
   test("clip follows computed overflow", async () => {
     // SPEC §6's clip-to-the-plot-area IS the UA sheet's
-    // `overflow: hidden` on the seven mark-painting hosts (§4.7),
+    // `overflow: hidden` on the eight mark-painting hosts (§4.7),
     // so a mark gets it with no author rule.
     const view = await fixture<HdmlViewElement>(html`
       <hdml-view style="width: 400px; height: 200px">

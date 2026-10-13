@@ -240,6 +240,12 @@ function negativeOf(values: SlotValues, rows: number): number {
  *
  * @attribute {string} source - The data source for this subtree,
  * nearest-ancestor-wins (SPEC §4.5).
+ *
+ * @attribute {string} initial-angle - A literal `angle` to paint
+ * before the subscription resolves (019 item 3).
+ *
+ * @attribute {string} initial-color - A literal `color` to paint
+ * before the subscription resolves (019 item 3).
  */
 @customElement(HDVL_TAG_NAMES.PIE)
 export class HdmlPieElement extends HdvlElement {
@@ -264,6 +270,20 @@ export class HdmlPieElement extends HdvlElement {
    */
   @property({ type: String })
   [PIE_ATTRS_LIST.SOURCE]: null | string = null;
+
+  /**
+   * 019 item 3's literals — declared here, **read by row 44**.
+   *
+   * @internal
+   */
+  @property({ type: String })
+  [PIE_ATTRS_LIST.INITIAL_ANGLE]: null | string = null;
+
+  /**
+   * @internal
+   */
+  @property({ type: String })
+  [PIE_ATTRS_LIST.INITIAL_COLOR]: null | string = null;
 
   /**
    * §7.2's request path — one subscription per column-bound slot.

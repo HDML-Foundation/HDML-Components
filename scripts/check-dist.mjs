@@ -109,9 +109,9 @@ const MANIFEST = "custom-elements.json";
 /**
  * Display tags exempt from check 8's attribute comparison, with the
  * reason. `hdml-fallback` publishes **no** attributes and so has no
- * `*_ATTRS_LIST` in `@hdml/types` (§9.6 says twenty enums for
- * twenty-one tags). Listing it here rather than treating a missing
- * enum as "expect none" is what stops a twenty-second tag from
+ * `*_ATTRS_LIST` in `@hdml/types` (§9.6 says twenty-one enums for
+ * twenty-two tags). Listing it here rather than treating a missing
+ * enum as "expect none" is what stops a twenty-third tag from
  * passing silently because nobody wrote its vocabulary.
  */
 const NO_ATTRS_LIST = new Set(["FALLBACK"]);
@@ -125,49 +125,20 @@ const NO_ATTRS_LIST = new Set(["FALLBACK"]);
  * where it is inert. Named here rather than skipped, so the day an
  * element lands the constant empties and the check tightens by
  * itself.
- */
-/**
- * ⛔ **`hdml-text` is row 42's to remove from this set.**
  *
- * Step 41's bump to `@hdml/types@0.0.2-alpha.27` publishes
+ * ★★ **`hdml-text` was here too, and step 42 removed it.**
+ *
+ * Step 41's bump to `@hdml/types@0.0.2-alpha.27` published
  * `hdml-text` as the vocabulary's 34th tag and the display half's
- * 22nd, and **no module registers it until row 42** — so check (d)
- * below fails on it and the bump could not land without this
- * member. It is a **two-step gap, not a pre-016 one**: unlike
- * `hdml-split-by` it has a named owner and a named removal step.
- *
- * ⚠ Leaving it here after row 42 reds **nothing** — this set only
- * *suppresses* a failure, so a stale member is silent. That is the
- * stale-rather-than-red shape, and the removal is asserted in row
- * 42 rather than guarded here.
+ * 22nd while **no module registered it**, so check (d) below failed
+ * on it and the bump could not land without a member here. Step 42
+ * registered the element, which is what made the member removable
+ * — ⚠ and **not** what made it red: this set only *suppresses*, so
+ * a stale member is silent. The removal is asserted in that step's
+ * gate rather than guarded here, and its negative control is the
+ * inverse — put the member back and nothing fails.
  */
-const UNREGISTERED_TAGS = new Set([
-  HDML_TAG_NAMES.SPLIT_BY,
-  HDML_TAG_NAMES.TEXT,
-]);
-
-/**
- * ⛔ **019 item 3's `initial-{slot}` attributes, also row 42's to
- * remove.**
- *
- * Step 41's bump publishes **44** `initial-*` members across the
- * nine mark enums — `LINE_`, `AREA_`, `BAR_`, `POINT_`, `ARC_`,
- * `RULE_`, `PIE_`, `CLUSTER_` and `STACK_ATTRS_LIST` — and **no
- * element declares one until row 42** gives item 3 its
- * `@property`. The step plan §6.1 says why they cannot land
- * together: the `@property` needs the published `@hdml/types`, so
- * the enum necessarily arrives one step ahead of its declaration.
- *
- * Until then check (b)'s enum→manifest arm would fail 44 times on
- * the bump alone. ⓘ The **other** arm is deliberately left armed:
- * a manifest attribute no enum publishes still fails, so this
- * fence cannot hide a *stray* declaration — only a *missing* one.
- *
- * ⚠ A stale member here reds **nothing**, exactly as
- * {@link UNREGISTERED_TAGS}: the set only suppresses. Row 42
- * asserts the removal.
- */
-const UNDECLARED_ATTRS = (attr) => attr.startsWith("initial-");
+const UNREGISTERED_TAGS = new Set([HDML_TAG_NAMES.SPLIT_BY]);
 
 /**
  * `src/hdvl/` may import exactly two `../hdio/` modules: `config`
@@ -832,7 +803,7 @@ if (!exists(MANIFEST)) {
     }
     const want = Object.values(list).sort();
     for (const attr of want) {
-      if (!got.attrs.includes(attr) && !UNDECLARED_ATTRS(attr)) {
+      if (!got.attrs.includes(attr)) {
         fail(
           "CEM",
           `<${tag}> publishes ${attr}, which its manifest entry ` +

@@ -2681,6 +2681,20 @@
               },
               "description": "The data source for this subtree, nearest-ancestor-wins (SPEC §4.5).",
               "name": "source"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `x` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-x"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `y` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-y"
             }
           ],
           "superclass": {
@@ -2929,6 +2943,20 @@
               },
               "description": "The data source for this subtree, nearest-ancestor-wins (SPEC §4.5).",
               "name": "source"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `x` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-x"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `y` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-y"
             }
           ],
           "superclass": {
@@ -4032,6 +4060,39 @@
           },
           "parameters": [
             {
+              "name": "kind",
+              "type": {
+                "text": "ScaleKind"
+              },
+              "description": "Which of the three cases applies."
+            },
+            {
+              "name": "format",
+              "type": {
+                "text": "TextFormat"
+              },
+              "description": "The resolved formatting context."
+            },
+            {
+              "name": "values",
+              "type": {
+                "text": "readonly (number | string)[]"
+              },
+              "description": "The values to format, in paint order."
+            }
+          ],
+          "description": "★ §4.9's formatting, over the label **set**.\n\nFour cases, of which three are already whole in Contract 2 and the\nfourth is `kernel/format-skeleton.ts`'s (R12/R18 — a formatter has\none implementation and this module is not it):\n\n- **ordinal** — the domain strings, verbatim. SPEC §7 is explicit\n  and Scale.format already returns `String(v)` there. Any\n  `format` on such a channel is **V14**'s error as of step 24, so\n  the skeleton reaching here is inert by contract rather than by\n  accident.\n- **datetime** — per value, and **only** Scale.format can\n  do it: the scale's `timeZone` is private to `scale.ts`, and a\n  `MMM` label over a zone-sensitive instant is a different month\n  in `UTC` than in `America/New_York`.\n- **continuous** — formatCompactSet, over the whole set.\n\n**★ There is no per-value compact entry point, and this must not\ngrow one.** SPEC §7 makes axis coherence a property of the label\n*set*: a label formatting value by value emits `900K, 1.2M, 1.5M`\non one axis, which is the exact output §4.9 exists to prevent. The\nset function is **total** — a skeleton with no compact stem\nformats value by value, and one that maps to no bag at all\n(including the empty string a label with no `format` carries)\nfalls through to the locale's default — so the continuous branch\ncalls it unconditionally and never reaches past it.\n\nThe locale is resolved **once for the set**, from\nlocaleOf, which is the same function Scale.format\nresolves through — so a datetime label and a continuous one under\none view can never disagree about it.\n\n**★ Exported at step 31, for its second caller.** SPEC §7: *\"the\nshared compact prefix applies to a continuous legend's value set\nexactly as to a label set\"* — the same sentence, about the same\nthree cases, so `hdml-legend`'s ramp calls this rather than\ncarrying a fourth copy of §4.9's dispatch (R12/R18). It reads the\n`format` attribute by name, and the legend publishes the same\nname, so nothing about it is label-specific.\n\n── ★ 019 item 19: `format` has two sources, and CSS wins ──\n\n`--hdml-text-format` is preferred over `format=`, and the\nattribute is the fallback. The property is registered `*` with\n`inherits: false` and **no** `initialValue`, so its computed\nvalue is exactly `\"\"` on every element no rule matched and the\ndeclared string **verbatim** — internal spaces and `/` intact —\non every element one did. `=== \"\"` is therefore the absence test.\nStep 30 migrates the corpus and the fixtures and deletes the\nattribute arm.\n\n★★ **019 item 5, step 42 — it takes no `Scale` any more**, so the\nseventh mark can call it. `hdml-text` prints one run per **row**\noff a column that needs no scale at all (Note 003 §2.2), and the\nonly two things the old signature used a `Scale` for were the\n**dispatch** and the **per-value format** — both of which a\ncaller can supply as a TextFormat. The set function, the\ncast and the three-case choice stay here, once (R12)."
+        },
+        {
+          "kind": "function",
+          "name": "scaleTextFormat",
+          "return": {
+            "type": {
+              "text": ""
+            }
+          },
+          "parameters": [
+            {
               "name": "el",
               "type": {
                 "text": "HdvlElement"
@@ -4046,13 +4107,6 @@
               "description": "The scale it labels."
             },
             {
-              "name": "ticks",
-              "type": {
-                "text": "readonly Tick[]"
-              },
-              "description": "The positions it will paint."
-            },
-            {
               "name": "props",
               "type": {
                 "text": "ReadonlyMap<string, string>"
@@ -4060,7 +4114,26 @@
               "description": "The MEASURE snapshot's harvested properties."
             }
           ],
-          "description": "★ §4.9's formatting, over the label **set**.\n\nFour cases, of which three are already whole in Contract 2 and the\nfourth is `kernel/format-skeleton.ts`'s (R12/R18 — a formatter has\none implementation and this module is not it):\n\n- **ordinal** — the domain strings, verbatim. SPEC §7 is explicit\n  and Scale.format already returns `String(v)` there. Any\n  `format` on such a channel is **V14**'s error as of step 24, so\n  the skeleton reaching here is inert by contract rather than by\n  accident.\n- **datetime** — per value, and **only** Scale.format can\n  do it: the scale's `timeZone` is private to `scale.ts`, and a\n  `MMM` label over a zone-sensitive instant is a different month\n  in `UTC` than in `America/New_York`.\n- **continuous** — formatCompactSet, over the whole set.\n\n**★ There is no per-value compact entry point, and this must not\ngrow one.** SPEC §7 makes axis coherence a property of the label\n*set*: a label formatting value by value emits `900K, 1.2M, 1.5M`\non one axis, which is the exact output §4.9 exists to prevent. The\nset function is **total** — a skeleton with no compact stem\nformats value by value, and one that maps to no bag at all\n(including the empty string a label with no `format` carries)\nfalls through to the locale's default — so the continuous branch\ncalls it unconditionally and never reaches past it.\n\nThe locale is resolved **once for the set**, from\nlocaleOf, which is the same function Scale.format\nresolves through — so a datetime label and a continuous one under\none view can never disagree about it.\n\n**★ Exported at step 31, for its second caller.** SPEC §7: *\"the\nshared compact prefix applies to a continuous legend's value set\nexactly as to a label set\"* — the same sentence, about the same\nthree cases, so `hdml-legend`'s ramp calls this rather than\ncarrying a fourth copy of §4.9's dispatch (R12/R18). It reads the\n`format` attribute by name, and the legend publishes the same\nname, so nothing about it is label-specific.\n\n── ★ 019 item 19: `format` has two sources, and CSS wins ──\n\n`--hdml-text-format` is preferred over `format=`, and the\nattribute is the fallback. The property is registered `*` with\n`inherits: false` and **no** `initialValue`, so its computed\nvalue is exactly `\"\"` on every element no rule matched and the\ndeclared string **verbatim** — internal spaces and `/` intact —\non every element one did. `=== \"\"` is therefore the absence test.\nStep 30 migrates the corpus and the fixtures and deletes the\nattribute arm.\n\n⚠ **`props` is required here, and optional on `tickSpecOf`.** The\nasymmetry is forced by the call graph rather than chosen: both of\nthis function's callers are production sites inside a frame and\nhold a `Measured`, while `tickSpecOf` has nineteen further\ncallers over detached and mounted elements that have no MEASURE\nsnapshot to pass. A required parameter is the safer shape where\nit is available, because a caller cannot forget it; stated here\nso a later reader does not smooth the two into one."
+          "description": "The **guide** half's TextFormat — the scale's own\nformatter, the element's locale and the computed skeleton.\n\nBoth guide callers build theirs here rather than inline, so\n`hdml-label` and a continuous `hdml-legend`'s ramp cannot come to\ndisagree about which property carries the skeleton or where the\nlocale is resolved.\n\n⚠ **`props` is required, and optional on `tickSpecOf`.** The\nasymmetry is forced by the call graph rather than chosen: both\ncallers are production sites inside a frame and hold a\n`Measured`, while `tickSpecOf` has nineteen further callers over\ndetached and mounted elements that have no MEASURE snapshot to\npass. A required parameter is the safer shape where it is\navailable, because a caller cannot forget it; stated here so a\nlater reader does not smooth the two into one."
+        },
+        {
+          "kind": "function",
+          "name": "authoredAnchor",
+          "return": {
+            "type": {
+              "text": ""
+            }
+          },
+          "parameters": [
+            {
+              "name": "raw",
+              "type": {
+                "text": "undefined | string"
+              },
+              "description": "The computed value off the MEASURE snapshot."
+            }
+          ],
+          "description": "★ 017 R2's **author override** of the run's anchor —\n`--hdml-text-anchor`, resolved once for the guide.\n\n`null` means *\"the author said nothing\"*, and that is what the\nregistered initial `auto` is for: a registered property **always**\ncomputes to its initial, so `props.get` can never come back\nundefined and absence has to be spelled as a value. Without a\nfourth keyword an initial of `middle` would be indistinguishable\nfrom an authored one and would flatten every **polar** ring to\n`middle` the moment the property was registered — see\n`properties.ts` for the whole argument.\n\n★ **The override is the author's on BOTH planes, deliberately.**\nIt does not ask which plane it is under and there is nothing here\nto ask with. Three reasons, and the first is the binding one:\n`--hdml-text-rotate` is one angle for a whole ring too, and a\npair that ships together and pivots about the same point cannot\nhave one half plane-sensitive and the other not. A property\nsilently ignored on a plane would need a **W7** to be honest, and\n017 declined a seventh warning code twice already. And both\nproperties **inherit**, so a view-level declaration aimed at\ncartesian labels would warn from a polar label the author never\naddressed.\n\nThe cost, stated rather than discovered: one anchor over a ring is\nlopsided — `start` runs the text inward at 9 o'clock. That is the\nauthor's instruction and it is **visible**, which is the kind of\nwrong this project's visual gate exists to catch. `auto` remains\nthe way back to the per-tick derivation, and `middle` now means\nsomething on a ring that `auto` never did: centre every run.\n\n★ **Exported at step 42, for its third reader.** `hdml-text`\npublishes the same property — SPEC §9's `--hdml-text-anchor` row\nnames the mark as of 019 item 5 — and a mark has no derivation\nto fall back to, so there `null` means *the run is centred on its\ndatum*. The keyword set and the `auto`-is-absence reading are the\nsame in both places, which is why there is one reader of them."
         },
         {
           "kind": "class",
@@ -4269,6 +4342,22 @@
           "name": "textsOf",
           "declaration": {
             "name": "textsOf",
+            "module": "src/hdvl/guide-label.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "scaleTextFormat",
+          "declaration": {
+            "name": "scaleTextFormat",
+            "module": "src/hdvl/guide-label.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "authoredAnchor",
+          "declaration": {
+            "name": "authoredAnchor",
             "module": "src/hdvl/guide-label.ts"
           }
         },
@@ -6938,6 +7027,20 @@
               },
               "description": "The data source for this subtree, nearest-ancestor-wins (SPEC §4.5).",
               "name": "source"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `angle` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-angle"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `color` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-color"
             }
           ],
           "superclass": {
@@ -7260,6 +7363,55 @@
               },
               "description": "The data source for this subtree, nearest-ancestor-wins (SPEC §4.5).",
               "name": "source"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `a0` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-a0"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `a1` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-a1"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `angle` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-angle"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `radius` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-radius"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `r0` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-r0"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `r1` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-r1"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `color` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-color"
             }
           ],
           "superclass": {
@@ -7599,6 +7751,83 @@
               },
               "description": "The data source for this subtree, nearest-ancestor-wins (SPEC §4.5).",
               "name": "source"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `x` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-x"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `x0` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-x0"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `x1` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-x1"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `y` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-y"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `y0` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-y0"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `y1` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-y1"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `angle` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-angle"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `radius` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-radius"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `r0` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-r0"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `r1` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-r1"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `color` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-color"
             }
           ],
           "superclass": {
@@ -7895,6 +8124,55 @@
               },
               "description": "The data source for this subtree, nearest-ancestor-wins (SPEC §4.5).",
               "name": "source"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `x` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-x"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `x0` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-x0"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `x1` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-x1"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `y` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-y"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `y0` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-y0"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `y1` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-y1"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `color` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-color"
             }
           ],
           "superclass": {
@@ -8210,6 +8488,41 @@
               },
               "description": "The data source for this subtree, nearest-ancestor-wins (SPEC §4.5).",
               "name": "source"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `x` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-x"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `y` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-y"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `angle` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-angle"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `radius` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-radius"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `color` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-color"
             }
           ],
           "superclass": {
@@ -8500,6 +8813,48 @@
               },
               "description": "The data source for this subtree, nearest-ancestor-wins (SPEC §4.5).",
               "name": "source"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `x` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-x"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `y` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-y"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `angle` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-angle"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `radius` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-radius"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `color` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-color"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `size` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-size"
             }
           ],
           "superclass": {
@@ -8754,6 +9109,20 @@
               },
               "description": "The data source for this subtree, nearest-ancestor-wins (SPEC §4.5).",
               "name": "source"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `x` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-x"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `y` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-y"
             }
           ],
           "superclass": {
@@ -8778,6 +9147,330 @@
           "declaration": {
             "name": "HdmlRuleElement",
             "module": "src/hdvl/mark-rule.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "src/hdvl/mark-text.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "One formatted text run per row, at that row's projected position\n(Note 003 §7).\n\n**It is positioned like an `hdml-point`** — both plane forms, read\noff `Projection.channels` so the element names no channel (H7) —\nand **painted like an `hdml-label`**: a `text` node carrying its\nown `anchor`, `baseline`, `font` and `rotate`, which the renderer\nplaces. It therefore adds **no registered property, no V-rule and\nno `DiagnosticCode`** (Note 003 §7.3, §7.4); the whole\n`--hdml-text-*` family is reused as 017 R2 named it to be.\n\n**Its `anchor` default is `middle`/`middle`, not a derivation.**\n`hdml-label` derives an anchor from the outward normal of the\nguide it hangs off; a mark hangs off nothing — its datum *is* the\npoint — so the run is centred on it, which is the same answer 017\nR2's step 10-3 gave every cartesian label. `--hdml-text-anchor`\nreaches past it through `authoredAnchor`, the guide half's reader,\nshared rather than copied. The **baseline** is never authored,\nexactly as on a label: R2 has a property for one dimension only.\n\n**`text` is REQUIRED** — V19, through its existing\n`missing-binding` code and **no new one** (step 42's decision; row\n44 owns the 25th). A text mark that prints nothing is a no-op with\na box, and V19's shape is *\"a missing required binding is an error\nnaming the slot, never an implicit index\"*.\n\n**Its reach is standalone only** (D9a, founder's call): a sibling\ntext at the same binding lands on a **simple** bar's top, and\n*inside* a stacked child's box, because a container's derived\nendpoints are internal by design. V17 already forbids it as a\nstack or cluster child, so the limit needs no rule of its own —\nit is enforced structurally, and the nested form is a named\nsuccessor.",
+          "name": "HdmlTextElement",
+          "members": [
+            {
+              "kind": "field",
+              "name": "tag",
+              "type": {
+                "text": "HdvlTagName"
+              },
+              "privacy": "public",
+              "readonly": true,
+              "description": "The tag this class registers, from `HDVL_TAG_NAMES`.",
+              "inheritedFrom": {
+                "name": "HdvlElement",
+                "module": "src/hdvl/base.ts"
+              }
+            },
+            {
+              "kind": "field",
+              "name": "family",
+              "type": {
+                "text": "HdvlFamily"
+              },
+              "privacy": "public",
+              "readonly": true,
+              "description": "This element's family, from `HDVL_FAMILIES`.",
+              "default": "HDVL_FAMILIES[HDVL_TAG_NAMES.TEXT]",
+              "inheritedFrom": {
+                "name": "HdvlElement",
+                "module": "src/hdvl/base.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "bindings",
+              "privacy": "public",
+              "return": {
+                "type": {
+                  "text": ""
+                }
+              },
+              "description": "§7.2's request path — one subscription per column-bound slot,\n`text` among them."
+            },
+            {
+              "kind": "method",
+              "name": "datumAt",
+              "privacy": "public",
+              "return": {
+                "type": {
+                  "text": ""
+                }
+              },
+              "parameters": [
+                {
+                  "name": "index",
+                  "type": {
+                    "text": "number"
+                  },
+                  "description": "The row index a hit named."
+                }
+              ],
+              "description": "§5.7's `DatumSource` — the row a hit resolved."
+            },
+            {
+              "kind": "method",
+              "name": "scene",
+              "privacy": "public",
+              "return": {
+                "type": {
+                  "text": ""
+                }
+              },
+              "parameters": [
+                {
+                  "name": "ctx",
+                  "type": {
+                    "text": "FrameContext"
+                  },
+                  "description": "The frame's snapshot."
+                }
+              ],
+              "description": "Called in the COMPUTE phase. Pure: reads only the measured box,\nthe measured style, the adopted data and the resolved scales.\nReturns null to paint nothing (hidden, errored, or still\nloading).",
+              "inheritedFrom": {
+                "name": "HdvlElement",
+                "module": "src/hdvl/base.ts"
+              }
+            },
+            {
+              "kind": "field",
+              "name": "uid",
+              "type": {
+                "text": "string"
+              },
+              "privacy": "public",
+              "readonly": true,
+              "description": "Stable scene-diff key, minted **once per instance at\nconstruction** — never in `connectedCallback`, so an element\nthat disconnects and reconnects keeps its key. The per\nsubscription id R21 mints is a different identity.",
+              "inheritedFrom": {
+                "name": "HdvlElement",
+                "module": "src/hdvl/base.ts"
+              }
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "type": {
+                "text": "ElementInternals"
+              },
+              "privacy": "protected",
+              "readonly": true,
+              "description": "`:state(loading|empty|error|hover)`.",
+              "inheritedFrom": {
+                "name": "HdvlElement",
+                "module": "src/hdvl/base.ts"
+              }
+            },
+            {
+              "kind": "field",
+              "name": "view",
+              "type": {
+                "text": "HdmlViewElement | null"
+              },
+              "privacy": "public",
+              "description": "The owning view, or `null` — **a read of the resolution index\nand nothing else** (R35, §3.3).\n\nStep 09 answered by an ancestor walk and made this a getter so\nthat this swap would be a one-file change rather than a\ntwenty-element one. A second resolution source would disagree\nafter a DOM move *and* produce an element the `ResizeObserver`\nnever observes (R27), so `src/hdvl/` now contains no\n`closest()` at all.\n\nThe index answers for an element that has already been removed\nfrom the DOM, which is the whole reason\nHdvlElement.disconnectedCallback can invalidate\nanything.",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "HdvlElement",
+                "module": "src/hdvl/base.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "invalidate",
+              "privacy": "protected",
+              "return": {
+                "type": {
+                  "text": "void"
+                }
+              },
+              "description": "The single invalidation path: mark the **owning view** dirty.\nNever paints, never measures (§5.6) — the view answers with one\n`requestAnimationFrame`, coalesced.",
+              "inheritedFrom": {
+                "name": "HdvlElement",
+                "module": "src/hdvl/base.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "setState",
+              "privacy": "protected",
+              "return": {
+                "type": {
+                  "text": "void"
+                }
+              },
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": {
+                    "text": "HdvlState"
+                  },
+                  "description": "The state."
+                },
+                {
+                  "name": "on",
+                  "type": {
+                    "text": "boolean"
+                  },
+                  "description": "Whether to add it."
+                }
+              ],
+              "description": "Adds or removes a custom state.",
+              "inheritedFrom": {
+                "name": "HdvlElement",
+                "module": "src/hdvl/base.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "hasState",
+              "privacy": "protected",
+              "return": {
+                "type": {
+                  "text": ""
+                }
+              },
+              "parameters": [
+                {
+                  "name": "name",
+                  "type": {
+                    "text": "HdvlState"
+                  },
+                  "description": "The state."
+                }
+              ],
+              "inheritedFrom": {
+                "name": "HdvlElement",
+                "module": "src/hdvl/base.ts"
+              }
+            }
+          ],
+          "attributes": [
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "The column bound to the `x` channel (SPEC §5).",
+              "name": "x"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "The column bound to the `y` channel (SPEC §5).",
+              "name": "y"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "The column bound to the `angle` channel (SPEC §3).",
+              "name": "angle"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "The column bound to the `radius` channel (SPEC §3).",
+              "name": "radius"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "The column bound to the `color` channel (SPEC §3).",
+              "name": "color"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "The column whose values are printed — D9's new kind of binding, which resolves no scale (Note 003 §2.2).",
+              "name": "text"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "The data source for this subtree, nearest-ancestor-wins (SPEC §4.5).",
+              "name": "source"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `x` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-x"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `y` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-y"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `angle` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-angle"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `radius` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-radius"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `color` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-color"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "A literal `text` to paint before the subscription resolves (019 item 3).",
+              "name": "initial-text"
+            }
+          ],
+          "superclass": {
+            "name": "HdvlElement",
+            "module": "/src/hdvl/base"
+          },
+          "tagName": "hdml-text",
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "HdmlTextElement",
+          "declaration": {
+            "name": "HdmlTextElement",
+            "module": "src/hdvl/mark-text.ts"
+          }
+        },
+        {
+          "kind": "custom-element-definition",
+          "declaration": {
+            "name": "HdmlTextElement",
+            "module": "src/hdvl/mark-text.ts"
           }
         }
       ]
@@ -8894,6 +9587,39 @@
             }
           ],
           "description": "The values one slot supplies, classified by SPEC §5's\n**first-character grammar**.\n\nThe classification is the same one `validate.ts`'s `checkGrammar`\npolices, read from the other side: where the validator answers\n*which error this is*, this answers *what it binds*. A value the\nvalidator rejects — a `?`/`/` form, JSON that does not parse, a\nnon-bindable identifier — yields `null` here, so a malformed\nattribute paints nothing rather than painting something wrong.\n\nSPEC §6's `values` grammar is deliberately **not** reused: a bare\nnumber is a legal scalar channel binding and is not a legal scale\ndomain, so `scale.ts`'s `valuesSpecOf` and this classify the same\nfirst characters differently on purpose."
+        },
+        {
+          "kind": "function",
+          "name": "slotKindOf",
+          "return": {
+            "type": {
+              "text": ""
+            }
+          },
+          "parameters": [
+            {
+              "name": "el",
+              "type": {
+                "text": "HdvlElement"
+              },
+              "description": "The widget."
+            },
+            {
+              "name": "slot",
+              "type": {
+                "text": "Slot"
+              },
+              "description": "The attribute name."
+            },
+            {
+              "name": "sample",
+              "type": {
+                "text": "CellValue"
+              },
+              "description": "Any present value of the slot, for the literal\ncase; `null` is treated as continuous."
+            }
+          ],
+          "description": "A bound slot's SlotKind.\n\n★ **It is not a channel question, and that is the point.** A\n`text` slot resolves no scale (Note 003 §2.2), so the three cases\n§4.9 dispatches over have to come from somewhere else, and the\ndelivered column already carries the answer: D9's `ColumnType` is\nexactly what kindOfColumn maps, and V2 maps it the same\nway for a bound *channel*. One mapping, two readers (R12).\n\n`ColumnType` itself is unreachable from `src/hdvl/` —\n`check-dist.mjs` check 6 forbids `../hdio/decode` outright and\nallows `../hdio/delivery` as a **type only**, to two modules. This\nneeds neither import: the narrowed adoptedOf result\ncarries the type, so it is read by inference and this module's\nreach into `../hdio/` stays **none**.\n\n⚠ **A LITERAL slot has no delivery**, and `text='[\"a\", \"b\"]'` is\nlegal SPEC §5 markup. There the kind comes from the values' own\nshape — a string is ordinal, anything else continuous — which is\nthe only reading available with no column behind it. A literal\ncannot be *datetime*: an instant has no literal spelling in §5's\ngrammar."
         },
         {
           "kind": "function",
@@ -9146,7 +9872,7 @@
               "description": "The resolved `color`-channel paint, or `null`."
             }
           ],
-          "description": "The paint of a **filled** widget — `hdml-area`'s band,\n`hdml-bar`'s rect, a point's glyph, an arc's sector (§6.1), and\nthe three fill-painted guides (`hdml-tick`'s glyph,\n`hdml-label`'s text, `hdml-legend`'s four parts).\n\nThe fill is §6.1's paint sentence read literally: *a bound\n`color` channel wins over `--hdml-fill-color` and over its\n`--hover` variant*.\n\n── The outline, 017 R4 ──\n\n**A filled widget DOES also stroke, and the hazard that once said\notherwise is real and is closed elsewhere.** This function used to\nhard-code `stroke: null` / `strokeWidth: 0`, with a correct\nargument for its time: `--hdml-line-width`'s registered initial is\n**`1.5px`** and `--hdml-line-color`'s is `currentColor`, so a\nwidget that simply started reading them would *\"put a visible edge\non every bar in the corpus that no author asked for and none could\nturn off\"*. Every clause of that is still true of the **registry**.\n\nWhat defuses it is that the initial is **neutralised per element in\nthe UA sheet** — `ua.ts`'s `OUTLINED` list declares\n`--hdml-line-width: 0` on each of the eight hosts that reach this\nfunction — `hdml-pie` among them, via `layout-pie`'s reuse of\n`sectorScene` — so the effective default is `0`, no widget gains an\nedge nobody asked for, and *\"none could turn it off\"* inverts:\na **normal** declaration is what any author rule beats. The\nregistry is untouched, which is what keeps `hdml-line`,\n`hdml-rule`, `hdml-axis` and `hdml-grid` — strokePaint's\nhosts — on `1.5px`.\n\nFive of the thirteen corpus pages authored an outline on a filled\nmark and got nothing for it: `05`/`06`/`07` on `hdml-point`,\n`08`/`09` on `hdml-arc`. `08`'s white slice separators are the\nclearest case — authored, and never once painted.\n\n**★ A bound `color` channel is the FILL here, never the stroke**,\nwhich is where this parts company with strokePaint. There\nthe series colour *is* the stroke; here the stroke is\n`--hdml-line-color` alone, so an outline stays the author's\ndecision even on a channel-coloured widget. That is what makes an\noutline usable as a hover cue on a channel-coloured mark — *\"what\nthe channel does not own\"* — which is what `09-polar-area` was\nauthored on. ⓘ Since 019 R1 it is one of **two** cues there rather\nthan the only one, and since step 40 that page takes both; see\nchannelStates.\n\n**No state variant is read**, here or in strokePaint —\nand since 017 R7's step 09-2 that is **not** because\nPaint cannot express one. It carries a full per-node\npaint already, and since 019 R1 it carries an optional\nPaint.states as well. For the eight presentation-attribute\nbases the reason stays *the runtime does not choose*: `states.ts`\nemits both rules and the browser applies the one that matches, so\nthe scene stays the base paint and the variants reach the DOM as\nCSS. `09`'s `--hdml-line-width--hover: 2.5px` is therefore\n**live**, through a generated rule rather than through this\nfunction. A **channel** palette is the case that mechanism cannot\ncarry, and channelStates answers it per datum — beside\nthis function's result, never inside it, because these two\nhelpers also serve ten guide and legend nodes that have no\nchannel at all."
+          "description": "The paint of a **filled** widget — `hdml-area`'s band,\n`hdml-bar`'s rect, a point's glyph, an arc's sector (§6.1), and\nthe three fill-painted guides (`hdml-tick`'s glyph,\n`hdml-label`'s text, `hdml-legend`'s four parts).\n\nThe fill is §6.1's paint sentence read literally: *a bound\n`color` channel wins over `--hdml-fill-color` and over its\n`--hover` variant*.\n\n── The outline, 017 R4 ──\n\n**A filled widget DOES also stroke, and the hazard that once said\notherwise is real and is closed elsewhere.** This function used to\nhard-code `stroke: null` / `strokeWidth: 0`, with a correct\nargument for its time: `--hdml-line-width`'s registered initial is\n**`1.5px`** and `--hdml-line-color`'s is `currentColor`, so a\nwidget that simply started reading them would *\"put a visible edge\non every bar in the corpus that no author asked for and none could\nturn off\"*. Every clause of that is still true of the **registry**.\n\nWhat defuses it is that the initial is **neutralised per element in\nthe UA sheet** — `ua.ts`'s `OUTLINED` list declares\n`--hdml-line-width: 0` on each of the nine hosts that reach this\nfunction — `hdml-pie` among them, via `layout-pie`'s reuse of\n`sectorScene` — so the effective default is `0`, no widget gains an\nedge nobody asked for, and *\"none could turn it off\"* inverts:\na **normal** declaration is what any author rule beats. The\nregistry is untouched, which is what keeps `hdml-line`,\n`hdml-rule`, `hdml-axis` and `hdml-grid` — strokePaint's\nhosts — on `1.5px`.\n\nFive of the thirteen corpus pages authored an outline on a filled\nmark and got nothing for it: `05`/`06`/`07` on `hdml-point`,\n`08`/`09` on `hdml-arc`. `08`'s white slice separators are the\nclearest case — authored, and never once painted.\n\n**★ A bound `color` channel is the FILL here, never the stroke**,\nwhich is where this parts company with strokePaint. There\nthe series colour *is* the stroke; here the stroke is\n`--hdml-line-color` alone, so an outline stays the author's\ndecision even on a channel-coloured widget. That is what makes an\noutline usable as a hover cue on a channel-coloured mark — *\"what\nthe channel does not own\"* — which is what `09-polar-area` was\nauthored on. ⓘ Since 019 R1 it is one of **two** cues there rather\nthan the only one, and since step 40 that page takes both; see\nchannelStates.\n\n**No state variant is read**, here or in strokePaint —\nand since 017 R7's step 09-2 that is **not** because\nPaint cannot express one. It carries a full per-node\npaint already, and since 019 R1 it carries an optional\nPaint.states as well. For the eight presentation-attribute\nbases the reason stays *the runtime does not choose*: `states.ts`\nemits both rules and the browser applies the one that matches, so\nthe scene stays the base paint and the variants reach the DOM as\nCSS. `09`'s `--hdml-line-width--hover: 2.5px` is therefore\n**live**, through a generated rule rather than through this\nfunction. A **channel** palette is the case that mechanism cannot\ncarry, and channelStates answers it per datum — beside\nthis function's result, never inside it, because these two\nhelpers also serve ten guide and legend nodes that have no\nchannel at all."
         },
         {
           "kind": "function",
@@ -9356,6 +10082,14 @@
           "name": "slotValuesOf",
           "declaration": {
             "name": "slotValuesOf",
+            "module": "src/hdvl/mark.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "slotKindOf",
+          "declaration": {
+            "name": "slotKindOf",
             "module": "src/hdvl/mark.ts"
           }
         },
@@ -13639,10 +14373,10 @@
           "kind": "variable",
           "name": "HDVL_TAG_NAMES",
           "type": {
-            "text": "{\n  VIEW: HDML_TAG_NAMES.VIEW,\n  CARTESIAN_PLANE: HDML_TAG_NAMES.CARTESIAN_PLANE,\n  POLAR_PLANE: HDML_TAG_NAMES.POLAR_PLANE,\n  CONTINUOUS_SCALE: HDML_TAG_NAMES.CONTINUOUS_SCALE,\n  DATETIME_SCALE: HDML_TAG_NAMES.DATETIME_SCALE,\n  ORDINAL_SCALE: HDML_TAG_NAMES.ORDINAL_SCALE,\n  LINE: HDML_TAG_NAMES.LINE,\n  AREA: HDML_TAG_NAMES.AREA,\n  BAR: HDML_TAG_NAMES.BAR,\n  POINT: HDML_TAG_NAMES.POINT,\n  ARC: HDML_TAG_NAMES.ARC,\n  RULE: HDML_TAG_NAMES.RULE,\n  PIE: HDML_TAG_NAMES.PIE,\n  CLUSTER: HDML_TAG_NAMES.CLUSTER,\n  STACK: HDML_TAG_NAMES.STACK,\n  AXIS: HDML_TAG_NAMES.AXIS,\n  TICK: HDML_TAG_NAMES.TICK,\n  LABEL: HDML_TAG_NAMES.LABEL,\n  GRID: HDML_TAG_NAMES.GRID,\n  LEGEND: HDML_TAG_NAMES.LEGEND,\n  FALLBACK: HDML_TAG_NAMES.FALLBACK,\n}"
+            "text": "{\n  VIEW: HDML_TAG_NAMES.VIEW,\n  CARTESIAN_PLANE: HDML_TAG_NAMES.CARTESIAN_PLANE,\n  POLAR_PLANE: HDML_TAG_NAMES.POLAR_PLANE,\n  CONTINUOUS_SCALE: HDML_TAG_NAMES.CONTINUOUS_SCALE,\n  DATETIME_SCALE: HDML_TAG_NAMES.DATETIME_SCALE,\n  ORDINAL_SCALE: HDML_TAG_NAMES.ORDINAL_SCALE,\n  LINE: HDML_TAG_NAMES.LINE,\n  AREA: HDML_TAG_NAMES.AREA,\n  BAR: HDML_TAG_NAMES.BAR,\n  POINT: HDML_TAG_NAMES.POINT,\n  ARC: HDML_TAG_NAMES.ARC,\n  RULE: HDML_TAG_NAMES.RULE,\n  TEXT: HDML_TAG_NAMES.TEXT,\n  PIE: HDML_TAG_NAMES.PIE,\n  CLUSTER: HDML_TAG_NAMES.CLUSTER,\n  STACK: HDML_TAG_NAMES.STACK,\n  AXIS: HDML_TAG_NAMES.AXIS,\n  TICK: HDML_TAG_NAMES.TICK,\n  LABEL: HDML_TAG_NAMES.LABEL,\n  GRID: HDML_TAG_NAMES.GRID,\n  LEGEND: HDML_TAG_NAMES.LEGEND,\n  FALLBACK: HDML_TAG_NAMES.FALLBACK,\n}"
           },
-          "default": "{ VIEW: HDML_TAG_NAMES.VIEW, CARTESIAN_PLANE: HDML_TAG_NAMES.CARTESIAN_PLANE, POLAR_PLANE: HDML_TAG_NAMES.POLAR_PLANE, CONTINUOUS_SCALE: HDML_TAG_NAMES.CONTINUOUS_SCALE, DATETIME_SCALE: HDML_TAG_NAMES.DATETIME_SCALE, ORDINAL_SCALE: HDML_TAG_NAMES.ORDINAL_SCALE, LINE: HDML_TAG_NAMES.LINE, AREA: HDML_TAG_NAMES.AREA, BAR: HDML_TAG_NAMES.BAR, POINT: HDML_TAG_NAMES.POINT, ARC: HDML_TAG_NAMES.ARC, RULE: HDML_TAG_NAMES.RULE, PIE: HDML_TAG_NAMES.PIE, CLUSTER: HDML_TAG_NAMES.CLUSTER, STACK: HDML_TAG_NAMES.STACK, AXIS: HDML_TAG_NAMES.AXIS, TICK: HDML_TAG_NAMES.TICK, LABEL: HDML_TAG_NAMES.LABEL, GRID: HDML_TAG_NAMES.GRID, LEGEND: HDML_TAG_NAMES.LEGEND, FALLBACK: HDML_TAG_NAMES.FALLBACK, }",
-          "description": "The twenty-one display tag names (SPEC §2), lifted out of the\n33-member `HDML_TAG_NAMES` so a display element never sees a data\ntag. `hdml-fallback` is included — it is registered, so\n`HDML.supports()` answers for it and V13 can count \"at most one\" —\neven though SPEC §2 exempts its content from every V-rule.\n\nThe values are read from `HDML_TAG_NAMES`; no tag string is\nwritten literally in this file."
+          "default": "{ VIEW: HDML_TAG_NAMES.VIEW, CARTESIAN_PLANE: HDML_TAG_NAMES.CARTESIAN_PLANE, POLAR_PLANE: HDML_TAG_NAMES.POLAR_PLANE, CONTINUOUS_SCALE: HDML_TAG_NAMES.CONTINUOUS_SCALE, DATETIME_SCALE: HDML_TAG_NAMES.DATETIME_SCALE, ORDINAL_SCALE: HDML_TAG_NAMES.ORDINAL_SCALE, LINE: HDML_TAG_NAMES.LINE, AREA: HDML_TAG_NAMES.AREA, BAR: HDML_TAG_NAMES.BAR, POINT: HDML_TAG_NAMES.POINT, ARC: HDML_TAG_NAMES.ARC, RULE: HDML_TAG_NAMES.RULE, TEXT: HDML_TAG_NAMES.TEXT, PIE: HDML_TAG_NAMES.PIE, CLUSTER: HDML_TAG_NAMES.CLUSTER, STACK: HDML_TAG_NAMES.STACK, AXIS: HDML_TAG_NAMES.AXIS, TICK: HDML_TAG_NAMES.TICK, LABEL: HDML_TAG_NAMES.LABEL, GRID: HDML_TAG_NAMES.GRID, LEGEND: HDML_TAG_NAMES.LEGEND, FALLBACK: HDML_TAG_NAMES.FALLBACK, }",
+          "description": "The twenty-two display tag names (SPEC §2), lifted out of the\n34-member `HDML_TAG_NAMES` so a display element never sees a data\ntag. `hdml-fallback` is included — it is registered, so\n`HDML.supports()` answers for it and V13 can count \"at most one\" —\neven though SPEC §2 exempts its content from every V-rule.\n\n★ **`TEXT` sits after `RULE`, before `PIE`** (019 S15), because\nthis block transcribes SPEC §2's inventory order and `hdml-text`\nis the **seventh mark** while `hdml-pie` is its own *Layout\nwidget* layer. So the tag is the published enum's **25th** member\nand this object's **13th** — ⚠ and neither ordinal is what any\ngate reads. The **counts** are 34 and 22.\n\nThe values are read from `HDML_TAG_NAMES`; no tag string is\nwritten literally in this file."
         },
         {
           "kind": "variable",
@@ -13659,7 +14393,7 @@
             "text": "ReadonlySet<string>"
           },
           "default": "new Set<string>( Object.values(HDML_TAG_NAMES), )",
-          "description": "**Every HDML tag, as a membership set** — the predicate for a\ndiagnostic `path` segment (RFC 019/002 §3.4, item 11).\n\n★ **It is the WHOLE vocabulary, data half included, and that is\nthe point.** The path format is shared with the HDQL emitter, and\n`@hdml/parser`'s `elementPath.ts` builds its own set from exactly\nthis object. Two emitters that answered to two different segment\npredicates would produce two formats wearing one name — the\nfailure RFC §2.1's amendment names — so the set is the same set,\nnot a display-shaped subset of it.\n\n★ **And it is read from `HDML_TAG_NAMES` rather than from\nHDVL_TAG_NAMES for a second, dated reason**: `hdml-text`\nis a **display** tag, published since\n`@hdml/types@0.0.2-alpha.26` and pinned here at\n`0.0.2-alpha.27` since step 41, that is **not** in\n`HDVL_TAG_NAMES` — row 42 is the step that gives it an element.\nA set built from the display subset would hand `path: null` to\nthe first diagnostic ever raised against an `<hdml-text>`; built\nfrom the full vocabulary it gained the tag the moment the pin\nmoved, with no edit here — which is what happened at step 41.\n\nMembership, never an `hdml-` prefix test — so a misspelled\n`<hdml-labl>` is not vocabulary and does not become an addressing\nlevel. It lives here for the reason HDQL_SORT_BY_TAG\ndoes: one module imports `@hdml/types` (R8)."
+          "description": "**Every HDML tag, as a membership set** — the predicate for a\ndiagnostic `path` segment (RFC 019/002 §3.4, item 11).\n\n★ **It is the WHOLE vocabulary, data half included, and that is\nthe point.** The path format is shared with the HDQL emitter, and\n`@hdml/parser`'s `elementPath.ts` builds its own set from exactly\nthis object. Two emitters that answered to two different segment\npredicates would produce two formats wearing one name — the\nfailure RFC §2.1's amendment names — so the set is the same set,\nnot a display-shaped subset of it.\n\n★ **And it is read from `HDML_TAG_NAMES` rather than from\nHDVL_TAG_NAMES for a second reason, which step 42\nclosed**: `hdml-text` was published by\n`@hdml/types@0.0.2-alpha.26`, pinned here at `0.0.2-alpha.27` at\nstep 41, and had **no element** until step 42 registered it. A\nset built from the display subset would have handed `path: null`\nto the first diagnostic ever raised against an `<hdml-text>`;\nbuilt from the full vocabulary it gained the tag the moment the\npin moved, with no edit here. ⚠ The two sets now agree about\n`hdml-text` again — and the **data** half is why this must keep\nreading the published enum regardless.\n\nMembership, never an `hdml-` prefix test — so a misspelled\n`<hdml-labl>` is not vocabulary and does not become an addressing\nlevel. It lives here for the reason HDQL_SORT_BY_TAG\ndoes: one module imports `@hdml/types` (R8)."
         },
         {
           "kind": "variable",
@@ -13667,8 +14401,8 @@
           "type": {
             "text": "Readonly<\n  Record<HdvlTagName, HdvlFamily>\n>"
           },
-          "default": "{ [HDVL_TAG_NAMES.VIEW]: \"view\", [HDVL_TAG_NAMES.CARTESIAN_PLANE]: \"plane\", [HDVL_TAG_NAMES.POLAR_PLANE]: \"plane\", [HDVL_TAG_NAMES.CONTINUOUS_SCALE]: \"scale\", [HDVL_TAG_NAMES.DATETIME_SCALE]: \"scale\", [HDVL_TAG_NAMES.ORDINAL_SCALE]: \"scale\", [HDVL_TAG_NAMES.LINE]: \"mark\", [HDVL_TAG_NAMES.AREA]: \"mark\", [HDVL_TAG_NAMES.BAR]: \"mark\", [HDVL_TAG_NAMES.POINT]: \"mark\", [HDVL_TAG_NAMES.ARC]: \"mark\", [HDVL_TAG_NAMES.RULE]: \"mark\", [HDVL_TAG_NAMES.PIE]: \"mark\", [HDVL_TAG_NAMES.CLUSTER]: \"container\", [HDVL_TAG_NAMES.STACK]: \"container\", [HDVL_TAG_NAMES.AXIS]: \"guide\", [HDVL_TAG_NAMES.TICK]: \"guide\", [HDVL_TAG_NAMES.LABEL]: \"guide\", [HDVL_TAG_NAMES.GRID]: \"guide\", [HDVL_TAG_NAMES.LEGEND]: \"guide\", [HDVL_TAG_NAMES.FALLBACK]: \"fallback\", }",
-          "description": "Tag → family, over every member of HDVL_TAG_NAMES.\n\nWith one flat `HDML_TAG_NAMES`, family membership has no home in\n`@hdml/types` (step-plan S3), yet V13's homogeneity check, W1's\nunknown-element warning, `HDML.supports()` and `SceneGroup.role`\nall need it. The `Record<HdvlTagName, HdvlFamily>` annotation is\nload-bearing: a twenty-second tag becomes a compile error rather\nthan a silent `undefined`.\n\n`hdml-pie` is a **mark**, not a container. §2.2 calls it a layout\n*widget* — \"the same, with one cross-row `derive()` in data space\nbefore projection\" — while a layout *container* \"is not a\npainter\". A pie paints, and §3.4.1 decides `empty` on\nmark-producing widgets, so a pie of four zero rows must count as\n\"produced no marks\" rather than be excluded from the question."
+          "default": "{ [HDVL_TAG_NAMES.VIEW]: \"view\", [HDVL_TAG_NAMES.CARTESIAN_PLANE]: \"plane\", [HDVL_TAG_NAMES.POLAR_PLANE]: \"plane\", [HDVL_TAG_NAMES.CONTINUOUS_SCALE]: \"scale\", [HDVL_TAG_NAMES.DATETIME_SCALE]: \"scale\", [HDVL_TAG_NAMES.ORDINAL_SCALE]: \"scale\", [HDVL_TAG_NAMES.LINE]: \"mark\", [HDVL_TAG_NAMES.AREA]: \"mark\", [HDVL_TAG_NAMES.BAR]: \"mark\", [HDVL_TAG_NAMES.POINT]: \"mark\", [HDVL_TAG_NAMES.ARC]: \"mark\", [HDVL_TAG_NAMES.RULE]: \"mark\", [HDVL_TAG_NAMES.TEXT]: \"mark\", [HDVL_TAG_NAMES.PIE]: \"mark\", [HDVL_TAG_NAMES.CLUSTER]: \"container\", [HDVL_TAG_NAMES.STACK]: \"container\", [HDVL_TAG_NAMES.AXIS]: \"guide\", [HDVL_TAG_NAMES.TICK]: \"guide\", [HDVL_TAG_NAMES.LABEL]: \"guide\", [HDVL_TAG_NAMES.GRID]: \"guide\", [HDVL_TAG_NAMES.LEGEND]: \"guide\", [HDVL_TAG_NAMES.FALLBACK]: \"fallback\", }",
+          "description": "Tag → family, over every member of HDVL_TAG_NAMES.\n\nWith one flat `HDML_TAG_NAMES`, family membership has no home in\n`@hdml/types` (step-plan S3), yet V13's homogeneity check, W1's\nunknown-element warning, `HDML.supports()` and `SceneGroup.role`\nall need it. The `Record<HdvlTagName, HdvlFamily>` annotation is\nload-bearing: a twenty-third tag becomes a compile error rather\nthan a silent `undefined`.\n\n★ **`hdml-text` is a `mark` too** (019 item 5, Note 003 §7.1): it\npaints one run per **row**, which is exactly what separates it\nfrom `hdml-label`, the guide that paints one run per **tick**.\n\n`hdml-pie` is a **mark**, not a container. §2.2 calls it a layout\n*widget* — \"the same, with one cross-row `derive()` in data space\nbefore projection\" — while a layout *container* \"is not a\npainter\". A pie paints, and §3.4.1 decides `empty` on\nmark-producing widgets, so a pie of four zero rows must count as\n\"produced no marks\" rather than be excluded from the question."
         },
         {
           "kind": "function",
@@ -13784,6 +14518,14 @@
           "name": "RULE_ATTRS_LIST",
           "declaration": {
             "name": "RULE_ATTRS_LIST",
+            "module": "\"@hdml/types\""
+          }
+        },
+        {
+          "kind": "js",
+          "name": "TEXT_ATTRS_LIST",
+          "declaration": {
+            "name": "TEXT_ATTRS_LIST",
             "module": "\"@hdml/types\""
           }
         },

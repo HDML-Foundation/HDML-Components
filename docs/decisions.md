@@ -26,7 +26,7 @@ component. It also keeps the JSDoc-only API the source of truth for both TypeDoc
 
 ## The display vocabulary reaches elements through one module
 
-The display half of HDML — twenty-one tag names and twenty `*_ATTRS_LIST` enums — lives
+The display half of HDML — twenty-two tag names and twenty-one `*_ATTRS_LIST` enums — lives
 in `@hdml/types`, exactly as the data half above does, and reaches every display element
 through a single re-export module, [`src/hdvl/vocabulary.ts`](../src/hdvl/vocabulary.ts).
 No display element imports `@hdml/types` directly, and no display tag or attribute string
@@ -35,8 +35,8 @@ is ever written as a literal.
 *Why the enums live in `@hdml/types` rather than here:* they are a **published
 cross-repo contract**, so a tag renamed upstream becomes a compile error in this repo
 rather than a silently unregistered element. *Why the single re-export module rather than
-twenty-one direct imports:* the 21/20 counts are then auditable in one file instead of
-twenty-one, and it is one place to assert that no data tag has leaked into the display
+twenty-two direct imports:* the 22/21 counts are then auditable in one file instead of
+twenty-two, and it is one place to assert that no data tag has leaked into the display
 set. `HDVL_TAG_NAMES` is built by reading members off `HDML_TAG_NAMES`, so the values
 cannot drift from the published enum even by a typo.
 
@@ -52,11 +52,11 @@ Every display element owns a CSS box and paints nothing. **One `<svg>`, in the
 plain-data [`SceneGroup`](../src/hdvl/scene.ts) describing what it wants drawn. See
 [docs/architecture.md](architecture.md#the-render-pipeline) for the shape.
 
-*Why one surface rather than one per widget:* twenty-one nested SVGs would put paint
+*Why one surface rather than one per widget:* twenty-two nested SVGs would put paint
 order at the mercy of CSS stacking rules, when SPEC's rule is simply *document order is
 paint order*. One surface makes that exact — the view concatenates groups in document
 order and array order is paint order — and it costs one `viewBox` instead of
-twenty-one coordinate systems to reconcile.
+twenty-two coordinate systems to reconcile.
 
 *Why data rather than a drawing API:* three prototype shapes were rejected, all of them
 from the PoC. Widgets holding **d3 selections into the view's SVG** makes every widget a
@@ -1195,7 +1195,7 @@ that actually override.
 
 `HDML.supports("hdml-stack")` is specified as answering what the runtime
 **implements**, not what the vocabulary names — and during v1 the two genuinely
-differ: all twenty-one display tags are registered with their attributes, but
+differ: all twenty-two display tags are registered with their attributes, but
 most of them still have no body. The obvious reading of "implements" is a
 per-element completeness flag, and that is the option this rejects.
 
@@ -1209,7 +1209,7 @@ published `*_ATTRS_LIST`.**
 
 That answers the question a host app is actually asking. `supports()` lives in
 the display half, so a page that never imports `@hdml/components/hdvl` gets
-`false` for all twenty-one — which is the real feature-detection case — and a
+`false` for all twenty-two — which is the real feature-detection case — and a
 page that does gets an answer that cannot disagree with `customElements`. The
 residual gap is honest and bounded: during v1, `supports("hdml-pie")` is `true`
 before `hdml-pie` draws anything. The alternative was a flag that would report
@@ -1953,7 +1953,7 @@ host that reaches it. Four things about that rule are load-bearing:
 - **Only the width.** `--hdml-line-color` and `--hdml-line-style` are left inheriting, so a
   plane can theme an outline colour once and switch it on per widget — and
   `schedule.test.ts`'s inherited-`--hdml-line-color` sentinel row keeps reaching a bar.
-- **It is eight hosts, not four**, because `fillPaint` has ten call sites and only four are
+- **It is nine hosts, not four** (eight until 019 step 42 added `hdml-text`), because `fillPaint` has ten call sites and only four are
   the marks the requirement named. `hdml-tick`, `hdml-label` and `hdml-legend` paint through
   it too; leaving them out would have put a 1.5px outline on every tick glyph, every axis
   label and every legend entry on **twelve of the thirteen** pages. Put to the founder as a
@@ -3642,3 +3642,58 @@ the unknown element is dropped silently, and the migrated twin of the same docum
 returns the dataset. So a missed `html/` file is a chart that renders nothing, with a clean
 console and no diagnostic, and **the grep is the only gate**. The 26-file sweep was
 verified by a zero-survivor grep over four patterns rather than by any test.
+
+---
+
+## `hdml-text` — the seventh mark
+
+*(019 item 5, step 42. Full reference in [components.md](components.md#hdml-text--mark-textts).)*
+
+Five decisions were taken or confirmed in the open while landing it, and four of them are
+about what it does **not** add.
+
+**`text` is required, and it raises no new code.** Note 003 §7.3 left the question for the
+step: *is `text` required?* It is — a text mark that prints nothing is a no-op with a box,
+and V19's shape is *"a missing required binding is an error naming the slot, never an
+implicit index"*. It is V19's **existing** `missing-binding`, deliberately not a
+twenty-fifth `DiagnosticCode`: the code already says *a required binding is absent*, and
+minting one here would have collided with the one the literal-branch step owns. The finding
+carries **no `channel`**, because `text` is not one — which is also why the clause cannot
+ride `requiredChannels` and sits beside the positional loop instead of inside it. It runs
+**after** that loop, so a widget with nothing bound reports its missing `x` first, exactly
+as an `hdml-point` would; V19's message order is already a contract.
+
+**`textsOf` lost its `Scale` rather than gaining a branch.** `hdml-text` needs §4.9's
+formatting and has **no scale at all**, and the two things the old signature used a `Scale`
+for were the three-case dispatch and the per-value format. So the function takes a
+`ScaleKind`, a `TextFormat` and the values. ⚠ **The per-value formatter is a function and
+not a zone**, and that is forced rather than chosen: only something holding the scale's
+`timeZone` can format a datetime, `Scale` publishes no `zone` member, and the step could not
+add one. A guide passes its scale's own `format` through the shared `scaleTextFormat`; the
+mark passes `formatValue` over the delivered column's own zone hint. The dispatch and the
+set function stay in one place, which is what R12 asks for.
+
+**All fifty `initial-{slot}` declarations landed here, and they had to.** The published enums
+carry fifty members across **ten** elements, and `check-dist`'s enum→manifest check is
+**per attribute** — so nine elements declared and one not would have left the suppressing
+fence in place and the step's own gate unmet. ★ **The cost nobody predicted is
+[`registry.test.ts`](../src/hdvl/registry.test.ts)**: a `@property` *is* an observed
+attribute, and that table deep-equals each element's `observedAttributes` against a
+hand-written list, so **nine rows that have nothing to do with `hdml-text` grew** between
+two and eleven members each. No count catches that — only the exact key set does, which is
+the reason the table is hand-written.
+
+**It is the ninth host whose outline is neutralised**, and no golden could have caught the
+omission. `hdml-text` reaches `fillPaint` like the other eight, so without a member in the
+UA sheet's `OUTLINED` rule the registry's `--hdml-line-width: 1.5px` would stroke every
+printed run on an unstyled page — legal, plausible paint. `hdml-label` is on that list for
+exactly this reason, and the two paint the same node kind. It joins `CLIPPED` for the same
+reason every mark is there, and is the **first** clipped host whose ink is wider than its
+anchor: a run at the domain's edge clips mid-glyph, which is the author's to fix with plane
+padding rather than the runtime's to grow the plot for.
+
+**⚠ And `--hdml-text-format` has a third reader on a property that does not inherit.**
+Measured across both corpus directories: **twenty-four** declarations of it, **twenty-three**
+scoped to `hdml-label` and one to `hdml-legend`, and **not one** would reach an
+`hdml-text`. A page adding the mark under one of those rules prints the locale default and
+looks correct doing it. The selector has to name all three.

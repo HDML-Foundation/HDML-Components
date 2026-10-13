@@ -54,6 +54,7 @@ import "./mark-bar";
 import "./mark-point";
 import "./mark-arc";
 import "./mark-rule";
+import "./mark-text";
 import "./layout-pie";
 import "./container-cluster";
 import "./container-stack";

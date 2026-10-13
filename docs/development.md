@@ -94,12 +94,22 @@ manifest cannot ship **in the tarball**.
 > `npm run manifest` and check `git status` after any change to a public docblock, signature
 > or export, not only after a tag change.
 
-The check verifies all **21** display tags and the **12** the `.`
+The check verifies all **22** display tags and the **12** the `.`
 entry registers are present (derived from `vocabulary.ts` and from `src/index.ts`'s own
 import list, never a hand-written list), and that **every display tag's declared
 attributes are exactly its `*_ATTRS_LIST`** — a class whose JSDoc `@attribute` block
-drifted from its enum is the failure that catches, and there are twenty of them. All
-twenty agreed when the check first ran.
+drifted from its enum is the failure that catches, and there are twenty-one of them. All
+twenty agreed when the check first ran, and 019 step 42 proved the check is live in both
+directions: deleting a single `@property` fails naming that attribute.
+
+⚠ **Two suppressing constants lived here between steps 41 and 42, and both are gone.** A
+published tag with no element (`hdml-text`) and a published attribute no element declared
+(item 3's fifty `initial-*`) each had to be fenced for the `@hdml/types@0.0.2-alpha.27`
+bump to land at all, because the publish necessarily arrives one step ahead of its
+consumer. Both constants only **suppressed**, so a stale member was silent — which is why
+their removal is asserted in the step that made them unnecessary rather than guarded here.
+`UNREGISTERED_TAGS` survives with one member, `hdml-split-by`, a pre-016 gap in the data
+half.
 
 **`cem analyze`'s output is not reproducible, so `manifest` has a second half.** It emits
 modules in filesystem-traversal order, and three consecutive runs over an unchanged

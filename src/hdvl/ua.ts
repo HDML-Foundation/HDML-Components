@@ -62,10 +62,20 @@ const GUTTER = { top: 8, right: 8, bottom: 24, left: 40 };
 const POLAR_GUTTER = 8;
 
 /**
- * The seven mark-painting hosts that clip to the plot area
+ * The **eight** mark-painting hosts that clip to the plot area
  * (SPEC §6, RFC §4.7). `hdml-pie` is among them: it paints, and the
  * clip is the same mechanism as SPEC §9's reach rule for
  * `overflow`, so an author rule beats it.
+ *
+ * ★ **`hdml-text` is the eighth** (019 item 5, step 42) and belongs
+ * here for the reason every other mark does: it paints at a *datum*
+ * position, so a row at the domain's edge overflows exactly as a
+ * point there does. ⚠ It is the first host on this list whose ink
+ * is **wider than its anchor**, so an edge run clips mid-glyph —
+ * which is the honest reading and is the author's to fix with
+ * padding, not the runtime's to grow the plot for. `hdml-label` is
+ * deliberately **not** here: a label paints in the gutter, outside
+ * the plot it would be clipped against.
  */
 const CLIPPED = [
   HDVL_TAG_NAMES.LINE,
@@ -74,15 +84,23 @@ const CLIPPED = [
   HDVL_TAG_NAMES.POINT,
   HDVL_TAG_NAMES.ARC,
   HDVL_TAG_NAMES.RULE,
+  HDVL_TAG_NAMES.TEXT,
   HDVL_TAG_NAMES.PIE,
 ]
   .map((tag) => `:host(${tag})`)
   .join(",\n");
 
 /**
- * The eight hosts whose paint comes from `mark.ts`'s `fillPaint`,
+ * The **nine** hosts whose paint comes from `mark.ts`'s `fillPaint`,
  * and whose `--hdml-line-width` initial is therefore **neutralised
  * to zero** (017 R4).
+ *
+ * ★★ **`hdml-text` is the NINTH, added at 019 step 42**, and no
+ * golden could have caught its absence: the seventh mark reaches
+ * `fillPaint` like the other eight, so without a member here the
+ * registry's `1.5px` would put a stroke outline around every
+ * printed run on an unstyled page. `hdml-label` is on this list for
+ * exactly that reason, and the two paint the same `text` node.
  *
  * Until R4 a filled widget never stroked, so `--hdml-line-width`'s
  * registered initial of **`1.5px`** reached nothing. Now that
@@ -136,6 +154,7 @@ const OUTLINED = [
   HDVL_TAG_NAMES.ARC,
   HDVL_TAG_NAMES.AREA,
   HDVL_TAG_NAMES.PIE,
+  HDVL_TAG_NAMES.TEXT,
   HDVL_TAG_NAMES.TICK,
   HDVL_TAG_NAMES.LABEL,
   HDVL_TAG_NAMES.LEGEND,

@@ -71,6 +71,7 @@ import {
   HDQL_SORT_BY_TAG,
   HDVL_TAG_NAMES,
   POINT_ATTRS_LIST,
+  TEXT_ATTRS_LIST,
 } from "./vocabulary";
 
 /**
@@ -291,6 +292,17 @@ const POINT_TAG: string = HDVL_TAG_NAMES.POINT;
 
 /** See {@link RULE_TAG}. */
 const ARC_TAG: string = HDVL_TAG_NAMES.ARC;
+
+/**
+ * ★ 019 item 5. See {@link RULE_TAG}.
+ *
+ * It is named for **V19's `text` clause alone** (Note 003 §7.3): a
+ * `text` binding is not a channel, so `requiredChannels` cannot
+ * carry it and the one rule that must know this tag by name is the
+ * one that demands it. Every other rule reaches `hdml-text` through
+ * its `mark` family, with no mention of the tag anywhere.
+ */
+const TEXT_TAG: string = HDVL_TAG_NAMES.TEXT;
 
 /** See {@link RULE_TAG}. */
 const PIE_TAG: string = HDVL_TAG_NAMES.PIE;
@@ -828,6 +840,25 @@ function missingBindingMessage(
   return (
     `no binding for channel "${ch}" — ` +
     `${tag} needs ${slotList(alts)}`
+  );
+}
+
+/**
+ * V19's `text` clause — `hdml-text`'s printed column (019 item 5,
+ * Note 003 §7.3).
+ *
+ * ★ It deliberately does **not** say *channel*. `text` is not one,
+ * which is the whole reason the clause exists: `requiredChannels`
+ * derives from the closed `CHANNEL_ATTRS` table and a slot spelled
+ * outside it contributes nothing, so V1 never demands a scale for
+ * `text` — and V19 would never demand the binding either without
+ * being told. The `Finding` carries **no `channel`** for the same
+ * reason; `error`'s fifth argument is optional precisely here.
+ */
+function missingTextMessage(tag: string): string {
+  return (
+    `no binding for "${TEXT_ATTRS_LIST.TEXT}" — ${tag} prints one ` +
+    "run per row and has no column to print"
   );
 }
 
@@ -1820,6 +1851,17 @@ const REQUIRED = new Map<
   ],
   [ARC_TAG, new Map([[POLAR_TAG, ARC_ANGLE]])],
   [RULE_TAG, new Map([[CARTESIAN_TAG, ONE_OF_XY]])],
+  // ★ `hdml-text` is positioned like an `hdml-point` under both
+  // plane forms (Note 003 §7.2), so it shares the point's two
+  // requirement sets exactly. Its **third** requirement, `text`, is
+  // not a channel and lives in `checkV19` below.
+  [
+    TEXT_TAG,
+    new Map([
+      [CARTESIAN_TAG, XY],
+      [POLAR_TAG, ANGLE_RADIUS],
+    ]),
+  ],
   [PIE_TAG, new Map([[POLAR_TAG, PIE_ANGLE]])],
 ]);
 
@@ -1843,6 +1885,16 @@ const REQUIRED = new Map<
  * form would have made every bar on that page a missing-binding
  * error — the clause was written at step 22 against a tree in
  * which no container existed to nest.
+ *
+ * ★★ **019 step 42 gave it a clause that is not about a channel.**
+ * `hdml-text` must bind `text` — *"a text mark that prints nothing
+ * is a no-op with a box"* (Note 003 §7.3) — and `text` is **not a
+ * channel**, so it cannot ride {@link requiredChannels} and has its
+ * own test below the loop. It raises this rule's existing
+ * `missing-binding` and mints **no** code, and its `Finding`
+ * carries no `channel`. ⓘ It runs after the positional loop so an
+ * `hdml-text` with nothing bound at all reports its missing `x`
+ * first, exactly as an `hdml-point` would.
  */
 function checkV19(el: HdvlElement, out: Finding[]): void {
   const res = resolutionOf(el);
@@ -1855,27 +1907,52 @@ function checkV19(el: HdvlElement, out: Finding[]): void {
   }
   const reqs =
     REQUIRED.get(el.localName)?.get(plane.localName) ?? null;
-  if (reqs === null) {
-    return;
-  }
-  const hoisted: Channel[] = [];
-  for (const node of containerChainOf(el)) {
-    hoisted.push(...boundChannels(node));
-  }
-  for (const req of reqs) {
-    if (
-      hoisted.includes(req.channel) ||
-      req.alts.some((alt) => alt.every((slot) => declared(el, slot)))
-    ) {
-      continue;
+  if (reqs !== null) {
+    const hoisted: Channel[] = [];
+    for (const node of containerChainOf(el)) {
+      hoisted.push(...boundChannels(node));
     }
+    for (const req of reqs) {
+      if (
+        hoisted.includes(req.channel) ||
+        req.alts.some((alt) =>
+          alt.every((slot) => declared(el, slot)),
+        )
+      ) {
+        continue;
+      }
+      out.push(
+        error(
+          "V19",
+          "missing-binding",
+          el,
+          missingBindingMessage(req.channel, req.alts, el.localName),
+          req.channel,
+        ),
+      );
+    }
+  }
+  // ★★ 019 item 5 / D8 — `text` is REQUIRED, and it is the one
+  // required binding in the vocabulary that is **not a channel**.
+  //
+  // It runs AFTER the positional loop so an `hdml-text` carrying no
+  // bindings at all reports its missing `x` first, exactly as an
+  // `hdml-point` would: the positional message is the one every
+  // other mark gives, and V19's order is already a contract.
+  //
+  // ★ It raises V19's existing `missing-binding` and mints **no
+  // code** — the 25th is row 44's, and *"a required binding is
+  // absent"* is precisely what this code already says.
+  if (
+    el.localName === TEXT_TAG &&
+    !declared(el, TEXT_ATTRS_LIST.TEXT)
+  ) {
     out.push(
       error(
         "V19",
         "missing-binding",
         el,
-        missingBindingMessage(req.channel, req.alts, el.localName),
-        req.channel,
+        missingTextMessage(el.localName),
       ),
     );
   }

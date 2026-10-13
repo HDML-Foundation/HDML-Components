@@ -19,7 +19,7 @@ import { paintSuppressed } from "./subscribe";
 import { fillPaint } from "./mark";
 import { channelOf } from "./resolve";
 import { CHANNEL_STATES, chainScaleOf } from "./scale";
-import { textsOf } from "./guide-label";
+import { scaleTextFormat, textsOf } from "./guide-label";
 import { guideGroup, tickSpecOf } from "./guide-spec";
 import {
   HDVL_FAMILIES,
@@ -430,6 +430,12 @@ function keyNodes(
  * formatting reads `900K, 1.2M, 1.5M` on one colorbar, which is the
  * output §4.9 exists to prevent.
  *
+ * ★ Since step 42 it takes a `ScaleKind` and a `TextFormat` rather
+ * than a `Scale`, so `hdml-text` — which has none — can be its
+ * **third** caller; the guide half's context comes from the shared
+ * `scaleTextFormat`, so this and `hdml-label` cannot come to
+ * disagree about which property carries the skeleton.
+ *
  * @param ctx - The frame's snapshot.
  * @param el - The legend.
  * @param scale - The resolved colour scale.
@@ -483,7 +489,11 @@ function rampNodes(
     });
   }
   const ticks = scale.ticks(tickSpecOf(el, m.props));
-  const texts = textsOf(el, scale, ticks, m.props);
+  const texts = textsOf(
+    scale.kind,
+    scaleTextFormat(el, scale, m.props),
+    ticks.map((t) => t.value),
+  );
   const paint = fillPaint(m, null);
   const off = across + flow.swatch + flow.gap;
   for (let i = 0; i < ticks.length; i++) {

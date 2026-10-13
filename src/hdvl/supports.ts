@@ -72,6 +72,7 @@ import {
   POLAR_PLANE_ATTRS_LIST,
   RULE_ATTRS_LIST,
   STACK_ATTRS_LIST,
+  TEXT_ATTRS_LIST,
   TICK_ATTRS_LIST,
   VIEW_ATTRS_LIST,
   familyOf,
@@ -94,13 +95,13 @@ declare global {
 /**
  * Tag → its published attribute names.
  *
- * Read off the same twenty `*_ATTRS_LIST` enums the elements take
+ * Read off the same twenty-one `*_ATTRS_LIST` enums the elements take
  * their `@property` keys from (§9.6), so it cannot drift from what
  * is registered. `hdml-fallback` has no attributes and its content
  * is exempt from every V-rule (§2.2), so it maps to the empty list.
  *
  * The `Record<HdvlTagName, …>` annotation is load-bearing in the
- * same way `HDVL_FAMILIES`' is: a twenty-second tag becomes a
+ * same way `HDVL_FAMILIES`' is: a twenty-third tag becomes a
  * compile error rather than a silent `undefined`.
  */
 const HDVL_ATTRS: Readonly<Record<HdvlTagName, readonly string[]>> = {
@@ -124,6 +125,7 @@ const HDVL_ATTRS: Readonly<Record<HdvlTagName, readonly string[]>> = {
   [HDVL_TAG_NAMES.POINT]: Object.values(POINT_ATTRS_LIST),
   [HDVL_TAG_NAMES.ARC]: Object.values(ARC_ATTRS_LIST),
   [HDVL_TAG_NAMES.RULE]: Object.values(RULE_ATTRS_LIST),
+  [HDVL_TAG_NAMES.TEXT]: Object.values(TEXT_ATTRS_LIST),
   [HDVL_TAG_NAMES.PIE]: Object.values(PIE_ATTRS_LIST),
   [HDVL_TAG_NAMES.CLUSTER]: Object.values(CLUSTER_ATTRS_LIST),
   [HDVL_TAG_NAMES.STACK]: Object.values(STACK_ATTRS_LIST),

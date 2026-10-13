@@ -14,7 +14,7 @@ import { customElement, property } from "lit/decorators.js";
 import { HdvlElement } from "./base";
 import type { FrameContext, Measured } from "./measure";
 import type { SceneGroup, SceneNode } from "./scene";
-import type { Scale, Tick } from "./scale";
+import type { Scale, ScaleKind } from "./scale";
 import { paintSuppressed } from "./subscribe";
 import { fillPaint } from "./mark";
 import { cssAngle, localeOf } from "./scale";
@@ -40,6 +40,33 @@ import {
  * `inherits: false` and no `initialValue`, so `""` is absence.
  */
 const P_FORMAT = "--hdml-text-format";
+
+/**
+ * §4.9's formatting inputs, with **no `Scale` among them** (019
+ * item 5, Note 003 §2.3).
+ *
+ * ★ **Why `value` is a function and not a zone.** The datetime case
+ * can only be formatted by something that knows the scale's
+ * `timeZone`, and that is private to `scale.ts` — {@link Scale}
+ * publishes no `zone` member and step 42 may not give it one. So the
+ * one input a caller cannot state as data is passed as the function
+ * it already holds: a guide passes its scale's own
+ * {@link Scale.format}, and `hdml-text`, which has **no scale at
+ * all**, passes `formatValue` over the delivered column's own zone
+ * hint. Everything else — which case applies, the skeleton, the
+ * locale — is data, so {@link textsOf} keeps the whole dispatch.
+ */
+export interface TextFormat {
+  /** The computed `--hdml-text-format`; `""` is absence. */
+  readonly skeleton: string;
+  /** Resolved once for the set, from `localeOf`. */
+  readonly locale: string;
+  /**
+   * One value → one string, for the two non-continuous cases.
+   * {@link Scale.format}'s exact shape.
+   */
+  value(v: number | string, skeleton: string): string;
+}
 
 /**
  * ★ §4.9's formatting, over the label **set**.
@@ -93,42 +120,74 @@ const P_FORMAT = "--hdml-text-format";
  * Step 30 migrates the corpus and the fixtures and deletes the
  * attribute arm.
  *
- * ⚠ **`props` is required here, and optional on `tickSpecOf`.** The
- * asymmetry is forced by the call graph rather than chosen: both of
- * this function's callers are production sites inside a frame and
- * hold a `Measured`, while `tickSpecOf` has nineteen further
- * callers over detached and mounted elements that have no MEASURE
- * snapshot to pass. A required parameter is the safer shape where
- * it is available, because a caller cannot forget it; stated here
- * so a later reader does not smooth the two into one.
+ * ★★ **019 item 5, step 42 — it takes no `Scale` any more**, so the
+ * seventh mark can call it. `hdml-text` prints one run per **row**
+ * off a column that needs no scale at all (Note 003 §2.2), and the
+ * only two things the old signature used a `Scale` for were the
+ * **dispatch** and the **per-value format** — both of which a
+ * caller can supply as a {@link TextFormat}. The set function, the
+ * cast and the three-case choice stay here, once (R12).
  *
- * @param el - The label, or the legend.
- * @param scale - The scale it labels.
- * @param ticks - The positions it will paint.
- * @param props - The MEASURE snapshot's harvested properties.
- * @returns One string per tick, in the same order.
+ * @param kind - Which of the three cases applies.
+ * @param format - The resolved formatting context.
+ * @param values - The values to format, in paint order.
+ * @returns One string per value, in the same order.
  */
 export function textsOf(
-  el: HdvlElement,
-  scale: Scale,
-  ticks: readonly Tick[],
-  props: ReadonlyMap<string, string>,
+  kind: ScaleKind,
+  format: TextFormat,
+  values: readonly (number | string)[],
 ): string[] {
-  // ⚠ **No attribute arm, as of 019 item 19.** `format=` is inert:
-  // the skeleton is a CSS declaration or nothing, and an empty
-  // computed value is the author having said nothing — which falls
-  // through to the locale's default, exactly as a bare label does.
-  const skeleton = (props.get(P_FORMAT) ?? "").trim();
-  if (scale.kind !== "continuous") {
-    return ticks.map((t) => scale.format(t.value, skeleton));
+  if (kind !== "continuous") {
+    return values.map((v) => format.value(v, format.skeleton));
   }
   // A continuous ladder yields numbers by construction; the cast is
   // total rather than defensive, and `formatCompactSet` is total
   // over non-finite input anyway.
-  const values = ticks.map((t) =>
-    typeof t.value === "number" ? t.value : Number(t.value),
+  const numbers = values.map((v) =>
+    typeof v === "number" ? v : Number(v),
   );
-  return formatCompactSet(values, skeleton, localeOf(el));
+  return formatCompactSet(numbers, format.skeleton, format.locale);
+}
+
+/**
+ * The **guide** half's {@link TextFormat} — the scale's own
+ * formatter, the element's locale and the computed skeleton.
+ *
+ * Both guide callers build theirs here rather than inline, so
+ * `hdml-label` and a continuous `hdml-legend`'s ramp cannot come to
+ * disagree about which property carries the skeleton or where the
+ * locale is resolved.
+ *
+ * ⚠ **`props` is required, and optional on `tickSpecOf`.** The
+ * asymmetry is forced by the call graph rather than chosen: both
+ * callers are production sites inside a frame and hold a
+ * `Measured`, while `tickSpecOf` has nineteen further callers over
+ * detached and mounted elements that have no MEASURE snapshot to
+ * pass. A required parameter is the safer shape where it is
+ * available, because a caller cannot forget it; stated here so a
+ * later reader does not smooth the two into one.
+ *
+ * @param el - The label, or the legend.
+ * @param scale - The scale it labels.
+ * @param props - The MEASURE snapshot's harvested properties.
+ * @returns Its formatting context.
+ */
+export function scaleTextFormat(
+  el: HdvlElement,
+  scale: Scale,
+  props: ReadonlyMap<string, string>,
+): TextFormat {
+  return {
+    // ⚠ **No attribute arm, as of 019 item 19.** `format=` is inert:
+    // the skeleton is a CSS declaration or nothing, and an empty
+    // computed value is the author having said nothing — which
+    // falls through to the locale's default, as a bare label does.
+    skeleton: (props.get(P_FORMAT) ?? "").trim(),
+    locale: localeOf(el),
+    value: (v: number | string, skeleton: string): string =>
+      scale.format(v, skeleton),
+  };
 }
 
 /**
@@ -163,10 +222,18 @@ export function textsOf(
  * the way back to the per-tick derivation, and `middle` now means
  * something on a ring that `auto` never did: centre every run.
  *
+ * ★ **Exported at step 42, for its third reader.** `hdml-text`
+ * publishes the same property — SPEC §9's `--hdml-text-anchor` row
+ * names the mark as of 019 item 5 — and a mark has no derivation
+ * to fall back to, so there `null` means *the run is centred on its
+ * datum*. The keyword set and the `auto`-is-absence reading are the
+ * same in both places, which is why there is one reader of them.
+ *
  * @param raw - The computed value off the MEASURE snapshot.
- * @returns The author's anchor, or `null` for the derivation.
+ * @returns The author's anchor, or `null` for the element's own
+ * default.
  */
-function authoredAnchor(
+export function authoredAnchor(
   raw: undefined | string,
 ): null | Placement["anchor"] {
   switch ((raw ?? "").trim()) {
@@ -288,7 +355,11 @@ export class HdmlLabelElement extends HdvlElement {
     const m: Measured = guide.measured;
     const across = guideAcross(guide);
     const ticks = guide.scale.ticks(tickSpecOf(this, m.props));
-    const texts = textsOf(this, guide.scale, ticks, m.props);
+    const texts = textsOf(
+      guide.scale.kind,
+      scaleTextFormat(this, guide.scale, m.props),
+      ticks.map((t) => t.value),
+    );
     // A text run is FILLED — `--hdml-fill-color`, whose initial is
     // `currentColor`, so an unstyled label paints in the inherited
     // text colour and `00-minimal.html` needs no CSS at all.

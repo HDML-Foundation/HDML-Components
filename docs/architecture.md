@@ -448,8 +448,9 @@ nothing new was added to the phase model, and the entries are fenced on
 untouched: a container reads no box that COMPUTE could have changed, because COMPUTE
 changes none.
 
-**Every painting element paints today** — all six marks (`hdml-line`, `hdml-rule`,
-`hdml-area`, `hdml-bar`, `hdml-point`, `hdml-arc`), `hdml-pie` (step 27), **all five
+**Every painting element paints today** — all **seven** marks (`hdml-line`,
+`hdml-rule`, `hdml-area`, `hdml-bar`, `hdml-point`, `hdml-arc`, and `hdml-text` since
+019 item 5), `hdml-pie` (step 27), **all five
 guides** (`hdml-axis`, `hdml-grid`, `hdml-tick`, `hdml-label`, and `hdml-legend` since
 step 31) and both layout containers (step 29, which paint nothing but derive). The other
 **eight** `scene()` implementations return `null`, which is a

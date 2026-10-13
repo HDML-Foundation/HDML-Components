@@ -37,6 +37,7 @@ export {
   POINT_ATTRS_LIST,
   ARC_ATTRS_LIST,
   RULE_ATTRS_LIST,
+  TEXT_ATTRS_LIST,
   PIE_ATTRS_LIST,
   CLUSTER_ATTRS_LIST,
   STACK_ATTRS_LIST,
@@ -48,11 +49,18 @@ export {
 } from "@hdml/types";
 
 /**
- * The twenty-one display tag names (SPEC §2), lifted out of the
- * 33-member `HDML_TAG_NAMES` so a display element never sees a data
+ * The twenty-two display tag names (SPEC §2), lifted out of the
+ * 34-member `HDML_TAG_NAMES` so a display element never sees a data
  * tag. `hdml-fallback` is included — it is registered, so
  * `HDML.supports()` answers for it and V13 can count "at most one" —
  * even though SPEC §2 exempts its content from every V-rule.
+ *
+ * ★ **`TEXT` sits after `RULE`, before `PIE`** (019 S15), because
+ * this block transcribes SPEC §2's inventory order and `hdml-text`
+ * is the **seventh mark** while `hdml-pie` is its own *Layout
+ * widget* layer. So the tag is the published enum's **25th** member
+ * and this object's **13th** — ⚠ and neither ordinal is what any
+ * gate reads. The **counts** are 34 and 22.
  *
  * The values are read from `HDML_TAG_NAMES`; no tag string is
  * written literally in this file.
@@ -70,6 +78,7 @@ export const HDVL_TAG_NAMES = {
   POINT: HDML_TAG_NAMES.POINT,
   ARC: HDML_TAG_NAMES.ARC,
   RULE: HDML_TAG_NAMES.RULE,
+  TEXT: HDML_TAG_NAMES.TEXT,
   PIE: HDML_TAG_NAMES.PIE,
   CLUSTER: HDML_TAG_NAMES.CLUSTER,
   STACK: HDML_TAG_NAMES.STACK,
@@ -113,15 +122,16 @@ export const HDQL_SORT_BY_TAG: string = HDML_TAG_NAMES.SORT_BY;
  * not a display-shaped subset of it.
  *
  * ★ **And it is read from `HDML_TAG_NAMES` rather than from
- * {@link HDVL_TAG_NAMES} for a second, dated reason**: `hdml-text`
- * is a **display** tag, published since
- * `@hdml/types@0.0.2-alpha.26` and pinned here at
- * `0.0.2-alpha.27` since step 41, that is **not** in
- * `HDVL_TAG_NAMES` — row 42 is the step that gives it an element.
- * A set built from the display subset would hand `path: null` to
- * the first diagnostic ever raised against an `<hdml-text>`; built
- * from the full vocabulary it gained the tag the moment the pin
- * moved, with no edit here — which is what happened at step 41.
+ * {@link HDVL_TAG_NAMES} for a second reason, which step 42
+ * closed**: `hdml-text` was published by
+ * `@hdml/types@0.0.2-alpha.26`, pinned here at `0.0.2-alpha.27` at
+ * step 41, and had **no element** until step 42 registered it. A
+ * set built from the display subset would have handed `path: null`
+ * to the first diagnostic ever raised against an `<hdml-text>`;
+ * built from the full vocabulary it gained the tag the moment the
+ * pin moved, with no edit here. ⚠ The two sets now agree about
+ * `hdml-text` again — and the **data** half is why this must keep
+ * reading the published enum regardless.
  *
  * Membership, never an `hdml-` prefix test — so a misspelled
  * `<hdml-labl>` is not vocabulary and does not become an addressing
@@ -163,8 +173,12 @@ export type HdvlFamily =
  * `@hdml/types` (step-plan S3), yet V13's homogeneity check, W1's
  * unknown-element warning, `HDML.supports()` and `SceneGroup.role`
  * all need it. The `Record<HdvlTagName, HdvlFamily>` annotation is
- * load-bearing: a twenty-second tag becomes a compile error rather
+ * load-bearing: a twenty-third tag becomes a compile error rather
  * than a silent `undefined`.
+ *
+ * ★ **`hdml-text` is a `mark` too** (019 item 5, Note 003 §7.1): it
+ * paints one run per **row**, which is exactly what separates it
+ * from `hdml-label`, the guide that paints one run per **tick**.
  *
  * `hdml-pie` is a **mark**, not a container. §2.2 calls it a layout
  * *widget* — "the same, with one cross-row `derive()` in data space
@@ -188,6 +202,7 @@ export const HDVL_FAMILIES: Readonly<
   [HDVL_TAG_NAMES.POINT]: "mark",
   [HDVL_TAG_NAMES.ARC]: "mark",
   [HDVL_TAG_NAMES.RULE]: "mark",
+  [HDVL_TAG_NAMES.TEXT]: "mark",
   [HDVL_TAG_NAMES.PIE]: "mark",
   [HDVL_TAG_NAMES.CLUSTER]: "container",
   [HDVL_TAG_NAMES.STACK]: "container",

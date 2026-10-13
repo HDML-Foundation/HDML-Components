@@ -55,7 +55,7 @@ flowchart TD
   view -.->|"≤ 1"| fb[hdml-fallback]
   plane --> scale["hdml-continuous-scale<br/>hdml-datetime-scale<br/>hdml-ordinal-scale"]
   scale -->|"link level —<br/>scales only"| scale
-  scale -->|"tip — widgets only"| mark["hdml-line · hdml-area · hdml-bar<br/>hdml-point · hdml-arc · hdml-rule<br/>hdml-pie"]
+  scale -->|"tip — widgets only"| mark["hdml-line · hdml-area · hdml-bar<br/>hdml-point · hdml-arc · hdml-rule<br/>hdml-text · hdml-pie"]
   scale --> guide["hdml-axis · hdml-tick<br/>hdml-label · hdml-grid<br/>hdml-legend"]
   scale --> ctr["hdml-cluster<br/>hdml-stack"]
   ctr --> mark
@@ -267,7 +267,7 @@ Sort the frame by one or more fields. No attributes; per-field direction comes f
 
 The display half registers **21 tags**, in seven families
 ([`HDVL_FAMILIES`](../src/hdvl/vocabulary.ts)): `view`, `plane`, `scale`, `mark`,
-`container`, `guide`, `fallback`. **All twenty-one have bodies** as of this commit — the
+`container`, `guide`, `fallback`. **All twenty-two have bodies** as of this commit — the
 four structural elements, the three scales, **all six marks**, `hdml-pie`, **all five
 guides** and **both layout containers**. Nothing is
 [registered but inert](#every-tag-has-a-body) any longer.
@@ -663,6 +663,75 @@ on both tags is one call to `sectorScene`, which owns everything from the pole d
 §3.4.1's `empty`. The only thing the two tags differ in is the **angle form** each supplies:
 the arc's ranged pair or ordinal band, the pie's derived prefix sum. There is exactly one
 `k: "arc"` node literal in the project, and that is why.
+
+### `hdml-text` — [mark-text.ts](../src/hdvl/mark-text.ts)
+
+**The seventh mark, and the twenty-second display tag** (019 item 5). It prints one
+formatted text run **per row**, at that row's own projected position — which is exactly
+what separates it from `hdml-label`, the *guide* that prints one run per **tick**.
+
+| | |
+|---|---|
+| **Family** | `mark` — it paints, and §3.4.1 decides `empty` over mark-producing widgets |
+| **Attributes** | `x`, `y` (cartesian) · `angle`, `radius` (polar) · `color` · **`text`** · `source`, plus one `initial-{slot}` per slot |
+| **No `size`** | a run's size is `--hdml-font-size`, a registered property, not a channel — so unlike every other point-like mark it publishes no `size` binding |
+| **No ranged forms** | it is point-like; a run has no extent to bind |
+| **Node** | one `text` per row, with a **real `i`** (a label's is `-1`) |
+| **Paint** | filled, through the same `fillPaint` path as every other filled mark, with a per-row `color` channel honestly |
+
+**`text` is a new kind of binding, not a seventh channel.** It names the printed column and
+**resolves no scale**: V1 derives its required channels from a closed fourteen-entry
+attribute→channel table, and a slot spelled outside that table contributes none. So a bound
+`text` with no scale anywhere in scope is legal, with no structural change and no new rule —
+and that is asserted directly, beside a control proving a bound `x` with no x scale still
+errors.
+
+**`text` is required.** A text mark that prints nothing is a no-op with a box, so V19 demands
+it — under V19's **existing** `missing-binding` code, and with **no `channel`** on the
+finding, because `text` is not one. A widget carrying nothing at all reports its missing `x`
+first, exactly as an `hdml-point` would.
+
+**It adds no registered property and no V-rule.** The whole `--hdml-text-*` family is reused
+as 017 R2 named it to be: `--hdml-text-rotate` turns the run about its own anchor,
+`--hdml-text-anchor` replaces the anchor, and `--hdml-text-format` supplies §4.9's skeleton.
+Its **default placement is `middle`/`middle`** — a label derives an anchor from the outward
+normal of the guide it hangs off, and a mark hangs off nothing: its datum *is* the point. The
+**baseline is never authored**, exactly as on a label.
+
+> ### ⚠ `--hdml-text-format` does **not** inherit, and `hdml-text` is its THIRD reader
+>
+> The property is registered `inherits: false` (019 item 19, decision A1), so a page-wide
+> skeleton needs a selector naming every reader:
+>
+> ```css
+> hdml-label, hdml-legend, hdml-text { --hdml-text-format: compact-short }
+> ```
+>
+> **Measured at step 42: all twenty-four `--hdml-text-format` declarations across both
+> corpus directories are scoped to `hdml-label` — twenty-three of them — or to
+> `hdml-legend`, and not one would reach an `hdml-text`.** A page that adds the mark under
+> one of those rules prints the **locale default** and looks correct doing it. Widen the
+> selector.
+
+**Its formatting is `hdml-label`'s**, shared rather than copied: `textsOf` takes a
+`ScaleKind`, a `TextFormat` and the values, so §4.9's three cases are dispatched in one
+place and a continuous column takes **one shared compact prefix over the whole set** rather
+than one per row. The kind comes from the delivered column's own D9 `ColumnType` — the same
+mapping V2 uses for a bound channel — and from the values' shape for a literal, which cannot
+be datetime because §5's grammar has no literal spelling for an instant. A **missing** value
+contributes nothing to the set and drops its row, so the prefix is chosen from the values
+actually printed.
+
+**Its reach is standalone only.** A sibling text at the same binding lands **on a simple
+bar's top** — the common case, and asserted — and **inside a stacked child's box**, because a
+container's derived endpoints are internal by design and a child's own `y` is never read.
+V17 already forbids it as a stack or cluster child, so the limit is enforced structurally and
+needs no rule of its own. The nested form — a text inside the mark it labels, inheriting that
+mark's computed per-datum geometry — is a named successor, not a gap.
+
+**It clips to the plot area** like every other mark, and it is the first clipped host whose
+ink is wider than its anchor, so a run at the domain's edge clips mid-glyph. That is the
+author's to fix with plane padding; the runtime does not measure a run and grow the plot.
 
 ### `hdml-axis` · `hdml-grid` — [guide-axis.ts](../src/hdvl/guide-axis.ts) · [guide-grid.ts](../src/hdvl/guide-grid.ts)
 
@@ -1532,7 +1601,7 @@ scale whose domain is the children in DOM order"*.
 
 **No display tag is registered-but-inert.** `hdml-legend` was the last one, and its body
 landed with Slice H; Contract 1 is not merely complete but implemented, in all
-twenty-one tags.
+twenty-two tags.
 
 The five guides take **no `source`** and bind no columns — a guide is a function of the
 resolved scale, its own box and its computed style.
@@ -1693,7 +1762,7 @@ separators were written and never painted.
 | | hosts | what `--hdml-line-*` is | `--hdml-line-width` in force |
 |---|---|---|---|
 | **stroked** (`strokePaint`) | `hdml-line`, `hdml-rule`, `hdml-axis`, `hdml-grid` | the line | the registry's **`1.5px`** |
-| **filled** (`fillPaint`) | `hdml-point`, `hdml-bar`, `hdml-arc`, `hdml-area`, `hdml-pie`, `hdml-tick`, `hdml-label`, `hdml-legend` | an **outline over the fill** | **`0`**, by UA rule |
+| **filled** (`fillPaint`) | `hdml-point`, `hdml-bar`, `hdml-arc`, `hdml-area`, `hdml-pie`, **`hdml-text`**, `hdml-tick`, `hdml-label`, `hdml-legend` | an **outline over the fill** | **`0`**, by UA rule |
 
 Five things an author needs from this, and each is a test in `ua.test.ts` or
 `mark-point.test.ts` rather than a promise here:
