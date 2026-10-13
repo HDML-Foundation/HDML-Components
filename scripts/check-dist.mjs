@@ -439,7 +439,7 @@ for (const file of tsFilesUnder("src/hdvl")) {
 //   the platform and simply never reaches an element, so it is
 //   invisible from inside the element too.
 //
-// They are therefore enforced HERE, over the thirteen committed
+// They are therefore enforced HERE, over the fourteen committed
 // acceptance pages, which is the only place either rule has a
 // subject. Landed at step 34.
 // ---------------------------------------------------------------

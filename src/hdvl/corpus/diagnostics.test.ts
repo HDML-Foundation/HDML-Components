@@ -18,7 +18,7 @@ import type { HdmlViewElement } from "../view";
  * This file lives in `corpus/` rather than beside `validate.ts`
  * because every claim it makes needs a **real page**: a multi-view
  * one for the document-order composition, same-tag siblings for the
- * ordinal, and all twenty-nine views for the clean pass.
+ * ordinal, and all thirty-one views for the clean pass.
  * `validate.test.ts` would have given the code-space record for
  * free, but that record is already asserted there and does not
  * need a second home; a page corpus cannot be reconstructed.
@@ -35,7 +35,20 @@ import type { HdmlViewElement } from "../view";
 /** The page the composition claims are made on — two views. */
 const MULTI = "02-area";
 
-/** The thirteen corpus pages and their view counts. */
+/**
+ * The fourteen corpus pages and their view counts.
+ *
+ * ⚠ **This is the SECOND copy of this table and the only one
+ * nothing counts.** `corpus/validator.test.ts` asserts its own
+ * `PAGES` length and its view sum; this one is iterated and never
+ * measured, so a fourteenth page added there and forgotten here
+ * leaves the whole suite **green** while `HDML.diagnostics()`'s
+ * clean pass silently stops covering a page. Measured at 019 step
+ * 43: with `validator.test.ts` at fourteen and this table at
+ * thirteen, all three corpus suites pass on all three engines,
+ * 63 tests to 0 failures.
+ * Keep the two in step by hand; the grep is `"13-text"`.
+ */
 const PAGES: readonly (readonly [string, number])[] = [
   ["00-minimal", 1],
   ["01-line", 1],
@@ -50,6 +63,7 @@ const PAGES: readonly (readonly [string, number])[] = [
   ["10-radar", 1],
   ["11-multi-plane", 2],
   ["12-coverage", 4],
+  ["13-text", 2],
 ];
 
 /** The namespace, typed enough to call without a cast per site. */

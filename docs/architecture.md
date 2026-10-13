@@ -335,7 +335,8 @@ per-datum channel state colours. It is **absent unless the author wrote a state 
 not present-and-`undefined`, and the difference is load-bearing rather than stylistic:
 `NodeBase extends Paint` and five `SceneNode` variants spread `NodeBase`, so an
 always-present field lands on every node of every group. Measured at step 37, an
-always-present `states` re-baselines **all 29 goldens** — every one of the 17 golden
+always-present `states` re-baselines **all goldens** — measured at step 37 over the
+then-29, and every one of the 17 golden
 suites reds — including the ten guide and legend nodes that have no `color` channel at
 all. So the field is written only by the five mark call sites that resolve one, and only
 when `Scale.paintState` answers; the populate site spreads a `{}` otherwise, which makes
@@ -493,7 +494,7 @@ marker as inline attributes, and **removes them** when a node stops carrying a s
 because the renderer *diffs* and reuses the element — and the generator emits a second,
 marker-scoped rule that reads it back with `var()`. So a node field reaches CSS, in one
 direction, once per frame; there is still no JavaScript at interaction time and still no
-per-node index. The scene is unchanged either way, which is why all 29 goldens stay blind to
+per-node index. The scene is unchanged either way, which is why all 31 goldens stay blind to
 both halves. See
 [components.md § A channel colour's state variants](components.md#a-channel-colours-state-variants-reach-the-dom-per-node).
 

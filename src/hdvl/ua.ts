@@ -484,7 +484,7 @@ const LEGEND_CSS = [
  *
  * The corpus pages do not hit the `auto`-reset trap, because they
  * were written against no UA sheet at all and set three offsets
- * each. They hit the extent one — nine of the thirteen write the
+ * each. They hit the extent one — nine of the fourteen write the
  * `left: 0` idiom above on an axis or a tick — which is why R1's
  * fix moved their goldens. **No page writes it on a label**, so
  * R2's half of the lock is proved by `ua.test.ts` alone.

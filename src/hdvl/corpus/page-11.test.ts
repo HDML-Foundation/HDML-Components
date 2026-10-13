@@ -35,7 +35,8 @@ import { scaleOf } from "../scale";
 import { tickSpecOf } from "../guide-spec";
 
 /**
- * ★ **`11-multi-plane` — the thirteenth page, and the only one
+ * ★ **`11-multi-plane` — the thirteenth page of fourteen, and the
+ * only one
  * whose subject is the *view* rather than a widget** (RFC §10.1 I,
  * SPEC §4.8).
  *
@@ -115,7 +116,7 @@ const P2 = { precision: 2 };
 /** The harness call a gate mounts a page with. */
 const CALL = "mountCorpus";
 
-/** The thirteen committed pages, and the suite that mounts each. */
+/** The fourteen committed pages, and the suite that mounts each. */
 const CORPUS: readonly (readonly [string, string])[] = [
   ["00-minimal", "page-00"],
   ["01-line", "page-01"],
@@ -130,6 +131,7 @@ const CORPUS: readonly (readonly [string, string])[] = [
   ["10-radar", "page-10"],
   ["11-multi-plane", "page-11"],
   ["12-coverage", "page-12"],
+  ["13-text", "page-13"],
 ];
 
 /** A's comparable scene — two decimals, `widget` blanked. */
@@ -661,23 +663,35 @@ suite("corpus 11-multi-plane (B, overlay)", () => {
 /**
  * ★ **The corpus is closed** (RFC §10.1).
  *
- * With `11-multi-plane` gated, every page under `html/hdvl/` is
+ * With `13-text` gated, every page under `html/hdvl/` is
  * mounted by a suite under `src/hdvl/corpus/`. The claim is
  * asserted rather than written down: each page is fetched (a
  * missing one is a 404 and throws) and each suite's **source** is
  * fetched off the runner's own static serving and searched for the
  * `mountCorpus` call that names that page.
  *
- * What it cannot do is discover a **fourteenth** page: the runner
+ * What it cannot do is discover a **fifteenth** page: the runner
  * serves no directory index (`/html/hdvl/` is a 404, measured), so
- * the list of thirteen is a literal here exactly as it is a count
+ * the list of fourteen is a literal here exactly as it is a count
  * in `CLAUDE.md` and in the corpus README. A page added without a
  * gate would have to be added to this list too — which is the same
  * hand step, in a place a test fails from.
+ *
+ * ⚠ **019 step 43 measured what that costs.** `13-text` took the
+ * set from thirteen to fourteen, and the hand step is **seven
+ * literals across three files**, not one: this list and its
+ * length; `corpus/validator.test.ts`'s own `PAGES` table, that
+ * table's length, its view sum **and** its separate W2 total; and
+ * `corpus/diagnostics.test.ts`'s **second** copy of the table.
+ * Only the two in this file fail loudly when forgotten — the W2
+ * total fails with a bare `expected 31 to equal 29`, and the
+ * second table is **counted by nothing**, so forgetting it leaves
+ * every suite green while one page quietly drops out of
+ * `HDML.diagnostics()`'s clean pass.
  */
 suite("corpus (the set is closed)", () => {
-  test("★ thirteen pages, and each has a gate", async () => {
-    assert.lengthOf(CORPUS, 13);
+  test("★ fourteen pages, and each has a gate", async () => {
+    assert.lengthOf(CORPUS, 14);
     for (const [name, suiteFile] of CORPUS) {
       const page = await pageSource(name);
       assert.match(page, /<hdml-view/);
@@ -688,7 +702,7 @@ suite("corpus (the set is closed)", () => {
       const src = await res.text();
       // The function's name is a constant, never spelled next to
       // an open paren: this file's own source is one of the
-      // thirteen the second test below scans, so a needle written
+      // fourteen the second test below scans, so a needle written
       // literally would BE a call site in it.
       assert.include(src, `${CALL}(${JSON.stringify(name)})`);
     }

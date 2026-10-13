@@ -264,8 +264,8 @@ suite("hdvl/guide-label — §6.5's formatted run", () => {
     // text outline. That is now a supported surface (SPEC §9's rows
     // say so), and both halves need an assertion.
     //
-    // The default half is the one that protects the corpus: twelve
-    // of the thirteen pages carry a label, none of them authors an
+    // The default half is the one that protects the corpus: thirteen
+    // of the fourteen pages carry a label, none of them authors an
     // outline, and `--hdml-line-width`'s registered initial is
     // 1.5px — so without the UA rule every one of them would have
     // grown faux-bold text in `currentColor`.

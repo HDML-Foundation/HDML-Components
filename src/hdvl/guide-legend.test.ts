@@ -969,6 +969,9 @@ suite("hdvl/guide-legend — the text-metric seam", () => {
     //
     // ⚠ No corpus page authors a channel state palette until row
     // 40, so all 29 whole-`Scene` goldens stay byte-unchanged —
+    // ⓘ 29 is this row's figure; the corpus is 31 goldens since
+    // 019 step 43, and `13-text` declares no legend, so the
+    // thirteen below is unchanged —
     // and at this row that is a REAL gate rather than a structural
     // one (C295): this file is no longer zero-diff, so a legend
     // node gaining an unconditional `states` key would move

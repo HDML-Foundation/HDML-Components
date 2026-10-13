@@ -879,8 +879,8 @@ export function strokePaint(
  * `hdml-rule`, `hdml-axis` and `hdml-grid` — {@link strokePaint}'s
  * hosts — on `1.5px`.
  *
- * Five of the thirteen corpus pages authored an outline on a filled
- * mark and got nothing for it: `05`/`06`/`07` on `hdml-point`,
+ * Five of the then-thirteen corpus pages authored an outline on a
+ * filled mark and got nothing for it: `05`/`06`/`07` on `hdml-point`,
  * `08`/`09` on `hdml-arc`. `08`'s white slice separators are the
  * clearest case — authored, and never once painted.
  *

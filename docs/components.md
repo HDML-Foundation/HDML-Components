@@ -678,6 +678,7 @@ what separates it from `hdml-label`, the *guide* that prints one run per **tick*
 | **No ranged forms** | it is point-like; a run has no extent to bind |
 | **Node** | one `text` per row, with a **real `i`** (a label's is `-1`) |
 | **Paint** | filled, through the same `fillPaint` path as every other filled mark, with a per-row `color` channel honestly |
+| **Corpus page** | [`html/hdvl/13-text.html`](../html/hdvl/13-text.html), the corpus's **fourteenth** page (019 step 43) — **A** a scatter printing its own values, **B** D9a's reach case on simple bar tops. Gated by `page-13.test.ts` with two whole-`Scene` goldens and the geometry invariants at both widths, **zero new `ACCEPTED` entries** |
 
 **`text` is a new kind of binding, not a seventh channel.** It names the printed column and
 **resolves no scale**: V1 derives its required channels from a closed fourteen-entry
@@ -712,6 +713,29 @@ normal of the guide it hangs off, and a mark hangs off nothing: its datum *is* t
 > `hdml-legend`, and not one would reach an `hdml-text`.** A page that adds the mark under
 > one of those rules prints the **locale default** and looks correct doing it. Widen the
 > selector.
+>
+> ★ **Step 43 measured both halves on a real document, `13-text`, and the widening has a
+> shape.**
+>
+> - With the selector naming the guides only, the mark's runs print `420,000 … 3,100,000`
+>   beside a y axis reading `0M 1M 2M 3M`, and **`assertRenders`, `assertInvariants` at
+>   both widths and both whole-`Scene` goldens are green on all three engines.** Nothing
+>   objects, because an unformatted run is a valid string, `formatCompactSet` is total over
+>   an empty skeleton, V14 only classifies a skeleton that *is* declared, and the golden
+>   records whatever is painted as correct.
+> - And the bare three-tag form above is an **error** on any page with a band axis: a plain
+>   `hdml-label` also reaches an **ordinal** channel's label, and **V14 makes a skeleton
+>   there `bad-format-skeleton`** — an ordinal renders its domain strings verbatim and has
+>   nothing to format. Measured: exactly one V14 on `13-text`'s figure B.
+>
+> So the idiom is **the three readers, qualified by channel**:
+>
+> ```css
+> hdml-label[channel="y"], hdml-legend, hdml-text { --hdml-text-format: compact-short }
+> ```
+>
+> `13-text` carries that rule and `page-13.test.ts` asserts it against the page's own
+> source *and* against the computed property on each mark.
 
 **Its formatting is `hdml-label`'s**, shared rather than copied: `textsOf` takes a
 `ScaleKind`, a `TextFormat` and the values, so §4.9's three cases are dispatched in one
@@ -1825,7 +1849,7 @@ is keyed by state name. So the scene now *does* hold more than one value per nod
 exactly the one class the sheet cannot express.
 
 Three properties of that field are decisions rather than details. It is **absent unless a
-state palette is authored** — an always-present field re-baselines all 29 goldens,
+state palette is authored** — an always-present field re-baselines all 31 goldens,
 measured. It carries its **target property** because `applyPaint` sees the node and
 nothing else and cannot tell a channel-resolved `fill` from a `--hdml-fill-color` one;
 that is the same rule `suppressedOf`'s stroked-host list encodes from the sheet side, and

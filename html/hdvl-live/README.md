@@ -1,10 +1,23 @@
 # HDVL corpus — live data
 
-The thirteen pages of [`html/hdvl/`](../hdvl/) rebuilt on the **`maang`** schema,
-served by the local HDIO at `http://127.0.0.1:8888` as `tenant-a`. Same thirteen
-pages, same twenty-nine figures, same grammar in the same order — only the data
-layer moved, so a difference between a page here and its twin there is a
-difference in the runtime and not in the authoring.
+Thirteen of the fourteen pages of [`html/hdvl/`](../hdvl/) rebuilt on the
+**`maang`** schema, served by the local HDIO at `http://127.0.0.1:8888` as
+`tenant-a`. Those thirteen are the same pages, the same twenty-nine figures and
+the same grammar in the same order — only the data layer moved, so a difference
+between a page here and its twin there is a difference in the runtime and not in
+the authoring.
+
+> ⚠ **`13-text` has no twin here, deliberately** (019 step 43). It is the
+> fourteenth mock page and the only one `html/hdvl-live/` does not mirror.
+> Three reasons, in order: a live twin needs a real `maang` column worth
+> *printing* on every datum, which is a data-modelling decision no gate covers
+> and which the mock page answers with literals; **017 F1 retired the
+> byte-copy invariant**, so nothing in the repo requires the two sets to
+> match; and `scripts/check-dist.mjs` contains **zero** references to this
+> directory, so no gate reads it either way. The twin is a named, unscheduled
+> successor — not an omission someone forgot. ★ **Everything below is
+> therefore about thirteen pages and twenty-nine figures, and the mock corpus
+> is fourteen and thirty-one.**
 
 Every page is standalone: it declares its own `hdml-model` (a `type="query"`
 table over the five MAANG tables, unioned into long form) and its own frames.

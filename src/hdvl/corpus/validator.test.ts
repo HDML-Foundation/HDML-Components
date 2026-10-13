@@ -19,16 +19,16 @@ import { diagnosticsOf } from "../validate";
  * ★ **SPEC §11's twenty rules, over the whole acceptance corpus**
  * (RFC §10.2, step 34 — the step designed to *discover* work).
  *
- * Thirteen pages, twenty-nine views, every rule named. Three
- * decisions are taken here rather than thirteen times in thirteen
+ * Fourteen pages, thirty-one views, every rule named. Three
+ * decisions are taken here rather than fourteen times in fourteen
  * suites, and each is a claim this file has to defend.
  *
- * **1. One file, not thirteen sets of per-page assertions.** *"Zero
+ * **1. One file, not fourteen sets of per-page assertions.** *"Zero
  * violations across the corpus"* is one readable claim, and the
  * per-rule **ledger** below — an exhaustive `Record<RuleId, …>`,
  * so a rule added to the union without a verdict fails
- * `compile_tst` — cannot be written thirteen times without
- * becoming thirteen partial ledgers that agree by luck. The cost
+ * `compile_tst` — cannot be written fourteen times without
+ * becoming fourteen partial ledgers that agree by luck. The cost
  * is that a page's fixture is not beside its rules; the answer is
  * that this gate needs no fixture (decision 2).
  *
@@ -40,11 +40,11 @@ import { diagnosticsOf } from "../validate";
  * *sixteen* of the twenty rules — and is data-independent by
  * construction. The **binding** pass's column-derived half (V2's
  * kind clause, V4's `absent` clause, V5, V7's row clauses) is
- * already asserted zero on **all twenty-nine views** by the
- * thirteen `page-NN.test.ts` suites, each through
+ * already asserted zero on **all thirty-one views** by the
+ * fourteen `page-NN.test.ts` suites, each through
  * `assertRenders`'s `diagnosticsOf(view)` deep-equal — with that
  * page's own canned columns. Re-mounting a fourteenth copy of
- * those thirteen fixtures would assert the same claim against the
+ * those fourteen fixtures would assert the same claim against the
  * same data and add a second copy of every fixture, which is
  * exactly what `corpus.ts`'s decision 1 forbids for markup.
  *
@@ -74,7 +74,7 @@ import { diagnosticsOf } from "../validate";
  * @module hdvl/corpus/validator
  */
 
-/** The thirteen pages and their view counts (RFC §10.1). */
+/** The fourteen pages and their view counts (RFC §10.1). */
 const PAGES: readonly (readonly [string, number])[] = [
   ["00-minimal", 1],
   ["01-line", 1],
@@ -89,6 +89,7 @@ const PAGES: readonly (readonly [string, number])[] = [
   ["10-radar", 1],
   ["11-multi-plane", 2],
   ["12-coverage", 4],
+  ["13-text", 2],
 ];
 
 /**
@@ -100,7 +101,7 @@ const PAGES: readonly (readonly [string, number])[] = [
  * quietly changing what the gate proves.
  *
  * - `structural` — runs in `reindex()`, exercised by every one of
- *   the thirteen mounts below, silent on all of them.
+ *   the fourteen mounts below, silent on all of them.
  * - `authored` — runs in the binding pass but off an **authored**
  *   domain, so it is live in this file with no provider.
  *   ⚠ **V14, V16 and V20 moved from `structural` to here at 019
@@ -114,7 +115,7 @@ const PAGES: readonly (readonly [string, number])[] = [
  *   {@link reindexed} drives a FRAME and not only a `reindex()`:
  *   without one this gate would be blind to all three.
  * - `delivered` — runs in the binding pass off delivered columns;
- *   silent across the corpus, asserted by the thirteen
+ *   silent across the corpus, asserted by the fourteen
  *   `page-NN.test.ts` suites with each page's own fixture.
  * - `source` — **not runtime-applicable** (R23). Enforced over
  *   page source by `scripts/check-dist.mjs`.
@@ -170,7 +171,7 @@ const LEDGER: Readonly<
   // Console-only: `validateNodeBudget` warns and memoises, and
   // never enters `diagnosticsOf`. Asserted two ways — the capture
   // below, and `assertRenders`'s per-view budget check over the
-  // real scenes the thirteen suites paint.
+  // real scenes the fourteen suites paint.
   W4: "structural",
   W5: "structural",
   W6: "structural",
@@ -327,11 +328,11 @@ suite("corpus validator gate (the clean pass)", () => {
 /* ---------------------------------------------------------------- */
 
 suite("corpus validator gate (the claims)", () => {
-  test("★ twenty-nine views over thirteen pages", () => {
-    assert.lengthOf(PAGES, 13);
+  test("★ thirty-one views over fourteen pages", () => {
+    assert.lengthOf(PAGES, 14);
     assert.strictEqual(
       PAGES.reduce((n, [, v]) => n + v, 0),
-      29,
+      31,
     );
   });
 
@@ -340,6 +341,9 @@ suite("corpus validator gate (the claims)", () => {
     // resolvable accessible names with no duplicate ids"* — as a
     // test, and read off the **document** rather than off the
     // validator, so it holds even if `hasAccessibleName` changed.
+    // ⓘ The finding's 29 is its own, dated figure; the corpus is
+    // **31** since 019 step 43 added `13-text`, and the total
+    // below is the live one.
     // The validator's half is the clean pass above: W2 is a
     // `Finding` and so is in `diagnosticsOf`.
     let seen = 0;
@@ -375,7 +379,7 @@ suite("corpus validator gate (the claims)", () => {
         seen++;
       }
     }
-    assert.strictEqual(seen, 29);
+    assert.strictEqual(seen, 31);
   });
 
   test("★ every rule has a verdict", () => {

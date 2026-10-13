@@ -10,8 +10,10 @@
  * Steps 25, 28, 30, 32 and 33 all mount pages out of
  * [`html/hdvl/`](../../html/hdvl/) and assert scenes against them, so
  * the five decisions below are taken **once**, here, rather than five
- * times in five suites. **All thirteen pages are gated** since step
- * 33, and `page-11.test.ts` asserts that mapping mechanically.
+ * times in five suites. **All fourteen pages are gated** — thirteen
+ * since 016 step 33 and `13-text` since 019 step 43, which added the
+ * seventh mark's own page — and `page-11.test.ts` asserts that
+ * mapping mechanically.
  *
  * **1. A page is fetched, never inlined.** `html/hdvl/*.html` are
  * byte copies of the project folder's originals — `cmp` proves it,
@@ -23,11 +25,19 @@
  * here, naming the URL) where a drifted inline copy is silent.
  *
  * **2. The page's own provider element is removed before anything
- * mounts.** Ten of the thirteen gated pages declare an `hdml-io`
+ * mounts.** Ten of the fourteen gated pages declare an `hdml-io`
  * against `hdio.example.com`, a host that does not exist.
- * (`00-minimal`, `02-area` and `12-coverage` are the literal-only
- * conformance class and declare none, which the gate asserts rather
- * than assumes.) Its `connectedCallback` creates an endpoint and
+ * (`00-minimal`, `02-area`, `12-coverage` and `13-text` are the
+ * literal-only conformance class and declare none, which the gate
+ * asserts rather than assumes.) ★ **That class is not a
+ * convenience** — a view with no subscription at all is the one
+ * shape `paintSuppressed` answers *not suppressed* for **before**
+ * first-resolution atomicity is consulted, which is why these four
+ * paint with no provider in the document while a view holding one
+ * unresolved subscription blanks every widget in it.
+ * `page-13.test.ts` asserts the subscription count is zero.
+ *
+ * Its `connectedCallback` creates an endpoint and
  * immediately posts props + HTML, which redeems the handoff token
  * and uploads the document — so leaving it in place is a network
  * call, a Worker and `@hdml/parser` on every corpus test. Worse, a
@@ -50,8 +60,8 @@
  * must reach the light-DOM elements exactly as they do on the served
  * page.
  *
- * **4. The layout viewport is pinned, not inherited.** Twelve of
- * the thirteen pages size their view with `width: 100%` under a
+ * **4. The layout viewport is pinned, not inherited.** Thirteen of
+ * the fourteen pages size their view with `width: 100%` under a
  * `figure`
  * with its own `max-width`, so on the served page the geometry is the
  * window's. The test runner's window is **not** a corpus fact — it
@@ -59,8 +69,9 @@
  * number in every golden would move with it. {@link mountCorpus}
  * therefore lays each page out in a fixed {@link VIEWPORT}-wide box.
  * `800` is chosen so that **every** page's own `max-width` binds
- * (760, 760, 760, 760, 720, 760, 780, 480, 480, 520, 780 and 480)
- * and none is capped by the harness: each page keeps the dimensions
+ * (760, 760, 760, 760, 720, 760, 780, 480, 480, 520, 780, 480 and
+ * `13-text`'s 520) and none is capped by the harness: each page
+ * keeps the dimensions
  * its author gave it, which is the opposite of retuning them. It is
  * also what makes `11-multi-plane`'s panel thirds a **fractional**
  * number of pixels, which is why that one view's golden is
@@ -535,7 +546,8 @@ export function stripText(scene: Scene): Scene {
  * value rather than as an omission. **It is now empty, and that is
  * the record of a mechanism that worked.**
  *
- * Four of the thirteen pages were *double-gated*: they carried an
+ * Four of the then-thirteen pages were *double-gated*: they carried
+ * an
  * element the slice that first rendered them had not built. C3
  * settles what such a gate may claim — *"every slice gate is
  * expressed as named scene-`deepEqual` assertions over the groups

@@ -1,0 +1,178 @@
+<!doctype html>
+<!--
+  13 — Text (019 item 5: the seventh mark)
+
+  MOCK — see SPEC.md. This page exists because `hdml-text` is the
+  only mark the acceptance corpus did not author, and a mark that
+  prints a datum cannot be gated by a reduced fixture alone: what it
+  has to survive is a REAL page, where its runs share a view with an
+  axis ladder and a y gutter and must still clear both at both gate
+  viewports. Two figures:
+    A — a scatter that PRINTS ITS VALUES: one `hdml-text` beside the
+        `hdml-point` at the same binding, anchored `start` so the run
+        hangs off the dot rather than sitting under it (§7, D9).
+    B — the REACH case (D9a): a sibling text at a SIMPLE bar's own
+        binding lands on the bar's top edge. The stacked form is the
+        documented limit and is a fixture, not a figure — a page
+        cannot show where a run is NOT.
+
+  ★★ The one declaration this page exists to state, and the reason
+  it is written as a THREE-tag selector:
+
+      hdml-label, hdml-legend, hdml-text { --hdml-text-format: … }
+
+  `--hdml-text-format` is registered `inherits: false` (SPEC §9's
+  exception), and it has had THREE readers since `hdml-text` landed.
+  Every other page in this corpus names `hdml-label` (and `12`'s
+  legend), which was complete when it was written and is NARROW now.
+  A page that leaves the mark out of the selector does not fail: the
+  runs print the LOCALE DEFAULT — `1,500,000` where the axis beside
+  them reads `1.5M` — and no rule, no golden and no gate objects,
+  because an unformatted run is a perfectly valid string. Measured:
+  `--hdml-text-format: compact-short` on the guides alone prints
+  `420,000 … 3,100,000` here, and the suite stays green.
+
+  ⚠ The widening is NOT three bare tags, and the first attempt to
+  write it that way was an error: `hdml-label` unqualified also
+  reaches B's BAND x label, and V14 makes a skeleton on an ordinal
+  channel `bad-format-skeleton`. The selector below is therefore
+  qualified by channel — which is the real shape of the idiom, and
+  is recorded in the stylesheet beside it.
+
+  Deliberately server-free: every binding is literal, so this is the
+  LITERAL-ONLY conformance class (§4) again, as `00`, `02` and `12`
+  are. ⚠ `initial-text` and its five siblings are DECLARED on this
+  element and read by nothing yet, so nothing here relies on them.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>13 — Text</title>
+    <script src="../../bin/index.min.js"></script>
+    <style>
+      body { margin: 2rem; font-family: system-ui, sans-serif; }
+      figure { margin: 0 0 3rem; max-width: 520px; }
+
+      hdml-view { width: 100%; height: 300px; }
+      hdml-cartesian-plane { padding: 16px 28px 40px 64px; }
+
+      hdml-axis { --hdml-line-width: 1px; --hdml-line-color: #64748b; }
+      hdml-grid { --hdml-line-width: 1px; --hdml-line-style: dotted;
+        --hdml-line-color: #e2e8f0; }
+      hdml-label { --hdml-font-size: 11px; }
+
+      /* A — the dots the runs hang off */
+      figure.scatter hdml-point { --hdml-tick-style: ellipse;
+        --hdml-tick-width: 7px; --hdml-tick-height: 7px;
+        --hdml-fill-color: #1c8cf4; }
+      figure.bars hdml-bar { --hdml-fill-color: #1c8cf4; }
+
+      /* ★★ 019 item 5 — THE SELECTOR, and the whole point of this
+         page. `--hdml-text-format` does not inherit and has THREE
+         readers; naming two of them is silent, not wrong. See the
+         header.
+
+         ⚠ And it is qualified by CHANNEL rather than written as
+         three bare tags, because the bare form is an ERROR here:
+         B's x is a BAND scale, and V14 says a skeleton on an
+         ordinal channel is `bad-format-skeleton` — an ordinal
+         renders its domain strings verbatim and has nothing to
+         format. Measured: `hdml-label, hdml-legend, hdml-text { … }`
+         on this page raises exactly one V14, on
+         `hdml-label[channel="x"]` of figure B. So the widening this
+         page exists to state has a shape: name the three readers,
+         on the channels that can take a skeleton.
+
+         `hdml-legend` is in the list with no legend on the page —
+         deliberately. The selector's job here is to carry the whole
+         reader set, so that copying it into a page that DOES
+         declare a legend is correct without being re-derived. */
+      hdml-label[channel="y"], hdml-legend, hdml-text {
+        --hdml-text-format: compact-short; }
+
+      /* The mark reuses 017 R2's family verbatim — no property of
+         its own (Note 003 §7.3). `start` is what turns a run
+         CENTRED on its datum into a run that hangs off it. */
+      hdml-text { --hdml-text-anchor: start; --hdml-font-size: 11px;
+        --hdml-fill-color: #0f172a; }
+      /* B prints on a bar top, where `middle` is the reading the
+         author wants and the element's own default. */
+      figure.bars hdml-text { --hdml-text-anchor: middle; }
+
+      /* 019 items 18+19 — the TICK MODE is CSS, not an attribute. */
+      hdml-view[aria-labelledby="cap-scatter"] hdml-label[channel="x"] { --hdml-tick-count: 5; --hdml-text-format: compact-short; }
+      hdml-view[aria-labelledby="cap-scatter"] hdml-label[channel="y"] { --hdml-tick-count: 5; }
+      hdml-view[aria-labelledby="cap-scatter"] hdml-grid[channel="y"] { --hdml-tick-count: 5; }
+      hdml-view[aria-labelledby="cap-bars"] hdml-label[channel="y"] { --hdml-tick-count: 5; }
+      hdml-view[aria-labelledby="cap-bars"] hdml-grid[channel="y"] { --hdml-tick-count: 5; }
+    </style>
+  </head>
+  <body>
+    <!-- No hdml-io: literal-only conformance class (§4). -->
+
+    <figure class="scatter">
+      <figcaption id="cap-scatter">A — revenue vs. units shipped, each
+        point printing its own revenue (one `hdml-text` at the
+        `hdml-point`'s binding)</figcaption>
+      <hdml-view aria-labelledby="cap-scatter">
+        <hdml-cartesian-plane>
+          <hdml-continuous-scale channel="x" min="0" max="110">
+            <hdml-continuous-scale channel="y" min="0" max="3600000">
+              <hdml-grid channel="y"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-label channel="y"></hdml-label>
+              <hdml-point
+                x="[12, 31, 48, 67, 84]"
+                y="[420000, 980000, 1500000, 2300000, 3100000]"
+              ></hdml-point>
+              <!-- ★ D9: `text` is a binding that resolves NO scale,
+                   so it contributes no required channel to V1 — the
+                   structural claim the whole element rests on. Here
+                   it is the SAME column `y` binds, which is what a
+                   data label is. -->
+              <hdml-text
+                x="[12, 31, 48, 67, 84]"
+                y="[420000, 980000, 1500000, 2300000, 3100000]"
+                text="[420000, 980000, 1500000, 2300000, 3100000]"
+              ></hdml-text>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+
+    <figure class="bars">
+      <figcaption id="cap-bars">B — quarterly revenue, labelled on the bar
+        tops: D9a's reach case, where a sibling text at a simple bar's own
+        binding lands exactly on its high edge</figcaption>
+      <hdml-view aria-labelledby="cap-bars">
+        <hdml-cartesian-plane>
+          <hdml-ordinal-scale channel="x" values='["Q1","Q2","Q3","Q4"]'>
+            <hdml-continuous-scale channel="y" min="0" max="3000000">
+              <hdml-grid channel="y"></hdml-grid>
+              <hdml-axis channel="x"></hdml-axis>
+              <hdml-label channel="x"></hdml-label>
+              <hdml-axis channel="y"></hdml-axis>
+              <hdml-label channel="y"></hdml-label>
+              <hdml-bar
+                x='["Q1","Q2","Q3","Q4"]'
+                y="[1200000, 1800000, 1500000, 2400000]"
+              ></hdml-bar>
+              <!-- The SAME binding as the bar: a container's derived
+                   endpoints are internal (D9a), so this works for a
+                   simple bar and would land INSIDE a stacked child.
+                   The limit is `mark-text.test.ts`'s, not a page's. -->
+              <hdml-text
+                x='["Q1","Q2","Q3","Q4"]'
+                y="[1200000, 1800000, 1500000, 2400000]"
+                text="[1200000, 1800000, 1500000, 2400000]"
+              ></hdml-text>
+            </hdml-continuous-scale>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    </figure>
+  </body>
+</html>

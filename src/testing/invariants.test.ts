@@ -43,7 +43,7 @@ import type { Accepted, Observed, Violation } from "./invariants";
 // `<svg>`. That failure mode makes the whole gate vacuous and is
 // invisible here; it is covered by `collectInvariants` calling
 // `restoreRenderers()` between its passes, and by the fact that the
-// thirteen page gates report 77 violations rather than zero. A
+// fourteen page gates report 77 violations rather than zero. A
 // baseline that emptied itself all at once is the symptom, and
 // `docs/development.md` § The geometry invariants says so.
 //

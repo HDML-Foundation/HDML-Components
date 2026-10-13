@@ -897,13 +897,14 @@ drifted inline copy is silent.
 > **Amended 2026-09-28 (project 017, step 14).** This decision was originally argued as
 > *"`html/hdvl/*.html` are already byte copies of the project folder's originals, and a `cmp`
 > at landing time is what keeps them so"*, and the inline copy would have been a **third**.
-> **The byte-copy relationship ended at 017 step 09-1** — ten of the thirteen pages now
+> **The byte-copy relationship ended at 017 step 09-1** — ten of the thirteen pages that
+> have an original now
 > differ, deliberately — so `html/hdvl/` is the single source and an inline copy would be the
 > second, not the third. **The decision is unchanged and its reasoning is stronger**: with no
 > `cmp` to keep a second copy honest, fetching the shipped page is the only form that cannot
 > drift. See [development.md § The HDVL corpus pages](development.md#the-hdvl-corpus-pages).
 
-**Removed.** Ten of the thirteen gated pages declare an `hdml-io` against a host that does
+**Removed.** Ten of the fourteen gated pages declare an `hdml-io` against a host that does
 not exist — `00-minimal`, `02-area` and `12-coverage` are the literal-only conformance class
 and declare none, which the gate asserts rather than assumes. Leaving it in place is not neutral in two independent ways: its `connectedCallback`
 creates an endpoint and immediately posts props + HTML, which means a network call, a Worker
@@ -915,7 +916,7 @@ corpus. The harness asserts how many it removed *and* that none survives in the 
 page, so a page that gains or loses one is a failure rather than a silent change in what the
 gate proves.
 
-The layout viewport is pinned at 800 px for a related reason: twelve of the thirteen pages
+The layout viewport is pinned at 800 px for a related reason: thirteen of the fourteen pages
 size their view `width: 100%`, so the runner's window would be baked into every number in
 every golden. 800 is wider than every page's own `max-width` (760, 760, 760, 760, 720, 760,
 780, 480, 480, 520, 780, 480), so each page keeps the
@@ -1424,12 +1425,12 @@ state lands on the container either way (§3.5).
 
 *(Step 34.)*
 
-`src/hdvl/corpus/validator.test.ts` runs SPEC §11's rules over all thirteen pages and
+`src/hdvl/corpus/validator.test.ts` runs SPEC §11's rules over all fourteen pages and
 mounts **no `FakeIo`**. That is not a shortcut, it is the shape of §8.2: the **structural**
 pass runs inside `reindex()` off attributes and the DOM — sixteen of the twenty V-rules
 plus W2 — and is data-independent by construction, while the binding pass's
 column-derived half (V2's kind clause, V4's `absent` clause, V5, V7's row clauses) is
-already asserted zero on all twenty-nine views by the thirteen `page-NN.test.ts` suites,
+already asserted zero on all thirty-one views by the fourteen `page-NN.test.ts` suites,
 each with that page's own canned columns. A fourteenth mount would assert the same claim
 against the same data and would need a **second copy of every fixture**, which is exactly
 what the harness's decision 1 forbids for markup.
@@ -1449,7 +1450,7 @@ level up. Every corpus page therefore takes **two** mutations that SPEC says are
 violations, one per level the pass has: the view's accessible name is stripped (W2, the
 check made *before* the element loop) and a bare `hdml-axis` is appended under a plane
 (V13, a finding produced *inside* it). Both are asserted red and then restored and
-re-asserted clean, which is R25's recovery half. Fifty-eight probes across twenty-nine
+re-asserted clean, which is R25's recovery half. Sixty-two probes across thirty-one
 views, and the reason the step could report *zero violations* without that being a null
 result.
 
@@ -1470,7 +1471,7 @@ duty attaches to*, the same shape step 20's `requiredChannels` took for V1. *Why
 which the fifth clause already covers wherever that domain is column-derived. *Why a scalar
 literal is not a zip:* `color='"North"'` broadcasts and has no row *k* to be paired with.
 
-The measurement is the argument that it was safe: **zero findings across all thirteen
+The measurement is the argument that it was safe: **zero findings across all fourteen
 corpus pages** — every one of the eleven frames already carries `hdml-sort-by` — and
 exactly **one** in the fixture suite, a V4 test whose `<hdml-point x="units" y="[0]">` over
 an unpinned in-page frame is a literal-with-bound zip and therefore a true positive. That
@@ -1486,7 +1487,7 @@ forward-compatibility seam). The tree claimed one; the pass that went looking fo
 W1 in the same state. Neither W-rule was ever given a step in the implementation plan.
 
 **W3 is cheap to trigger and expensive to land.** The predicate is fifteen mechanical lines
-and would be **silent across all thirteen corpus pages** — every container child and every
+and would be **silent across all fourteen corpus pages** — every container child and every
 pie there binds `color`. Its blast radius is the *fixture* suite: **0 of 25**
 container-child and pie fixtures bind one, so all of them would start warning, and giving
 each a `color` to silence it **moves its committed scene**, because a colour binding changes
@@ -1584,7 +1585,7 @@ Project 017 R1, implementation step 03. SPEC §3 gave `hdml-axis`, `hdml-tick` a
 (`height: 24px` on x, `width: 40px` on y). That extent was a number **nothing read**
 on two of the three tags: an axis is a line and has no thickness to place, and a
 tick's length is `--hdml-tick-height`. What it did instead was give every natural
-author idiom something to collide with. Nine of the thirteen corpus pages write
+author idiom something to collide with. Nine of the fourteen corpus pages write
 
 ```css
 hdml-axis[channel="y"] { position: absolute; top: 0; bottom: 0; left: 0 }
@@ -1627,7 +1628,7 @@ pointed the author at a *label*. Merging them back — or emitting the extent as
 rule over the same three-tag group — puts the misdirection back. *(R2 took that
 argument at its word and finished it: one rule per tag. Next entry.)*
 
-**What it cost.** Ten of the thirteen corpus pages moved goldens, and the move has two
+**What it cost.** Ten of the then-thirteen corpus pages moved goldens, and the move has two
 shapes that are worth telling apart: **every** axis/tick group's box loses its cross
 extent, but a **node** moves only where the *drawn edge* moves. `guideEdge` derives the
 drawn edge as whichever edge of the guide's own box is nearer the scale's centre, so on
@@ -1669,7 +1670,7 @@ on its own. An over-broad R1 that locked the offsets too was measured to be caug
 **exactly one** test in the repo, the new *★ an author still moves the label's line*.
 
 **It cost ten pages their label boxes and moved no text at all.** Forty-five box literals over
-ten of the thirteen corpus pages; `08-pie-doughnut` has no label, and `09-polar-area` /
+ten of the then-thirteen corpus pages; `08-pie-doughnut` has no label, and `09-polar-area` /
 `10-radar` are polar, where `guideAcross` takes the `pole !== null` branch and never reads a
 box. Not one `text` node's coordinates changed on any page, because `guideEdge` returns the
 edge of the box nearer the scale's centre and collapsing the extent leaves exactly that edge
@@ -1928,7 +1929,7 @@ view*, at two widths — so the padding decision's coverage is now the geometry 
 
 Project 017 R4, implementation step 04. `fillPaint` hard-coded `stroke: null` /
 `strokeWidth: 0` for every filled widget, so the `--hdml-line-*` family reached nothing on
-`hdml-point`, `hdml-bar`, `hdml-arc`, `hdml-area` or `hdml-pie`. **Five of the thirteen
+`hdml-point`, `hdml-bar`, `hdml-arc`, `hdml-area` or `hdml-pie`. **Five of the then-thirteen
 corpus pages authored an outline and got nothing for it** — `05`/`06`/`07` on `hdml-point`,
 `08`/`09` on `hdml-arc` — and `08-pie-doughnut`'s white slice separators had been written
 and never once painted.
@@ -1956,7 +1957,7 @@ host that reaches it. Four things about that rule are load-bearing:
 - **It is nine hosts, not four** (eight until 019 step 42 added `hdml-text`), because `fillPaint` has ten call sites and only four are
   the marks the requirement named. `hdml-tick`, `hdml-label` and `hdml-legend` paint through
   it too; leaving them out would have put a 1.5px outline on every tick glyph, every axis
-  label and every legend entry on **twelve of the thirteen** pages. Put to the founder as a
+  label and every legend entry on **twelve of the then-thirteen** pages. Put to the founder as a
   design question — scope the stroke to the marks, or neutralise on the guides as well —
   and **settled as the latter**, which makes `--hdml-line-*` a supported surface on a tick,
   a label (a *text* outline) and a legend. SPEC §9's rows say so now.
@@ -3362,9 +3363,9 @@ entries state colours and the rest `{}` — and that a growing column-derived do
 re-reports itself, because the counts are part of the finding's identity.
 
 **9 · The corpus over-fire control needed a different venue than the one specified.**
-`validator.test.ts` mounts the thirteen pages with **no data provider**, so a rule whose
+`validator.test.ts` mounts the fourteen pages with **no data provider**, so a rule whose
 input is a delivered column cannot fire there at all — its own ledger calls that class
-`delivered` and defers it to the thirteen `page-NN.test.ts` suites. Seeding a short
+`delivered` and defers it to the fourteen `page-NN.test.ts` suites. Seeding a short
 `--hover` palette into `06-bubble` therefore changed **nothing**, because that page's colour
 scale is `values="region"`, a column-derived domain. The control only bites on a page whose
 ordinal colour scale has an **authored** domain: seeded into `04-grouped-stacked`, whose
@@ -3697,3 +3698,55 @@ Measured across both corpus directories: **twenty-four** declarations of it, **t
 scoped to `hdml-label` and one to `hdml-legend`, and **not one** would reach an
 `hdml-text`. A page adding the mark under one of those rules prints the locale default and
 looks correct doing it. The selector has to name all three.
+
+## `13-text` is two views, and the second is not coverage
+
+019 step 43. The corpus's **fourteenth** page, and the only one authored for a mark that
+already had fifteen fixtures. Note 003 §8 asks for *"a scatter that prints its values"* as
+the minimum; the page ships **two** views and takes the corpus to **thirty-one**, not thirty.
+
+**Why two.** A fixture proves the arithmetic; a page proves the reading. **A** is the §8
+minimum — five points, each printing its own revenue with `--hdml-text-anchor: start` so the
+run hangs off the dot rather than sitting under it. **B** is D9a's *reach* case: a sibling
+`hdml-text` at a **simple** bar's own binding lands exactly on the bar's high edge. B is the
+single most common thing an author will try and nothing in the repo showed that it works, so
+leaving it to `mark-text.test.ts` would have documented the mechanism and not the idiom. The
+stacked half of D9a stays a fixture, because a page cannot show where a run is *not*.
+
+**What two views cost, measured:** one extra `test` in `validator.test.ts`'s per-page loop,
+two more whole-`Scene` goldens, 24 more golden `text` nodes — and **zero** bundle bytes,
+since only `src/` is bundled. The geometry risk is the real cost and it was paid in the page:
+the first draft put two of A's points ten x-units apart, which clears at 800 px and overlaps
+at 400, and the gate named both runs at 400 and nothing at 800. **The fix was the page's x
+values, never a baseline entry** — `ACCEPTED` stayed at 77 and `src/testing/invariants.ts`
+is zero-diff.
+
+## `13-text` is literal-only, and that is structural
+
+019 step 43. The page declares no `hdml-io` and binds nothing but JSON arrays, joining
+`00-minimal`, `02-area` and `12-coverage` as the **literal-only conformance class** (SPEC
+§4). The alternative — a `FakeIo` provider — was declined: §5's JSON-array arm is read today,
+the page is then hermetic, and `V7`'s row-order clause stays silent. ⚠ The six `initial-*`
+attributes are **declared on the element and read by nothing** until 019 row 44, so a page
+relying on one would paint nothing.
+
+**The class is not a convenience.** `paintSuppressed` answers *not suppressed* on
+`state.subs.size === 0` **before** it consults first-resolution atomicity, so a view with no
+subscription at all paints on its first frame — while a view holding **one** unresolved
+subscription blanks **every** widget in it. That is why these four pages work with no
+provider in the document, and it had never been stated. `page-13.test.ts` now asserts the
+subscription count is `[0, 0]`, so a page that silently acquired one — a stray `source=`, a
+column name where an array was meant — fails here instead of committing an empty golden.
+
+## `13-text` has no `html/hdvl-live/` twin
+
+019 step 43, and the README's *"same thirteen"* claim was corrected rather than left
+standing. Three reasons, in order: a live twin needs a real `maang` column worth **printing**
+on every datum, which is a data-modelling decision no gate covers and which the mock page
+answers with literals; **017 F1 retired the byte-copy invariant**, so nothing in the repo
+requires the two sets to match; and `scripts/check-dist.mjs` contains **zero** references to
+that directory, so no gate reads it either way. The honest alternative was to build the
+twin; the decision is to name the gap, in the README and in `docs/development.md`, and leave
+the twin as an unscheduled successor. ⚠ `html/index.html` lists both sets by hand and
+**nothing asserts either list is complete** — the mock half is now fourteen entries and the
+live half thirteen, which is correct and ungated.

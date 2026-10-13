@@ -70,7 +70,7 @@ that every path `exports` names exists on disk; that every `exports` target is c
 and `hdql` sub-entries; that `src/hdvl/` imports no `hdio` module other than `config`
 (as a value) and `delivery` (**type-only** — a value import would pull the worker,
 `@hdml/parser` and Arrow into every page, and would compile silently); SPEC §11's **V11
-and V12** over the thirteen corpus pages' source; and, since step 35, the **custom-elements
+and V12** over the fourteen corpus pages' source; and, since step 35, the **custom-elements
 manifest** and the **bundle budget**. RFC 018/002 added two more: check 10 asserts that
 the main-thread OIDC exchange leg is absent, and check 11 asserts that `files` covers every
 published target (see [integration.md](integration.md#the-published-tarball)). It sits after `compile_all` because several of those
@@ -431,45 +431,58 @@ difference or product of equal coordinates.
 
 ### The HDVL corpus pages
 
-[html/hdvl/](../html/hdvl/) holds the thirteen corpus pages (`00-minimal` … `12-coverage`),
+[html/hdvl/](../html/hdvl/) holds the fourteen corpus pages (`00-minimal` … `13-text`),
 linked from [html/index.html](../html/index.html). They are the **single source** for the
 corpus, and they double as the acceptance suite.
 
 **They were byte copies of the originals in the project folder** (`016. HDVL Elements/002.
 Product Discovery/examples/`) and that relationship **ended during project 017**, at step
-09-1 (2026-09-27). Ten of the thirteen now differ, because 017 edited the pages here for
+09-1 (2026-09-27). Ten of the thirteen that have an original now differ, because 017 edited
+the pages here for
 runtime reasons the design corpus has no opinion about: R7's `_hover` → `--hover` rename and
 its state declarations, R2's eight deleted `hdml-label` rules, and the two rotated x axes.
 **The project-folder pages are frozen design history** — its own README opens *"These pages
 do not run"* — and overwriting them with declarations 016 could not have written would
-falsify that record, so 017 retired the invariant rather than the divergence. Only the
+falsify that record, so 017 retired the invariant rather than the divergence. Only those
 thirteen `*.html` are affected; `SPEC.md` in the same folder is **still the live authoring
-contract** and 017 amended it in twelve places.
+contract** and 017 amended it in twelve places. ★ **The fourteenth page, `13-text`, never
+had an original at all** — 019 step 43 authored it for `hdml-text`, which did not exist
+when the design corpus was drawn — so the divergence question does not arise for it.
 
 **Nothing needs mirroring any more.** A corpus fix lands here, once.
 
 They are **executed**, not only served. [src/hdvl/corpus/](../src/hdvl/corpus/) is one
 `*.test.ts` per page; [src/testing/corpus.ts](../src/testing/corpus.ts) is the shared harness.
-**Since step 33 the corpus is complete**: all thirteen pages are mounted and gated —
-**thirteen pages, twenty-nine views** — and `page-11.test.ts` asserts the completeness
-mechanically, fetching each page and each suite's own **source** and matching the
-`mountCorpus` call that names it. (What it cannot do is discover a *fourteenth* page: the
-runner serves no directory index, measured, so the list of thirteen is a literal there
-exactly as it is a count here.)
+**The corpus is complete** — since 016 step 33 for the first thirteen and since 019 step
+43 for `13-text`: all fourteen pages are mounted and gated — **fourteen pages, thirty-one
+views** — and `page-11.test.ts` asserts the completeness mechanically, fetching each page
+and each suite's own **source** and matching the `mountCorpus` call that names it. (What it
+cannot do is discover a *fifteenth* page: the runner serves no directory index, measured, so
+the list of fourteen is a literal there exactly as it is a count here.)
 
-**`validator.test.ts` is the fourteenth file and the odd one out** (step 34): it is not a
-page's gate but SPEC §11's, mounting all thirteen and asserting that every rule is silent
+> ⚠ **Adding a page is seven literals across three files, and only two of them fail
+> loudly.** 019 step 43 measured it: `page-11.test.ts`'s `CORPUS` list **and** its
+> `lengthOf(CORPUS, 14)` red immediately; `validator.test.ts`'s own `PAGES` table, its
+> `lengthOf(PAGES, 14)`, its view sum **and** a *separate* `assert.strictEqual(seen, 31)`
+> in the W2 test each need the same number; and `diagnostics.test.ts` carries a **second
+> copy of the `PAGES` table that nothing counts**, so forgetting it leaves every suite
+> green while one page silently drops out of `HDML.diagnostics()`'s clean pass. Measured
+> as a negative control: validator at fourteen and diagnostics at thirteen is **63 tests,
+> 0 failures, all three engines**.
+
+**`validator.test.ts` is the odd one out** (step 34): it is not a
+page's gate but SPEC §11's, mounting all fourteen and asserting that every rule is silent
 on every view — plus the **absences that are claims**, which no per-page gate can state.
 It mounts **no data provider**, because §8.2's structural pass is data-independent and the
-binding pass's delivered half is what the thirteen page suites already assert; and it
+binding pass's delivered half is what the fourteen page suites already assert; and it
 proves its own silence is a result rather than a vacuum by taking two mutations per view
 (strip the accessible name → W2; append a bare `hdml-axis` under a plane → V13), asserting
 each red, then restoring and re-asserting clean. `assertRenders` gained R20's node budget in
 the same step, so **W4** — which is warned to the console and never filed as a `Finding` —
-is asserted on all twenty-nine gated views against `validate.ts`'s own constant.
+is asserted on all thirty-one gated views against `validate.ts`'s own constant.
 
 SPEC §11's **V11 and V12 are not runtime-applicable** and live in
-[scripts/check-dist.mjs](../scripts/check-dist.mjs) instead, over the same thirteen pages'
+[scripts/check-dist.mjs](../scripts/check-dist.mjs) instead, over the same fourteen pages'
 source. `npm run check_dist` reports them in its summary line, which grew a clause for it.
 
 **`11-multi-plane` is the only page whose subject is the view rather than a widget.** Every
@@ -489,6 +502,37 @@ scale with `nice`, the combination step 25's ladder correction was made for and 
 under `html/hdvl/` had ever executed), and its ordinal colour domain is **derived from a
 column** against a four-colour palette — so its fixture seeds exactly four regions, one short
 of §9's `palette-exhausted`.
+
+**`13-text` is the fourteenth page and the corpus's only `hdml-text` document** (019 step
+43). Two views, both literal-only: **A** a five-point scatter where each point prints its own
+revenue, with `--hdml-text-anchor: start` so the run hangs off the dot rather than sitting
+under it; **B** D9a's *reach* case, a sibling text at four **simple** bar bindings landing
+exactly on the bars' high edges. The stacked half of D9a stays a fixture, because a page
+cannot show where a run is *not*. Three things are true only here:
+
+- **It is the corpus's one statement of `--hdml-text-format`'s full reader set**, and
+  authoring it measured both halves of the hazard. The guide-only selector prints
+  `420,000 … 3,100,000` beside a y axis reading `0M 1M 2M 3M` with **`assertRenders`,
+  `assertInvariants` at both widths and both goldens green on all three engines** — the
+  failure is completely silent. And the bare `hdml-label, hdml-legend, hdml-text { … }`
+  widening is a **V14 error** wherever a band axis is in scope, because an ordinal channel
+  renders its domain strings verbatim and has nothing to format. So the idiom is the three
+  readers **qualified by channel**, and `page-13.test.ts` asserts it against the page's own
+  source *and* against the computed property on each mark.
+- **Its views hold zero subscriptions, asserted.** `paintSuppressed` answers *not
+  suppressed* on `state.subs.size === 0` **before** it consults first-resolution
+  atomicity, so this page and the other three literal-only ones paint on their first frame
+  with no provider — while a view holding **one** unresolved subscription blanks every
+  widget in it. A page that silently acquired one would commit an empty golden, so the count
+  is a test.
+- **It is the first page whose goldens carry `Intl` output on a `role: "mark"` group.**
+  Every other golden's formatted strings belong to a *guide*. The scoping is unchanged —
+  positions on three engines through `stripText`, strings on chromium behind the asserted
+  `ENGINE` guard — and the reach is new.
+
+It added **zero** `ACCEPTED` entries. The first draft put two of A's points ten x-units
+apart, which clears at 800 px and overlaps at 400; the gate named both runs at 400 and
+nothing at 800, and **the page's x values were changed, never the baseline**.
 
 Four of the twelve were **double-gated**, and C3 says what a slice gate may claim: *"every slice
 gate is expressed as named scene-`deepEqual` assertions over the groups **that slice owns**;
@@ -537,9 +581,9 @@ Seven decisions the harness takes once, because five gate steps inherit them:
 | | |
 |---|---|
 | **A page is fetched, never inlined** | `mountCorpus` `fetch`es `/html/hdvl/<name>.html` off the runner's own static serving. Inlining the markup into a test would be a **third** copy that no `cmp` covers |
-| **The page's `hdml-io` is removed first** | **Ten of the thirteen** gated pages declare one against a host that does not exist, and it would both hit the network and register as a **second** D8 provider — `subscribe.ts` de-dupes by `id`, not by provider. `FakeIo` replaces it outright (RFC §10.3). The count removed is asserted, and so is the absence of any `hdml-io` in the mounted page |
+| **The page's `hdml-io` is removed first** | **Ten of the fourteen** gated pages declare one against a host that does not exist, and it would both hit the network and register as a **second** D8 provider — `subscribe.ts` de-dupes by `id`, not by provider. `FakeIo` replaces it outright (RFC §10.3). The count removed is asserted, and so is the absence of any `hdml-io` in the mounted page |
 | **The page's `<style>` is adopted verbatim** | Injected into `document.head` before the fixture mounts, removed at teardown. The bare tag selectors are what SPEC §7 makes placement out of, so they must reach the light DOM exactly as on the served page |
-| **The layout viewport is `VIEWPORT`, 800 px, by default** | Twelve of the thirteen gated pages size their view `width: 100%`. The runner's window is a Playwright default, not a corpus fact; 800 is wider than every page's own `max-width` (760, 760, 760, **760**, 720, **760**, 780, 480, 480, 520, **780**, 480), so each page keeps its author's dimensions and none is capped by the harness. It is also what makes `11`'s thirds a *fractional* number of pixels — 33.333 % of 780 — and so the one place a used width is engine-dependent. **Since 017 step 11-2 it is a default rather than a pin**: `mountCorpus(name, width)` takes a second width and [the geometry invariants](#the-geometry-invariants) run at `NARROW` (400 px) as well. **Every golden and every scene assertion is still recorded at 800**, which is what the default protects — moving it reds 41 tests |
+| **The layout viewport is `VIEWPORT`, 800 px, by default** | Thirteen of the fourteen gated pages size their view `width: 100%`. The runner's window is a Playwright default, not a corpus fact; 800 is wider than every page's own `max-width` (760, 760, 760, **760**, 720, **760**, 780, 480, 480, 520, **780**, 480), so each page keeps its author's dimensions and none is capped by the harness. It is also what makes `11`'s thirds a *fractional* number of pixels — 33.333 % of 780 — and so the one place a used width is engine-dependent. **Since 017 step 11-2 it is a default rather than a pin**: `mountCorpus(name, width)` takes a second width and [the geometry invariants](#the-geometry-invariants) run at `NARROW` (400 px) as well. **Every golden and every scene assertion is still recorded at 800**, which is what the default protects — moving it reds 41 tests |
 | **Geometry is asserted everywhere, `text` on chromium only** | Cross-engine rule 4. `stripText` blanks every `text` field for the three-engine `deepEqual`; the strings are a second assertion behind an engine guard whose classification is itself asserted on all three, so an engine-detection change cannot make the scoped half silently pass |
 | **A deferred element is excluded by name** | C3, as `DEFERRED_TO_SLICE_H` + `withoutDeferred` rather than as an omission. Added at step 28, the first gate to meet a double-gated page; **emptied at step 32**, which is what widened those goldens. Both are kept — an empty list is also an assertion, and a later page may need a different tag in it |
 | **`-0` is swept, not assumed** | `negativeZeros` returns the dotted paths of every signed zero in a scene. Added at step 28 because polar pages are where one becomes reachable — `sin(180deg)` is `-1.2e-16` and a coordinate times a zero radius carries the sign |
@@ -635,7 +679,7 @@ with the IdP and the page's origin (`http://127.0.0.1:8000` under `wds`) must be
 [src/testing/invariants.ts](../src/testing/invariants.ts) is the corpus's
 **rendered**-geometry gate (project 017, O1). Every whole-`Scene` golden in
 [src/hdvl/corpus/](../src/hdvl/corpus/) asserts *computed* geometry, and a tree of
-correct numbers can still paint a broken picture — so each of the thirteen page
+correct numbers can still paint a broken picture — so each of the fourteen page
 suites also runs three universal predicates over the page as the **real** renderer
 draws it, in **one test of three lines** that calls `assertInvariants(page)`.
 
@@ -759,7 +803,7 @@ break its `html/hdvl-live/` twin with it.
 ★ **What it cannot cover, stated rather than discovered:** the stunt double never
 installs the recording renderer, so it cannot catch a predicate run against the
 stub — the failure mode that makes the *whole* gate vacuous. The symptom of that
-one is the whole baseline going stale at once, which reds thirteen pages
+one is the whole baseline going stale at once, which reds fourteen pages
 simultaneously. If you ever see that, suspect the mount order before the geometry.
 
 ### The live-render harness
@@ -878,7 +922,7 @@ value aborts the run rather than reporting a silent property.
 settle, for every live page, n times. A per-change probe cannot see a load-time frame
 storm, and `allow-discrete` can make discrete properties transition from their initial
 values. Measured before and after it landed: **~3 frames per view either way**, on
-thirteen pages and twenty-nine views, on all three engines.
+fourteen pages and thirty-one views, on all three engines.
 
 | Variable | Default | |
 |---|---|---|
@@ -899,7 +943,7 @@ for a reason that has nothing to do with the sentinel.
 
 [html/airbnb/](../html/airbnb/), [html/maang/](../html/maang/),
 [html/netflix/](../html/netflix/) and [html/spotify/](../html/spotify/) hold **live** HDVL
-pages, listed under *Live pages* on the hub. They are the counterpart of the thirteen corpus pages
+pages, listed under *Live pages* on the hub. They are the counterpart of the fourteen corpus pages
 under [html/hdvl/](../html/hdvl/): the corpus is driven by a test double and gated by
 `src/hdvl/corpus/`, while these load the real `bin/index.min.js` and render whatever Trino
 returns through a live HDIO server. **Nothing gates them** — they are manual pages, and they
@@ -918,13 +962,20 @@ needed for and the declarative vocabulary therefore cannot express.
 
 #### The live corpus — `html/hdvl-live/`
 
-[html/hdvl-live/](../html/hdvl-live/) is the **thirteen corpus pages rebuilt on live data**:
-the same thirteen pages and the same twenty-nine figures as `html/hdvl/`, in the same order
-and with the same grammar, over the `maang` schema through a live HDIO server. A difference
-between a page there and its twin here is a difference in the *runtime*, not in the
-authoring — which is what the folder is for. It is **not gated**: like the rest of the live
-pages it needs a real server and an interactive login, so nothing in `src/hdvl/corpus/`
+[html/hdvl-live/](../html/hdvl-live/) is **thirteen of the fourteen corpus pages rebuilt on
+live data**: those thirteen pages and their twenty-nine figures as `html/hdvl/` has them, in
+the same order and with the same grammar, over the `maang` schema through a live HDIO server.
+A difference between a page there and its twin here is a difference in the *runtime*, not in
+the authoring — which is what the folder is for. It is **not gated**: like the rest of the
+live pages it needs a real server and an interactive login, so nothing in `src/hdvl/corpus/`
 touches it.
+
+⚠ **`13-text` has no live twin, by decision** (019 step 43). A live one needs a `maang`
+column worth printing on every datum, which is a data-modelling choice no gate covers;
+**017 F1 retired the byte-copy invariant**, so nothing requires the two sets to match; and
+`check-dist.mjs` contains zero references to this directory, so nothing reads it either way.
+The folder's own README states the gap rather than leaving its *"same thirteen"* claim
+standing. The twin is an unscheduled successor.
 
 Every page declares its own model and frames — the **dynamic-document** path, which
 `access.yml` grants wholesale — except one leg of `01`, which reaches the tenant's **static**
