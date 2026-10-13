@@ -62,7 +62,7 @@ measurement then reports the state of a build you thought you had replaced. Use
 thing you just changed** before believing a live measurement — `grep -c allow-discrete
 bin/index.min.js` is what caught it once.
 
-**`check_dist`.** It asserts nine things browser tests cannot reach, because wtr runs
+**`check_dist`.** It asserts twelve things browser tests cannot reach, because wtr runs
 `./tst/**/*.test.js` and never sees `package.json` or the emitted trees: that the `exports`
 map and the `sideEffects` list both match the ones derived from its single `ENTRIES` array;
 that every path `exports` names exists on disk; that every `exports` target is covered by
@@ -73,8 +73,10 @@ and `hdql` sub-entries; that `src/hdvl/` imports no `hdio` module other than `co
 and V12** over the fourteen corpus pages' source; and, since step 35, the **custom-elements
 manifest** and the **bundle budget**. RFC 018/002 added two more: check 10 asserts that
 the main-thread OIDC exchange leg is absent, and check 11 asserts that `files` covers every
-published target (see [integration.md](integration.md#the-published-tarball)). It sits after `compile_all` because several of those
-checks read the built trees, and after `manifest` because it validates it.
+published target (see [integration.md](integration.md#the-published-tarball)). **019 step 46
+added check 12**, the retired-spelling sweep over every `html/*` directory (below). It sits
+after `compile_all` because several of those checks read the built trees, and after
+`manifest` because it validates it.
 
 **The manifest is generated inside `build`, and committed.** `package.json` declares
 `"customElements": "custom-elements.json"` — a published contract that until step 35
@@ -619,6 +621,40 @@ it: the three pages that author a state (`01-line`, `02-area`, `03-bar`) assert 
 rule, so a declaration authored where the mechanism cannot deliver it fails the gate instead
 of shipping as prose.
 
+### Retired spellings — check 12, and the debt it registers
+
+**019 retired four spellings and the build could not see most of the pages using them.**
+V11 and V12 (check 7) read `CORPUS_DIR`, which is `html/hdvl` and nothing else, because
+they are the acceptance corpus's rules and a golden only has a subject there. But `html/`
+holds **nine** directories that author HDML, and five of them carry live demo pages. 019
+migrated the corpus, published `0.0.2-alpha.26`, and left **333** `count=` / `format=`
+attributes inert on the other five — found at the closeout, after the release.
+
+Check 12 closes the blind spot. It scans **every** `html/*` directory for three retired
+spellings — `count=` / `format=` inside an `<hdml-*>` start tag, `<hdml-table>`, and
+`--hdml-*_hover` / `_active` — against a **shrink-only baseline**, on the same principle
+as [`ACCEPTED`](#why-accepted-can-only-shrink):
+
+- a count **above** its baseline is a regression — a new page written against the old
+  vocabulary — and fails;
+- a count **below** its baseline is a **stale baseline** and also fails: lower it in the
+  same commit as the migration.
+
+Both halves red, which is what makes the baseline a gate rather than a log. A retired
+spelling needs no page render to detect, so unlike the geometry gate this one is cheap and
+unconditional.
+
+> ⚠ **The baseline is a debt register, not a permission.** As of 019's closeout it reads
+> `html/hdvl-live` 81, `html/maang` 140, `html/airbnb` 46, `html/netflix` 39,
+> `html/spotify` 27 — **333** attributes, each one a live page rendering with default tick
+> counts and unformatted labels. `html/hdvl` is **0**.
+>
+> **Migrating them is owned by whoever next touches that directory**, and it is *not*
+> mechanical: the replacement needs a CSS rule **naming that guide**, so a page with four
+> `hdml-tick`s needs four selectors that do not exist yet. That is a per-page authoring
+> decision, which is why 019 did not batch it at the closeout. The gate guarantees the
+> number can only go down.
+
 ## Lint
 
 ```bash
@@ -1037,6 +1073,25 @@ fix is the next version.
 
 What the tarball contains is set by the `files` whitelist and guarded by `check-dist`
 check 11. See [integration.md](integration.md#published-package).
+
+### ★ The published artifacts are CI's rebuild — and are still byte-reproducible
+
+`esm/`, `cjs/`, `dts/` and `bin/` are **gitignored**; the only build output this repo
+tracks is `custom-elements.json`. So the tag carries *sources*, and the bytes on npm are
+necessarily the ones CI's `npm run build` produced from the tagged tree. There is no npm
+credential on a dev box (`npm whoami` → `ENEEDAUTH`), so a local `npm publish` is not a
+fallback — it is not a thing that can happen.
+
+★ **That does not make the artifact unverifiable.** Measured at `0.0.2-alpha.26`: the
+published tarball's shasum is **identical** to a local `npm pack` of the same tree
+(`dc5ecfd2…`, 491 files both). ⚠ Do **not** generalise the opposite habit from
+`HDIO-Javy-Plugin`, where `javy init-plugin` is not reproducible and `hdio.wasm` can never
+be hashed as a gate — **this package's tarball can be**, and `npm pack` before pushing the
+tag is a real check rather than a rehearsal.
+
+ⓘ npm answers `404` for roughly **2.5 minutes** after a successful publish while the
+version is *"being processed"*, and the 404 body contains the version string. Trust the
+workflow's exit code and the run log, never a grep of the 404.
 
 ## CI
 

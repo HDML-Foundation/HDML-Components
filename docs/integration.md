@@ -92,10 +92,43 @@ because the ceilings were derived from it. Every bundle is still inside its ceil
 **409.2 → 414.6 kB**, +5.4 kB for the state-rule generator, two registered properties and the
 rotation field, against 20.8 kB of headroom.
 
+**Re-measured 2026-10-13, at project 019's closeout.** Every bundle is still inside its
+ceiling, and two are very close to it: `.` **792.2 / 217.9**, `./hdio` **786.3 / 216.8**,
+`./hdql` **37.8 / 10.1**, `./hdvl` **429.9 / 121.3**, `bin/index.min.js`
+**1 221.5 / 333.9**. ⚠ **`./hdvl` has 57 bytes of minified headroom** (440 263 B of
+440 320) **and `./hdql` has 227** (38 685 B of 38 912) — two tight entries, and until
+019's closeout only the first was ever quoted. The gzip figures are nowhere near their
+ceilings, so **a reader who checks only gzip believes it has ~2.5× the room it has**;
+019 step 44's first build breached the minified ceiling by 142 B while gzip never came
+close.
+
 Every ceiling is **measured × 1.05, rounded up to the whole kB** — five per cent absorbs
 a widget and does not absorb a dependency, which is the only regression the check exists
 to catch. The ceilings live in one place, `BUDGET` in `check-dist.mjs`; this table is a
-copy for readers and the script is the authority.
+copy for readers and the script is the authority. ⓘ By that rule today's `./hdvl`
+measurement would give **452**; the ceiling was deliberately **not** re-derived at 019,
+because raising a guard in the commit that breaches it is how a guard stops guarding.
+
+#### ★★ What these numbers are NOT: a statement about your bundle
+
+**They are a like-for-like regression guard on this repo's layout.** Measured at 019's
+closeout, bundling the **installed** package instead of this working tree takes `./hdvl`
+to **437.2 kB — over the 430 kB ceiling by ~7 kB** — and **not one byte of that is
+code**. esbuild's default `legalComments: "eof"` emits a per-path *"Bundled license
+information"* block for the 54 modules once they sit under `node_modules`, where in-repo
+they share one path prefix. With `legalComments: "none"` the two builds are
+**430 672 B exactly**, byte for byte.
+
+So the honest figure for the code a consumer of `./hdvl` pays is **420.6 kB**, the table
+above measures **this repo**, and the two differ by licence text. The check keeps
+esbuild's default because it is the stricter of the two and a guard only has to be
+comparable to itself.
+
+⇒ **Quote this table as a regression guard, never as a consumer promise.** Whether to
+*also* measure an installed copy is deliberately not done: `legalComments` is the
+consumer's build choice, so the number is only meaningful against a real consumer's
+config. That belongs to the first one — project 021 / HDML-Examples — and is recorded as
+019's residue, not as a gap here.
 
 **`.` and `./hdio` legitimately carry the whole `@hdml/parser` graph.** The checked-in
 [`endpoint.ts`](../src/hdio/endpoint.ts) is the same-thread `MessageChannel` form, and

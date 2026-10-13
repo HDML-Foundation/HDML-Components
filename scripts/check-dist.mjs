@@ -92,6 +92,35 @@ const ENTRIES = [
  * consumer repo) but is not one this project targets, so the
  * ceilings below are a **regression guard rather than a target**.
  * Detail in `docs/integration.md` and `docs/decisions.md`.
+ *
+ * ★★ **What these numbers are, and are not** (019 step 46, settled
+ * after **C355**). They are a **like-for-like regression guard on
+ * THIS repo's layout**. They are *not* a statement about what a
+ * consumer's bundle costs, and must not be quoted as one.
+ *
+ * Measured at `438a7d4`: bundled from this repo, `./hdvl` is
+ * **440 263 B** — 57 B under its 440 320 B ceiling. Bundled from
+ * the *installed* package the same entry is **437.2 kB**, over the
+ * same ceiling by ~7 kB, and **not one byte of the difference is
+ * code**: esbuild's default `legalComments: "eof"` emits a per-path
+ * *"Bundled license information"* block for the 54 modules once
+ * they sit under `node_modules`. With `legalComments: "none"` both
+ * builds are **430 672 B exactly**, so the code is identical and
+ * the honest consumer figure is **420.6 kB**.
+ *
+ * ⇒ The check keeps the default (it is the stricter of the two, and
+ * a like-for-like guard only has to be *comparable* to itself), and
+ * the ceilings are NOT raised — see **C342**: raising a guard in
+ * the commit that breaches it is how a guard stops guarding.
+ * Whether to *also* measure an installed copy is deliberately
+ * **not** done here: `legalComments` is a consumer's build choice,
+ * so the number is only meaningful against a real consumer's
+ * config, and that belongs to the first one (021 / HDML-Examples).
+ *
+ * ⚠ `./hdql` is a **second tight entry** at 227 B of headroom
+ * (38 685 B of 38 912) that no prose named before step 46
+ * (**C350**). Both tight entries are listed here so a reader does
+ * not re-learn it from a red build.
  */
 const BUDGET = {
   ".": { min: 825, gzip: 228 },
@@ -1033,6 +1062,145 @@ if (gotFiles === null) {
 }
 
 // ---------------------------------------------------------------
+// 12. RETIRED SPELLINGS, over EVERY page directory (019 step 46).
+//
+// ★ Why this exists, and why check 7 was not enough. V11 and V12
+// read `CORPUS_DIR` — **one** directory — because they are the
+// acceptance corpus's rules and the corpus is the only place a
+// *golden* has a subject. But 019 retired four spellings from the
+// authoring vocabulary, and `html/` holds **nine** directories that
+// author HDML, five of which carry live demo pages that drive a
+// real server. 019 migrated the corpus, shipped, and left **333**
+// `count=` / `format=` attributes inert on the other five — found
+// at the closeout, by which point the release was published
+// (**C353**, re-measured as **C357**).
+//
+// A retired spelling is not a golden question and needs no page
+// render to detect, so it is checked HERE, over every directory,
+// as a **shrink-only baseline** on 017's `ACCEPTED` precedent:
+//
+//   * a count ABOVE its baseline is a regression — a new page
+//     authored against the old vocabulary;
+//   * a count BELOW its baseline is a STALE baseline — lower it in
+//     the same commit as the migration, exactly as a fixed
+//     `ACCEPTED` entry is deleted in the commit that fixes it.
+//
+// Both halves red. That is what makes the list a gate rather than
+// a log, and it is why the 333 can only shrink.
+//
+// ⚠ `BASELINE` is a debt register, not a permission. Every entry is
+// a live page rendering with default ticks and unformatted labels.
+// Owner: whoever next touches that directory; see
+// `docs/development.md` § Retired spellings.
+// ---------------------------------------------------------------
+
+/**
+ * Spellings 019 retired, with the rule each one now violates.
+ * ★ `count`/`format` are matched ONLY inside an `<hdml-*>` start
+ * tag: `data-count=` on a wrapper and a `format=` in a `<script>`
+ * are not authoring attributes, and a bare `/\bcount=/` grep counts
+ * 25 of them on the *migrated* corpus.
+ */
+const RETIRED = [
+  {
+    id: "count/format attributes",
+    // Every `<hdml-* …>` start tag, then the attribute inside it.
+    scan: (s) =>
+      (s.match(/<hdml-[a-z-]+\b[^>]*>/g) ?? []).reduce(
+        (n, tag) => n + (tag.match(/\s(count|format)\s*=/g) ?? []).length,
+        0,
+      ),
+    became: "--hdml-tick-count / --hdml-text-format (019 items 18, 19)",
+  },
+  {
+    id: "<hdml-table>",
+    scan: (s) => (s.match(/<hdml-table\b/g) ?? []).length,
+    became: "<hdml-dataset> (019 item 2)",
+  },
+  {
+    id: "--hdml-*_hover / _active",
+    scan: (s) => (s.match(/--hdml-[a-z-]+_(?:hover|active)\b/g) ?? []).length,
+    became: "--hdml-*--hover / --active (017 R7, 4515517)",
+  },
+];
+
+/**
+ * Measured at 019 step 46 against `438a7d4`. ⚠ **These are
+ * ATTRIBUTE counts, not line counts** — C353 reported 276 because
+ * it counted lines, and a line may carry two (**C357**). A
+ * directory absent from a row is zero and must stay zero.
+ */
+const RETIRED_BASELINE = {
+  "count/format attributes": {
+    "html/hdvl-live": 81,
+    "html/maang": 140,
+    "html/airbnb": 46,
+    "html/netflix": 39,
+    "html/spotify": 27,
+  },
+  "<hdml-table>": {},
+  "--hdml-*_hover / _active": {},
+};
+
+function pageFilesUnder(rel) {
+  const out = [];
+  const abs = path.join(root, rel);
+  if (!fs.existsSync(abs)) return out;
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.html?$/.test(e.name)) out.push(p);
+    }
+  };
+  walk(abs);
+  return out;
+}
+
+if (fs.existsSync(path.join(root, "html"))) {
+  const dirs = fs
+    .readdirSync(path.join(root, "html"), { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => `html/${e.name}`)
+    .sort();
+
+  for (const rule of RETIRED) {
+    const base = RETIRED_BASELINE[rule.id] ?? {};
+    const seen = new Set();
+    for (const dir of dirs) {
+      let n = 0;
+      for (const f of pageFilesUnder(dir)) {
+        n += rule.scan(fs.readFileSync(f, "utf8"));
+      }
+      const want = base[dir] ?? 0;
+      if (n !== 0 || want !== 0) seen.add(dir);
+      if (n > want) {
+        fail(
+          "retired",
+          `${dir} has ${n} \`${rule.id}\` (baseline ${want}) — ` +
+            `retired by 019; use ${rule.became}`,
+        );
+      } else if (n < want) {
+        fail(
+          "retired",
+          `${dir} has ${n} \`${rule.id}\` but its baseline is ` +
+            `${want} — STALE baseline, lower it to ${n} in this commit`,
+        );
+      }
+    }
+    for (const dir of Object.keys(base)) {
+      if (!seen.has(dir)) {
+        fail(
+          "retired",
+          `baseline names ${dir} for \`${rule.id}\`, which no ` +
+            "longer exists — delete the entry",
+        );
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------
 
 for (const s of sizes) {
   console.log(
@@ -1056,7 +1224,8 @@ if (failures.length > 0) {
 // step 34 added the two source-time V-rules, step 35 added the
 // manifest tag count and the budget, and 018/002 adds the absent
 // exchange leg (check 10) and the `files` coverage (check 11,
-// step 13). A note comparing against an
+// step 13), and 019 step 46 adds the retired-spelling sweep
+// (check 12). A note comparing against an
 // older quote should read the difference as this line growing a
 // clause rather than as a check having changed.
 console.log(
@@ -1068,5 +1237,6 @@ console.log(
     `(${DISPLAY_KEYS.length} display), ` +
     `${sizes.length} bundles within budget, ` +
     `exchange leg absent, ` +
-    `files covers ${filesTargets.length} targets.`,
+    `files covers ${filesTargets.length} targets, ` +
+    `retired spellings within baseline.`,
 );
