@@ -1,8 +1,8 @@
 # Embedding HDML charts in your app
 
-Install: `npm install @hdml/components@0.0.2-alpha.25`. Or, with no build step, load the
+Install: `npm install @hdml/components@0.0.2-alpha.26`. Or, with no build step, load the
 bundle from a CDN:
-`<script src="https://cdn.jsdelivr.net/npm/@hdml/components@0.0.2-alpha.25/bin/index.min.js"></script>`
+`<script src="https://cdn.jsdelivr.net/npm/@hdml/components@0.0.2-alpha.26/bin/index.min.js"></script>`
 ([the zero-build variant](#zero-build-load-the-bundle-from-a-cdn)).
 
 Every example below uses `https://hdio.example` for your HDIO server and `acme` for your
@@ -147,7 +147,7 @@ someone else's release.
 
 ```html
 <!-- Zero-build: the IIFE registers every element, workers inlined. -->
-<script src="https://cdn.jsdelivr.net/npm/@hdml/components@0.0.2-alpha.25/bin/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@hdml/components@0.0.2-alpha.26/bin/index.min.js"></script>
 <script type="module">
   const res = await fetch("/api/hdml-token", { credentials: "include" });
   const { handoff } = await res.json();

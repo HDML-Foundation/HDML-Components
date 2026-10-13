@@ -274,7 +274,7 @@ is `@hdml/components`' own first npm publish (018 Slice D). The five deps went
 - `count` is **gone** from `TICK_`/`GRID_`/`LABEL_`/`LEGEND_ATTRS_LIST` and
   `format` from the latter two (items 18+19, breaking). Their values moved to
   the registered `--hdml-tick-count` and `--hdml-text-format` properties in
-  `0.0.2-alpha.25` of **this** package; the enum members were the last
+  `0.0.2-alpha.26` of **this** package; the enum members were the last
   transitional step.
 - `hdml-text` is published as the vocabulary's 34th tag but **no element
   registers it yet**. It is fenced in `scripts/check-dist.mjs`.
