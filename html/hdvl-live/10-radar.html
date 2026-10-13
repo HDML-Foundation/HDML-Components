@@ -122,7 +122,7 @@
          NULL. That is a real bug this page was written through.
          ======================================================== -->
     <hdml-model name="maang_profile">
-      <hdml-table
+      <hdml-dataset
         name="m"
         type="query"
         description="Six measures per stock, min-max normalised to 0..10 across the five."
@@ -166,7 +166,7 @@ from (
         <hdml-field name="metric"></hdml-field>
         <hdml-field name="sym"></hdml-field>
         <hdml-field name="score"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="aapl_profile" source="?hdml-model=maang_profile">

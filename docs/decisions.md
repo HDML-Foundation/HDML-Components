@@ -3523,3 +3523,122 @@ the byte-copy invariant outright. The stunt double is still the right call for a
 reason — breaking a corpus page reds its golden — but the reason given names a comparison
 that does not exist. Not fixed here: it is pre-existing, orthogonal to R1, and belongs with
 017's F1 residue rather than with a vocabulary step.
+
+## `hdml-table` becomes `hdml-dataset`, and the bump retires six enum members
+
+**019 step 41** (slice F-4). The five `@hdml/*` deps move `0.0.2-alpha.24` →
+`0.0.2-alpha.27` and this package consumes item 2's breaking rename. Four questions were
+open at sequencing and all four were taken the same way the prompt recommended; a fifth
+was forced by measurement and is the one worth reading.
+
+**1 · The class and the files rename, not just the tag.** `HdmlTable.ts` →
+`HdmlDataset.ts`, `HdmlTable` → `HdmlDataset`, `HdmlTable.test.ts` →
+`HdmlDataset.test.ts`. A class called `HdmlTable` registering `hdml-dataset` is exactly
+the name-vs-thing drift this repo keeps finding, and the rename costs 24 mechanical lines
+in the test. ⚠ `tst/` is gitignored build output and **keeps orphans**: the renamed test
+leaves `tst/hdql/HdmlTable.test.js` behind, which makes the standing `tst`-vs-`src` count
+87 ≠ 86 *and* leaves `wtr` running the stale file. `npm run clear` is the fix, not a
+rebuild.
+
+**2 · `html/hdql/hdml-table.html` renames too**, with the link in `html/index.html` and
+its label. `html/hdql/` is one page per data element and the filename *was* the tag; after
+the rename the directory is still one-to-one, and `hdml-split-by` is still the only
+published data tag with no page.
+
+**3 · All 26 `html/` files migrated — none left behind.** This was the decision with real
+risk. The four live demo sets and `html/hdml/index.html` are documents run against a real
+server, not fixtures, and nothing in the repo gates them. ⇒ 123 attribute occurrences
+across 26 files, including all thirteen `html/hdvl-live/` pages.
+
+**4 · `hdml-text` is fenced here, and row 42 removes the fence.** `0.0.2-alpha.27`
+publishes `hdml-text` as the vocabulary's 34th tag and no module registers it until the
+next step, so `check-dist.mjs`'s check (d) — *"a published tag with no element is either a
+gap or a lie"* — fails on the bump alone. It joins `hdml-split-by` in `UNREGISTERED_TAGS`
+with a comment naming its owner and its removal step. ⚠ Unlike a red test, a **stale**
+member of that set reds nothing, because the set only suppresses; the removal is asserted
+in row 42 rather than guarded here.
+
+### ⚠⚠ The bump retires six enum members, and five files nobody scoped had to move
+
+The step plan's reason for splitting slice F was that by this point *"the six enum members
+vanish and **nothing reads them**"*. **That is false.** `0.0.2-alpha.27` drops `COUNT`
+from `TICK_`/`GRID_`/`LABEL_`/`LEGEND_ATTRS_LIST` and `FORMAT` from the latter two, and
+`tsc` found **17 references in five files** — six `@property` declarations with six
+`@attribute` JSDoc blocks across the four guide elements, and five spec-key spellings in
+`validate.ts`, a file the step was told not to touch.
+
+Items 18+19 moved the *read* path to CSS at step 29 and the *corpus* at step 30. What
+neither step could remove was the declaration itself, because `check-dist.mjs`'s check
+8(b) is **bidirectional**: it fails when the manifest omits an attribute the enum
+publishes *and* when the manifest carries one the enum does not. So while `.24` still
+published `COUNT`, deleting the `@property` was not a landable change — and the moment
+`.27` is installed, keeping it is not either. ⇒ **there is no green intermediate for the
+retirement, only for the migration**, which is the same argument the plan made about the
+corpus one step too early.
+
+★ **And the forced edit turned out to be a simplification.** `stated()` took a spec key by
+its *attribute* name, mapped it through `SPEC_PROPERTY` to a property, and a second helper
+`statedAs()` mapped it again to name the key in the diagnostic. Both consumers used the
+property; the attribute name was pure indirection. With no attribute name left to key on,
+the two property-only keys are keyed on `--hdml-tick-count` and `--hdml-text-format`
+directly, `PROPERTY_ABSENT` doubles as the *"is this key a property?"* predicate, and
+**`SPEC_PROPERTY` and `statedAs()` were deleted**. Same behaviour, one spelling per key
+instead of two. ⓘ A CSS property name is this package's own and was never in
+`@hdml/types`, so R8 is untouched — seven other `--hdml-*` names in `validate.ts` are
+spelled the same way.
+
+### ★ Three guards, not two
+
+**C30** names two stale-rather-than-red guards in `src/hdvl/vocabulary.test.ts`:
+`DATA_ATTRS_ENUMS` and `DATA_TAG_KEYS`, both `assert.isUndefined`, so a wrong name
+**passes** and moving one without the other leaves the renamed enum unfenced. Both moved,
+and each was negative-controlled on its own run.
+
+There is a **third**, which no step named and which the compiler cannot see:
+`test("21 display + 12 data = the published 33")` hard-asserts
+`lengthOf(Object.keys(allTags), 33)` against the published enum. `.27` publishes 34. ⚠ The
+sharp part is that the *same file*, eighty lines down, carries a comment written at step 32
+that anticipated this exact bump — *"step 41's `@hdml/*` bump, which adds `hdml-text` as
+the vocabulary's 34th member… widens the segment set and this test with it, instead of
+going red on a number"* — and the number eighty lines up was left hard. A predecessor can
+see a hazard, write it down, and still not sweep for its own instance. ⇒ **when a comment
+predicts a future bump, grep the file it is in for hard-coded forms of the thing it
+predicts.** The count is now 34 with the 21-vs-22 gap asserted explicitly, so row 42 moves
+one number and the identity comes back.
+
+### ⚠⚠⚠ `tsc -b` cannot see a changed dependency
+
+The row's primary gate was *"`compile_tst` reds first on the type sites"*. After the five
+pins moved and `npm install` had installed `.27`, **`npm run compile_tst` exited 0 with all
+23 errors present.** `compile_tst` is `tsc -b`, and build mode decided the project was
+up to date from `tsconfig/tst.tsbuildinfo` without re-checking a single `node_modules`
+`.d.ts`. `rm tsconfig/*.tsbuildinfo` surfaces all 23 immediately.
+
+This is the stale-build-artifact class again, one layer deeper than before: a stale `bin/`
+makes a live page lie, and a stale `tsbuildinfo` makes **the type checker** lie. ⇒ **after
+any dependency change, clear `tsconfig/*.tsbuildinfo` before believing a compile gate.**
+`npm run build` is unaffected — it runs `clear` first — so only a hand-run `compile_tst`
+or `test` can be fooled, which is exactly what a step prompt asks for.
+
+### ⓘ What else arrived in the two publishes
+
+There is **no `0.0.2-alpha.25` of any `@hdml/*` core package** — that version is
+`@hdml/components`' own first publish — so the bump crosses **two**, not three. Beyond
+item 2 and the six removals: `FIELD_ATTRS_LIST.KEY` and `Field.key` are new (item 3) and
+reach no reader here; `initial-*` members arrive on nine mark enums and are row 44's;
+`TEXT_ATTRS_LIST` and `HDQL_DIAGNOSTIC_CODES` are new and unconsumed; `DATASET_TYPE_VALUES`
+is new with no consumer and nothing in this package hard-codes `table`/`query`;
+`@hdml/parser` gains an optional `parseHDML(content, diagnostics?)` parameter; and `uuid`
+moves **10.0.0 → 11.1.1** transitively through `@hdml/common`, a major bump pre-flighted
+through QuickJS for the WASM side and reaching only `v1`/`v5` here.
+
+### ★★★ The gate that would have caught a missed document does not exist
+
+`src/hdio/parse.ts` calls `parseHDML(html)` with no diagnostics array, so `.27`'s new
+diagnostics channel reaches no reader in this package. ⚠ **It would not have helped
+anyway.** Measured against the real `.27` parser: a document authoring `hdml-table` comes
+back with `diagnostics: []`, `error` empty, and a model whose `tables` array is **empty** —
+the unknown element is dropped silently, and the migrated twin of the same document
+returns the dataset. So a missed `html/` file is a chart that renders nothing, with a clean
+console and no diagnostic, and **the grep is the only gate**. The 26-file sweep was
+verified by a zero-survivor grep over four patterns rather than by any test.

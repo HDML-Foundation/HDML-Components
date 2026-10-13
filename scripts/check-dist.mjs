@@ -31,7 +31,7 @@ import {
   HDML_TAG_NAMES,
   JOIN_ATTRS_LIST,
   MODEL_ATTRS_LIST,
-  TABLE_ATTRS_LIST,
+  DATASET_ATTRS_LIST,
 } from "@hdml/types";
 // The eight data enums above are named because check 7's map is
 // deliberately explicit. The display half is the opposite case: check
@@ -126,7 +126,48 @@ const NO_ATTRS_LIST = new Set(["FALLBACK"]);
  * element lands the constant empties and the check tightens by
  * itself.
  */
-const UNREGISTERED_TAGS = new Set([HDML_TAG_NAMES.SPLIT_BY]);
+/**
+ * ⛔ **`hdml-text` is row 42's to remove from this set.**
+ *
+ * Step 41's bump to `@hdml/types@0.0.2-alpha.27` publishes
+ * `hdml-text` as the vocabulary's 34th tag and the display half's
+ * 22nd, and **no module registers it until row 42** — so check (d)
+ * below fails on it and the bump could not land without this
+ * member. It is a **two-step gap, not a pre-016 one**: unlike
+ * `hdml-split-by` it has a named owner and a named removal step.
+ *
+ * ⚠ Leaving it here after row 42 reds **nothing** — this set only
+ * *suppresses* a failure, so a stale member is silent. That is the
+ * stale-rather-than-red shape, and the removal is asserted in row
+ * 42 rather than guarded here.
+ */
+const UNREGISTERED_TAGS = new Set([
+  HDML_TAG_NAMES.SPLIT_BY,
+  HDML_TAG_NAMES.TEXT,
+]);
+
+/**
+ * ⛔ **019 item 3's `initial-{slot}` attributes, also row 42's to
+ * remove.**
+ *
+ * Step 41's bump publishes **44** `initial-*` members across the
+ * nine mark enums — `LINE_`, `AREA_`, `BAR_`, `POINT_`, `ARC_`,
+ * `RULE_`, `PIE_`, `CLUSTER_` and `STACK_ATTRS_LIST` — and **no
+ * element declares one until row 42** gives item 3 its
+ * `@property`. The step plan §6.1 says why they cannot land
+ * together: the `@property` needs the published `@hdml/types`, so
+ * the enum necessarily arrives one step ahead of its declaration.
+ *
+ * Until then check (b)'s enum→manifest arm would fail 44 times on
+ * the bump alone. ⓘ The **other** arm is deliberately left armed:
+ * a manifest attribute no enum publishes still fails, so this
+ * fence cannot hide a *stray* declaration — only a *missing* one.
+ *
+ * ⚠ A stale member here reds **nothing**, exactly as
+ * {@link UNREGISTERED_TAGS}: the set only suppresses. Row 42
+ * asserts the removal.
+ */
+const UNDECLARED_ATTRS = (attr) => attr.startsWith("initial-");
 
 /**
  * `src/hdvl/` may import exactly two `../hdio/` modules: `config`
@@ -452,7 +493,7 @@ const GLOBAL_ATTRS = [
 const DATA_ATTRS = {
   [HDML_TAG_NAMES.CONNECTION]: CONN_ATTRS_LIST,
   [HDML_TAG_NAMES.MODEL]: MODEL_ATTRS_LIST,
-  [HDML_TAG_NAMES.TABLE]: TABLE_ATTRS_LIST,
+  [HDML_TAG_NAMES.DATASET]: DATASET_ATTRS_LIST,
   [HDML_TAG_NAMES.JOIN]: JOIN_ATTRS_LIST,
   [HDML_TAG_NAMES.CONNECTIVE]: CONNECTIVE_ATTRS_LIST,
   [HDML_TAG_NAMES.FILTER]: FILTER_ATTRS_LIST,
@@ -791,7 +832,7 @@ if (!exists(MANIFEST)) {
     }
     const want = Object.values(list).sort();
     for (const attr of want) {
-      if (!got.attrs.includes(attr)) {
+      if (!got.attrs.includes(attr) && !UNDECLARED_ATTRS(attr)) {
         fail(
           "CEM",
           `<${tag}> publishes ${attr}, which its manifest entry ` +

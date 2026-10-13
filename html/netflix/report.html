@@ -166,7 +166,7 @@
          double first because it is stored as `1.0` (netflix.html §4).
          ======================================================== -->
     <hdml-model name="nflx">
-      <hdml-table
+      <hdml-dataset
         name="t"
         type="query"
         description="One row per title, every numeric column cast in SQL."
@@ -188,7 +188,7 @@ from `tenant-a_maang`.`netflix`.`titles`">
         <hdml-field name="votes"></hdml-field>
         <hdml-field name="tmdb_score"></hdml-field>
         <hdml-field name="seasons"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="by_decade" source="?hdml-model=nflx">
@@ -215,7 +215,7 @@ from `tenant-a_maang`.`netflix`.`titles`">
          does: a row that cannot be plotted should not be fetched.
          ======================================================== -->
     <hdml-model name="nflx_shows">
-      <hdml-table
+      <hdml-dataset
         name="sh"
         type="query"
         description="Series only, with the season count cast through double."
@@ -223,7 +223,7 @@ from `tenant-a_maang`.`netflix`.`titles`">
 from `tenant-a_maang`.`netflix`.`titles`
 where type = 'SHOW'">
         <hdml-field name="seasons"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <!-- `label` and `ord` are BOTH grouped. Grouping on `ord` alone
@@ -251,7 +251,7 @@ where type = 'SHOW'">
          with one coordinate is not a point.
          ======================================================== -->
     <hdml-model name="nflx_pairs">
-      <hdml-table
+      <hdml-dataset
         name="p"
         type="query"
         description="Titles carrying both an IMDb and a TMDB score."
@@ -264,7 +264,7 @@ where imdb_score is not null and tmdb_score is not null">
         <hdml-field name="imdb_score"></hdml-field>
         <hdml-field name="tmdb_score"></hdml-field>
         <hdml-field name="kind"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="score_pairs" source="?hdml-model=nflx_pairs">
@@ -274,7 +274,7 @@ where imdb_score is not null and tmdb_score is not null">
 
     <!-- Genre × mean score, unnested. -->
     <hdml-model name="nflx_genre_scores">
-      <hdml-table
+      <hdml-dataset
         name="gs"
         type="query"
         description="One row per (title, genre) with the title's IMDb score."
@@ -286,7 +286,7 @@ cross join unnest(split(replace(replace(genres,'[',''),']',''), ',')) as t(e)
 where genres &lt;&gt; '[]' and imdb_score is not null">
         <hdml-field name="genre"></hdml-field>
         <hdml-field name="imdb_score"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="genre_scores" source="?hdml-model=nflx_genre_scores">
@@ -299,7 +299,7 @@ where genres &lt;&gt; '[]' and imdb_score is not null">
 
     <!-- Country × title count, unnested. -->
     <hdml-model name="nflx_countries">
-      <hdml-table
+      <hdml-dataset
         name="co"
         type="query"
         description="One row per (title, production country)."
@@ -308,7 +308,7 @@ from `tenant-a_maang`.`netflix`.`titles`
 cross join unnest(split(replace(replace(production_countries,'[',''),']',''), ',')) as t(e)
 where production_countries &lt;&gt; '[]'">
         <hdml-field name="country"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="top_countries" source="?hdml-model=nflx_countries">
@@ -320,7 +320,7 @@ where production_countries &lt;&gt; '[]'">
 
     <!-- The vote ladder: one wide aggregate row unpivoted to five. -->
     <hdml-model name="nflx_votes">
-      <hdml-table
+      <hdml-dataset
         name="v"
         type="query"
         description="IMDb vote count at five points of its distribution."
@@ -347,7 +347,7 @@ cross join (values
         <hdml-field name="pos"></hdml-field>
         <hdml-field name="base"></hdml-field>
         <hdml-field name="votes"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="votes_ladder" source="?hdml-model=nflx_votes">

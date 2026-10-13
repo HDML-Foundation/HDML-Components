@@ -168,7 +168,7 @@
          `dur` is decimal minutes, not mm.ss (spotify.html §5).
          ======================================================== -->
     <hdml-model name="spfy">
-      <hdml-table
+      <hdml-dataset
         name="t"
         type="query"
         description="One row per song: features joined to streams on the title."
@@ -197,7 +197,7 @@ join `tenant-a_maang`.`spotify`.`streams` s on f.name = s.song">
         <hdml-field name="tempo"></hdml-field>
         <hdml-field name="key_pc"></hdml-field>
         <hdml-field name="is_major"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="top_songs" source="?hdml-model=spfy" limit="10">
@@ -222,7 +222,7 @@ join `tenant-a_maang`.`spotify`.`streams` s on f.name = s.song">
          where it is one line and unambiguous.
          ======================================================== -->
     <hdml-model name="spfy_artists">
-      <hdml-table
+      <hdml-dataset
         name="a"
         type="query"
         description="Artists with more than one song in the hundred."
@@ -234,7 +234,7 @@ having count(1) &gt; 1">
         <hdml-field name="artist"></hdml-field>
         <hdml-field name="n"></hdml-field>
         <hdml-field name="total_bn"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="repeat_artists" source="?hdml-model=spfy_artists">
@@ -251,7 +251,7 @@ having count(1) &gt; 1">
          column, which Trino rejects outright.
          ======================================================== -->
     <hdml-model name="spfy_era">
-      <hdml-table
+      <hdml-dataset
         name="e"
         type="query"
         description="Each song's duration with its release era and that era's sort key."
@@ -270,7 +270,7 @@ from (
         <hdml-field name="era"></hdml-field>
         <hdml-field name="ord"></hdml-field>
         <hdml-field name="dur"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="dur_by_era" source="?hdml-model=spfy_era">
@@ -288,7 +288,7 @@ from (
          unpivoted to seven. `zero` is the diverging baseline: these
          values straddle 0, so a bar needs an explicit y0 there. -->
     <hdml-model name="spfy_corr">
-      <hdml-table
+      <hdml-dataset
         name="r"
         type="query"
         description="Correlation of each audio feature against stream count."
@@ -317,7 +317,7 @@ cross join (values
         <hdml-field name="pos"></hdml-field>
         <hdml-field name="zero"></hdml-field>
         <hdml-field name="r"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="stream_corr" source="?hdml-model=spfy_corr">
@@ -331,7 +331,7 @@ cross join (values
     <!-- The mean of the seven unit-scaled features: the sound of the
          hundred, on the one axis they genuinely share. -->
     <hdml-model name="spfy_profile">
-      <hdml-table
+      <hdml-dataset
         name="p"
         type="query"
         description="Mean of each unit-scaled audio feature across the hundred songs."
@@ -358,7 +358,7 @@ cross join (values
         <hdml-field name="lbl"></hdml-field>
         <hdml-field name="pos"></hdml-field>
         <hdml-field name="avg_v"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="sound_profile" source="?hdml-model=spfy_profile">
@@ -372,7 +372,7 @@ cross join (values
          name list so a key with no songs still paints a zero bar
          rather than vanishing from the axis. -->
     <hdml-model name="spfy_keys">
-      <hdml-table
+      <hdml-dataset
         name="k"
         type="query"
         description="Song count per pitch class, named, including empty keys."
@@ -387,7 +387,7 @@ group by n.nm, n.pos">
         <hdml-field name="key_name"></hdml-field>
         <hdml-field name="pos"></hdml-field>
         <hdml-field name="n"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="key_dist" source="?hdml-model=spfy_keys">

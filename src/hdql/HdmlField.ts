@@ -10,7 +10,7 @@ import { HdqlElement } from "./HdqlElement";
 
 /**
  * The `hdml-field` component represents a field within an
- * `hdml-table` in the HDML context.
+ * `hdml-dataset` in the HDML context.
  *
  * @tagname hdml-field
  *
@@ -26,9 +26,9 @@ import { HdqlElement } from "./HdqlElement";
  * description for the field.
  *
  * @attribute {string} origin - The name of the original field in the
- * database if used within the scope of `hdml-table`, or in the parent
- * structure if used within the scope of an `hdml-frame`. If omitted,
- * it is assumed to be the same as the HDML field name.
+ * database if used within the scope of `hdml-dataset`, or in the
+ * parent structure if used within the scope of an `hdml-frame`. If
+ * omitted, it is assumed to be the same as the HDML field name.
  *
  * @attribute {string} clause - An SQL clause defining the field. It
  * takes precedence over the `origin` attribute. For example,

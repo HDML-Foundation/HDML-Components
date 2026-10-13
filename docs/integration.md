@@ -249,15 +249,46 @@ contract.
 
 | Dep | This repo pins | Workspace target |
 |---|---|---|
-| `@hdml/common` | `0.0.2-alpha.24` | `0.0.2-alpha.24` |
-| `@hdml/hash` | `0.0.2-alpha.24` | `0.0.2-alpha.24` |
-| `@hdml/parser` | `0.0.2-alpha.24` | `0.0.2-alpha.24` |
-| `@hdml/buffer` | `0.0.2-alpha.24` | `0.0.2-alpha.24` |
-| `@hdml/types` | `0.0.2-alpha.24` | `0.0.2-alpha.24` |
+| `@hdml/common` | `0.0.2-alpha.27` | `0.0.2-alpha.27` |
+| `@hdml/hash` | `0.0.2-alpha.27` | `0.0.2-alpha.27` |
+| `@hdml/parser` | `0.0.2-alpha.27` | `0.0.2-alpha.27` |
+| `@hdml/buffer` | `0.0.2-alpha.27` | `0.0.2-alpha.27` |
+| `@hdml/types` | `0.0.2-alpha.27` | `0.0.2-alpha.27` |
 
-The five `@hdml/*` deps are aligned with the workspace lockstep at `0.0.2-alpha.24`
-(the HDVL display-vocabulary release). Bump all five together when realigning; no
-need to bump them individually.
+The five `@hdml/*` deps are aligned with the workspace lockstep at `0.0.2-alpha.27`
+(019's vocabulary amendment). Bump all five together when realigning; no need to
+bump them individually.
+
+⚠ **There is no `0.0.2-alpha.25` of any `@hdml/*` core package** — that version
+is `@hdml/components`' own first npm publish (018 Slice D). The five deps went
+`.24` → `.26` → `.27`, so this bump crosses **two** publishes, not three.
+
+**What `.24` → `.27` changed for a consumer of this package**, all of it 019:
+
+- `hdml-table` is **`hdml-dataset`** and `TABLE_ATTRS_LIST` is
+  `DATASET_ATTRS_LIST` (item 2, breaking). ⚠ **The old tag is not an alias and there
+  is no deprecation path**: a document still authoring `hdml-table` parses to
+  a model with **no dataset** and the parser raises **no diagnostic** —
+  `diagnostics` comes back `[]` and `error` empty. Migrate documents by grep;
+  there is no runtime signal.
+- `count` is **gone** from `TICK_`/`GRID_`/`LABEL_`/`LEGEND_ATTRS_LIST` and
+  `format` from the latter two (items 18+19, breaking). Their values moved to
+  the registered `--hdml-tick-count` and `--hdml-text-format` properties in
+  `0.0.2-alpha.25` of **this** package; the enum members were the last
+  transitional step.
+- `hdml-text` is published as the vocabulary's 34th tag but **no element
+  registers it yet**. It is fenced in `scripts/check-dist.mjs`.
+- `FIELD_ATTRS_LIST.KEY` and `Field.key` are **new** (item 3), as are the
+  `initial-*` members on the nine mark enums. Both are additive and reach no
+  reader in this package yet.
+- `@hdml/parser` gains an optional second `parseHDML(content, diagnostics?)`
+  parameter and a `HdqlDiagnostic` type. ⓘ This package does **not** pass the
+  array (`src/hdio/parse.ts` calls `parseHDML(html)`), so parser diagnostics
+  reach no reader here. Measured: passing one would not have caught the
+  `hdml-dataset` migration anyway — a dropped unknown element produces **no**
+  diagnostic.
+- `uuid` moves **10.0.0 → 11.1.1** transitively through `@hdml/common`. Only
+  `v1` and `v5` are ever called.
 
 The pins are **exact**, not caret ranges. A caret range lets a stale
 `package-lock.json` keep resolving an older tree while the manifest reads new — a

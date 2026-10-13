@@ -237,17 +237,12 @@ function authoredAnchor(
  * @attribute {string} channel - The channel this element addresses
  * (SPEC §3).
  *
- * @attribute {string} count - How many positions to repeat at (SPEC
- * §7).
- *
  * @attribute {string} step - The interval between repeated positions
  * (SPEC §7).
  *
  * @attribute {string} values - An explicit list — the domain on a
  * scale, the positions to repeat at on a guide.
- *
- * @attribute {string} format - The format skeleton for the text runs
- * (SPEC §4.9).
+
  */
 @customElement(HDVL_TAG_NAMES.LABEL)
 export class HdmlLabelElement extends HdvlElement {
@@ -265,12 +260,6 @@ export class HdmlLabelElement extends HdvlElement {
    * @internal
    */
   @property({ type: String })
-  [LABEL_ATTRS_LIST.COUNT]: null | string = null;
-
-  /**
-   * @internal
-   */
-  @property({ type: String })
   [LABEL_ATTRS_LIST.STEP]: null | string = null;
 
   /**
@@ -278,12 +267,6 @@ export class HdmlLabelElement extends HdvlElement {
    */
   @property({ type: String })
   [LABEL_ATTRS_LIST.VALUES]: null | string = null;
-
-  /**
-   * @internal
-   */
-  @property({ type: String })
-  [LABEL_ATTRS_LIST.FORMAT]: null | string = null;
 
   /**
    * @override

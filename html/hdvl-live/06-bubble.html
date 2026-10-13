@@ -100,7 +100,7 @@
          to `double` on purpose — see the type note in the header.
          ======================================================== -->
     <hdml-model name="maang_daily">
-      <hdml-table
+      <hdml-dataset
         name="p"
         type="query"
         description="One row per (stock, trading day), the five MAANG tables unioned and cast."
@@ -136,7 +136,7 @@ from (
         <hdml-field name="c"></hdml-field>
         <hdml-field name="v"></hdml-field>
         <hdml-field name="dv"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
     <hdml-frame name="sym_year" source="?hdml-model=maang_daily">
       <hdml-field name="sym" origin="p_sym"></hdml-field>

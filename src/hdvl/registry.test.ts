@@ -118,18 +118,20 @@ const EXPECTED: [string, string, string[]][] = [
     ["x", "y", "offset", "hidden", "source"],
   ],
   ["hdml-axis", "guide", ["channel"]],
-  ["hdml-tick", "guide", ["channel", "count", "step", "values"]],
-  [
-    "hdml-label",
-    "guide",
-    ["channel", "count", "step", "values", "format"],
-  ],
-  ["hdml-grid", "guide", ["channel", "count", "step", "values"]],
-  [
-    "hdml-legend",
-    "guide",
-    ["channel", "count", "step", "values", "format"],
-  ],
+  // ★ 019 items 18+19 — `count` and `format` are NOT on these four
+  // any more. `@hdml/types@0.0.2-alpha.27` dropped `COUNT` from all
+  // four guide enums and `FORMAT` from the two text-bearing ones,
+  // and step 41 deleted the matching `@property` declarations. The
+  // values live on the registered `--hdml-tick-count` and
+  // `--hdml-text-format` properties instead. ⚠ This table is
+  // hardcoded on purpose (see the module docblock), so it is the
+  // one place the removal has to be re-read off the published enum
+  // by hand — which is why it RED on the bump rather than following
+  // it silently.
+  ["hdml-tick", "guide", ["channel", "step", "values"]],
+  ["hdml-label", "guide", ["channel", "step", "values"]],
+  ["hdml-grid", "guide", ["channel", "step", "values"]],
+  ["hdml-legend", "guide", ["channel", "step", "values"]],
   ["hdml-fallback", "fallback", []],
 ];
 

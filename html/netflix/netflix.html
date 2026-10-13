@@ -171,7 +171,7 @@
          fifteen, which is the grain a chart needs.
          ======================================================== -->
     <hdml-model name="nflx_columns">
-      <hdml-table
+      <hdml-dataset
         name="c"
         type="query"
         description="One row per column of netflix.titles: distinct count and null count."
@@ -226,7 +226,7 @@ cross join (values
         <hdml-field name="base"></hdml-field>
         <hdml-field name="n_distinct"></hdml-field>
         <hdml-field name="n_null"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="columns_profile" source="?hdml-model=nflx_columns">
@@ -252,7 +252,7 @@ cross join (values
          counted as a genre named "".
          ======================================================== -->
     <hdml-model name="nflx_genres">
-      <hdml-table
+      <hdml-dataset
         name="g"
         type="query"
         description="One row per (title, genre) pair, parsed out of the list literal."
@@ -261,7 +261,7 @@ from `tenant-a_maang`.`netflix`.`titles`
 cross join unnest(split(replace(replace(genres,'[',''),']',''), ',')) as t(e)
 where genres &lt;&gt; '[]'">
         <hdml-field name="genre"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="genre_counts" source="?hdml-model=nflx_genres">
@@ -277,7 +277,7 @@ where genres &lt;&gt; '[]'">
          never overlap.
          ======================================================== -->
     <hdml-model name="nflx_cert">
-      <hdml-table
+      <hdml-dataset
         name="k"
         type="query"
         description="Certification family per title, with the title type beside it."
@@ -291,7 +291,7 @@ where genres &lt;&gt; '[]'">
 from `tenant-a_maang`.`netflix`.`titles`">
         <hdml-field name="fam"></hdml-field>
         <hdml-field name="kind"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="cert_split" source="?hdml-model=nflx_cert">

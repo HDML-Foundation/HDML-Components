@@ -555,17 +555,12 @@ function rampNodes(
  * @attribute {string} channel - The channel this element addresses
  * (SPEC §3).
  *
- * @attribute {string} count - How many positions to repeat at (SPEC
- * §7).
- *
  * @attribute {string} step - The interval between repeated positions
  * (SPEC §7).
  *
  * @attribute {string} values - An explicit list — the domain on a
  * scale, the positions to repeat at on a guide.
- *
- * @attribute {string} format - The format skeleton for the text runs
- * (SPEC §4.9).
+
  */
 @customElement(HDVL_TAG_NAMES.LEGEND)
 export class HdmlLegendElement extends HdvlElement {
@@ -583,12 +578,6 @@ export class HdmlLegendElement extends HdvlElement {
    * @internal
    */
   @property({ type: String })
-  [LEGEND_ATTRS_LIST.COUNT]: null | string = null;
-
-  /**
-   * @internal
-   */
-  @property({ type: String })
   [LEGEND_ATTRS_LIST.STEP]: null | string = null;
 
   /**
@@ -596,12 +585,6 @@ export class HdmlLegendElement extends HdvlElement {
    */
   @property({ type: String })
   [LEGEND_ATTRS_LIST.VALUES]: null | string = null;
-
-  /**
-   * @internal
-   */
-  @property({ type: String })
-  [LEGEND_ATTRS_LIST.FORMAT]: null | string = null;
 
   /**
    * @override

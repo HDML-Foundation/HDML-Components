@@ -15,10 +15,10 @@ import type { HdioState } from "./parse";
 import { recordStored } from "./HdioClient";
 
 const table = `
-  <hdml-table name="t" type="table"
+  <hdml-dataset name="t" type="table"
     identifier="\`c\`.\`s\`.\`t\`">
     <hdml-field name="a"></hdml-field>
-  </hdml-table>`;
+  </hdml-dataset>`;
 
 /** A model + a frame chain (f1 → model, f2 → f1) via local refs. */
 const chainDoc = `

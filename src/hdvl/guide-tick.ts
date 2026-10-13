@@ -157,9 +157,6 @@ function glyph(
  * @attribute {string} channel - The channel this element addresses
  * (SPEC §3).
  *
- * @attribute {string} count - How many positions to repeat at (SPEC
- * §7).
- *
  * @attribute {string} step - The interval between repeated positions
  * (SPEC §7).
  *
@@ -177,12 +174,6 @@ export class HdmlTickElement extends HdvlElement {
    */
   @property({ type: String })
   [TICK_ATTRS_LIST.CHANNEL]: null | string = null;
-
-  /**
-   * @internal
-   */
-  @property({ type: String })
-  [TICK_ATTRS_LIST.COUNT]: null | string = null;
 
   /**
    * @internal

@@ -16,7 +16,7 @@
 
 import "./HdmlConnection";
 import "./HdmlModel";
-import "./HdmlTable";
+import "./HdmlDataset";
 import "./HdmlField";
 import "./HdmlJoin";
 import "./HdmlConnective";

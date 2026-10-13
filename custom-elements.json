@@ -1419,11 +1419,101 @@
     },
     {
       "kind": "javascript-module",
+      "path": "src/hdql/HdmlDataset.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "The `hdml-dataset` component represents one dataset within a\ndata model in the HDML structure. It provides a way to define and\norganize data sets, whether they are actual tables, views or\nmaterialized views from a database, or the result of a SQL query.\n\nⓘ **Named `hdml-table` until `@hdml/types`\n`0.0.2-alpha.26`** (019 item 2). The old tag is not an alias: a\ndocument still authoring it parses to a model with no dataset,\nand the parser raises **no diagnostic** for the dropped element.",
+          "name": "HdmlDataset",
+          "events": [
+            {
+              "type": {
+                "text": "CustomEvent"
+              },
+              "description": "Triggers an `hdom-changed` event on the `document` element when it is connected to or disconnected from the `document`, or when any of the described attributes change.",
+              "name": ""
+            }
+          ],
+          "attributes": [
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "The name of the dataset.",
+              "name": "name"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "The type of the dataset, either `table` for an actual database table, view or materialized view, or `query` for a dataset generated from a SQL query.",
+              "name": "type"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "The unique `identifier` for the dataset, which should include the full three-tier table name for database tables, views or materialized views, enclosed in back quotes — or the SQL query.",
+              "name": "identifier"
+            },
+            {
+              "type": {
+                "text": "string"
+              },
+              "description": "The description of the dataset.",
+              "name": "description"
+            }
+          ],
+          "superclass": {
+            "name": "HdqlElement",
+            "module": "/src/hdql/HdqlElement"
+          },
+          "tagName": "hdml-dataset",
+          "customElement": true,
+          "members": [
+            {
+              "kind": "method",
+              "name": "dispatchHdomChanges",
+              "privacy": "private",
+              "return": {
+                "type": {
+                  "text": "void"
+                }
+              },
+              "description": "Dispatches `hdom-changed` event on the `document` element.",
+              "inheritedFrom": {
+                "name": "HdqlElement",
+                "module": "src/hdql/HdqlElement.ts"
+              }
+            }
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "HdmlDataset",
+          "declaration": {
+            "name": "HdmlDataset",
+            "module": "src/hdql/HdmlDataset.ts"
+          }
+        },
+        {
+          "kind": "custom-element-definition",
+          "declaration": {
+            "name": "HdmlDataset",
+            "module": "src/hdql/HdmlDataset.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
       "path": "src/hdql/HdmlField.ts",
       "declarations": [
         {
           "kind": "class",
-          "description": "The `hdml-field` component represents a field within an\n`hdml-table` in the HDML context.",
+          "description": "The `hdml-field` component represents a field within an\n`hdml-dataset` in the HDML context.",
           "name": "HdmlField",
           "events": [
             {
@@ -1453,7 +1543,7 @@
               "type": {
                 "text": "string"
               },
-              "description": "The name of the original field in the database if used within the scope of `hdml-table`, or in the parent structure if used within the scope of an `hdml-frame`. If omitted, it is assumed to be the same as the HDML field name.",
+              "description": "The name of the original field in the database if used within the scope of `hdml-dataset`, or in the parent structure if used within the scope of an `hdml-frame`. If omitted, it is assumed to be the same as the HDML field name.",
               "name": "origin"
             },
             {
@@ -1599,7 +1689,7 @@
               "type": {
                 "text": "string"
               },
-              "description": "Specifies the SQL-like conditional clause for expression-based filters. The format depends on the context: - Under `hdml-model > hdml-join` should be set as: ``` clause=\"`hdml-table-name`.`hdml-table-field-name` = 'string'\" ``` - Under `hdml-frame > hdml-filter-by` should be set as: ``` clause=\"`hdml-frame-field-name` = 'string'\" ```",
+              "description": "Specifies the SQL-like conditional clause for expression-based filters. The format depends on the context: - Under `hdml-model > hdml-join` should be set as: ``` clause=\"`hdml-dataset-name`.`hdml-dataset-field-name` = 'string'\" ``` - Under `hdml-frame > hdml-filter-by` should be set as: ``` clause=\"`hdml-frame-field-name` = 'string'\" ```",
               "name": "clause"
             },
             {
@@ -1613,7 +1703,7 @@
               "type": {
                 "text": "string"
               },
-              "description": "Specifies the field name in the same way it is specified in the `clause` attribute: - Under `hdml-model > hdml-join` should be set as: ``` clause=\"`hdml-table-name`.`hdml-table-field-name` = 'string'\" ``` - Under `hdml-frame > hdml-filter-by` should be set as: ``` clause=\"`hdml-frame-field-name` = 'string'\" ```",
+              "description": "Specifies the field name in the same way it is specified in the `clause` attribute: - Under `hdml-model > hdml-join` should be set as: ``` clause=\"`hdml-dataset-name`.`hdml-dataset-field-name` = 'string'\" ``` - Under `hdml-frame > hdml-filter-by` should be set as: ``` clause=\"`hdml-frame-field-name` = 'string'\" ```",
               "name": "field"
             },
             {
@@ -1913,14 +2003,14 @@
               "type": {
                 "text": "string"
               },
-              "description": "The name of the left table in the join. Should match the name of an `hdml-table` within the same `hdml-model`.",
+              "description": "The name of the left table in the join. Should match the name of an `hdml-dataset` within the same `hdml-model`.",
               "name": "left"
             },
             {
               "type": {
                 "text": "string"
               },
-              "description": "The name of the right table in the join. Should match the name of an `hdml-table` within the same `hdml-model`.",
+              "description": "The name of the right table in the join. Should match the name of an `hdml-dataset` within the same `hdml-model`.",
               "name": "right"
             },
             {
@@ -2106,96 +2196,6 @@
           "declaration": {
             "name": "HdmlSortBy",
             "module": "src/hdql/HdmlSortBy.ts"
-          }
-        }
-      ]
-    },
-    {
-      "kind": "javascript-module",
-      "path": "src/hdql/HdmlTable.ts",
-      "declarations": [
-        {
-          "kind": "class",
-          "description": "The `hdml-table` component represents a table within a data model\nin the HDML structure. It provides a way to define and organize\ndata tables, whether they are actual tables, views, or materialized\nviews from a database or the result of a SQL query.",
-          "name": "HdmlTable",
-          "events": [
-            {
-              "type": {
-                "text": "CustomEvent"
-              },
-              "description": "Triggers an `hdom-changed` event on the `document` element when it is connected to or disconnected from the `document`, or when any of the described attributes change.",
-              "name": ""
-            }
-          ],
-          "attributes": [
-            {
-              "type": {
-                "text": "string"
-              },
-              "description": "The name of the table.",
-              "name": "name"
-            },
-            {
-              "type": {
-                "text": "string"
-              },
-              "description": "The type of the table, either `table` for an actual database table, view, or materialized view, or `query` for a table generated from a SQL query.",
-              "name": "type"
-            },
-            {
-              "type": {
-                "text": "string"
-              },
-              "description": "The unique `identifier` for the table, which should include the full three-tier table name for database tables, views, or materialized views, enclosed in back quotes or SQL query.",
-              "name": "identifier"
-            },
-            {
-              "type": {
-                "text": "string"
-              },
-              "description": "The description of the table.",
-              "name": "description"
-            }
-          ],
-          "superclass": {
-            "name": "HdqlElement",
-            "module": "/src/hdql/HdqlElement"
-          },
-          "tagName": "hdml-table",
-          "customElement": true,
-          "members": [
-            {
-              "kind": "method",
-              "name": "dispatchHdomChanges",
-              "privacy": "private",
-              "return": {
-                "type": {
-                  "text": "void"
-                }
-              },
-              "description": "Dispatches `hdom-changed` event on the `document` element.",
-              "inheritedFrom": {
-                "name": "HdqlElement",
-                "module": "src/hdql/HdqlElement.ts"
-              }
-            }
-          ]
-        }
-      ],
-      "exports": [
-        {
-          "kind": "js",
-          "name": "HdmlTable",
-          "declaration": {
-            "name": "HdmlTable",
-            "module": "src/hdql/HdmlTable.ts"
-          }
-        },
-        {
-          "kind": "custom-element-definition",
-          "declaration": {
-            "name": "HdmlTable",
-            "module": "src/hdql/HdmlTable.ts"
           }
         }
       ]
@@ -3981,13 +3981,6 @@
               "type": {
                 "text": "string"
               },
-              "description": "How many positions to repeat at (SPEC §7).",
-              "name": "count"
-            },
-            {
-              "type": {
-                "text": "string"
-              },
               "description": "The interval between repeated positions (SPEC §7).",
               "name": "step"
             },
@@ -4251,13 +4244,6 @@
               "type": {
                 "text": "string"
               },
-              "description": "How many positions to repeat at (SPEC §7).",
-              "name": "count"
-            },
-            {
-              "type": {
-                "text": "string"
-              },
               "description": "The interval between repeated positions (SPEC §7).",
               "name": "step"
             },
@@ -4267,13 +4253,6 @@
               },
               "description": "An explicit list — the domain on a scale, the positions to repeat at on a guide.",
               "name": "values"
-            },
-            {
-              "type": {
-                "text": "string"
-              },
-              "description": "The format skeleton for the text runs (SPEC §4.9).",
-              "name": "format"
             }
           ],
           "superclass": {
@@ -4496,13 +4475,6 @@
               "type": {
                 "text": "string"
               },
-              "description": "How many positions to repeat at (SPEC §7).",
-              "name": "count"
-            },
-            {
-              "type": {
-                "text": "string"
-              },
               "description": "The interval between repeated positions (SPEC §7).",
               "name": "step"
             },
@@ -4512,13 +4484,6 @@
               },
               "description": "An explicit list — the domain on a scale, the positions to repeat at on a guide.",
               "name": "values"
-            },
-            {
-              "type": {
-                "text": "string"
-              },
-              "description": "The format skeleton for the text runs (SPEC §4.9).",
-              "name": "format"
             }
           ],
           "superclass": {
@@ -5105,13 +5070,6 @@
               },
               "description": "The channel this element addresses (SPEC §3).",
               "name": "channel"
-            },
-            {
-              "type": {
-                "text": "string"
-              },
-              "description": "How many positions to repeat at (SPEC §7).",
-              "name": "count"
             },
             {
               "type": {
@@ -13701,7 +13659,7 @@
             "text": "ReadonlySet<string>"
           },
           "default": "new Set<string>( Object.values(HDML_TAG_NAMES), )",
-          "description": "**Every HDML tag, as a membership set** — the predicate for a\ndiagnostic `path` segment (RFC 019/002 §3.4, item 11).\n\n★ **It is the WHOLE vocabulary, data half included, and that is\nthe point.** The path format is shared with the HDQL emitter, and\n`@hdml/parser`'s `elementPath.ts` builds its own set from exactly\nthis object. Two emitters that answered to two different segment\npredicates would produce two formats wearing one name — the\nfailure RFC §2.1's amendment names — so the set is the same set,\nnot a display-shaped subset of it.\n\n★ **And it is read from `HDML_TAG_NAMES` rather than from\nHDVL_TAG_NAMES for a second, dated reason**: `hdml-text`\nis a **display** tag that ships in `@hdml/types@0.0.2-alpha.25+`\nand is not in `HDVL_TAG_NAMES` here, because this package still\npins `0.0.2-alpha.24` (the bump is step 41's). A set built from\nthe display subset would hand `path: null` to the first\ndiagnostic ever raised against an `<hdml-text>`; built from the\nfull vocabulary it gains the tag the moment the pin moves, with\nno edit here.\n\nMembership, never an `hdml-` prefix test — so a misspelled\n`<hdml-labl>` is not vocabulary and does not become an addressing\nlevel. It lives here for the reason HDQL_SORT_BY_TAG\ndoes: one module imports `@hdml/types` (R8)."
+          "description": "**Every HDML tag, as a membership set** — the predicate for a\ndiagnostic `path` segment (RFC 019/002 §3.4, item 11).\n\n★ **It is the WHOLE vocabulary, data half included, and that is\nthe point.** The path format is shared with the HDQL emitter, and\n`@hdml/parser`'s `elementPath.ts` builds its own set from exactly\nthis object. Two emitters that answered to two different segment\npredicates would produce two formats wearing one name — the\nfailure RFC §2.1's amendment names — so the set is the same set,\nnot a display-shaped subset of it.\n\n★ **And it is read from `HDML_TAG_NAMES` rather than from\nHDVL_TAG_NAMES for a second, dated reason**: `hdml-text`\nis a **display** tag, published since\n`@hdml/types@0.0.2-alpha.26` and pinned here at\n`0.0.2-alpha.27` since step 41, that is **not** in\n`HDVL_TAG_NAMES` — row 42 is the step that gives it an element.\nA set built from the display subset would hand `path: null` to\nthe first diagnostic ever raised against an `<hdml-text>`; built\nfrom the full vocabulary it gained the tag the moment the pin\nmoved, with no edit here — which is what happened at step 41.\n\nMembership, never an `hdml-` prefix test — so a misspelled\n`<hdml-labl>` is not vocabulary and does not become an addressing\nlevel. It lives here for the reason HDQL_SORT_BY_TAG\ndoes: one module imports `@hdml/types` (R8)."
         },
         {
           "kind": "variable",

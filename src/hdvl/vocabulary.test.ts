@@ -51,7 +51,7 @@ const DATA_ATTRS_ENUMS = [
   "FRAME_ATTRS_LIST",
   "JOIN_ATTRS_LIST",
   "MODEL_ATTRS_LIST",
-  "TABLE_ATTRS_LIST",
+  "DATASET_ATTRS_LIST",
 ];
 
 // The twelve data tags, which HDVL_TAG_NAMES must not carry.
@@ -59,7 +59,7 @@ const DATA_TAG_KEYS = [
   "CONNECTION",
   "FRAME",
   "MODEL",
-  "TABLE",
+  "DATASET",
   "JOIN",
   "CONNECTIVE",
   "FILTER_BY",
@@ -127,12 +127,22 @@ suite("hdvl/vocabulary", () => {
     }
   });
 
-  test("21 display + 12 data = the published 33", () => {
-    assert.lengthOf(Object.keys(allTags), 33);
+  test("21 display + 12 data + hdml-text = the published 34", () => {
+    assert.lengthOf(Object.keys(allTags), 34);
     assert.lengthOf(
       Object.keys(allTags).filter((k) => k in tags),
       21,
     );
+    // ★ 21 + 12 = 33, not 34, and the gap is the POINT: step 41
+    // bumped `@hdml/types` to `0.0.2-alpha.27`, which publishes
+    // `hdml-text`, and row 42 is the step that gives it an
+    // element. Until then the published vocabulary is one wider
+    // than the implemented one, which is the same fact
+    // `UNREGISTERED_TAGS` states in `scripts/check-dist.mjs`.
+    // ⚠ When `hdml-text` lands, BOTH numbers move: 34 stays and
+    // the display count becomes 22.
+    assert.isUndefined(tags.TEXT, "row 42 implements hdml-text");
+    assert.strictEqual(allTags.TEXT, "hdml-text");
   });
 
   test("all 20 display attribute enums are exported", () => {

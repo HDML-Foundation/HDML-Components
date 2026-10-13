@@ -166,7 +166,7 @@
          section 8 recommends; the page uses it on itself.
          ======================================================== -->
     <hdml-model name="airbnb_rows">
-      <hdml-table
+      <hdml-dataset
         name="r"
         type="query"
         description="All twenty city/period tables stacked, partition keys promoted to columns."
@@ -212,7 +212,7 @@ union all
         <hdml-field name="city"></hdml-field>
         <hdml-field name="period"></hdml-field>
         <hdml-field name="person_capacity"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="rows_by_city" source="?hdml-model=airbnb_rows">
@@ -245,7 +245,7 @@ union all
          paint — missing renders as absent, never as zero.
          ======================================================== -->
     <hdml-model name="airbnb_columns">
-      <hdml-table
+      <hdml-dataset
         name="c"
         type="query"
         description="One row per column: distinct count plus observed min/max."
@@ -415,7 +415,7 @@ cross join (values
         <hdml-field name="n_distinct"></hdml-field>
         <hdml-field name="lo"></hdml-field>
         <hdml-field name="hi"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="columns_profile" source="?hdml-model=airbnb_columns">
@@ -831,7 +831,7 @@ cross join (values
     </p>
 
 <pre><code>&lt;hdml-model name="airbnb"&gt;
-  &lt;hdml-table name="listing" type="query" identifier="
+  &lt;hdml-dataset name="listing" type="query" identifier="
     select 'amsterdam' as city, 'weekdays' as period, *
       from `tenant-a_airbnb`.`airbnb`.`amsterdam_weekdays`
     union all
@@ -862,7 +862,7 @@ cross join (values
       clause="case when `host_is_superhost` = 'True'
                    then 1 else 0 end"&gt;
     &lt;/hdml-field&gt;
-  &lt;/hdml-table&gt;
+  &lt;/hdml-dataset&gt;
 &lt;/hdml-model&gt;</code></pre>
 
     <p>

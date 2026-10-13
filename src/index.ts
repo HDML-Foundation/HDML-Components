@@ -8,7 +8,7 @@ import "./hdio/HdmlIo";
 
 import "./hdql/HdmlConnection";
 import "./hdql/HdmlModel";
-import "./hdql/HdmlTable";
+import "./hdql/HdmlDataset";
 import "./hdql/HdmlField";
 import "./hdql/HdmlJoin";
 import "./hdql/HdmlConnective";

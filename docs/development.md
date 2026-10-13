@@ -903,7 +903,7 @@ the table *names* rather than in any column, `netflix` two tables with a real fo
 every difficulty *inside* the columns, and `spotify` two tables with **no shared key at all**
 (the only join is on the title, and it happens to match 100/100). Each schema has a pair — a
 structural profile and a findings page — except `maang`, whose pages predate the convention. `maang/definition.html` is also the one page that reaches
-for `hdml-table type="query"` — raw Trino as a CTE — for the figures a window function is
+for `hdml-dataset type="query"` — raw Trino as a CTE — for the figures a window function is
 needed for and the declarative vocabulary therefore cannot express.
 
 #### The live corpus — `html/hdvl-live/`

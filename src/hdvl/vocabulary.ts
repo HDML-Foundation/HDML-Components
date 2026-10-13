@@ -114,13 +114,14 @@ export const HDQL_SORT_BY_TAG: string = HDML_TAG_NAMES.SORT_BY;
  *
  * ★ **And it is read from `HDML_TAG_NAMES` rather than from
  * {@link HDVL_TAG_NAMES} for a second, dated reason**: `hdml-text`
- * is a **display** tag that ships in `@hdml/types@0.0.2-alpha.25+`
- * and is not in `HDVL_TAG_NAMES` here, because this package still
- * pins `0.0.2-alpha.24` (the bump is step 41's). A set built from
- * the display subset would hand `path: null` to the first
- * diagnostic ever raised against an `<hdml-text>`; built from the
- * full vocabulary it gains the tag the moment the pin moves, with
- * no edit here.
+ * is a **display** tag, published since
+ * `@hdml/types@0.0.2-alpha.26` and pinned here at
+ * `0.0.2-alpha.27` since step 41, that is **not** in
+ * `HDVL_TAG_NAMES` — row 42 is the step that gives it an element.
+ * A set built from the display subset would hand `path: null` to
+ * the first diagnostic ever raised against an `<hdml-text>`; built
+ * from the full vocabulary it gained the tag the moment the pin
+ * moved, with no edit here — which is what happened at step 41.
  *
  * Membership, never an `hdml-` prefix test — so a misspelled
  * `<hdml-labl>` is not vocabulary and does not become an addressing

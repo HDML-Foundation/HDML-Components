@@ -34,11 +34,11 @@ import { HdqlElement } from "./HdqlElement";
  * and right but includes unmatched rows as well.
  *
  * @attribute {string} left - The name of the left table in the join.
- * Should match the name of an `hdml-table` within the same
+ * Should match the name of an `hdml-dataset` within the same
  * `hdml-model`.
  *
  * @attribute {string} right - The name of the right table in the
- * join. Should match the name of an `hdml-table` within the same
+ * join. Should match the name of an `hdml-dataset` within the same
  * `hdml-model`.
  *
  * @attribute {string} description - The description of the model.

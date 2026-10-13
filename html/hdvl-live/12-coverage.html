@@ -126,7 +126,7 @@
          to `double` on purpose — see the type note in the header.
          ======================================================== -->
     <hdml-model name="maang_daily">
-      <hdml-table
+      <hdml-dataset
         name="p"
         type="query"
         description="One row per (stock, trading day), the five MAANG tables unioned and cast."
@@ -162,7 +162,7 @@ from (
         <hdml-field name="c"></hdml-field>
         <hdml-field name="v"></hdml-field>
         <hdml-field name="dv"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
     <!-- A — one row per (stock, year); `yr` doubles as the ramp's
          measure. -->

@@ -47,7 +47,7 @@ import { HdqlElement } from "./HdqlElement";
  * context:
  * - Under `hdml-model > hdml-join` should be set as:
  *   ```
- *   clause="`hdml-table-name`.`hdml-table-field-name` = 'string'"
+ *   clause="`hdml-dataset-name`.`hdml-dataset-field-name` = 'string'"
  *   ```
  * - Under `hdml-frame > hdml-filter-by` should be set as:
  *   ```
@@ -76,7 +76,7 @@ import { HdqlElement } from "./HdqlElement";
  * way it is specified in the `clause` attribute:
  * - Under `hdml-model > hdml-join` should be set as:
  *   ```
- *   clause="`hdml-table-name`.`hdml-table-field-name` = 'string'"
+ *   clause="`hdml-dataset-name`.`hdml-dataset-field-name` = 'string'"
  *   ```
  * - Under `hdml-frame > hdml-filter-by` should be set as:
  *   ```

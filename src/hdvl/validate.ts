@@ -70,7 +70,6 @@ import {
   HDML_TAG_SET,
   HDQL_SORT_BY_TAG,
   HDVL_TAG_NAMES,
-  LABEL_ATTRS_LIST,
   POINT_ATTRS_LIST,
 } from "./vocabulary";
 
@@ -351,15 +350,57 @@ const POSITIONAL_GUIDES: readonly string[] = [
 ];
 
 /**
- * §6.5's `spec`, as attribute names — *"`count`, `step` or `values`,
- * mutually exclusive"*.
+ * 019 items 18+19 — the two spec keys whose value moved into CSS,
+ * and so the two whose **only** form is now a property.
  *
- * `hdml-grid`'s enum supplies all three because the names are one
- * vocabulary across the four tags, which is the reading
- * `guide-spec.ts` already takes of the same three attributes.
+ * `--hdml-tick-count`'s registered initial is `auto`;
+ * `--hdml-text-format` carries no initial at all and computes to
+ * exactly `""`. Those two strings are what *"the author said
+ * nothing here"* looks like, and `inherits: false` (RFC 019/001
+ * §6.3) is what makes reading them a **local-declaration** detector
+ * rather than a cascade lookup — without it an ancestor's rule
+ * would read as a declaration on every descendant guide.
+ *
+ * ★ They are literals because a CSS property name is this
+ * package's own and was never in `@hdml/types` — R8 governs the
+ * published vocabulary, and seven other `--hdml-*` names in this
+ * file are spelled the same way.
  */
-const SPEC_ATTRS: readonly string[] = [
-  GRID_ATTRS_LIST.COUNT,
+const TICK_COUNT_PROPERTY = "--hdml-tick-count";
+
+const TEXT_FORMAT_PROPERTY = "--hdml-text-format";
+
+/**
+ * Each property-only spec key, mapped to the value a
+ * **non-declaring** element computes for it.
+ *
+ * ★ It doubles as the predicate {@link stated} branches on — *"is
+ * this key a property?"* is *"is it in here?"* — which is what let
+ * step 41 delete the attribute→property map this file used to
+ * carry. Keyed off the two constants, so each property name is
+ * spelled exactly once.
+ */
+const PROPERTY_ABSENT: Readonly<Record<string, string>> = {
+  [TICK_COUNT_PROPERTY]: "auto",
+  [TEXT_FORMAT_PROPERTY]: "",
+};
+
+/**
+ * §6.5's `spec` keys — *"`count`, `step` or `values`, mutually
+ * exclusive"* — each **by the one form it still has**.
+ *
+ * ⚠ **Mixed by necessity, not by accident.** `step` and `values`
+ * are attributes and come from the published enum, as everything
+ * under `src/hdvl/` does (R8). `count` is a **property** as of 019
+ * items 18+19 and `@hdml/types` `0.0.2-alpha.27` no longer
+ * publishes `COUNT` on any of the four guide enums — so there is
+ * no vocabulary member left to name it with, and a retired
+ * attribute name would be a key nothing in the document can carry.
+ * Keying it on `--hdml-tick-count` is what deleted this file's
+ * attribute→property indirection: see {@link stated}.
+ */
+const SPEC_KEYS: readonly string[] = [
+  TICK_COUNT_PROPERTY,
   GRID_ATTRS_LIST.STEP,
   GRID_ATTRS_LIST.VALUES,
 ];
@@ -368,14 +409,14 @@ const SPEC_ATTRS: readonly string[] = [
  * V20(b)'s set — *"on `hdml-legend`, `count`/`step`/`values`/
  * `format` require a continuous resolved scale"*.
  *
- * It is {@link SPEC_ATTRS} plus `format` and not a fourth list of
- * the same names, for the reason that one gives: the four attribute
- * names are one vocabulary across the five guide tags, and the enum
- * a name is read from says nothing about which tag publishes it.
+ * It is {@link SPEC_KEYS} plus `format` and not a fourth list of
+ * the same names, for the reason that one gives: the four keys are
+ * one vocabulary across the five guide tags, and where a key is
+ * read from says nothing about which tag publishes it.
  */
 const LEGEND_DENSITY: readonly string[] = [
-  ...SPEC_ATTRS,
-  LABEL_ATTRS_LIST.FORMAT,
+  ...SPEC_KEYS,
+  TEXT_FORMAT_PROPERTY,
 ];
 
 /** SPEC §5's bindable-identifier form: a letter or `_`, then word. */
@@ -1945,9 +1986,9 @@ function checkV20Legend(
   props: ReadonlyMap<string, string> | null,
   out: Finding[],
 ): void {
-  const written = LEGEND_DENSITY.filter((attr) =>
-    stated(el, attr, props),
-  ).map(statedAs);
+  const written = LEGEND_DENSITY.filter((key) =>
+    stated(el, key, props),
+  );
   if (written.length === 0) {
     return;
   }
@@ -2019,9 +2060,7 @@ function checkV16(
   ) {
     return;
   }
-  const written = SPEC_ATTRS.filter((attr) =>
-    stated(el, attr, props),
-  ).map(statedAs);
+  const written = SPEC_KEYS.filter((key) => stated(el, key, props));
   if (written.length === 0) {
     return;
   }
@@ -2113,7 +2152,7 @@ function checkV14(
   if (
     el.family !== "guide" ||
     !(el.localName === LABEL_TAG || el.localName === LEGEND_TAG) ||
-    !stated(el, LABEL_ATTRS_LIST.FORMAT, props)
+    !stated(el, TEXT_FORMAT_PROPERTY, props)
   ) {
     return;
   }
@@ -2645,28 +2684,6 @@ function declared(el: HdvlElement, attr: string): boolean {
 }
 
 /**
- * 019 items 18+19 — the two spec keys whose value moved into CSS,
- * and the value a **non-declaring** element computes for each.
- *
- * `--hdml-tick-count`'s registered initial is `auto`;
- * `--hdml-text-format` carries no initial at all and computes to
- * exactly `""`. Those two strings are what *"the author said
- * nothing here"* looks like, and `inherits: false` (RFC 019/001
- * §6.3) is what makes reading them a **local-declaration**
- * detector rather than a cascade lookup — without it an ancestor's
- * rule would read as a declaration on every descendant guide.
- */
-const SPEC_PROPERTY: Readonly<Record<string, string>> = {
-  [GRID_ATTRS_LIST.COUNT]: "--hdml-tick-count",
-  [LABEL_ATTRS_LIST.FORMAT]: "--hdml-text-format",
-};
-
-const PROPERTY_ABSENT: Readonly<Record<string, string>> = {
-  "--hdml-tick-count": "auto",
-  "--hdml-text-format": "",
-};
-
-/**
  * Whether the author **stated** a spec key on this element, in
  * whichever form that key still has.
  *
@@ -2677,7 +2694,20 @@ const PROPERTY_ABSENT: Readonly<Record<string, string>> = {
  * `textsOf`'s attribute arms are gone, so a `count=` attribute
  * drives nothing, and a rule that reported on one would be making
  * a claim about a dead key — *"count and step are mutually
- * exclusive"* is false when the count cannot reach the scale.
+ * exclusive"* is false when the count cannot reach the scale. As
+ * of `@hdml/types` `0.0.2-alpha.27` the two are not attributes at
+ * all: the published enums dropped `COUNT` and `FORMAT`, so the
+ * only spelling left **is** the property.
+ *
+ * ★ **A key is its own name here**, which is why step 41 could
+ * delete the attribute→property map and the report-naming helper
+ * that read it: {@link PROPERTY_ABSENT} doubles as the predicate
+ * for *"is this key a property?"*, and a report names the key it
+ * filtered on. ⚠ That still makes V16 a **mixed-source** report —
+ * a label carrying `--hdml-tick-count` beside `step=` hears
+ * *"--hdml-tick-count and step are mutually exclusive"*, naming a
+ * property and an attribute in one sentence, because that is what
+ * the document says.
  *
  * ★ The property branch mirrors `tickSpecOf`'s and `textsOf`'s own
  * branch conditions — `=== ""` and `=== "auto"` — and **not** their
@@ -2687,39 +2717,25 @@ const PROPERTY_ABSENT: Readonly<Record<string, string>> = {
  * rules have to see.
  *
  * @param el - The guide.
- * @param attr - The spec key, by its attribute name.
+ * @param key - The spec key: a property name for the two CSS-only
+ * keys, an attribute name for the rest.
  * @param props - That element's harvested properties, or `null`
  * where the frame has not measured it.
  * @returns Whether the key is stated here.
  */
 function stated(
   el: HdvlElement,
-  attr: string,
+  key: string,
   props: ReadonlyMap<string, string> | null,
 ): boolean {
-  const prop = SPEC_PROPERTY[attr];
-  if (prop === undefined) {
-    return declared(el, attr);
+  if (!(key in PROPERTY_ABSENT)) {
+    return declared(el, key);
   }
   if (props === null) {
     return false;
   }
-  const raw = (props.get(prop) ?? "").trim();
-  return raw !== "" && raw !== PROPERTY_ABSENT[prop];
-}
-
-/**
- * How a report **names** the key it found — the spelling the author
- * actually wrote, so the message names something they can go and
- * edit.
- *
- * ⚠ This makes V16 a **mixed-source** report: a label carrying
- * `--hdml-tick-count` beside `step=` hears *"--hdml-tick-count and
- * step are mutually exclusive"*, naming a property and an attribute
- * in one sentence, because that is what the document says.
- */
-function statedAs(attr: string): string {
-  return SPEC_PROPERTY[attr] ?? attr;
+  const raw = (props.get(key) ?? "").trim();
+  return raw !== "" && raw !== PROPERTY_ABSENT[key];
 }
 
 /**
@@ -2736,7 +2752,7 @@ function skeletonOf(
   props: ReadonlyMap<string, string> | null,
 ): string {
   void el;
-  return (props?.get("--hdml-text-format") ?? "").trim();
+  return (props?.get(TEXT_FORMAT_PROPERTY) ?? "").trim();
 }
 
 /**

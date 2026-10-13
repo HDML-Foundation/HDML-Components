@@ -168,7 +168,7 @@
          claim that `date` is a key.
          ======================================================== -->
     <hdml-model name="stat_tables">
-      <hdml-table
+      <hdml-dataset
         name="t"
         type="query"
         description="One row per source table: cardinality of rows and of dates."
@@ -180,7 +180,7 @@ union all select 'netflix', count(*), count(distinct `date`) from `tenant-a_maan
         <hdml-field name="tbl"></hdml-field>
         <hdml-field name="n_rows"></hdml-field>
         <hdml-field name="n_dates"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="tables_overview" source="?hdml-model=stat_tables">
@@ -198,7 +198,7 @@ union all select 'netflix', count(*), count(distinct `date`) from `tenant-a_maan
          fields. This is the split the page argues for.
          ======================================================== -->
     <hdml-model name="stat_days">
-      <hdml-table
+      <hdml-dataset
         name="d"
         type="query"
         description="One row per trading day per ticker, reduced to its year."
@@ -209,7 +209,7 @@ union all select year(cast(`date` as date)), 'msft' from `tenant-a_maang`.`maang
 union all select year(cast(`date` as date)), 'nflx' from `tenant-a_maang`.`maang`.`netflix`">
         <hdml-field name="yr"></hdml-field>
         <hdml-field name="sym"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="coverage_yearly" source="?hdml-model=stat_days">
@@ -230,7 +230,7 @@ union all select year(cast(`date` as date)), 'nflx' from `tenant-a_maang`.`maang
          carries one series per COLUMN rather than per table.
          ======================================================== -->
     <hdml-model name="stat_cardinality">
-      <hdml-table
+      <hdml-dataset
         name="c"
         type="query"
         description="Distinct-value count of every column, per table."
@@ -247,7 +247,7 @@ union all select 'netflix', count(distinct open), count(distinct high), count(di
         <hdml-field name="n_adj"></hdml-field>
         <hdml-field name="n_volume"></hdml-field>
         <hdml-field name="n_date"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="cardinality_by_table" source="?hdml-model=stat_cardinality">
@@ -270,7 +270,7 @@ union all select 'netflix', count(distinct open), count(distinct high), count(di
          is a ranged bar: y0 = min, y1 = max.
          ======================================================== -->
     <hdml-model name="stat_ranges">
-      <hdml-table
+      <hdml-dataset
         name="r"
         type="query"
         description="Observed min and max of each numeric column, all tables pooled."
@@ -312,7 +312,7 @@ group by col">
         <hdml-field name="pos"></hdml-field>
         <hdml-field name="lo"></hdml-field>
         <hdml-field name="hi"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="ranges_by_column" source="?hdml-model=stat_ranges">
@@ -668,7 +668,7 @@ group by col">
       unique. Per table:
     </p>
 
-<pre><code>&lt;hdml-table name="amazon" type="table"
+<pre><code>&lt;hdml-dataset name="amazon" type="table"
             identifier="`tenant-a_maang`.`maang`.`amazon`"&gt;
   &lt;!-- unique, ISO, always 10 chars: a real key --&gt;
   &lt;hdml-field name="date"      type="date"&gt;&lt;/hdml-field&gt;
@@ -682,7 +682,7 @@ group by col">
 
   &lt;!-- integral, max 7.42e9: int-32 overflows --&gt;
   &lt;hdml-field name="volume"    type="int-64"&gt;&lt;/hdml-field&gt;
-&lt;/hdml-table&gt;</code></pre>
+&lt;/hdml-dataset&gt;</code></pre>
 
     <p>
       And the join, once per pair, on the column section 2 proved

@@ -13,7 +13,7 @@
 
     • `maang_yearly` — a frame over the tenant's frame. Figures 1–5.
     • `maang_daily`  — a MODEL of this page's own, whose single
-      `hdml-table type="query"` runs raw Trino against the same
+      `hdml-dataset type="query"` runs raw Trino against the same
       catalog. Figures 6 and 7.
 
   TWO THINGS THAT DECIDE WHAT IS EXPRESSIBLE, both verified against
@@ -259,7 +259,7 @@
          run find-drop-create DDL against it.
          ============================================================ -->
     <hdml-model name="maang_daily">
-      <hdml-table
+      <hdml-dataset
         name="d"
         type="query"
         description="Daily returns and running-peak drawdowns, pivoted wide."
@@ -303,7 +303,7 @@ from (
         <hdml-field name="dd_goog"></hdml-field>
         <hdml-field name="dd_msft"></hdml-field>
         <hdml-field name="dd_nflx"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <!-- Deepest drawdown reached in each year: an ordinary `min` over

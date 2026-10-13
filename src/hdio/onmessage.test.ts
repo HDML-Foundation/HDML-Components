@@ -72,9 +72,10 @@ function ipcBuffer(cols: Record<string, arrow.Vector>): ArrayBuffer {
 // `hdml-frame=f1` ref via a real parse (mirrors parse.test.ts).
 const gateDoc = `
   <hdml-model name="m1">
-    <hdml-table name="t" type="table" identifier="\`c\`.\`s\`.\`t\`">
+    <hdml-dataset name="t" type="table"
+      identifier="\`c\`.\`s\`.\`t\`">
       <hdml-field name="a"></hdml-field>
-    </hdml-table>
+    </hdml-dataset>
   </hdml-model>
   <hdml-frame name="f1" source="?hdml-model=m1">
     <hdml-field name="a"></hdml-field>

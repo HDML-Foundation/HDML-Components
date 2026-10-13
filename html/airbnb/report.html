@@ -153,7 +153,7 @@
 
     <!-- ============ row grain: six figures come from here ======== -->
     <hdml-model name="abnb">
-      <hdml-table
+      <hdml-dataset
         name="t"
         type="query"
         description="All twenty city/period tables stacked; partition keys promoted."
@@ -210,7 +210,7 @@ union all
         <hdml-field name="attr_index_norm"></hdml-field>
         <hdml-field name="rest_index_norm"></hdml-field>
         <hdml-field name="metro_dist"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <!-- One frame, three figures: the city is the grain for price
@@ -265,7 +265,7 @@ union all
 
     <!-- ==== three unpivots: a frame makes columns, not rows ====== -->
     <hdml-model name="abnb_quantiles">
-      <hdml-table name="q" type="query"
+      <hdml-dataset name="q" type="query"
         description="One row per price quantile."
         identifier="select
   v.label as label,
@@ -342,7 +342,7 @@ cross join (values
         <hdml-field name="label"></hdml-field>
         <hdml-field name="pos"></hdml-field>
         <hdml-field name="price"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="quantiles" source="?hdml-model=abnb_quantiles">
@@ -353,7 +353,7 @@ cross join (values
     </hdml-frame>
 
     <hdml-model name="abnb_drivers">
-      <hdml-table name="d" type="query"
+      <hdml-dataset name="d" type="query"
         description="Correlation of price with each candidate driver."
         identifier="select
   v.label as label,
@@ -430,7 +430,7 @@ cross join (values
         <hdml-field name="label"></hdml-field>
         <hdml-field name="pos"></hdml-field>
         <hdml-field name="r"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="drivers" source="?hdml-model=abnb_drivers">
@@ -441,7 +441,7 @@ cross join (values
     </hdml-frame>
 
     <hdml-model name="abnb_segments">
-      <hdml-table name="s" type="query"
+      <hdml-dataset name="s" type="query"
         description="Price and satisfaction for nine listing/host segments."
         identifier="select
   s.label as label,
@@ -516,7 +516,7 @@ group by s.label, s.pos">
         <hdml-field name="med"></hdml-field>
         <hdml-field name="satisf"></hdml-field>
         <hdml-field name="n"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="segments" source="?hdml-model=abnb_segments">

@@ -172,7 +172,7 @@
          log scale, so the bar would not paint at all.
          ======================================================== -->
     <hdml-model name="spfy_columns">
-      <hdml-table
+      <hdml-dataset
         name="c"
         type="query"
         description="One row per column of spotify.features with its distinct count."
@@ -205,7 +205,7 @@ cross join (values
         <hdml-field name="pos"></hdml-field>
         <hdml-field name="base"></hdml-field>
         <hdml-field name="n_distinct"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="columns_profile" source="?hdml-model=spfy_columns">
@@ -223,7 +223,7 @@ cross join (values
          here is exactly the mistake section 4 describes.
          ======================================================== -->
     <hdml-model name="spfy_units">
-      <hdml-table
+      <hdml-dataset
         name="u"
         type="query"
         description="Observed min and max of the seven unit-scaled audio features."
@@ -251,7 +251,7 @@ cross join (values
         <hdml-field name="pos"></hdml-field>
         <hdml-field name="lo"></hdml-field>
         <hdml-field name="hi"></hdml-field>
-      </hdml-table>
+      </hdml-dataset>
     </hdml-model>
 
     <hdml-frame name="unit_ranges" source="?hdml-model=spfy_units">

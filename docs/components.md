@@ -33,7 +33,7 @@ because it is not a `HdqlElement`).
 ```mermaid
 flowchart TD
   conn[hdml-connection]
-  model[hdml-model] --> tbl[hdml-table] --> fld_t[hdml-field]
+  model[hdml-model] --> tbl[hdml-dataset] --> fld_t[hdml-field]
   model --> join[hdml-join] --> conv_j[hdml-connective] --> flt_j[hdml-filter]
   conv_j --> conv_j
   frm[hdml-frame] --> fld_f[hdml-field]
@@ -107,11 +107,17 @@ Container for an entity-relationship graph (tables joined together).
 | `name` | identifier |
 | `description` | free text |
 
-**Allowed children:** `hdml-table`, `hdml-join`.
+**Allowed children:** `hdml-dataset`, `hdml-join`.
 
-### `hdml-table` — [src/hdql/HdmlTable.ts](../src/hdql/HdmlTable.ts)
+### `hdml-dataset` — [src/hdql/HdmlDataset.ts](../src/hdql/HdmlDataset.ts)
 
 A physical table, view, materialized view, or SQL query inside a model.
+
+⚠ **Renamed from `hdml-table` in `@hdml/types@0.0.2-alpha.26`** (019 item 2,
+breaking). The old tag is **not** an alias: a document authoring `hdml-table`
+parses to a model with no dataset, and the parser raises no diagnostic for the
+dropped element — so a missed document is a silently empty chart, never an
+error. Migrate by grep.
 
 | Attribute | |
 |---|---|
@@ -124,13 +130,13 @@ A physical table, view, materialized view, or SQL query inside a model.
 
 ### `hdml-field` — [src/hdql/HdmlField.ts](../src/hdql/HdmlField.ts)
 
-A typed field. Reused inside `hdml-table`, `hdml-frame`, `hdml-group-by`, `hdml-sort-by`.
+A typed field. Reused inside `hdml-dataset`, `hdml-frame`, `hdml-group-by`, `hdml-sort-by`.
 
 | Attribute | |
 |---|---|
 | `name` | identifier in the HDML context |
 | `description` | free text |
-| `origin` | source-column name (in `hdml-table`) or parent-field name (in `hdml-frame`) |
+| `origin` | source-column name (in `hdml-dataset`) or parent-field name (in `hdml-frame`) |
 | `clause` | raw SQL clause; takes precedence over `origin` |
 | `type` | `int-8 \| int-16 \| int-32 \| int-64 \| float-16 \| float-32 \| float-64 \| binary \| utf-8 \| decimal \| date \| time \| timestamp` |
 | `aggregation` | `none \| count \| countDistinct \| countDistinctApprox \| sum \| avg \| min \| max` |
@@ -141,12 +147,12 @@ A typed field. Reused inside `hdml-table`, `hdml-frame`, `hdml-group-by`, `hdml-
 
 ### `hdml-join` — [src/hdql/HdmlJoin.ts](../src/hdql/HdmlJoin.ts)
 
-A join between two `hdml-table`s within an `hdml-model`.
+A join between two `hdml-dataset`s within an `hdml-model`.
 
 | Attribute | |
 |---|---|
 | `type` | `cross \| inner \| full \| left \| right \| full-outer \| left-outer \| right-outer` |
-| `left`, `right` | `hdml-table.name` references |
+| `left`, `right` | `hdml-dataset.name` references |
 | `description` | free text |
 
 **Allowed children:** an `hdml-connective` (carrying the join condition).
@@ -211,7 +217,7 @@ absolute paths via `sourceToPath`, same-document references via the in-memory ma
 **Parent field naming.** What the frame sees from its `source` depends on the source kind:
 
 - `source="?hdml-model=m"` (or an external `/path?hdml-model=m`) — the model exposes every
-  field as **`"{table-name}_{field-name}"`**. In a multi-table model whose `hdml-table`s are
+  field as **`"{table-name}_{field-name}"`**. In a multi-table model whose `hdml-dataset`s are
   `amazon` and `apple`, the parent's `close` columns reach the frame as `amazon_close` and
   `apple_close` — **never** the bare `close`. Reference them by that compound name in
   `origin`, and inside any `clause` SQL. This is true even when the model has only one table.
@@ -667,8 +673,8 @@ already V1's error — the same condition the geometry sees as "nothing to span"
 
 | | |
 |---|---|
-| **`hdml-axis` attributes** | `channel` — **and nothing else**. §6.5 is explicit that it takes no `count`/`step`/`values`, and `AXIS_ATTRS_LIST` has one member, so the whole-range span is not a default that could be argued down |
-| **`hdml-grid` attributes** | `channel`, `count`, `step`, `values` |
+| **`hdml-axis` attributes** | `channel` — **and nothing else**. §6.5 is explicit that it takes no `count`/`step`/`values`, and `AXIS_ATTRS_LIST` has one member, so the whole-range span is not a default that could be argued down. ⓘ Since 019 items 18+19 the spec keys an axis takes none of are `--hdml-tick-count`, `step` and `values` |
+| **`hdml-grid` attributes** | `channel`, `step`, `values` — plus `--hdml-tick-count`, which is a **property** (019 items 18+19) |
 | **Parent** | a scale (its containing block, so CSS placement resolves against the plot area) |
 | **Emits** | axis: one stroked `path` over the whole range. grid: one `path` per tick, across the plane |
 | **Group role** | `guide` — never `mark`, which is what keeps `:state(empty)` a statement about data |
@@ -981,8 +987,8 @@ same UA placement, and — since step 27 — the same behaviour under both plane
 
 | | |
 |---|---|
-| **`hdml-tick` attributes** | `channel`, `count`, `step`, `values` |
-| **`hdml-label` attributes** | `channel`, `count`, `step`, `values`, `format` |
+| **`hdml-tick` attributes** | `channel`, `step`, `values` — plus `--hdml-tick-count`, which is a **property** (019 items 18+19) |
+| **`hdml-label` attributes** | `channel`, `step`, `values` — plus `--hdml-tick-count` and `--hdml-text-format`, which are **properties** (019 items 18+19) |
 | **Parent** | a scale |
 | **Emits** | tick: one `rect` or `ellipse` per tick. label: one `text` per tick |
 
@@ -1225,8 +1231,8 @@ subscription bus never sees it.
 | Attribute | Value |
 |---|---|
 | `channel` | `color` (v1). Resolves per **V1**, exactly as every other guide's channel does |
-| `count` \| `step` \| `values` | **Only over a continuous resolved scale** (V20). Mutually exclusive (V16) |
-| `format` | A CLDR skeleton for the ramp's values. Continuous only (V20); well-formed and kind-matching (V14) |
+| `step` \| `values` | **Only over a continuous resolved scale** (V20). Mutually exclusive with each other and with `--hdml-tick-count` (V16) |
+| `--hdml-tick-count` \| `--hdml-text-format` | **Properties, not attributes**, as of 019 items 18+19 — `LEGEND_ATTRS_LIST` no longer publishes `COUNT` or `FORMAT`. Same rules: continuous-only (V20), and a skeleton must be well-formed and kind-matching (V14) |
 
 **★ The two modes are derived, never authored.** The mode is the resolved scale's
 **tag** — a static ancestor lookup, the same one V2 makes, never a cascade lookup.
@@ -1618,9 +1624,12 @@ says so in its header.
 ★ **`step` and `values` are unaffected**: they have no CSS half, so they are still
 attributes, and still live.
 
-⚠ The attributes remain in the vocabulary until a later 019 step removes them, so a
-document may still carry one. It has no effect, and **nothing reports it** — see below.
-Both steps ship in the same release, so no published version has an inert attribute.
+★ **019 step 41 removed them from the vocabulary.** `@hdml/types@0.0.2-alpha.27`
+publishes no `COUNT` on `TICK_`/`GRID_`/`LABEL_`/`LEGEND_ATTRS_LIST` and no `FORMAT` on
+the latter two, and the four elements no longer declare the properties — so `count=` and
+`format=` are not inert attributes of this vocabulary, they are **not attributes of it at
+all**, and an author writing one gets the same nothing any unknown attribute gets. Both
+steps ship in the same release, so no published version ever had an inert attribute.
 
 ##### ★★ Three error clauses follow the value into CSS
 
@@ -1632,7 +1641,18 @@ have stopped applying to every shipped page — not because any rule was weakene
 because the value left the surface they read.
 
 They now read the **computed property** for `count` and `format`, and the attribute only
-for `step` and `values`. Three consequences a reader should know:
+for `step` and `values`.
+
+★ **019 step 41 made a key its own name.** Until the bump, `stated()` took a key by its
+*attribute* name and translated it through a `SPEC_PROPERTY` map, and a `statedAs()`
+helper translated it again to name the key in the report. With `COUNT` and `FORMAT` gone
+from the published enums there is no attribute name left to key on, so the two
+property-only keys are keyed on `--hdml-tick-count` and `--hdml-text-format` directly —
+and both the map and the naming helper **were deleted**, because a report now names the
+key it filtered on. The behaviour is identical; there is one spelling of each key instead
+of two.
+
+Three consequences a reader should know:
 
 - ⚠ **They run in the binding pass, not the structural one.** A computed property is not
   readable in the structural pass at all: measured on all three engines, `getComputedStyle`
@@ -1646,9 +1666,10 @@ for `step` and `values`. Three consequences a reader should know:
 - ⚠ **V16 is mixed-source, and its message says so.** A label carrying
   `--hdml-tick-count` beside `step=` reports *"--hdml-tick-count and step are mutually
   exclusive — keep one"*.
-- ⚠ **An inert attribute reports nothing.** `count="6"` beside `step="0.5"` is not a
+- ⚠ **A retired attribute reports nothing.** `count="6"` beside `step="0.5"` is not a
   conflict — the count cannot reach the scale — so V16 is silent. Reporting it would be a
-  claim about a dead key.
+  claim about a dead key, and since step 41 `count` is not a key of this vocabulary at
+  all.
 
 ★ Rule ordering is unchanged. `applyErrors` takes the first finding per unit and the
 binding pass spreads the structural findings ahead of its own, so V1 still beats V20(b);
@@ -2032,13 +2053,13 @@ steps 09-2 and 09-4. All three assert the generated rule through `corpus.ts`'s
 </hdml-connection>
 
 <hdml-model name="sales">
-  <hdml-table name="orders"
+  <hdml-dataset name="orders"
               type="table"
               identifier="`warehouse`.`public`.`orders`">
     <hdml-field name="id"     type="int-64"/>
     <hdml-field name="amount" type="decimal" scale="2" precision="12"/>
     <hdml-field name="ts"     type="timestamp" unit="millisecond"/>
-  </hdml-table>
+  </hdml-dataset>
 </hdml-model>
 
 <hdml-frame name="big-orders" source="?hdml-model=sales" limit="100">

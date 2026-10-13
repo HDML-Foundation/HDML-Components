@@ -19,7 +19,7 @@ flowchart LR
       subgraph "src/hdql — declarative"
         conn[hdml-connection]
         model[hdml-model]
-        tbl[hdml-table]
+        tbl[hdml-dataset]
         fld[hdml-field]
         join[hdml-join]
         conv[hdml-connective]

@@ -4,31 +4,33 @@
  * @license Apache-2.0
  */
 
-import { HdmlTable } from "./HdmlTable";
+import { HdmlDataset } from "./HdmlDataset";
 import { fixture, assert } from "@open-wc/testing";
 import { html } from "lit/static-html.js";
 
-suite("HdmlTable element", () => {
+suite("HdmlDataset element", () => {
   test("is defined", () => {
-    const el = document.createElement("hdml-table");
-    assert.instanceOf(el, HdmlTable);
+    const el = document.createElement("hdml-dataset");
+    assert.instanceOf(el, HdmlDataset);
   });
 
   test("renders without attributes", async () => {
     let counter = 0;
-    let detail: undefined | HdmlTable = undefined;
+    let detail: undefined | HdmlDataset = undefined;
 
     document.addEventListener("hdom-changed", (evt) => {
       counter++;
-      const event = <CustomEvent<HdmlTable>>evt;
+      const event = <CustomEvent<HdmlDataset>>evt;
       detail = event.detail;
     });
 
-    const element = await fixture(html`<hdml-table></hdml-table>`);
+    const element = await fixture(
+      html`<hdml-dataset></hdml-dataset>`,
+    );
 
     await assert.shadowDom.equal(element, "<slot></slot>");
     assert.equal(counter, 1);
-    assert.instanceOf(detail, HdmlTable);
+    assert.instanceOf(detail, HdmlDataset);
     assert.isNull(detail["name"]);
     assert.isNull(detail["type"]);
     assert.isNull(detail["identifier"]);
@@ -37,21 +39,21 @@ suite("HdmlTable element", () => {
 
   test("renders with `name` attribute", async () => {
     let counter = 0;
-    let detail: undefined | HdmlTable = undefined;
+    let detail: undefined | HdmlDataset = undefined;
 
     document.addEventListener("hdom-changed", (evt) => {
       counter++;
-      const event = <CustomEvent<HdmlTable>>evt;
+      const event = <CustomEvent<HdmlDataset>>evt;
       detail = event.detail;
     });
 
     const element = await fixture(
-      html`<hdml-table name="name"></hdml-table>`,
+      html`<hdml-dataset name="name"></hdml-dataset>`,
     );
 
     await assert.shadowDom.equal(element, "<slot></slot>");
     assert.equal(counter, 2);
-    assert.instanceOf(detail, HdmlTable);
+    assert.instanceOf(detail, HdmlDataset);
     assert.equal(detail["name"], "name");
     assert.isNull(detail["type"]);
     assert.isNull(detail["identifier"]);
@@ -60,21 +62,21 @@ suite("HdmlTable element", () => {
 
   test("renders with `type` attribute", async () => {
     let counter = 0;
-    let detail: undefined | HdmlTable = undefined;
+    let detail: undefined | HdmlDataset = undefined;
 
     document.addEventListener("hdom-changed", (evt) => {
       counter++;
-      const event = <CustomEvent<HdmlTable>>evt;
+      const event = <CustomEvent<HdmlDataset>>evt;
       detail = event.detail;
     });
 
     const element = await fixture(
-      html`<hdml-table type="type"></hdml-table>`,
+      html`<hdml-dataset type="type"></hdml-dataset>`,
     );
 
     await assert.shadowDom.equal(element, "<slot></slot>");
     assert.equal(counter, 2);
-    assert.instanceOf(detail, HdmlTable);
+    assert.instanceOf(detail, HdmlDataset);
     assert.isNull(detail["name"]);
     assert.equal(detail["type"], "type");
     assert.isNull(detail["identifier"]);
@@ -83,21 +85,21 @@ suite("HdmlTable element", () => {
 
   test("renders with `identifier` attribute", async () => {
     let counter = 0;
-    let detail: undefined | HdmlTable = undefined;
+    let detail: undefined | HdmlDataset = undefined;
 
     document.addEventListener("hdom-changed", (evt) => {
       counter++;
-      const event = <CustomEvent<HdmlTable>>evt;
+      const event = <CustomEvent<HdmlDataset>>evt;
       detail = event.detail;
     });
 
     const element = await fixture(
-      html`<hdml-table identifier="identifier"></hdml-table>`,
+      html`<hdml-dataset identifier="identifier"></hdml-dataset>`,
     );
 
     await assert.shadowDom.equal(element, "<slot></slot>");
     assert.equal(counter, 2);
-    assert.instanceOf(detail, HdmlTable);
+    assert.instanceOf(detail, HdmlDataset);
     assert.isNull(detail["name"]);
     assert.isNull(detail["type"]);
     assert.equal(detail["identifier"], "identifier");
@@ -106,21 +108,21 @@ suite("HdmlTable element", () => {
 
   test("renders with `description` attribute", async () => {
     let counter = 0;
-    let detail: undefined | HdmlTable = undefined;
+    let detail: undefined | HdmlDataset = undefined;
 
     document.addEventListener("hdom-changed", (evt) => {
       counter++;
-      const event = <CustomEvent<HdmlTable>>evt;
+      const event = <CustomEvent<HdmlDataset>>evt;
       detail = event.detail;
     });
 
     const element = await fixture(
-      html`<hdml-table description="description"></hdml-table>`,
+      html`<hdml-dataset description="description"></hdml-dataset>`,
     );
 
     await assert.shadowDom.equal(element, "<slot></slot>");
     assert.equal(counter, 2);
-    assert.instanceOf(detail, HdmlTable);
+    assert.instanceOf(detail, HdmlDataset);
     assert.isNull(detail["name"]);
     assert.isNull(detail["type"]);
     assert.isNull(detail["identifier"]);
