@@ -11680,6 +11680,25 @@
         },
         {
           "kind": "function",
+          "name": "statePaletteGapsOf",
+          "return": {
+            "type": {
+              "text": ""
+            }
+          },
+          "parameters": [
+            {
+              "name": "el",
+              "type": {
+                "text": "HdvlElement"
+              },
+              "description": "A scale element."
+            }
+          ],
+          "description": "★ 019 R1 — the same question, asked of every **state** palette.\n\nA `--hdml-palette--{state}` shorter than the resolved domain is\nthe half-lit chart: Scale.paintState hands the covered\ndata a state colour and returns `null` for the rest, so the\nuncovered marks keep their base paint and **some of the series\nresponds to the pointer while the rest silently does not**. That\nis §1.5's wrong chart with no diagnostic, and it is the one gap\nthe base check cannot see — `paletteGapOf` reads\n`--hdml-palette` and nothing else.\n\n**The loop lives here rather than in the validator** because this\nmodule already owns CHANNEL_STATES; asking `validate.ts`\nto iterate it would move the list of states into the component\nthat only reports, and would have to be widened again by every\nstate SPEC §9 ever adds.\n\n**Ordinal only, for the same reason paletteGapOf is** —\nand here the reason is sharper: `--hdml-color-interpolate--{state}`\ncannot be exhausted at all. A ramp of one stop resolves every\nvalue in the domain, so there is no index to run out of and no\nnumber to report.\n\n⚠ **The case is narrower than it looks.** An exhausted *base*\npalette already yields no state colour — `channelStates` drops\nthe whole state set when `paint()` is `null` — so this only ever\nfires over a **complete** base palette. The base check owns the\nother case, and `checkPalette` orders the two accordingly."
+        },
+        {
+          "kind": "function",
           "name": "angleCollisionOf",
           "return": {
             "type": {
@@ -11894,6 +11913,14 @@
           "name": "paletteGapOf",
           "declaration": {
             "name": "paletteGapOf",
+            "module": "src/hdvl/scale.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "statePaletteGapsOf",
+          "declaration": {
+            "name": "statePaletteGapsOf",
             "module": "src/hdvl/scale.ts"
           }
         },

@@ -1307,6 +1307,40 @@ truer. `paletteColor` returns `null` past the end rather than wrapping, so the e
 still rendered, in `--hdml-fill-color` — visibly and uniformly, exactly as the marks
 fall back.
 
+**A short *state* palette is the same error, from a per-state site** (019 R1,
+implementation step 39). A `--hdml-palette--hover` or `--hdml-palette--active` shorter
+than the resolved domain recolours part of the series on hover and leaves the rest on
+its base paint — half the chart answers the pointer and half looks broken — so it
+raises `palette-exhausted` too, on the scale, under **V2**. **No new diagnostic code
+was minted**: the author's fix is the same shape, a longer palette or a shorter domain,
+and the message names **the property they must actually lengthen** rather than
+`--hdml-palette`, which in this case is already long enough.
+
+Four things about it are worth knowing:
+
+- **The base check runs first and wins.** An exhausted base palette already yields *no*
+  state colour at all (`channelStates` drops the whole set when `paint()` is `null`), so
+  a state gap underneath one is the same defect counted twice, not a second finding.
+- **At most one finding per scale.** A unit carries one current diagnostic, so a scale
+  short in both `--hover` and `--active` reports `--hover` first — with **its own**
+  counts, never a blend of the two — and `--active` surfaces the frame after `--hover`
+  is lengthened.
+- **It does not blank the chart.** The scale is marked `:state(error)` and the marks
+  keep painting, exactly as a short base palette has always behaved. A diagnostic that
+  suppressed the unit would turn a half-lit hover into no chart at all.
+- **It is ordinal-only, and that is a rule rather than a gap.**
+  `--hdml-color-interpolate--{state}` cannot be exhausted: a ramp assigns by *fraction*,
+  so a single stop resolves every value in the domain and there is no index to run out
+  of.
+
+⚠ **These properties inherit, and the documented theming idiom declares them at the
+view** — so one short state palette can error several scales at once, including scales
+whose domains the author never compared against the theme. Each diagnostic names
+`--hdml-palette--{state}`, which is still the right line to change; it is the **count**
+in each message that differs, and the **longest** domain under the declaration is the
+one that sizes the theme. `--hdml-palette` is rarely declared this way because it ships
+a ten-colour `initialValue`; the state palettes have none.
+
 **Colliding angular bands are the same shape of rule** (`colliding-angle-bands`, also
 under **V2**, added at 017 R8). Two categories of an ordinal `angle` scale that resolve to
 the same angle is the same silent wrong chart — a radar with fewer spokes than metrics. R8
@@ -1846,6 +1880,18 @@ cannot jump on hover to the colour the base refused to give it, and the map is n
 anyway, and structurally: `resolve.ts` carries the scale chain **down** the document tree,
 so the scale that paints a widget is always an *ancestor* of it, and all four Class 2
 variants register `inherits: true`.
+
+**A state palette shorter than the domain is an error** (step 39), because the mechanism
+above degrades *silently*: `Scale.paintState` returns `null` past the end of the palette,
+`channelStates` therefore omits those rows from `Paint.states`, `applyPaint` stamps no
+property on their nodes, and the marker-scoped rule does not match them. Every layer
+behaves correctly and the result is a chart where some marks recolour on hover and the
+rest do not. `scale.ts`'s `statePaletteGapsOf` is the resolver that answers it and
+`validate.ts`'s `checkPalette` reports it, reusing `palette-exhausted` — see
+*Palette exhaustion is the scale's error* above for the ordering and the theming caveat.
+The same shortfall is visible in a **key**: `swatchStates` gives the covered entries
+state colours and the rest `{}`, so the legend shows the defect as plainly as the marks
+do.
 
 #### `focus` and `selected` are v2, and not for cost
 

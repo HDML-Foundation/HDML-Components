@@ -2215,17 +2215,25 @@ suite("hdvl/validate — diagnostics", () => {
     assert.isTrue(paints(okProbe(view).uid));
   });
 
-  test("★ R1 — a short STATE palette does not fire V2", async () => {
-    // ★★ CONTROL 4 (019 R1, step 36). `paletteGapOf` reads
-    // `--hdml-palette` and nothing else, so a short `--hover`
-    // palette must NOT be reported as `palette-exhausted`: the
-    // base palette is complete and the page is valid. A false
-    // positive here would ERROR a valid page, which is strictly
-    // worse than the missing diagnostic.
-    //
-    // The state diagnostic is **step 39's**, reusing this same
-    // code from a per-state site. This test is what proves step 39
-    // has something to add rather than something to fix.
+  /**
+   * ★★★ 019 R1 step 39's HARD GATE, and the inversion of step 36's
+   * placeholder.
+   *
+   * Step 36 landed this same fixture asserting the OPPOSITE —
+   * *"a short STATE palette does not fire V2"* — with a comment
+   * saying the state diagnostic was step 39's and that the test
+   * *"proves step 39 has something to add rather than something to
+   * fix"*. It did, and this is the add: the assertions are inverted
+   * in place rather than a second test being written beside them,
+   * because the two cannot both hold.
+   *
+   * ⚠ The palette is authored on the **SCALE**, not the widget
+   * (C303). `Scale.paintState` reads the scale's own measured
+   * snapshot, so a fixture styling the probe passes vacuously —
+   * which is the mistake step 37's legend fixtures made and the
+   * thing the widget-sited control below pins down.
+   */
+  test("★ R1 — a short STATE palette errors", async () => {
     const [, view] = await mount(html`
       <hdml-view
         aria-label="r1sp"
@@ -2235,11 +2243,327 @@ suite("hdvl/validate — diagnostics", () => {
           <hdml-continuous-scale channel="y" min="0" max="1">
             <hdml-ordinal-scale
               channel="color"
-              values='["a","b","c"]'
-              style="--hdml-palette: #ff0000 #00ff00 #0000ff;
+              values='["a","b","c","d"]'
+              style="--hdml-palette: #ff0000 #00ff00 #0000ff #ffff00;
                      --hdml-palette--hover: #111111 #222222"
             >
               <hdvl-probe id="ok"></hdvl-probe>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    const scale = <Element>view.querySelector("hdml-ordinal-scale");
+    assert.lengthOf(said("V2"), 1);
+    // ★ The message names the property the author must LENGTHEN —
+    // the state one, not `--hdml-palette`, which is already long
+    // enough. Sending them to the base property would have them
+    // change a correct line.
+    assert.strictEqual(
+      messageOf(said("V2")[0]),
+      "4 color domain values but 2 palette colors — add colors " +
+        "to --hdml-palette--hover or shorten the domain",
+    );
+    assert.isTrue(scale.matches(":state(error)"));
+    assert.lengthOf(errs, 1);
+    // ⛔ The code space does not move: this REUSES `palette-
+    // exhausted` from a per-state site. Row 44 mints the 25th.
+    assert.strictEqual(errs[0].detail.code, "palette-exhausted");
+    assert.strictEqual(errs[0].detail.rule, "V2");
+    assert.strictEqual(errs[0].detail.channel, "color");
+
+    // ★★ OPEN QUESTION 4, MEASURED AT THE SCENE. The widget STILL
+    // PAINTS. `writeState` lands `:state(error)` and nothing else
+    // — the CSS hook is the whole mechanism, and §3.5's blanking is
+    // the author's sheet reading it — so a short state palette
+    // reports itself without erasing the chart. That is the same
+    // bargain `palette-exhausted` has always struck on a BASE
+    // palette, and it is why this step moves no golden: had the
+    // diagnostic suppressed the unit, a page with a short `--hover`
+    // palette would go from a half-lit hover to no chart at all.
+    assert.isTrue(paints(okProbe(view).uid));
+
+    // ★★★ CONTROL 1 — a diagnostic nobody can clear is a
+    // diagnostic nobody can fix. Lengthening the state palette by
+    // the two missing colours must make the finding DISAPPEAR,
+    // clear `:state(error)` and dispatch nothing.
+    lines.length = 0;
+    errs.length = 0;
+    scale.setAttribute(
+      "style",
+      "--hdml-palette: #ff0000 #00ff00 #0000ff #ffff00;" +
+        "--hdml-palette--hover: #111111 #222222 #333333 #444444",
+    );
+    view.markDirty();
+    await quiesce(view);
+    assert.isFalse(scale.matches(":state(error)"));
+    assert.lengthOf(errs, 0);
+    assert.lengthOf(said("V2"), 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+  });
+
+  test("★ R1 — an unauthored palette is not a gap", async () => {
+    // ⓐ/ⓑ. The four Class 2 state properties omit `initialValue`,
+    // so an unauthored one computes to `""` and splits to ZERO
+    // colours. Zero must not read as "the whole domain is
+    // uncovered" — if it did, every page in the corpus would error
+    // the moment this check landed. This is the corpus's case,
+    // asserted here directly as well as by `validator.test.ts`.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="r1nosp"
+        style="width: 400px; height: 200px"
+      >
+        <hdml-cartesian-plane>
+          <hdml-continuous-scale channel="y" min="0" max="1">
+            <hdml-ordinal-scale
+              channel="color"
+              values='["a","b","c"]'
+              style="--hdml-palette: #ff0000 #00ff00 #0000ff"
+            >
+              <hdvl-probe id="ok"></hdvl-probe>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    const scale = <Element>view.querySelector("hdml-ordinal-scale");
+    assert.lengthOf(said("V2"), 0);
+    assert.isFalse(scale.matches(":state(error)"));
+    assert.lengthOf(errs, 0);
+  });
+
+  test("★ R1 — a short BASE palette reports ONCE", async () => {
+    // ★★ CONTROL 3, and control 5's ⓐ. The scale is short in BOTH
+    // the base palette and `--hover`. `applyErrors` keeps a unit's
+    // FIRST error and drops the rest, so a second push would be
+    // unreportable by construction — and the one that must survive
+    // is the BASE, because an exhausted base palette suppresses the
+    // state colours outright (`channelStates` drops the whole set
+    // when `paint()` is null). The state gap under it is the same
+    // defect counted twice.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="r1both"
+        style="width: 400px; height: 200px"
+      >
+        <hdml-cartesian-plane>
+          <hdml-continuous-scale channel="y" min="0" max="1">
+            <hdml-ordinal-scale
+              channel="color"
+              values='["a","b","c","d"]'
+              style="--hdml-palette: #ff0000 #00ff00;
+                     --hdml-palette--hover: #111111"
+            >
+              <hdvl-probe id="ok"></hdvl-probe>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    const scale = <Element>view.querySelector("hdml-ordinal-scale");
+    // ★ ONCE. Not two lines, not two events.
+    assert.lengthOf(said("V2"), 1);
+    assert.lengthOf(errs, 1);
+    // ★ …and it is the BASE message. This assertion is what reds
+    // if the per-state resolver is ever made to read
+    // `--hdml-palette` by mistake, or if the two raises swap order.
+    assert.strictEqual(
+      messageOf(said("V2")[0]),
+      "4 color domain values but 2 palette colors — add colors " +
+        "to --hdml-palette or shorten the domain",
+    );
+    assert.isTrue(scale.matches(":state(error)"));
+    assert.lengthOf(diagnosticsOf(view), 1);
+  });
+
+  test("★ R1 — two short states surface in order", async () => {
+    // ★★ OPEN QUESTION 3, MEASURED. Both `--hover` and `--active`
+    // are short, and with DIFFERENT counts — two of four and one of
+    // four. `applyErrors` can carry only one, so `--hover` is
+    // reported with ITS OWN counts (never a blend of the two, which
+    // is why the message takes one property and not a list), and
+    // `--active` surfaces the frame after `--hover` is fixed. The
+    // edge is keyed on the message, so the second finding is a
+    // different identity and does re-arm.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="r1two"
+        style="width: 400px; height: 200px"
+      >
+        <hdml-cartesian-plane>
+          <hdml-continuous-scale channel="y" min="0" max="1">
+            <hdml-ordinal-scale
+              channel="color"
+              values='["a","b","c","d"]'
+              style="--hdml-palette: #ff0000 #00ff00 #0000ff #ffff00;
+                     --hdml-palette--hover: #111111 #222222;
+                     --hdml-palette--active: #333333"
+            >
+              <hdvl-probe id="ok"></hdvl-probe>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    const scale = <Element>view.querySelector("hdml-ordinal-scale");
+    assert.lengthOf(said("V2"), 1);
+    assert.strictEqual(
+      messageOf(said("V2")[0]),
+      "4 color domain values but 2 palette colors — add colors " +
+        "to --hdml-palette--hover or shorten the domain",
+    );
+
+    // Fix `--hover`; `--active` takes its place, with its own count.
+    lines.length = 0;
+    errs.length = 0;
+    scale.setAttribute(
+      "style",
+      "--hdml-palette: #ff0000 #00ff00 #0000ff #ffff00;" +
+        "--hdml-palette--hover: #111111 #222222 #333333 #444444;" +
+        "--hdml-palette--active: #333333",
+    );
+    view.markDirty();
+    await quiesce(view);
+    assert.lengthOf(said("V2"), 1);
+    assert.strictEqual(
+      messageOf(said("V2")[0]),
+      "4 color domain values but 1 palette colors — add colors " +
+        "to --hdml-palette--active or shorten the domain",
+    );
+    assert.isTrue(scale.matches(":state(error)"));
+    assert.lengthOf(errs, 1);
+  });
+
+  test("★ R1 — a state RAMP cannot be exhausted", async () => {
+    // ⓓ. `--hdml-color-interpolate--hover` with a single stop is
+    // not short: a ramp assigns by FRACTION, not by domain index,
+    // so one stop resolves every value in the domain. There is no
+    // index to run out of and no number to put in a message. The
+    // resolver's `kind !== "ordinal"` guard is the rule, not a
+    // shortcut, and this is the test that holds it to it.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="r1ramp"
+        style="width: 400px; height: 200px"
+      >
+        <hdml-cartesian-plane>
+          <hdml-continuous-scale channel="y" min="0" max="1">
+            <hdml-continuous-scale
+              channel="color"
+              min="0"
+              max="10"
+              style="--hdml-color-interpolate--hover: #111111"
+            >
+              <hdvl-probe id="ok"></hdvl-probe>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    assert.lengthOf(said("V2"), 0);
+    assert.lengthOf(errs, 0);
+    assert.deepEqual(diagnosticsOf(view), []);
+  });
+
+  test("★ R1 — a themed palette errors every scale", async () => {
+    // ★★★ CONTROL 5. Nobody asked for this one and it is the
+    // finding with the widest blast radius in the step.
+    //
+    // `--hdml-palette--hover` is `inherits: true`, and step 38's
+    // own test records that *"the documented theming idiom declares
+    // at the VIEW while the scale is two levels down"*. Put those
+    // two facts together and one theme declaration reaches EVERY
+    // ordinal colour scale under it — including scales whose
+    // domains are longer than the themed palette and which the
+    // author never looked at.
+    //
+    // So this diagnostic is not one-scale-one-author-mistake the
+    // way the base check is. `--hdml-palette` carries a ten-colour
+    // `initialValue` and is normally declared per scale; the state
+    // palettes have NO initial value and are declared once, at the
+    // top, for theming. A two-colour hover theme over a document
+    // whose scales hold two, three and four categories errors TWO
+    // of the three from a single line the author wrote once.
+    //
+    // ★ That is correct — each scale genuinely IS half-lit — and it
+    // is worth having measured, because the author's fix is at the
+    // view and the diagnostics all point at the scales. Each names
+    // `--hdml-palette--hover`, which is the inherited property and
+    // so is still the right line to change; it is the *count* in
+    // each message that differs, and the longest domain is the one
+    // that sizes the theme.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="r1theme"
+        style="width: 400px; height: 200px;
+               --hdml-palette--hover: #111111 #222222"
+      >
+        <hdml-cartesian-plane>
+          <hdml-continuous-scale channel="y" min="0" max="1">
+            <hdml-ordinal-scale
+              channel="color"
+              values='["a","b"]'
+              style="--hdml-palette: #ff0000 #00ff00"
+            >
+              <hdvl-probe id="ok"></hdvl-probe>
+            </hdml-ordinal-scale>
+            <hdml-ordinal-scale
+              channel="color"
+              values='["a","b","c","d"]'
+              style="--hdml-palette: #ff0000 #00ff00 #0000ff #ffff00"
+            >
+              <hdvl-probe id="four"></hdvl-probe>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    const scales = Array.from(
+      view.querySelectorAll("hdml-ordinal-scale"),
+    );
+    assert.lengthOf(scales, 2);
+    // The two-value scale is COVERED by the two-colour theme.
+    assert.isFalse(scales[0].matches(":state(error)"));
+    // The four-value scale is not, and says so — from a property
+    // it never declared.
+    assert.isTrue(scales[1].matches(":state(error)"));
+    assert.lengthOf(said("V2"), 1);
+    assert.strictEqual(
+      messageOf(said("V2")[0]),
+      "4 color domain values but 2 palette colors — add colors " +
+        "to --hdml-palette--hover or shorten the domain",
+    );
+  });
+
+  test("★ R1 — a palette on the WIDGET is silent", async () => {
+    // ★★ CONTROL 4 (C303). The short `--hover` palette is authored
+    // on the PROBE, not the scale. Nothing fires, and that is
+    // CORRECT rather than a miss: `Scale.paintState` reads the
+    // scale's own measured snapshot, so a palette sited on the
+    // widget never reaches the painting scale and there is no
+    // half-lit chart to report. The silence here and the error in
+    // the hard gate above are the same rule seen from both sides.
+    //
+    // ⚠ It is also the exact mistake step 37's legend fixtures
+    // made, and it cost three red tests to find. A fixture that
+    // authors a Class 2 property on the widget asserts NOTHING.
+    const [, view] = await mount(html`
+      <hdml-view
+        aria-label="r1widget"
+        style="width: 400px; height: 200px"
+      >
+        <hdml-cartesian-plane>
+          <hdml-continuous-scale channel="y" min="0" max="1">
+            <hdml-ordinal-scale
+              channel="color"
+              values='["a","b","c","d"]'
+              style="--hdml-palette: #ff0000 #00ff00 #0000ff #ffff00"
+            >
+              <hdvl-probe
+                id="ok"
+                style="--hdml-palette--hover: #111111 #222222"
+              ></hdvl-probe>
             </hdml-ordinal-scale>
           </hdml-continuous-scale>
         </hdml-cartesian-plane>

@@ -1684,8 +1684,18 @@ export function scaleOf(el: HdvlElement): Scale | null {
 export interface PaletteGap {
   /** How many domain values there are. */
   domain: number;
-  /** How many colours `--hdml-palette` supplies. */
+  /** How many colours the palette property supplies. */
   palette: number;
+}
+
+/**
+ * ★ 019 R1 — a {@link PaletteGap} in one state's palette, carrying
+ * the **state** so the diagnostic can name the property the author
+ * actually has to lengthen.
+ */
+export interface StatePaletteGap extends PaletteGap {
+  /** The member of {@link CHANNEL_STATES} whose palette is short. */
+  state: string;
 }
 
 /**
@@ -1716,9 +1726,76 @@ export interface PaletteGap {
  *   is no resolved domain to compare.
  */
 export function paletteGapOf(el: HdvlElement): PaletteGap | null {
-  const state = frames.get(el);
-  const ctx = state?.ctx ?? null;
-  const scale = state?.scale ?? null;
+  return gapIn(el, "--hdml-palette");
+}
+
+/**
+ * ★ 019 R1 — the same question, asked of every **state** palette.
+ *
+ * A `--hdml-palette--{state}` shorter than the resolved domain is
+ * the half-lit chart: {@link Scale.paintState} hands the covered
+ * data a state colour and returns `null` for the rest, so the
+ * uncovered marks keep their base paint and **some of the series
+ * responds to the pointer while the rest silently does not**. That
+ * is §1.5's wrong chart with no diagnostic, and it is the one gap
+ * the base check cannot see — `paletteGapOf` reads
+ * `--hdml-palette` and nothing else.
+ *
+ * **The loop lives here rather than in the validator** because this
+ * module already owns {@link CHANNEL_STATES}; asking `validate.ts`
+ * to iterate it would move the list of states into the component
+ * that only reports, and would have to be widened again by every
+ * state SPEC §9 ever adds.
+ *
+ * **Ordinal only, for the same reason {@link paletteGapOf} is** —
+ * and here the reason is sharper: `--hdml-color-interpolate--{state}`
+ * cannot be exhausted at all. A ramp of one stop resolves every
+ * value in the domain, so there is no index to run out of and no
+ * number to report.
+ *
+ * ⚠ **The case is narrower than it looks.** An exhausted *base*
+ * palette already yields no state colour — `channelStates` drops
+ * the whole state set when `paint()` is `null` — so this only ever
+ * fires over a **complete** base palette. The base check owns the
+ * other case, and `checkPalette` orders the two accordingly.
+ *
+ * @param el - A scale element.
+ * @returns One entry per state whose palette the domain outruns, in
+ *   {@link CHANNEL_STATES} order; empty when every authored state
+ *   palette covers the domain, when none is authored, and whenever
+ *   {@link paletteGapOf} would itself answer `null`.
+ */
+export function statePaletteGapsOf(
+  el: HdvlElement,
+): readonly StatePaletteGap[] {
+  const gaps: StatePaletteGap[] = [];
+  for (const state of CHANNEL_STATES) {
+    const gap = gapIn(el, `--hdml-palette--${state}`);
+    if (gap !== null) {
+      gaps.push({ ...gap, state });
+    }
+  }
+  return gaps;
+}
+
+/**
+ * Both resolvers' body — the guards, the resolved domain and one
+ * palette property, shared so a state gap can never be computed
+ * under different rules than a base one.
+ *
+ * ⚠ **An empty palette is not a gap.** An unauthored state palette
+ * is the empty string — the four Class 2 state properties omit
+ * `initialValue` — and zero colours means the author declined the
+ * feature, which is how {@link Scale.paintState} reads it too.
+ * Reporting the whole domain as uncovered would error every page in
+ * the corpus. The base property cannot reach this branch: it is
+ * registered with an `initialValue`, and `<color>+` makes an invalid
+ * value fall back to it rather than compute empty.
+ */
+function gapIn(el: HdvlElement, prop: string): PaletteGap | null {
+  const frame = frames.get(el);
+  const ctx = frame?.ctx ?? null;
+  const scale = frame?.scale ?? null;
   if (ctx === null || scale === null) {
     return null;
   }
@@ -1730,8 +1807,11 @@ export function paletteGapOf(el: HdvlElement): PaletteGap | null {
     return null;
   }
   const palette = splitColorList(
-    ctx.measured(el).props.get("--hdml-palette") ?? "",
+    ctx.measured(el).props.get(prop) ?? "",
   );
+  if (palette.length === 0) {
+    return null;
+  }
   return values.length > palette.length
     ? { domain: values.length, palette: palette.length }
     : null;

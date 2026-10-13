@@ -3277,3 +3277,97 @@ assertions, no test failed twice, and wall clock on identical input ranged **62 
 1042 s** — enough on its own to explain a per-file timeout. The pointer file in isolation is
 **19/19, three times, in 9–22 s**. This step grew it from 13 tests to 19, so it is the most
 exposed file in the suite; that is a reason to budget re-runs, not an attribution.
+
+## A short state palette is an error, not a half-lit chart
+
+019 R1, implementation step 39. Steps 37–38 made a channel colour state-vary per datum;
+this step closed the one way that mechanism fails **silently**. A
+`--hdml-palette--{state}` shorter than the resolved domain gives the covered rows a state
+colour and the rest `null`, and every layer below then behaves correctly —
+`channelStates` omits those rows, `applyPaint` stamps nothing, the marker-scoped rule does
+not match — so the page renders a chart in which **part of the series answers the pointer
+and part does not**. Step 36 had already measured the case and left it unreported on
+purpose, with a test asserting the silence and a comment saying the diagnostic was step
+39's.
+
+**1 · It reuses `palette-exhausted` and mints nothing.** The diagnostic code space stays
+at **24**. The author's fix is the same shape as the base gap's — a longer palette or a
+shorter domain — and SPEC §11 gives palette exhaustion no V-number of its own either, so
+it is filed under **V2** beside the base check and `colliding-angle-bands`. ⚠ The step
+plan's row said the space *"stays at 25"*; 24 is the tree's count and **row 44** is the
+step that adds the 25th. The row's *intent* — reuse, do not mint — was exactly right and
+only its arithmetic was off by one.
+
+**2 · Two resolvers, one body.** `paletteGapOf` keeps its signature and `statePaletteGapsOf`
+is a sibling returning one entry per short state; both delegate to a private `gapIn(el,
+prop)` carrying the guards, the resolved domain and one property read. A `state?` parameter
+on the existing function was rejected because the validator needs *every* gap, so the
+`CHANNEL_STATES` loop would have moved to `validate.ts` — putting the list of states in the
+component that only reports, and requiring a widening there for every state SPEC §9 ever
+adds. `scale.ts` already owns `CHANNEL_STATES`, so the loop costs no import. Sharing `gapIn`
+is what makes a state gap impossible to compute under different rules than a base one.
+
+**3 · The message names the property the author must lengthen.** `paletteMessage` named
+`--hdml-palette` verbatim, which is correct for the base gap and the **wrong line to send
+an author to** when their `--hdml-palette--hover` is the short one — and they will change
+what the message names. The property is now a parameter; the base call passes
+`--hdml-palette` and its text is byte-for-byte what it was, which the pre-existing
+assertion on the full string holds it to. It was checked as a documented surface first: the
+string is quoted in exactly two places in the repo, this function and that one test, and in
+no page or doc.
+
+**4 · One property per message, not a list.** A scale can be short in `--hover` and
+`--active` at once and with *different* counts — two of four and one of four. One message
+carrying one pair of counts cannot name both palettes without lying about one of them, so
+the counts in the text are always true of the property the text names.
+
+**5 · One finding per scale, measured rather than reasoned.** `applyErrors` keeps a unit's
+**first** error and discards the rest, so a second push on the same scale is unreportable by
+construction. The states are therefore offered in `CHANNEL_STATES` order and the author
+clears them in turn: because the edge is keyed on `(rule, code, channel, message)`, fixing
+`--hover` changes the identity and `--active` surfaces on the next frame. The **base** check
+runs first and returns, because an exhausted base palette already suppresses the state
+colours outright — a state gap underneath one is the same defect counted twice.
+
+**6 · It does not change the paint.** Open question 4, answered at the scene: the widget
+still paints and the scale is additionally marked `:state(error)`. `writeState` lands a
+custom state and nothing else — §3.5's blanking is the author's sheet reading that hook —
+so the diagnostic reports without erasing the chart, exactly as a short base palette has
+always behaved. Had it suppressed the unit, a page with a short `--hover` palette would
+have gone from a half-lit hover to **no chart at all**, and 29 goldens would have moved.
+Step 38's *"a short state palette exhausts to null"* test is the witness: it is unchanged,
+still green, and now emits the diagnostic.
+
+**7 · Ordinal only, and the ramp case does not exist.**
+`--hdml-color-interpolate--{state}` cannot be exhausted — a ramp assigns by fraction, so a
+single stop resolves every value in the domain. There is no index to run out of and no
+number to put in a message, so there is nothing to report rather than something unreported.
+An **empty** state palette is likewise not a gap: the four Class 2 variants omit
+`initialValue`, so an unauthored one computes to `""`, and reading zero colours as "the
+whole domain is uncovered" would error every page in the corpus.
+
+**8 · Control 5 found the widest blast radius in the step: the theming idiom.** These
+properties are `inherits: true` and the documented idiom declares them **at the view**,
+two levels above the scale. One short state palette therefore reaches every ordinal colour
+scale under it, including scales whose domains the author never compared against the theme
+— measured with a two-colour hover theme over scales of two and four categories: the first
+is covered, the second errors from a property it never declared. That is *correct* — each
+scale genuinely is half-lit — and worth having recorded, because the author's fix is at the
+view while the diagnostics all point at the scales. Each names `--hdml-palette--{state}`,
+which is still the right line; it is the **count** that differs per scale, and the longest
+domain under the declaration is the one that sizes the theme. `--hdml-palette` is rarely
+declared this way because it ships a ten-colour `initialValue`; the state palettes have
+none. Control 5 also confirmed the symptom reaches a **key** — `swatchStates` gives covered
+entries state colours and the rest `{}` — and that a growing column-derived domain
+re-reports itself, because the counts are part of the finding's identity.
+
+**9 · The corpus over-fire control needed a different venue than the one specified.**
+`validator.test.ts` mounts the thirteen pages with **no data provider**, so a rule whose
+input is a delivered column cannot fire there at all — its own ledger calls that class
+`delivered` and defers it to the thirteen `page-NN.test.ts` suites. Seeding a short
+`--hover` palette into `06-bubble` therefore changed **nothing**, because that page's colour
+scale is `values="region"`, a column-derived domain. The control only bites on a page whose
+ordinal colour scale has an **authored** domain: seeded into `04-grouped-stacked`, whose
+`values='["North","South","East"]'` is a literal, it reds **two tests on each of the three
+engines** with the diagnostic naming `--hdml-palette--hover`, and goes silent again when the
+page is restored. `html/hdvl/` is byte-unchanged.

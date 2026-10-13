@@ -14,7 +14,12 @@ import type { FakeColumn, FakeResult } from "../testing/FakeIo";
 import type { Channel } from "./resolve";
 import type { Scale } from "./scale";
 import { HdmlViewElement } from "./view";
-import { chainScaleOf } from "./scale";
+import {
+  chainScaleOf,
+  paletteGapOf,
+  statePaletteGapsOf,
+} from "./scale";
+import type { HdvlElement } from "./base";
 import { splitColorList } from "./kernel/color";
 import { subscriptionsOf } from "./subscribe";
 import { diagnosticsOf } from "./validate";
@@ -626,10 +631,17 @@ suite("hdvl/scale — paint and the color channel", () => {
 
   test("★ R1 — a short state palette exhausts to null", async () => {
     // Two colours, three values: `paletteColor` returns `null` for
-    // the third exactly as it does on a short BASE palette. The
-    // DIAGNOSTIC for this is step 39's, deliberately not here —
-    // what is asserted is that the resolver behaves identically in
-    // both classes, so step 39 has one rule to report on.
+    // the third exactly as it does on a short BASE palette.
+    //
+    // ★ Step 39 LANDED that diagnostic, and this fixture now emits
+    // it — the V2 line in this file's browser log is this mount.
+    // The test is unchanged and still green, which is the measured
+    // answer to step 39's open question 4: **the error does not
+    // change the paint.** The covered data keeps its state colour,
+    // the uncovered data keeps its base paint, and the scale is
+    // additionally marked `:state(error)`. `palette-exhausted` on
+    // a BASE palette has always behaved that way, and a diagnostic
+    // that also repainted would move goldens for no author gain.
     const view = await ordinalStateColor("#111111 #222222");
     const scale = must(view, "color");
     assert.isNotNull(scale.paintState("north", "hover"));
@@ -703,6 +715,154 @@ suite("hdvl/scale — paint and the color channel", () => {
         `base ramp paint moved for ${v}`,
       );
     }
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // ★ 019 R1 step 39 — `statePaletteGapsOf`, the resolver half of
+  // the half-lit-chart diagnostic. `validate.ts` reports; this is
+  // the module that ANSWERS, and these are the only direct tests
+  // either resolver has ever had — `paletteGapOf` has been covered
+  // solely through the validator since step 31.
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * ⚠ The ONE cast, centralised. `querySelector` answers
+   * `Element | null` and both resolvers take `HdvlElement`, so the
+   * double cast is unavoidable — but it is written once here rather
+   * than at each call site, because `eslint --fix` rewrites an
+   * angle-bracket cast it finds inline and this repo's formatter
+   * and its cast syntax disagree about where the parens go.
+   */
+  function scaleEl(view: HdmlViewElement, tag: string): HdvlElement {
+    return <HdvlElement>(<unknown>view.querySelector(tag));
+  }
+
+  async function gapScale(style: string): Promise<HdvlElement> {
+    const view = await mount(html`
+      <hdml-view
+        aria-label="state gap"
+        style="width: 400px; height: 76px"
+      >
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-ordinal-scale
+            channel="color"
+            values='["north", "south", "east", "west"]'
+            style="${style}"
+          >
+            <hdvl-probe></hdvl-probe>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    return scaleEl(view, "hdml-ordinal-scale");
+  }
+
+  const FOUR = "#ff0000 #00ff00 #0000ff #ffff00";
+
+  test("★ R1 — a short state palette is a gap", async () => {
+    const el = await gapScale(
+      `--hdml-palette: ${FOUR}; --hdml-palette--hover: #111 #222`,
+    );
+    assert.deepEqual(
+      [...statePaletteGapsOf(el)],
+      [{ domain: 4, palette: 2, state: "hover" }],
+    );
+    // ★ …and the BASE is not a gap. The two questions are separate
+    // reads of separate properties, which is what lets the
+    // validator order them.
+    assert.isNull(paletteGapOf(el));
+  });
+
+  test("★ R1 — an unauthored palette is NOT a gap", async () => {
+    // Zero colours is the author declining the feature, not a
+    // domain of four left uncovered. If this returned a gap, every
+    // page in the corpus would error.
+    const el = await gapScale(`--hdml-palette: ${FOUR}`);
+    assert.lengthOf(statePaletteGapsOf(el), 0);
+  });
+
+  test("★ R1 — a covering state palette is no gap", async () => {
+    const el = await gapScale(
+      `--hdml-palette: ${FOUR}; --hdml-palette--hover: ${FOUR}`,
+    );
+    assert.lengthOf(statePaletteGapsOf(el), 0);
+  });
+
+  test("★ R1 — a LONGER state palette is not a gap", async () => {
+    // Strictly `domain > palette`, so spare colours are fine —
+    // every value resolves, which is all the diagnostic cares
+    // about. An author trimming a domain must not be errored.
+    const el = await gapScale(
+      `--hdml-palette: ${FOUR};` +
+        "--hdml-palette--hover: #111 #222 #333 #444 #555",
+    );
+    assert.lengthOf(statePaletteGapsOf(el), 0);
+  });
+
+  test("★ R1 — both states short gives both gaps", async () => {
+    // The RESOLVER returns both, with each state's own count. The
+    // validator is what reduces them to one finding, because
+    // `applyErrors` carries a unit's first error only — so the
+    // reduction is deliberately NOT done here, and a later rule
+    // that can report more than one has both facts waiting.
+    const el = await gapScale(
+      `--hdml-palette: ${FOUR};` +
+        "--hdml-palette--hover: #111 #222;" +
+        "--hdml-palette--active: #333",
+    );
+    assert.deepEqual(
+      [...statePaletteGapsOf(el)],
+      [
+        { domain: 4, palette: 2, state: "hover" },
+        { domain: 4, palette: 1, state: "active" },
+      ],
+    );
+  });
+
+  test("★ R1 — a continuous scale has no gap", async () => {
+    // Ordinal only. A ramp assigns by fraction, so one stop covers
+    // the whole domain and there is no index to exhaust.
+    const view = await mount(html`
+      <hdml-view
+        aria-label="ramp gap"
+        style="width: 400px; height: 76px"
+      >
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-continuous-scale
+            channel="color"
+            min="0"
+            max="10"
+            style="--hdml-color-interpolate--hover: #111111"
+          >
+            <hdvl-probe></hdvl-probe>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    const el = scaleEl(view, "hdml-continuous-scale");
+    assert.lengthOf(statePaletteGapsOf(el), 0);
+    assert.isNull(paletteGapOf(el));
+  });
+
+  test("★ R1 — a non-color scale has no state gap", async () => {
+    const view = await mount(html`
+      <hdml-view
+        aria-label="x gap"
+        style="width: 400px; height: 76px"
+      >
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-ordinal-scale
+            channel="x"
+            values='["north", "south", "east", "west"]'
+            style="--hdml-palette--hover: #111 #222"
+          >
+            <hdvl-probe></hdvl-probe>
+          </hdml-ordinal-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    const el = scaleEl(view, "hdml-ordinal-scale");
+    assert.lengthOf(statePaletteGapsOf(el), 0);
   });
 
   test("paint is null on a non-color channel", async () => {

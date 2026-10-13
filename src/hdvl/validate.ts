@@ -55,6 +55,7 @@ import {
   kindOfColumn,
   looksLikeRef,
   paletteGapOf,
+  statePaletteGapsOf,
   scaleKindOf,
   scaleOf,
   valuesSpecOf,
@@ -914,11 +915,32 @@ function legendDensityMessage(
  * not have to do — and because R25 makes the message part of a
  * finding's identity, so *9 of 8* and *10 of 8* are genuinely
  * different reports of a domain that grew.
+ *
+ * ★ 019 R1 — **the property is a parameter**, and that is the whole
+ * reason this function was touched. The text named `--hdml-palette`
+ * verbatim, which is the right fix for the base gap and the *wrong*
+ * line to send an author to when it is their
+ * `--hdml-palette--hover` that is short. A diagnostic that names a
+ * property the author does not have to change is worse than a
+ * vaguer one, because they will change it. The base call passes
+ * `--hdml-palette` and its message is byte-for-byte what it was.
+ *
+ * ⚠ **One property, not a list.** A scale can be short in `--hover`
+ * and `--active` at once, and with *different* counts — two colours
+ * against four and one against four. One message carrying one pair
+ * of counts cannot name both palettes without lying about one of
+ * them, so {@link checkPalette} reports the first and the author
+ * fixes them in turn. The counts in the text are always true of the
+ * property the text names.
  */
-function paletteMessage(domain: number, palette: number): string {
+function paletteMessage(
+  domain: number,
+  palette: number,
+  prop: string,
+): string {
   return (
     `${domain} color domain values but ${palette} palette ` +
-    "colors — add colors to --hdml-palette or shorten the domain"
+    `colors — add colors to ${prop} or shorten the domain`
   );
 }
 
@@ -2928,21 +2950,74 @@ function checkV2(el: HdvlElement, out: Finding[]): void {
  * therefore edge-triggers, blanks the scale and dispatches
  * `hdml-error` through exactly the same path, and recovers when the
  * author adds the ninth colour.
+ *
+ * **★ 019 R1 — it now covers the STATE palettes too, and the base
+ * check runs first.** A `--hdml-palette--{state}` shorter than the
+ * domain is the same defect one layer over: the covered data
+ * recolours on hover and the uncovered data silently does not, so
+ * half the series responds to the pointer and half looks broken.
+ * It reuses `palette-exhausted` rather than minting a code —
+ * SPEC §11 gives it no V-number either, and the author's fix is the
+ * same shape, a longer palette or a shorter domain.
+ *
+ * **The ordering is load-bearing, in both directions.** Base first,
+ * because an exhausted base palette suppresses the state colours
+ * anyway, so the state gap under it is the same defect counted
+ * twice. And **at most one finding per scale**, because
+ * `applyErrors` surfaces a unit's first error and drops the rest —
+ * a second push would be unreportable, so the states are offered in
+ * {@link CHANNEL_STATES} order and the author clears them in turn.
  */
 function checkPalette(el: HdvlElement, out: Finding[]): void {
   if (el.family !== "scale") {
     return;
   }
   const gap = paletteGapOf(el);
-  if (gap === null) {
+  if (gap !== null) {
+    out.push(
+      error(
+        "V2",
+        "palette-exhausted",
+        el,
+        paletteMessage(gap.domain, gap.palette, "--hdml-palette"),
+        "color",
+      ),
+    );
+    // ★ 019 R1 — the BASE gap wins, and returning is not just an
+    // optimisation. An exhausted base palette already suppresses
+    // the state colours outright (`channelStates` drops the whole
+    // set when `paint()` is `null`), so a state gap underneath one
+    // is not a second defect: it is the same defect seen twice, and
+    // the base is the one the author must fix first.
     return;
   }
+  // ★ 019 R1 — the half-lit chart. A state palette shorter than the
+  // domain recolours part of the series on hover and leaves the
+  // rest on its base paint, which looks like a rendering bug and
+  // was silent until this step.
+  //
+  // ⚠ ONE finding, the first short state. `applyErrors` keeps a
+  // unit's FIRST error and discards the rest, so a second push here
+  // would be unreportable by construction — measured, not assumed.
+  // Reporting them in `CHANNEL_STATES` order makes the sequence
+  // deterministic, and each fix re-arms the next: the edge is keyed
+  // on the message, so `--active` surfaces the frame after
+  // `--hover` is lengthened.
+  const states = statePaletteGapsOf(el);
+  if (states.length === 0) {
+    return;
+  }
+  const first = states[0];
   out.push(
     error(
       "V2",
       "palette-exhausted",
       el,
-      paletteMessage(gap.domain, gap.palette),
+      paletteMessage(
+        first.domain,
+        first.palette,
+        `--hdml-palette--${first.state}`,
+      ),
       "color",
     ),
   );
