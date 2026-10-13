@@ -522,9 +522,14 @@ suite("hdvl/states — the two suppressions, under a pointer", () => {
   test("a channel fill holds, its outline moves", async () => {
     // SPEC §9, as DOM rather than as rule text: channel-bound paint
     // wins over `--hdml-fill-color` AND its state variants alike, so
-    // the hover cue must use what the channel does not own. The width
-    // variant moving in the same assertion is what proves the pointer
-    // landed — without it this would pass with no pointer at all.
+    // a LITERAL hover cue has to use what the channel does not own.
+    // ⚠ Since 019 R1 that is no longer the only cue available — the
+    // scale's `--hdml-palette--{state}` state-varies the channel's
+    // own paint, asserted on its own below — but it is still the only
+    // thing a literal may say, which is what this fixture authors.
+    // The width variant moving in the same assertion is what proves
+    // the pointer landed — without it this would pass with no pointer
+    // at all.
     const view = await mount(html`
       <hdml-view aria-label="bar" style="width: 76px; height: 200px">
         <hdml-cartesian-plane style="padding: 0">

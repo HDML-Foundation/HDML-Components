@@ -1694,8 +1694,10 @@ Five things an author needs from this, and each is a test in `ua.test.ts` or
   inheriting, so a plane *can* theme an outline colour once and switch it on per widget.
 - **A bound `color` channel is the fill, never the outline.** On a stroked widget the series
   colour *is* the stroke; on a filled one the stroke stays `--hdml-line-color` alone. That
-  is what lets `09-polar-area` use the outline as its hover cue on channel-coloured wedges —
-  *"what the channel does not own"*.
+  is what lets a channel-coloured mark use its outline as a hover cue — *"what the channel
+  does not own"* — which is what `09-polar-area` was authored on. ⓘ Since 019 R1 that is one
+  of **two** cues rather than the only one, and since step 40 the page takes both: see
+  *The worked example* below.
 
 `hdml-pie` is in the filled list and is the easy one to miss: it has **no `fillPaint` call
 of its own**. §6.3 makes a pie's geometry `hdml-arc`'s *to the node*, so `layout-pie` passes
@@ -1892,6 +1894,57 @@ rest do not. `scale.ts`'s `statePaletteGapsOf` is the resolver that answers it a
 The same shortfall is visible in a **key**: `swatchStates` gives the covered entries
 state colours and the rest `{}`, so the legend shows the defect as plainly as the marks
 do.
+
+#### ★ The worked example — `09-polar-area`, the live page (step 40)
+
+Corpus page [`html/hdvl/09-polar-area.html`](../html/hdvl/09-polar-area.html) view **B** is
+the first live document to author a channel state palette, and it authors **both** cues at
+once — which is the thing the mechanism made possible and the reason the page's own CSS
+comment had to be rewritten:
+
+```css
+/* the SCALE owns the state palette, exactly as it owns the base one */
+hdml-ordinal-scale[channel="color"] {
+  --hdml-palette:        #1c8cf4 #f59e0b #10b981 #8b5cf6 #ec4899 #14b8a6;
+  --hdml-palette--hover: #0b5ca8 #b26f05 #0a7d57 #5b2fc0 #b01e68;
+}
+
+/* …and the MARK owns what the channel does not: the outline */
+hdml-arc {
+  --hdml-line-width: 1px;
+  --hdml-line-color: #ffffff;
+  --hdml-line-width--hover: 2.5px;
+}
+```
+
+Hovering one wedge deepens **that wedge's own** colour — slot *k*'s `--hover` is slot *k*'s,
+not one flat value for the series — and thickens its outline. Before 019 R1 only the second
+of those was reachable on a channel-coloured mark; a literal `--hdml-fill-color--hover` is
+still refused there, so the palette is the only way to say the first.
+
+Two things an author should take from the page rather than from the rule text:
+
+- **The state palette is exactly as long as the domain** — five colours, five weekdays —
+  and that is deliberate. One colour shorter and `palette-exhausted` fires, naming
+  `--hdml-palette--hover`; the page's gate (`src/hdvl/corpus/validator.test.ts`) asserts
+  the page is silent, and shortening it by one is a measured negative control, not a guess.
+  ⚠ Because these properties **inherit**, the natural theming idiom — declaring the palette
+  once at the view — makes one short palette error *every* ordinal colour scale beneath it.
+- ⚠⚠ **A state palette is NOT type-checked, and the base palette is.** The four Class 2
+  state properties register `syntax: "*"` and not `<color>+`, and they have to: the CSS
+  Properties and Values API requires an `initialValue` for every syntax except `*`, and
+  these four need an **absent** sentinel — the empty string `Scale.paintState` reads as
+  *"the author wrote no state rule"*. The price is that nothing validates a colour in one.
+  A mistyped `#0b5ca` is a valid custom-property token stream, so it passes the UA, reaches
+  `Paint.states.colors` verbatim, is stamped onto the node's unregistered `--hdvl-*` carrier
+  verbatim, and only fails at the end — `fill: var(--hdvl-…)` is invalid at computed-value
+  time, which makes `fill` *unset*, and `fill` is an inherited SVG property, so that one
+  wedge hovers to whatever its `<g>` inherits. **No diagnostic fires**: `splitColorList`
+  counts tokens, so a five-token palette with one junk token still covers a five-value
+  domain. The base palette cannot do this — `<color>+` makes the UA reject the whole
+  declaration and fall back to the registered palette, which is wrong but *uniformly* and
+  *visibly* wrong. Measured on all three engines at step 40; see
+  [decisions.md](decisions.md).
 
 #### `focus` and `selected` are v2, and not for cost
 

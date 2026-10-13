@@ -80,10 +80,23 @@
  * **2. SPEC §9's channel rule.** *"Channel-bound paint wins over
  * `--hdml-fill-color` and its state variants alike … hovering a
  * channel-colored mark is styled through properties the channel does
- * not own — the stroke variants."* That sentence is live and
- * `09-polar-area`'s CSS comment depends on it, so a bound `color`
- * channel also drops the paint it owns: the **stroke** on one of
- * `strokePaint`'s hosts, the **fill** everywhere else.
+ * not own — the stroke variants."* The **first** clause is live, and
+ * it is what this suppression is: a bound `color` channel drops the
+ * paint it owns — the **stroke** on one of `strokePaint`'s hosts,
+ * the **fill** everywhere else.
+ *
+ * ⚠ **The second clause is not, since 019 R1**, and SPEC §9 carries
+ * a `019` amendment saying so. *"Properties the channel does not
+ * own"* was the only hover cue a channel-coloured mark could carry;
+ * it is now one of **two**. `Scale.paintState` reads
+ * `--hdml-palette--{state}` off the scale and `channelStates` puts
+ * the answer on the node, so the channel's own paint state-varies
+ * through the second, more specific rule this module also emits.
+ * What stays refused is the **literal** — `--hdml-fill-color--hover`
+ * on a channel-bound mark — which is the whole of what the
+ * suppression does. ⓘ `09-polar-area`'s CSS comment was written on
+ * the old reading and **no longer depends on it**: since step 40 the
+ * page authors a state palette and takes both cues at once.
  *
  * The *width*, *style* and *font* variants are never dropped — they
  * are precisely what the channel does not own. **A width variant

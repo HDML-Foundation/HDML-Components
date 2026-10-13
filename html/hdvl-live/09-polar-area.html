@@ -68,14 +68,26 @@
       /* A: ramp stops for the continuous color scale */
       hdml-continuous-scale[channel="color"] {
         --hdml-color-interpolate: #dbeafe #1c8cf4 #1e3a8a; }
-      /* B: categorical palette — 5 stocks, within the list */
+      /* B: categorical palette — 5 stocks, within the list.
+         019 R1 — the SAME scale carries the hover palette: slot k's
+         --hover colour is slot k's own, deepened, so the hovered
+         wedge recolours PER DATUM rather than to one flat value. It
+         must cover the domain or §9's palette-assignment rule errors.
+         ⚠ This page's domain is COLUMN-DERIVED (values="label"), so
+         the five colours below track the five stocks the frame
+         returns — a sixth symbol needs a sixth colour here. */
       hdml-ordinal-scale[channel="color"] { --hdml-palette: #1c8cf4 #f59e0b #10b981
-        #8b5cf6 #ec4899 #14b8a6; }
+        #8b5cf6 #ec4899 #14b8a6;
+        --hdml-palette--hover: #0b5ca8 #b26f05 #0a7d57 #5b2fc0 #b01e68; }
 
-      /* mark-level hover via a STROKE variant: channel-bound fill wins
-         over --hdml-fill-color and its --hover variant alike (§9), so a
-         hover cue on channel-colored wedges uses what the channel does
-         not own — the outline thickens on the hovered wedge only */
+      /* mark-level hover, the OTHER half. A LITERAL
+         --hdml-fill-color--hover is still refused on a channel-bound
+         mark (§9) — the channel owns that paint — but the WIDTH
+         variant is precisely what it does not own, so on B the two
+         compose: the hovered wedge deepens (the palette above) AND
+         its outline thickens (here). A has no state ramp, so there
+         the outline is still the only cue. Until 019 R1 it was the
+         only cue available anywhere on a channel-colored mark. */
       hdml-arc { --hdml-line-width: 1px; --hdml-line-color: #ffffff;
         --hdml-line-width--hover: 2.5px; }
 
@@ -214,7 +226,7 @@ from (
           <li>A labelled colour <b>ramp</b> in the gutter — a continuous bar with graduations, not five discrete swatches.</li>
           <li>Dotted circular gridlines (<code>--hdml-grid-shape: circle</code>), <b>two</b> of them &mdash; at 200B and 400B &mdash; with compact radius labels beside each, on the 12 o'clock spoke and behind the wedges. This page writes <code>count="4"</code>, and that is an <b>upper bound over a quantised set</b>, not a promise: over the resolved domain <code>0&hellip;450B</code> the reachable tick counts are {1, 3, 5, 10}, so <code>count="4"</code> picks a 200B step and yields three ticks &mdash; 0B, 200B, 400B. The one at 0B is the pole, where a ring has no extent and a label has no direction, so neither is drawn (017 R11). Four rings would need <code>step="100000000000"</code>. <i>This line used to read "four of them"; it was written by the runtime's own author and was never true.</i></li>
           <li>Caveat in the data, not the render: March pools 24 partial-to-complete months and February 23, so the raw totals are not perfectly comparable.</li>
-          <li>Hovering a wedge thickens its white outline — the fill is channel-bound, so the hover cue uses what the channel does not own.</li>
+          <li>Hovering a wedge thickens its white outline, and its <b>fill does not move</b>. A literal <code>--hdml-fill-color--hover</code> is refused on a channel-bound mark (&sect;9), and this view authors no <code>--hdml-color-interpolate--hover</code> ramp &mdash; so the outline, <i>"what the channel does not own"</i>, is A's only cue. <b>B authors the palette variant and does move its fill</b> (019 R1); compare the two.</li>
         </ul>
       </section>
     </figure>
@@ -244,6 +256,7 @@ from (
           <li><b>The 25:1 volume spread must read as roughly a 5:1 radius ratio</b> — that is the sqrt scale doing its job, and it is the check that matters here. Apple 411.3 M against Netflix 16.3 M: Apple's radius should be about five times Netflix's, and its <i>area</i> about 25 times.</li>
           <li>Apple's wedge reaches ~95.6 % of the outer gridline (√(411.3/450)).</li>
           <li>Five distinct palette colours, one per wedge.</li>
+          <li><b>Hovering a wedge deepens that wedge's own colour</b> and thickens its outline &mdash; both at once, and <b>only the hovered wedge changes</b>. The fill comes from <code>--hdml-palette--hover</code> on the colour scale, so slot <i>k</i>'s hover colour is slot <i>k</i>'s: Apple hovers to a deep blue, not to one shared highlight. If every wedge changes together, or a wedge jumps to a colour from another slot, the per-datum read is wrong. ⚠ If some wedges respond and others do not, the hover palette is <b>shorter than the domain</b> &mdash; add a colour per symbol (019 R1, step 40).</li>
           <li>No legend on this figure, and the plane's padding is symmetric — the rose is centred, unlike A which reserves a right gutter.</li>
         </ul>
       </section>

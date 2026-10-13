@@ -62,6 +62,22 @@ import { tickSpecOf } from "../guide-spec";
  * `count="4"` having asked for four boundaries over `[0, 2210]` and
  * §4.8's ladder having answered with three.
  *
+ * ★★ **019 R1 — B is the FIRST corpus page to author a channel
+ * state palette** (step 40), and so the first whose golden the
+ * mechanism moved. `--hdml-palette--hover` sits on the same scale as
+ * the base palette, five colours against five weekdays, and
+ * `GOLDEN_B`'s five wedges each gained a `states` key — the only
+ * field that moved, in either view. ⚠ **Row 40 predicted "move by
+ * zero"**, which was true when it was written and stopped being true
+ * at step 37; see *"the states move, and ONLY they"* for what the
+ * clause is replaced by, and `docs/decisions.md` for the
+ * reconciliation.
+ *
+ * ⚠ **The palette is exactly as long as the domain**, deliberately:
+ * one colour shorter and step 39's `palette-exhausted` fires on a
+ * live page, which `corpus/validator.test.ts` is the gate for. The
+ * length is load-bearing rather than incidental.
+ *
  * ★ **This is the ramp on a page, and the first place `ticks()` on a
  * colour scale had ever been asked for outside a fixture.** Step 31
  * found that call answering `[]` on *every* colour scale — a
@@ -113,6 +129,20 @@ function sectorsOf(scene: Scene): SceneNode[] {
   return scene.groups
     .filter((g) => g.role === "mark")
     .flatMap((g) => g.nodes);
+}
+
+/**
+ * Every node carrying {@link Paint.states}, as `tag[index]`.
+ *
+ * ★ A **projection and not a count**: *where* the field landed is
+ * the claim, and a count of five would be satisfied by five of the
+ * wrong nodes. `NodeBase extends Paint`, so the field is reachable
+ * on every variant of every group and a leak has no natural floor.
+ */
+function statePaths(scene: Scene): string[] {
+  return scene.groups.flatMap((g) =>
+    g.nodes.flatMap((n, i) => (n.states ? [`${g.tag}[${i}]`] : [])),
+  );
 }
 
 suite("corpus 09-polar-area", () => {
@@ -338,6 +368,60 @@ suite("corpus 09-polar-area", () => {
       GOLDEN_A,
     );
     assert.deepEqual(goldenOf(page.views[1]), GOLDEN_B);
+  });
+
+  test("★ R1 on a page: the states move, and ONLY they", async () => {
+    // ★★ **The re-baseline's own gate** (019 step 40). Plan row 40
+    // predicted these two goldens would *"move by zero"*; **one
+    // moves and the other does not**, and both halves are the point.
+    //
+    // Step 37 made `Paint.states` *absent unless authored* precisely
+    // so no corpus page would re-baseline before one authored a
+    // state palette — so the clause did not survive its own
+    // mechanism, and B is the page. What it was protecting is
+    // asserted here instead, as the **confinement** of the field.
+    //
+    // - **A does not move.** The declaration is a tag selector,
+    //   `hdml-ordinal-scale[channel="color"]`, and A's colour scale
+    //   is an `hdml-continuous-scale`, so it never matches. That is
+    //   one of two independent reasons and this pins it; the other
+    //   is that `paintState` on a ramp reads only
+    //   `--hdml-color-interpolate--{state}`.
+    // - **In B it is on the five wedges and nowhere else** — not on
+    //   the grid's rings, which `strokePaint` builds with no channel.
+    //   A whole-`Scene` re-baseline absorbs a leak silently, so the
+    //   paths are enumerated rather than the nodes counted.
+    // - **Each colour is a real `Scale.paintState` call**, compared
+    //   against the resolver and not against the literal beside it —
+    //   step 31's rule for the ramp above, applied to the states.
+    // - **`active` is absent, not empty.** The page authors `--hover`
+    //   only, and `PaintStates.colors` is never `{}`.
+    const page = await mountCorpus("09-polar-area");
+    const a = goldenOf(page.views[0]);
+    const b = goldenOf(page.views[1]);
+    assert.deepEqual(statePaths(a), []);
+    const marks = b.groups.filter((g) => g.role === "mark");
+    assert.lengthOf(marks, 1);
+    assert.deepEqual(
+      statePaths(b),
+      marks[0].nodes.map((_, i) => `hdml-arc[${i}]`),
+    );
+    const hit = page.views[1].querySelector(
+      'hdml-ordinal-scale[channel="color"]',
+    );
+    assert.isNotNull(hit);
+    const color = scaleOf(<HdvlElement>(<unknown>hit));
+    assert.isNotNull(color);
+    sectorsOf(b).forEach((n, i) => {
+      assert.deepEqual(Object.keys(n.states?.colors ?? {}), [
+        "hover",
+      ]);
+      assert.strictEqual(n.states?.prop, "fill");
+      assert.strictEqual(
+        n.states?.colors.hover,
+        color?.paintState(WEEKDAYS[i], "hover"),
+      );
+    });
   });
 
   test("★ the ramp is labeled, and it is one set", async () => {
@@ -1348,6 +1432,10 @@ const GOLDEN_B: Scene = {
           stroke: "rgb(255, 255, 255)",
           strokeWidth: 1,
           dash: null,
+          states: {
+            prop: "fill",
+            colors: { hover: "#0b5ca8" },
+          },
         },
         {
           k: "arc",
@@ -1362,6 +1450,10 @@ const GOLDEN_B: Scene = {
           stroke: "rgb(255, 255, 255)",
           strokeWidth: 1,
           dash: null,
+          states: {
+            prop: "fill",
+            colors: { hover: "#b26f05" },
+          },
         },
         {
           k: "arc",
@@ -1376,6 +1468,10 @@ const GOLDEN_B: Scene = {
           stroke: "rgb(255, 255, 255)",
           strokeWidth: 1,
           dash: null,
+          states: {
+            prop: "fill",
+            colors: { hover: "#0a7d57" },
+          },
         },
         {
           k: "arc",
@@ -1390,6 +1486,10 @@ const GOLDEN_B: Scene = {
           stroke: "rgb(255, 255, 255)",
           strokeWidth: 1,
           dash: null,
+          states: {
+            prop: "fill",
+            colors: { hover: "#5b2fc0" },
+          },
         },
         {
           k: "arc",
@@ -1404,6 +1504,10 @@ const GOLDEN_B: Scene = {
           stroke: "rgb(255, 255, 255)",
           strokeWidth: 1,
           dash: null,
+          states: {
+            prop: "fill",
+            colors: { hover: "#b01e68" },
+          },
         },
       ],
     },

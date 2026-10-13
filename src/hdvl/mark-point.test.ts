@@ -584,8 +584,11 @@ suite("hdvl/mark-point — §6.1's glyph", () => {
     // stroke stays `--hdml-line-color` alone — so an outline remains
     // the author's decision even on a channel-coloured mark.
     //
-    // `09-polar-area`'s own comment depends on this: "a hover cue on
-    // channel-colored wedges uses what the channel does not own".
+    // It is what makes an outline usable as a hover cue on a
+    // channel-coloured mark — "what the channel does not own" — which
+    // is what `09-polar-area` was authored on. ⓘ Since 019 R1 the
+    // channel's own palette is a second cue there, so that page takes
+    // both; the fact asserted here is unchanged.
     const view = await mount(html`
       <hdml-view aria-label="pt" style="width: 400px; height: 200px">
         <hdml-cartesian-plane style="padding: 0">

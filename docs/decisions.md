@@ -3371,3 +3371,155 @@ ordinal colour scale has an **authored** domain: seeded into `04-grouped-stacked
 `values='["North","South","East"]'` is a literal, it reds **two tests on each of the three
 engines** with the diagnostic naming `--hdml-palette--hover`, and goes silent again when the
 page is restored. `html/hdvl/` is byte-unchanged.
+
+## A live page authors a channel state palette, and its golden was re-baselined
+
+019 R1's last implementation step (40). `--hdml-palette--hover` had been registered (36),
+read per datum (37), stamped into the DOM (38) and guarded against a short palette (39) —
+all against fixtures. This step put it in a **document**: corpus page `09-polar-area` view
+**B** now declares a five-colour hover palette on the same `hdml-ordinal-scale[channel="color"]`
+that carries its base palette, against a five-weekday domain.
+
+**1 · The plan row said the goldens would "move by zero". They moved, and that was
+inevitable from step 37 onward.** Step 37 chose *absent unless authored* for `Paint.states`
+**precisely** so that the corpus would not re-baseline — `NodeBase extends Paint`, so an
+always-present field lands on every node of every group, measured at step 37 as all 29
+goldens and 71 tests. The clause was therefore protecting a corpus that had no page
+authoring a state palette, and row 40 is the step that adds one. ⇒ **a gate clause written
+before a mechanism existed can survive the mechanism's arrival unchanged while becoming
+false**; it was amended with the founder before the step ran, to *re-baseline, and prove the
+movement minimal*.
+
+**2 · ONE golden moved, not two, and the reason is worth keeping.** The declaration is a
+tag selector, so the fan-out question is real — these properties are `inherits: true`, and
+step 39 found that one short palette errors a whole subtree. But view **A**'s colour scale
+is an `hdml-continuous-scale`, so `hdml-ordinal-scale[channel="color"]` never matches it,
+and `GOLDEN_A` is byte-unchanged. Two independent reasons, and only the first is about the
+selector: `Scale.paintState` on a ramp reads `--hdml-color-interpolate--{state}` and nothing
+else, and `gapIn` returns `null` for any non-ordinal scale, so a palette variant is
+unreadable on A even if it reached it. The legend in A is likewise untouched — it resolves a
+ramp.
+
+**3 · The re-baseline was proved minimal rather than asserted.** The failing `deepEqual`
+printed the whole diff over both scenes, and it was five `states` keys on five `arc` nodes
+and nothing else — no geometry, no `fill`, no `stroke`. That measurement is now a committed
+test (*"the states move, and ONLY they"*): `statePaths` enumerates **where** the field
+landed in both views rather than counting it, each colour is compared against a real
+`Scale.paintState` call rather than against the literal beside it, and `active` is asserted
+**absent** — the page authors `--hover` only and `PaintStates.colors` is never `{}`. A
+whole-`Scene` re-baseline absorbs an unrelated drift silently; this is what makes it not.
+
+**4 · The palette is exactly as long as the domain, deliberately.** Five colours against
+five weekdays, beside a six-colour base. One colour shorter reds the page: step 39's
+`palette-exhausted` fires on all three engines with *"5 color domain values but 4 palette
+colors — add colors to `--hdml-palette--hover`"*, and `validator.test.ts` is the gate that
+sees it. That is the **first time a corpus page exercises step 39's diagnostic**, and it
+makes the page's palette length load-bearing instead of incidental. ⓘ Step 39's C307 caveat
+does not bite here — `validator.test.ts` mounts with no data provider, but this scale's
+domain is a literal `values='["Mon",…]'`, which resolves with no delivery, so the no-provider
+mount is a real venue for it.
+
+**5 · The page's CSS comment was false and is retired.** It said a hover cue on
+channel-coloured wedges *"uses what the channel does not own"* **because** channel-bound
+fill wins over `--hdml-fill-color` and its `--hover` variant alike. The precedence is still
+true; the *"because"* stopped being true at step 38, when the channel's own paint started
+state-varying. The page now says what it actually demonstrates: a literal is still refused,
+the width variant is still what the channel does not own, and the two **compose** — the
+hovered wedge deepens *and* its outline thickens. Until R1 only the second was reachable.
+
+**6 · The quote sweep was 8 occurrences in 5 files, and only 3 were stale.** Five of the
+eight are step 38's own and already frame the sentence correctly — as the *cascade* outcome
+between the channel rule and the literal — so they were read and left: `CLAUDE.md:41`,
+`docs/components.md:1867`, `states-pointer.test.ts:917` and `states.test.ts:405`, plus
+`docs/components.md:1800`, whose line is 017's but which carries step 38's correcting banner
+directly beneath it. The three edited were the ones citing the *old reason*:
+`states.ts` (*"that sentence is live and `09-polar-area`'s CSS comment depends on it"*),
+`states-pointer.test.ts` (*"the hover cue **must** use what the channel does not own"*) and
+`states.test.ts` (*"`09-polar-area` is authored on exactly this"*). None of the three
+assertions changed — only the reasons given for them. ⇒ **read every site before editing
+any**: a sweep that assumes all N are stale rewrites text that a predecessor already fixed.
+
+**7 · SPEC § 9 took FOUR edits, and the one the row named was not the worst.** The named
+sentence (*"channel-bound paint wins over `--hdml-fill-color` and its state variants
+alike"*) keeps its first clause and loses its consequence, which is a straightforward
+amendment. The others were found by sweeping SPEC for the *claim* rather than for the
+*quote*:
+
+- ⛔⛔ **017 R7's own amendment still forbade R1's four registrations**: *"the three palette
+  properties are channel-colour sources resolved into per-node fills; **neither can carry a
+  variant, whatever it were named**."* That is the SPEC-side twin of C291 — the
+  `properties.ts` paragraph that directly forbade step 36 — and **step 36 fixed only the
+  code-side copy**. A load-bearing prohibition had been live in the contract for four steps
+  after the thing it prohibits shipped.
+- 017 R7's amendment at §6.1 also restates the stale consequence (*"a channel-coloured
+  mark's state cue is the outline"*).
+- **V12's row admitted only the eight presentation-attribute properties' variants**, so
+  SPEC's own conformance rule excluded the property this page now authors. The
+  *implementation* was never wrong — `check-dist.mjs` reads the registry, so the page passes
+  — but the rule's text and the corpus had started contradicting each other.
+
+⇒ **when an amendment supersedes a claim, grep for every restatement of the claim, not for
+the sentence.** `:840`'s *"when the `color` channel is bound, it wins over
+`--hdml-fill-color`"* needed **no** edit: it is the base-precedence claim alone, which R1
+leaves intact.
+
+**8 · Control 2 proved the gate can see a leak, which byte-equality alone cannot.** The
+other 27 views being unchanged is consistent with the goldens being blind to the field, so
+the declaration was moved to a **shared** surface — a `:host(hdml-ordinal-scale)` rule in
+`ua.ts`, working tree only. It reds exactly the four other pages carrying an ordinal colour
+scale — `04`, `06`, `08`, `12` — across all three engines, and `09` stays green, because an
+outer-document page rule beats `:host()` and the page's own five-colour palette still wins.
+Restored, and the corpus is green again.
+
+**9 · ⚠⚠ Control 5: a state palette is NOT type-checked, the base palette is, and SPEC had
+already written the argument against it.** The four Class 2 state properties register
+`syntax: "*"`, and they have to — the CSS Properties and Values API requires an
+`initialValue` for every syntax except `*`, and these four need an **absent** sentinel (the
+empty string `paintState` reads as *"the author wrote no state rule"*). The price, measured
+on all three engines:
+
+- `--hdml-palette--hover: #0b5ca notacolor …` — a five-digit hex typo, or any ident —
+  passes the UA, reaches `Paint.states.colors` **verbatim**, and is stamped verbatim onto
+  the node's unregistered `--hdvl-*` carrier. It fails only at the end: `fill: var(--hdvl-…)`
+  is invalid at computed-value time ⇒ `fill` is *unset* ⇒ `fill` is an inherited SVG
+  property ⇒ that one wedge hovers to whatever its `<g>` inherits. **No diagnostic fires** —
+  `splitColorList` counts tokens, so a five-token palette with one junk token still covers a
+  five-value domain.
+- The **same** junk token in `--hdml-palette` cannot do this: `<color>+` makes the UA reject
+  the whole declaration and fall back to the registered initial, so the chart paints the
+  default palette — wrong, but *uniformly* and *visibly* wrong.
+
+★★ And the sharpest part: **SPEC § 9 already contains this argument, as the reason to
+decline `*`.** 017 R2 rejected `syntax: "*"` for `--hdml-text-anchor` because *"`*` accepts
+any string, so a misspelled keyword would compute to itself and the runtime would have to
+ignore it silently — the failure class §11 exists to prevent"*. R1 then chose `*` for four
+properties under a forcing constraint, and the hole reopened four lines below the argument
+against it. ⇒ **named residue, not fixed here**: closing it means validating a colour in
+JavaScript, which this repo deliberately leaves to the UA everywhere else, and it is a
+diagnostic design rather than a one-line fix. Recorded so the next reader of §9 does not
+have to re-derive it.
+
+**10 · ⚠⚠ Control 4 found five more dependent sites, and one of them was a whole directory
+the sweep could not see.** The row's sweep was keyed on the phrase *"state variants alike"*.
+Five further places asserted *"`09-polar-area`'s comment relies on / depends on"* the old
+reason and contain that phrase nowhere — `mark.ts`, `mark-point.test.ts`,
+`docs/components.md`'s `fillPaint` bullet, and **`html/hdvl-live/09-polar-area.html`**, the
+live twin, which carried the identical stale CSS comment *and* told a human reader in prose
+that *"the fill is channel-bound, so the hover cue uses what the channel does not own"*. The
+facts those three code sites assert are unchanged — a bound `color` is the fill, never the
+outline — so only the attribution to the page's comment was corrected. The live twin was
+brought in step: B now authors the same hover palette, and both views' validate lists say
+what to look for. ⚠ Its domain is `values="label"`, **column-derived**, so a short palette
+there is invisible to every deterministic gate and would surface only under the live
+harness; the comment says so. ⇒ **sweep for the CLAIM, not for the quotation** — the
+quotation is the one form a predecessor has already normalised.
+
+**11 · ⚠ Two claims about the corpus twins are false, and they are left as found.**
+`invariants.test.ts` justifies its stunt double with *"`html/hdvl/` and `html/hdvl-live/` are
+byte twins that `check_dist` compares"*, and `docs/development.md` repeats the weaker form.
+Measured: `check-dist.mjs` does not mention `hdvl-live` **at all** (zero occurrences), and
+the two 09 pages are 143 and 252 lines — they were never byte twins, and 017's F1 retired
+the byte-copy invariant outright. The stunt double is still the right call for a better
+reason — breaking a corpus page reds its golden — but the reason given names a comparison
+that does not exist. Not fixed here: it is pre-existing, orthogonal to R1, and belongs with
+017's F1 residue rather than with a vocabulary step.

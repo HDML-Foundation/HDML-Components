@@ -826,9 +826,12 @@ export function strokePaint(
  * which is where this parts company with {@link strokePaint}. There
  * the series colour *is* the stroke; here the stroke is
  * `--hdml-line-color` alone, so an outline stays the author's
- * decision even on a channel-coloured widget. That is what
- * `09-polar-area`'s comment relies on — *"a hover cue on
- * channel-colored wedges uses what the channel does not own"*.
+ * decision even on a channel-coloured widget. That is what makes an
+ * outline usable as a hover cue on a channel-coloured mark — *"what
+ * the channel does not own"* — which is what `09-polar-area` was
+ * authored on. ⓘ Since 019 R1 it is one of **two** cues there rather
+ * than the only one, and since step 40 that page takes both; see
+ * {@link channelStates}.
  *
  * **No state variant is read**, here or in {@link strokePaint} —
  * and since 017 R7's step 09-2 that is **not** because

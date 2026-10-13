@@ -574,9 +574,13 @@ suite("hdvl/states — channelPropOf", () => {
 suite("hdvl/states — what a host may not state-vary", () => {
   test("a channel-owned fill is out, its outline is in", () => {
     // SPEC §9: channel-bound paint wins over `--hdml-fill-color`
-    // AND its state variants alike. `09-polar-area` is authored on
-    // exactly this — a hover cue on channel-coloured wedges uses
-    // what the channel does not own.
+    // AND its state variants alike, so this is what a LITERAL may
+    // not say. ⚠ `09-polar-area` was authored on exactly this and no
+    // longer is: since step 40 it carries a state PALETTE beside the
+    // stroke variant, so its wedges take both cues — the fill from
+    // the channel, the outline from what the channel does not own.
+    // The suppression asserted here is unchanged; what changed is
+    // that it stopped being the whole story.
     const text = stateRules([
       input(
         {
