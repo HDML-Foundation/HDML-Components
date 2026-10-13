@@ -3750,3 +3750,72 @@ twin; the decision is to name the gap, in the README and in `docs/development.md
 the twin as an unscheduled successor. ⚠ `html/index.html` lists both sets by hand and
 **nothing asserts either list is complete** — the mock half is now fourteen entries and the
 live half thirteen, which is correct and ungated.
+
+## `initial-{slot}`'s four open questions, answered at 019 step 44
+
+The RFC settled *what* item 1 is and left four questions to the implementation. All four
+were answered against the tree and all four are negative-controlled in
+`src/hdvl/initial.test.ts`.
+
+**1. "All of whose bound slots have a literal" is asked of the UNIT, not the element.**
+A container hoists the shared channel and V6 forbids its children from binding it, so a
+stacked child's `x` is bound on the *stack*. Asked of the element, a child whose own `y` was
+backed would answer *yes* while the stack's `x` had nothing behind it — and would paint at
+an undefined position. The unit is also the subject the post-resolution loop in
+`paintSuppressed` already uses, so the two halves of one predicate now agree by
+construction rather than by comment. **And an empty set answers `false`:** the five guides
+declare no `bindings()`, so a vacuous universal quantifier would have painted every axis in
+an unresolved view against a scale that had not resolved — the same atomicity broken from
+the other side.
+
+**2. The literal is replaced, not kept, and the page cannot flicker.** `slotValuesOf` reads
+the literal only on the `column === null` branch, so the column wins the instant it exists.
+The hand-over is atomic for the same reason first-resolution suppression was: `state.resolved`
+flips only when *every* subscription in the view is terminal, so the whole view changes over
+on one frame. There is no intermediate frame in which some widgets show literals and their
+siblings show data.
+
+**3. The 25th code is `initial-cleared`, an ERROR under the existing V2.** Severity first:
+§3.5 is *already* blanking the element when this fires, so a warning would describe an
+error's consequence at a severity that says the chart is still trustworthy. It is a
+`Finding` rather than a console notice, on the `palette-exhausted` / `colliding-angle-bands`
+precedent — a code of its own under an existing rule — so **SPEC §11's checklist does not
+move** and the rule count is unchanged. It is reported **once per unit**, from the binding
+pass, using a predicate that lives in `subscribe.ts` because *"was this unit painting from
+literals?"* is that module's question.
+
+**4. The fifth state is `initial`, and it is not in the UA sheet.** It lands on the
+**widget** (`loading` lands on the view, so the two coexist without contradiction) and it is
+**derived, never authored** like the other four — `applyLifecycle` asks `paintSuppressed`'s
+own predicate at end of frame, so the state and the paint cannot disagree, and authoring
+`initial-x` does not set it. No UA rule: a widget painting honest placeholder geometry is
+not in an error condition and the runtime has no opinion about how it should look. The
+registry is unmoved at **57** and `registry.test.ts`'s `EXPECTED` table is keyed on
+`observedAttributes`, which a state does not touch.
+
+### ⚠ One RFC instruction was measured and declined: the `placeholder` flag
+
+RFC 001 §5.2 site 2 specifies that the branch return *"the literal's `SlotValues` **plus a
+placeholder flag**"*. It was implemented, then removed, because **no production code read
+it**: the fifth state derives from the predicate instead, which is strictly better — a flag
+on the values and a state on the element can drift, a single predicate cannot. The flag cost
+**96 bytes minified** across six construction sites, which is 1.7× the headroom `./hdvl`
+had, so it was not free. The distinction it would have carried — a literal *channel*
+attribute versus an `initial-{slot}` standing in for a pending binding — is observable
+through `markBindings`, and is asserted there.
+
+## ⚠ `./hdvl`'s MINIFIED ceiling is the binding one, not its gzip ceiling
+
+Measured at step 44. The two are not interchangeable and the minified one is far tighter:
+at step 43 `./hdvl` was **429.2 kB min against a 430 ceiling (0.8 kB spare)** while its gzip
+figure was **121.0 against 123 (2.0 kB spare)**. A step that reads only the gzip number will
+believe it has 2.5× the room it has. Step 44's feature code broke the minified ceiling and
+had to be shaved **142 bytes** to land at 429.9.
+
+`check-dist.mjs` states the rule that produced every ceiling — *measured × 1.05, rounded up*
+— and says the 5 % "absorbs a widget; it does not absorb a dependency, which is the only
+regression this check exists to catch." The 430 was derived from a **409.2** measurement at
+step 35, so steps 36–44 have consumed the whole allowance without anyone re-deriving it.
+**The ceiling was deliberately left at 430**: raising a guard in the same commit that breaches
+it is how a guard stops guarding, and the feature fit without it. The next step that needs
+room should re-derive by the documented rule rather than shave, and say so.

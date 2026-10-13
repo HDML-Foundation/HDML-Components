@@ -732,10 +732,43 @@ prolong it. A view with no subscriptions at all is not loading, which is what ma
 `:state(empty)` reachable for a literal-only page. Painting under it is two-phase:
 
 - **Until the view has resolved once**, `loading` suppresses *all* painting in it — a chart
-  that reveals its axes, then its bars, then its line is worse than one that appears whole.
+  that reveals its axes, then its bars, then its line is worse than one that appears whole —
+  **except for a unit that can paint honestly without the data** (below).
 - **After that first resolution**, `loading` is a status flag: a rebind leaves its own error
   unit blank and its siblings painting, because re-suppressing the whole view would blank an
   entire dashboard on every series toggle.
+
+**Paint suppression is per WIDGET, not per view** (019 item 1, step 44). The first-resolution
+clause above was a question about the *view* until that step, and the answer was the same for
+everything in it: a widget carrying every literal it needed still painted nothing if one
+sibling subscription was outstanding. It now asks `literalBacked` of the widget's **error
+unit** first, and a unit every one of whose pending slots carries an `initial-{slot}` literal
+is let through.
+
+Three properties of that hole are load-bearing, and each is a negative control in
+`src/hdvl/initial.test.ts`:
+
+- **The subject is the unit, never the element.** A container hoists the shared channel and
+  V6 forbids its children from binding it, so a stacked child's `x` is bound on the *stack*.
+  Asked of the element, a child whose own `y` was backed would answer *yes* while the stack's
+  `x` had nothing behind it, and the child would paint at an undefined position. The unit is
+  the same subject the post-resolution loop already uses.
+- **An empty set answers `false`, not `true`.** The five guides declare no `bindings()` at
+  all, so a guide's unit contributes no subscription. Were the universal quantifier allowed
+  to be vacuous, every axis, grid, tick, label and legend in an unresolved view would paint
+  against a scale whose domain had not resolved — atomicity broken in the opposite direction
+  from the one item 1 wanted to open. **A unit must have something of its own to paint
+  before it may paint early.**
+- **Each subscription is matched against a literal on its own element**, which is what makes
+  the hoisted case read the stack's `initial-x` and the child's `initial-y`.
+
+A literal is a **placeholder, not a fallback**. It stands in only while a binding is
+*pending*: once the column arrives `slotValuesOf` reads the column and the literal is never
+consulted again, and if the delivery **fails** the unit blanks under §3.5 like any other and
+the literals go with it — reported as the `initial-cleared` error, because an author who
+wrote a literal precisely so the widget would have something to show would otherwise infer
+that rule from a blank chart. The widget carries `:state(initial)` for exactly as long as it
+is painting from literals.
 
 **`hdml-io-gone` finally has a consumer**: reset `latest` to 0, drop back to un-terminal so the
 view returns to `:state(loading)` on its next frame, and await the next `hdml-io-ready`, which

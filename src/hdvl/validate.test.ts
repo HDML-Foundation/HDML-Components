@@ -31,7 +31,7 @@ const REF = "?hdml-frame=v2";
  *
  * The annotation is what makes it an assertion rather than a list:
  * a `Record<DiagnosticCode, …>` literal must name **every** member
- * and may name no other, so a twenty-fifth code is a `compile_tst`
+ * and may name no other, so a twenty-sixth code is a `compile_tst`
  * failure in this file and a deleted one is too. Step 12 landed all
  * twenty-one at once for H5's reason; step 21 added the
  * twenty-second as a §8 amendment; **step 22 added four rules and
@@ -62,6 +62,7 @@ const CODES: Readonly<Record<DiagnosticCode, true>> = {
   "negative-pie-value": true,
   "varying-path-color": true,
   "radius-grid-at-pole": true,
+  "initial-cleared": true,
 };
 
 /**
@@ -2911,7 +2912,7 @@ suite("hdvl/validate — diagnostics", () => {
     // the user as "suppress AND diagnose"). Its element is the
     // `hdml-grid` rather than the scale, because the ladder that
     // produced nothing came from the grid's own `count`.
-    assert.lengthOf(Object.keys(CODES), 24);
+    assert.lengthOf(Object.keys(CODES), 25);
     // …and the warning space, whose seventh member is V7's rather
     // than a W-rule's (step 27).
     assert.lengthOf(Object.keys(WARNINGS), 7);

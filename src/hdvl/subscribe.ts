@@ -658,10 +658,14 @@ export function paintSuppressed(el: HdvlElement): boolean {
   if (state === undefined || state.subs.size === 0) {
     return false;
   }
+  const unit = unitFor(el);
   if (!state.resolved) {
-    return true;
+    // 019 item 1's hole, and the only one in this clause: a unit
+    // every one of whose pending slots carries an `initial-{slot}`
+    // literal has honest geometry to paint right now, so §3.4's
+    // atomicity has nothing left to protect it from.
+    return !literalBacked(state, unit);
   }
-  const unit = resolutionOf(el)?.unit ?? el;
   for (const sub of state.subs.values()) {
     if (unitOf(sub) !== unit) {
       continue;
@@ -671,6 +675,139 @@ export function paintSuppressed(el: HdvlElement): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Whether this element is a **unit whose `initial-{slot}` literals
+ * have just been cleared by a failed delivery** — 019 item 1's
+ * 25th diagnostic, asked from the validator's binding pass.
+ *
+ * Three conditions, all necessary:
+ *
+ * 1. `el` **is** its own unit, so one finding is produced per unit
+ *    rather than one per widget inside it.
+ * 2. The unit {@link literalBacked | was painting from literals} —
+ *    otherwise nothing was showing and nothing was cleared.
+ * 3. At least one of its subscriptions **failed** (§7.4's `error`
+ *    or `absent`), which is what §3.5 blanks it for.
+ *
+ * ★ The attributes are of course still on the element; what was
+ * cleared is the *paint*. Condition 2 is therefore still true after
+ * the failure, which is exactly why it can be asked afterwards.
+ *
+ * @param el - A display element.
+ * @returns Whether to report `initial-cleared` for it.
+ */
+export function initialCleared(el: HdvlElement): boolean {
+  const view = el.view;
+  const state = view === null ? undefined : states.get(view);
+  if (state === undefined || unitFor(el) !== el) {
+    return false;
+  }
+  let any = false;
+  let broke = false;
+  for (const sub of state.subs.values()) {
+    if (unitOf(sub) !== el) {
+      continue;
+    }
+    if (initialLiteralOf(sub.element, sub.slot) === undefined) {
+      return false;
+    }
+    any = true;
+    broke = broke || failed(sub);
+  }
+  return any && broke;
+}
+
+/**
+ * One slot's `initial-{slot}` literal, parsed — or `null`.
+ *
+ * ★★ **This lives here, in the lower module, on purpose.** Both
+ * halves of item 1 must agree *exactly* on which literals count:
+ * {@link paintSuppressed} decides the widget may paint and
+ * `mark.ts`'s `initialValuesOf` decides what it paints with, and if
+ * the first were the more generous of the two — testing the JSON
+ * head while the second tested the parse — a malformed
+ * `initial-x='[1,2'` would let the widget through to paint a hole.
+ * One predicate, one answer. `mark.ts` already imports this module
+ * for values, so putting it here also keeps `subscribe` → `mark`
+ * from becoming the value cycle the rest of `src/hdvl/` avoids.
+ *
+ * ⚠ **There is no identifier form.** Unlike a channel attribute,
+ * `initial-{slot}` never dispatches: it is a literal or it is
+ * nothing, so `initial-x="revenue"` does not parse and reads as
+ * **unbacked** — the widget stays suppressed rather than painting
+ * the author's typo.
+ *
+ * ★ `undefined` is the absent sentinel and is unambiguous:
+ * `JSON.parse` returns object / array / string / number / boolean /
+ * `null` and **never** `undefined`, so `initial-x="null"` is still
+ * told apart from no literal at all.
+ *
+ * @param el - The element that declared the binding.
+ * @param slot - The slot the literal backs.
+ * @returns The parsed literal, or `undefined` when absent/malformed.
+ */
+export function initialLiteralOf(
+  el: HdvlElement,
+  slot: Slot,
+): unknown {
+  const raw = el.getAttribute(`initial-${slot}`);
+  if (raw === null) {
+    return undefined;
+  }
+  try {
+    return <unknown>JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether a unit can paint out of `initial-{slot}` literals alone —
+ * RFC 001 §5.2's *"all of whose bound slots have a literal"*, asked
+ * of the **unit** and not of the element.
+ *
+ * ★★ **The unit is the question's subject, and it has to be.** A
+ * container hoists the shared channel and V6 forbids its children
+ * from binding it, so a stacked child's `x` is bound on the *stack*.
+ * Asked of the element, a child whose own `y` is backed would answer
+ * *yes* while the stack's `x` had nothing behind it, and the child
+ * would paint at an undefined position. Asked of the unit — the same
+ * subject the post-resolution loop below already uses — the stack's
+ * `x` is in the set and backs or blocks the whole group together.
+ *
+ * ⚠⚠ **An empty set answers `false`, not `true`.** This is the
+ * difference between a hole and a hole in the floor. The five guides
+ * declare no `bindings()` at all, so a guide's unit contributes no
+ * subscription; were the universal quantifier allowed to be vacuous,
+ * every axis, grid, tick, label and legend in an unresolved view
+ * would paint immediately — against a scale whose domain has not
+ * resolved — and §3.4's atomicity would be broken in the opposite
+ * direction from the one item 1 wanted to open. A unit must have
+ * something of its own to paint before it may paint early.
+ *
+ * ⚠ Each subscription is matched against a literal on **its own
+ * element**, not on `el`: that is what makes the hoisted case read
+ * the stack's `initial-x` and the child's `initial-y`, each from the
+ * element that actually declared the binding.
+ *
+ * @param state - The view's subscription state.
+ * @param unit - The error unit the widget blanks with (§3.5).
+ * @returns Whether every pending slot of the unit has a literal.
+ */
+function literalBacked(state: ViewSubs, unit: HdvlElement): boolean {
+  let any = false;
+  for (const sub of state.subs.values()) {
+    if (unitOf(sub) !== unit) {
+      continue;
+    }
+    any = true;
+    if (initialLiteralOf(sub.element, sub.slot) === undefined) {
+      return false;
+    }
+  }
+  return any;
 }
 
 /** Every live subscription of a view — for assertions (§10.4). */
@@ -732,6 +869,20 @@ export function applyLifecycle(
   if (state === undefined) {
     return;
   }
+  // 019 item 1's fifth state. Derived exactly like the four above
+  // it — from `paintSuppressed`'s own predicate, so the state and
+  // the paint can never disagree — and written per ELEMENT rather
+  // than per unit, because it is the widget that is showing a
+  // literal and a reader styling `:state(initial)` is styling that
+  // widget. It clears itself on the frame the data arrives, since
+  // `state.resolved` is sticky and the predicate is then dead.
+  for (const el of elements) {
+    writeState(
+      el,
+      "initial",
+      !state.resolved && literalBacked(state, unitFor(el)),
+    );
+  }
   const now = new Set<HdvlElement>();
   for (const sub of state.subs.values()) {
     if (failed(sub)) {
@@ -789,9 +940,14 @@ function failed(sub: Sub): boolean {
   return d !== null && (d.kind === "error" || d.kind === "absent");
 }
 
+/** The error unit an element blanks with (§3.5). */
+function unitFor(el: HdvlElement): HdvlElement {
+  return resolutionOf(el)?.unit ?? el;
+}
+
 /** The error unit that owns a subscription's element (§3.5). */
 function unitOf(sub: Sub): HdvlElement {
-  return resolutionOf(sub.element)?.unit ?? sub.element;
+  return unitFor(sub.element);
 }
 
 /**

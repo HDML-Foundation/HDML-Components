@@ -47,7 +47,7 @@ import { HdvlElement, writeState } from "./base";
 import { channelOf, resolutionOf } from "./resolve";
 import { containerChainOf } from "./container";
 import { HDML_ERROR, outward } from "./events";
-import { adoptedOf } from "./subscribe";
+import { adoptedOf, initialCleared } from "./subscribe";
 import {
   MODIFIERS,
   VALUES_SLOT,
@@ -123,7 +123,8 @@ export type DiagnosticCode =
   | "all-rows-dropped"
   | "negative-pie-value"
   | "varying-path-color"
-  | "radius-grid-at-pole";
+  | "radius-grid-at-pole"
+  | "initial-cleared";
 
 /**
  * Warnings are machine-readable too — W5 and W6 in particular are
@@ -3442,6 +3443,11 @@ export function validateBindings(
     checkPalette(el, found);
     checkAngleCollision(el, found);
     checkV4Delivery(el, found);
+    if (initialCleared(el)) {
+      found.push(
+        error("V2", "initial-cleared", el, INITIAL_CLEARED_MESSAGE),
+      );
+    }
     checkV5(el, found);
     checkV7Rows(el, found);
   }
@@ -3546,6 +3552,38 @@ export function reportAllRowsDropped(
   }
   memo.computed.push(finding);
 }
+
+/**
+ * 019 item 1's **25th code**: a unit that was painting out of its
+ * `initial-{slot}` literals has had a delivery fail under it, so
+ * §3.5 blanks it and the literals go with it.
+ *
+ * ★★ **Why this needs saying at all.** Every other consequence of
+ * a failed delivery is already reported, and this one looks like
+ * the author is covered when they are not: they wrote a literal
+ * precisely so the widget would have something to show, and the one
+ * case where a reader most expects it to show — the data did not
+ * come — is the case where it does not. RFC 001 §5.4 settles the
+ * semantics as *placeholder, not fallback*; this is where an author
+ * finds that out, instead of inferring it from a blank chart.
+ *
+ * Filed under **V2** on `palette-exhausted`'s and
+ * `colliding-angle-bands`' precedent — a code of its own under an
+ * existing rule — so SPEC §11's checklist does not move and the
+ * rule count is unchanged. It is an **error** rather than a warning
+ * because §3.5 is already blanking the element: a warning would
+ * describe an error's consequence at a severity that says the chart
+ * is still trustworthy.
+ *
+ * ⚠ The predicate is `subscribe.ts`'s, because *"was this unit
+ * painting from literals?"* is that module's question; the binding
+ * pass owns only the reporting. One finding per **unit**, which
+ * {@link initialCleared} enforces by answering `false` for any
+ * element that is not its own unit.
+ */
+const INITIAL_CLEARED_MESSAGE =
+  "the delivery failed — an initial-{slot} is a " +
+  "placeholder, not a fallback";
 
 /**
  * ★ **017 R11's survivor** — a radius grid whose only position was

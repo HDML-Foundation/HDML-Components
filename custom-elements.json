@@ -9590,6 +9590,32 @@
         },
         {
           "kind": "function",
+          "name": "initialValuesOf",
+          "return": {
+            "type": {
+              "text": ""
+            }
+          },
+          "parameters": [
+            {
+              "name": "el",
+              "type": {
+                "text": "HdvlElement"
+              },
+              "description": "The widget."
+            },
+            {
+              "name": "slot",
+              "type": {
+                "text": "Slot"
+              },
+              "description": "The slot the literal backs."
+            }
+          ],
+          "description": "One slot's `initial-{slot}` literal, or `null`.\n\n★ **The spelling is mechanical** — `initial-` + the exact slot\nattribute name, no casing change and no abbreviation — because\nRFC 001 §5.6 has 021 *generating* these from a channel name.\n\n⚠ A value that is not JSON yields `null`, exactly as a malformed\nchannel attribute does: an unparseable fallback must not read as\na backed slot, or literalBacked would let the widget paint\na hole."
+        },
+        {
+          "kind": "function",
           "name": "slotKindOf",
           "return": {
             "type": {
@@ -10082,6 +10108,14 @@
           "name": "slotValuesOf",
           "declaration": {
             "name": "slotValuesOf",
+            "module": "src/hdvl/mark.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "initialValuesOf",
+          "declaration": {
+            "name": "initialValuesOf",
             "module": "src/hdvl/mark.ts"
           }
         },
@@ -13125,6 +13159,51 @@
         },
         {
           "kind": "function",
+          "name": "initialCleared",
+          "return": {
+            "type": {
+              "text": ""
+            }
+          },
+          "parameters": [
+            {
+              "name": "el",
+              "type": {
+                "text": "HdvlElement"
+              },
+              "description": "A display element."
+            }
+          ],
+          "description": "Whether this element is a **unit whose `initial-{slot}` literals\nhave just been cleared by a failed delivery** — 019 item 1's\n25th diagnostic, asked from the validator's binding pass.\n\nThree conditions, all necessary:\n\n1. `el` **is** its own unit, so one finding is produced per unit\n   rather than one per widget inside it.\n2. The unit literalBacked| was painting from literals —\n   otherwise nothing was showing and nothing was cleared.\n3. At least one of its subscriptions **failed** (§7.4's `error`\n   or `absent`), which is what §3.5 blanks it for.\n\n★ The attributes are of course still on the element; what was\ncleared is the *paint*. Condition 2 is therefore still true after\nthe failure, which is exactly why it can be asked afterwards."
+        },
+        {
+          "kind": "function",
+          "name": "initialLiteralOf",
+          "return": {
+            "type": {
+              "text": ""
+            }
+          },
+          "parameters": [
+            {
+              "name": "el",
+              "type": {
+                "text": "HdvlElement"
+              },
+              "description": "The element that declared the binding."
+            },
+            {
+              "name": "slot",
+              "type": {
+                "text": "Slot"
+              },
+              "description": "The slot the literal backs."
+            }
+          ],
+          "description": "One slot's `initial-{slot}` literal, parsed — or `null`.\n\n★★ **This lives here, in the lower module, on purpose.** Both\nhalves of item 1 must agree *exactly* on which literals count:\npaintSuppressed decides the widget may paint and\n`mark.ts`'s `initialValuesOf` decides what it paints with, and if\nthe first were the more generous of the two — testing the JSON\nhead while the second tested the parse — a malformed\n`initial-x='[1,2'` would let the widget through to paint a hole.\nOne predicate, one answer. `mark.ts` already imports this module\nfor values, so putting it here also keeps `subscribe` → `mark`\nfrom becoming the value cycle the rest of `src/hdvl/` avoids.\n\n⚠ **There is no identifier form.** Unlike a channel attribute,\n`initial-{slot}` never dispatches: it is a literal or it is\nnothing, so `initial-x=\"revenue\"` does not parse and reads as\n**unbacked** — the widget stays suppressed rather than painting\nthe author's typo.\n\n★ `undefined` is the absent sentinel and is unambiguous:\n`JSON.parse` returns object / array / string / number / boolean /\n`null` and **never** `undefined`, so `initial-x=\"null\"` is still\ntold apart from no literal at all."
+        },
+        {
+          "kind": "function",
           "name": "subscriptionsOf",
           "return": {
             "type": {
@@ -13256,6 +13335,22 @@
           "name": "paintSuppressed",
           "declaration": {
             "name": "paintSuppressed",
+            "module": "src/hdvl/subscribe.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "initialCleared",
+          "declaration": {
+            "name": "initialCleared",
+            "module": "src/hdvl/subscribe.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "initialLiteralOf",
+          "declaration": {
+            "name": "initialLiteralOf",
             "module": "src/hdvl/subscribe.ts"
           }
         },

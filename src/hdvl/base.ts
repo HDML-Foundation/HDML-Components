@@ -45,15 +45,28 @@ registerProperties();
 adoptDocumentSheet();
 
 /**
- * The four custom states of SPEC §1's lifecycle surface (RFC §3.4).
+ * The five custom states of SPEC §1's lifecycle surface (RFC §3.4).
  *
  * Every one of them is **derived**, never authored: `loading` from
  * whether a required subscription has a terminal delivery, `empty`
  * from the mark nodes COMPUTE emitted, `error` from the validator,
- * and `hover` from hit resolution. That is why the two writers are
- * {@link writeState} and nothing wider.
+ * `hover` from hit resolution, and `initial` — 019 item 1's fifth —
+ * from whether the widget painted this frame out of its
+ * `initial-{slot}` literals rather than out of delivered data. That
+ * is why the two writers are {@link writeState} and nothing wider.
+ *
+ * ★ **`initial` is derived like the other four**, and from the same
+ * place `loading` is: `applyLifecycle` asks `paintSuppressed`'s own
+ * predicate at end of frame. An author cannot set it, and authoring
+ * `initial-x` does **not** set it — a widget whose data has arrived
+ * carries no `initial`, literals or no literals.
  */
-export type HdvlState = "loading" | "empty" | "error" | "hover";
+export type HdvlState =
+  | "loading"
+  | "empty"
+  | "error"
+  | "hover"
+  | "initial";
 
 /**
  * `CustomStateSet` in TS 5.5's `lib.dom` declares only `forEach`,

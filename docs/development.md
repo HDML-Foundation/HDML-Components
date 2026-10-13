@@ -1067,3 +1067,36 @@ layer itself, so no image push is needed.
 npx playwright install-deps` on create, then `scripts/init.sh` on attach (git identity +
 SSH-command). VS Code extensions include `runem.lit-plugin`,
 `matsuuu.custom-elements-language-server-project`, `dbaeumer.vscode-eslint`.
+
+## Authoring a page that is both a golden and a live page
+
+019 step 44's hand-off to 021. Before it, the two were different documents: a corpus page
+binds nothing and paints from literal channel attributes, while a live page binds columns
+and paints nothing until its provider answers. `initial-{slot}` collapses them.
+
+Give every bound slot of every unit a literal sibling holding what the query actually
+returns:
+
+```html
+<hdml-point x="month" y="revenue"
+            initial-x='["Jan","Feb","Mar"]'
+            initial-y='[120, 180, 150]'></hdml-point>
+```
+
+The page then paints that geometry on its first frame — with no provider in the document at
+all, or while a real one is still answering — and swaps to live data when the view resolves.
+
+Four things to get right, each of which is a test in `src/hdvl/initial.test.ts`:
+
+- **Author the binding too.** `initial-y` without `y` is V19 `missing-binding`.
+- **Back every pending slot of the unit, or none of them paint.** Inside `hdml-stack` /
+  `hdml-cluster` the shared channel is hoisted, so the **container** needs the
+  `initial-x` — the child cannot supply it, because V6 forbids the child from binding that
+  channel in the first place.
+- **Expect the guides to wait.** No guide binds anything, so axes and labels appear when the
+  scale resolves, not with the marks.
+- **Expect `initial-cleared` if the delivery fails.** The literal is a placeholder for data
+  that has not arrived, not a fallback for data that cannot.
+
+021 **generates** these by running the real query once; the spelling is mechanically
+`initial-` + the exact slot attribute name, with no casing change and no abbreviation.

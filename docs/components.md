@@ -2138,6 +2138,57 @@ the base alone and those bars change hue under the pointer, which is what the pa
 steps 09-2 and 09-4. All three assert the generated rule through `corpus.ts`'s
 `stateSheetOf`, because no `Scene` golden can see a sheet.
 
+## `initial-{slot}` — what a widget paints before its data arrives
+
+Every mark, both layout containers and `hdml-pie` carry one **`initial-{slot}`** sibling per
+slot they publish — **50 attributes over ten elements**. `initial-x='[1,2,3]'` sits beside
+`x="revenue"` and holds the same JSON the channel attribute itself accepts, so there is no
+second grammar, no key → slot mapping and no way to silently mismatch: the literal is
+attached to the thing that consumes it.
+
+```html
+<hdml-point x="month" y="revenue"
+            initial-x='["Jan","Feb","Mar"]'
+            initial-y='[120, 180, 150]'></hdml-point>
+```
+
+**What it is for.** A page authored this way shows real geometry on its first frame *and*
+shows live data once it resolves — so one document is both a hermetic golden and a working
+live page.
+
+### The five rules
+
+1. **It is a placeholder, not a fallback.** It paints only while a binding is *pending*.
+   When the column arrives it is replaced; when the delivery **fails** the unit blanks under
+   the §3.5 error rule exactly as it would without a literal, and the `initial-cleared`
+   error says so rather than leaving the author to infer it from a blank chart.
+2. **It does not satisfy a required binding.** `initial-y` alone, with no `y`, is still
+   **V19 `missing-binding`** — an initial is what a *binding* shows while it waits, so the
+   binding has to be there. Author both.
+3. **All of a unit's pending slots must be backed, or none of them paint.** The question is
+   asked of the error **unit**: inside an `hdml-stack` or `hdml-cluster` the shared channel
+   is hoisted onto the container and V6 forbids the children from binding it, so the
+   container needs its own `initial-x` before any child paints early. A half-backed unit
+   stays blank rather than painting at an undefined position.
+4. **Guides never paint early.** No guide binds anything, so an axis, grid, tick, label or
+   legend waits for its scale to resolve even in a view whose marks are fully backed.
+5. **It is a literal, always.** There is no identifier form: `initial-x="revenue"` does not
+   parse, and an unparseable literal reads as *not backed*, so the widget stays suppressed
+   rather than painting a hole.
+
+### `:state(initial)`
+
+A widget carries the custom state **`initial`** for exactly as long as it is painting from
+its literals, and loses it on the frame the data arrives. It is the fifth lifecycle state
+and, like the other four, it is **derived and never authored** — writing `initial-x` does
+not set it, and a widget whose data has arrived does not carry it. It lands on the
+**widget**; `loading` lands on the view, so the two are true at the same moment without
+contradicting each other.
+
+```css
+hdml-point:state(initial) { opacity: 0.45; }
+```
+
 ## Authoring example
 
 ```html

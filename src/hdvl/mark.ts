@@ -59,7 +59,12 @@ import type { CurveOptions, CurveType } from "./kernel/curves";
 import { CURVE_TYPES } from "./kernel/curves";
 import { rangedOverrideOf } from "./container";
 import { CHANNEL_STATES, chainScaleOf, kindOfColumn } from "./scale";
-import { adoptedColumn, adoptedOf, sourceOf } from "./subscribe";
+import {
+  adoptedColumn,
+  adoptedOf,
+  initialLiteralOf,
+  sourceOf,
+} from "./subscribe";
 import { noticeOutOfDomain, reportAllRowsDropped } from "./validate";
 import {
   ARC_ATTRS_LIST,
@@ -372,32 +377,26 @@ export function slotValuesOf(
       // V3 reports it; a mark paints nothing rather than guessing.
       return null;
     }
-    if (Array.isArray(json)) {
-      const items = <unknown[]>json;
-      return {
-        slot,
-        rows: items.length,
-        scalar: false,
-        at: (row: number): CellValue =>
-          row < 0 || row >= items.length ? null : cellOf(items[row]),
-      };
-    }
-    const one = cellOf(json);
-    return {
-      slot,
-      rows: 0,
-      scalar: true,
-      at: (): CellValue => one,
-    };
+    return valuesOfJson(slot, json);
   }
   if (!IDENTIFIER.test(text)) {
     return null;
   }
   const column = adoptedColumn(el, slot);
   if (column === null) {
-    // Bound, but nothing terminal has arrived. Zero rows rather
-    // than `null`: the slot IS bound, so it must not read as an
-    // unbound channel — §3.4 suppresses the paint meanwhile.
+    // Bound, but nothing terminal has arrived — 019 item 1's site.
+    //
+    // An `initial-{slot}` sibling, when there is one, paints HERE
+    // and nowhere else: this is the one branch that means "pending".
+    // `paintSuppressed` has already decided the widget may paint, so
+    // returning the literal is what makes that decision visible.
+    const initial = initialValuesOf(el, slot);
+    if (initial !== null) {
+      return initial;
+    }
+    // No literal. Zero rows rather than `null`: the slot IS bound,
+    // so it must not read as an unbound channel — §3.4 suppresses
+    // the paint meanwhile.
     return {
       slot,
       rows: 0,
@@ -411,6 +410,59 @@ export function slotValuesOf(
     scalar: false,
     at: (row: number): CellValue => column.at(row),
   };
+}
+
+/**
+ * A parsed JSON value as `SlotValues` — SPEC §5's array-indexes /
+ * scalar-broadcasts split, shared by a literal channel attribute
+ * and an `initial-{slot}` sibling.
+ *
+ * @param slot - The attribute name.
+ * @param json - The parsed value.
+ * @returns Its values.
+ */
+function valuesOfJson(slot: Slot, json: unknown): SlotValues {
+  if (Array.isArray(json)) {
+    const items = <unknown[]>json;
+    return {
+      slot,
+      rows: items.length,
+      scalar: false,
+      at: (row: number): CellValue =>
+        row < 0 || row >= items.length ? null : cellOf(items[row]),
+    };
+  }
+  const one = cellOf(json);
+  return {
+    slot,
+    rows: 0,
+    scalar: true,
+    at: (): CellValue => one,
+  };
+}
+
+/**
+ * One slot's `initial-{slot}` literal, or `null`.
+ *
+ * ★ **The spelling is mechanical** — `initial-` + the exact slot
+ * attribute name, no casing change and no abbreviation — because
+ * RFC 001 §5.6 has 021 *generating* these from a channel name.
+ *
+ * ⚠ A value that is not JSON yields `null`, exactly as a malformed
+ * channel attribute does: an unparseable fallback must not read as
+ * a backed slot, or {@link literalBacked} would let the widget paint
+ * a hole.
+ *
+ * @param el - The widget.
+ * @param slot - The slot the literal backs.
+ * @returns The literal's values, or `null` when absent or malformed.
+ */
+export function initialValuesOf(
+  el: HdvlElement,
+  slot: Slot,
+): SlotValues | null {
+  const literal = initialLiteralOf(el, slot);
+  return literal === undefined ? null : valuesOfJson(slot, literal);
 }
 
 /**
