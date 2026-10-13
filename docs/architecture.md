@@ -483,7 +483,20 @@ warns (W4) and keeps rendering — it never decimates and never truncates.
 `g[data-w="{uid}"] > *:hover` / `…:active` rules and the view adopts them on its own shadow
 root, so SPEC §9's sixteen presentation-attribute state variants are applied **by the
 browser, per node**, with no
-JavaScript at interaction time and no per-node index. It reads only `Measured.props`, which
+JavaScript at interaction time and no per-node index.
+
+**Since 019 R1's step 38 PAINT's two outputs MEET.** The sixteen above are *literals*, so a
+rule can carry them; a channel colour is **per datum**, so no rule can. That one now travels
+as a value on the node — `applyPaint` stamps `--hdvl-state-{hover,active}` and a `data-s`
+marker as inline attributes, and **removes them** when a node stops carrying a state colour,
+because the renderer *diffs* and reuses the element — and the generator emits a second,
+marker-scoped rule that reads it back with `var()`. So a node field reaches CSS, in one
+direction, once per frame; there is still no JavaScript at interaction time and still no
+per-node index. The scene is unchanged either way, which is why all 29 goldens stay blind to
+both halves. See
+[components.md § A channel colour's state variants](components.md#a-channel-colours-state-variants-reach-the-dom-per-node).
+
+It reads only `Measured.props`, which
 MEASURE has already harvested from the one computed style it takes, so it adds **no style
 read** to the frame; and `replaceSync` runs only when the text changed, which is also what
 makes a `transitionrun` feedback loop structurally impossible rather than argued. Nothing

@@ -603,3 +603,359 @@ suite("hdvl/states — the two suppressions, under a pointer", () => {
     );
   });
 });
+
+suite("hdvl/states — R1: a channel palette, under a pointer", () => {
+  // ★★★ **019 R1's HARD GATE, step 38** — the two halves meeting at
+  // the DOM: `applyPaint` stamps the per-datum colour, the sheet's
+  // channel rule reads it back with `var()`, and the browser picks
+  // the node. Nothing short of a real pointer can see it.
+  //
+  // ⚠ **The plan row named `09-polar-area` and that page authors no
+  // channel state palette** — row 40 is the step that adds one.
+  // Settled with the founder on 2026-10-13: the gate runs on a
+  // fixture here, which is this file's established pattern (all
+  // five existing suites mount their own `html` and reach no corpus
+  // page at all).
+  //
+  // The fixture is a polar-plane `hdml-arc` so the gate exercises
+  // the shape the row asked for — four quarter wedges, coloured by
+  // an ordinal `color` scale carrying `--hdml-palette` and both
+  // state palettes.
+
+  teardown(async () => {
+    await resetMouse();
+  });
+
+  /** The four-wedge rose, with whatever palettes are given. */
+  function wedges(scaleStyle: string): ReturnType<typeof html> {
+    return html`
+      <hdml-view
+        aria-label="rose"
+        style="width: 200px; height: 200px"
+      >
+        <hdml-polar-plane style="padding: 0">
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-continuous-scale channel="radius" min="0" max="1">
+              <hdml-ordinal-scale
+                channel="color"
+                values='["a","b","c","d"]'
+                style="${scaleStyle}"
+              >
+                <hdml-arc
+                  a0="[0, 0.25, 0.5, 0.75]"
+                  a1="[0.25, 0.5, 0.75, 1]"
+                  color='["a","b","c","d"]'
+                ></hdml-arc>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `;
+  }
+
+  const BASE =
+    "--hdml-palette: rgb(10, 10, 10) rgb(20, 20, 20) " +
+    "rgb(30, 30, 30) rgb(40, 40, 40);";
+  const ON_HOVER =
+    "--hdml-palette--hover: rgb(210, 0, 0) rgb(0, 210, 0) " +
+    "rgb(0, 0, 210) rgb(210, 210, 0);";
+  const ON_ACTIVE =
+    "--hdml-palette--active: rgb(110, 0, 0) rgb(0, 110, 0) " +
+    "rgb(0, 0, 110) rgb(110, 110, 0);";
+
+  test("★★★ a wedge recolours PER DATUM on hover", async () => {
+    const view = await mount(wedges(BASE + ON_HOVER));
+    const nodes = nodesOf(view, widget(view, "hdml-arc"));
+    assert.lengthOf(nodes, 4);
+    const base = nodes.map((n) => of(n, "fill"));
+    assert.deepEqual(base, [
+      "rgb(10, 10, 10)",
+      "rgb(20, 20, 20)",
+      "rgb(30, 30, 30)",
+      "rgb(40, 40, 40)",
+    ]);
+
+    // ★★ **Negative control 2.** Each wedge takes its OWN state
+    // colour, and the three it does not own stay put. A rule that
+    // recoloured the whole series would pass any single-node
+    // assertion, which is why every index is checked.
+    const want = [
+      "rgb(210, 0, 0)",
+      "rgb(0, 210, 0)",
+      "rgb(0, 0, 210)",
+      "rgb(210, 210, 0)",
+    ];
+    for (const k of [1, 2, 0, 3]) {
+      await hover(aimAt(view, nodes[k]));
+      assert.isTrue(nodes[k].matches(":hover"), `wedge ${k}`);
+      assert.strictEqual(
+        of(nodes[k], "fill"),
+        want[k],
+        `hovered ${k}`,
+      );
+      for (let j = 0; j < 4; j++) {
+        if (j !== k) {
+          assert.strictEqual(
+            of(nodes[j], "fill"),
+            base[j],
+            `wedge ${j} while ${k} is hovered`,
+          );
+        }
+      }
+    }
+  });
+
+  test("★★ :active takes its own per-datum colour", async () => {
+    const view = await mount(wedges(BASE + ON_HOVER + ON_ACTIVE));
+    const nodes = nodesOf(view, widget(view, "hdml-arc"));
+    await hover(aimAt(view, nodes[2]));
+    assert.strictEqual(of(nodes[2], "fill"), "rgb(0, 0, 210)");
+    await press();
+    assert.isTrue(nodes[2].matches(":hover"), "still hovered");
+    assert.strictEqual(of(nodes[2], "fill"), "rgb(0, 0, 110)");
+  });
+
+  test("★★ control 3 — NO frame runs per pointer move", async () => {
+    // ★★ **Negative control 3**, and the whole reason the mechanism
+    // is a CSS rule rather than a hovered-index in the scene. The
+    // number is asserted, not observed.
+    const view = await mount(wedges(BASE + ON_HOVER));
+    const nodes = nodesOf(view, widget(view, "hdml-arc"));
+    const before = view.framesRun;
+    await hover(aimAt(view, nodes[0]));
+    await hover(aimAt(view, nodes[1]));
+    await hover(aimAt(view, nodes[2]));
+    assert.strictEqual(of(nodes[2], "fill"), "rgb(0, 0, 210)");
+    assert.strictEqual(view.framesRun, before, "no frame per move");
+  });
+
+  test("★ an unauthored :active leaves the base paint", async () => {
+    // ★ Open question 5, as behaviour. `hover` is authored and
+    // `active` is not, so no `active` rule is emitted at all — and
+    // the stamped `--hdvl-state-active` carries the node's own base
+    // paint, so even a rule that WERE emitted would be a no-op.
+    // Neither route can paint the wedge a colour the scene does not
+    // contain.
+    const view = await mount(wedges(BASE + ON_HOVER));
+    const nodes = nodesOf(view, widget(view, "hdml-arc"));
+    await hover(aimAt(view, nodes[1]));
+    await press();
+    assert.strictEqual(of(nodes[1], "fill"), "rgb(0, 210, 0)");
+  });
+
+  test("★★ a wedge with no state colour holds", async () => {
+    // ★★★ **Control 5 ⓑ, as a guard rather than a measurement.**
+    // The channel rule is emitted for the whole widget, but a node
+    // with no state colour carries no marker and is never matched.
+    // Without the marker the `var()` would be invalid at
+    // computed-value time — `unset` — and `fill` INHERITS, so the
+    // wedge would hover to its group's colour.
+    //
+    // A SHORT `--hover` palette is how a node ends up in exactly
+    // that state: wedges 0 and 1 get a hover colour, 2 and 3 get
+    // none. (Row 39 adds the diagnostic for it; the behaviour is
+    // this step's to get right.)
+    const view = await mount(
+      wedges(
+        BASE +
+          "--hdml-palette--hover: rgb(210, 0, 0) rgb(0, 210, 0);",
+      ),
+    );
+    const nodes = nodesOf(view, widget(view, "hdml-arc"));
+    await hover(aimAt(view, nodes[0]));
+    assert.strictEqual(of(nodes[0], "fill"), "rgb(210, 0, 0)");
+
+    await hover(aimAt(view, nodes[3]));
+    assert.isTrue(nodes[3].matches(":hover"), "wedge 3 hovered");
+    assert.strictEqual(
+      of(nodes[3], "fill"),
+      "rgb(40, 40, 40)",
+      "an unmarked wedge keeps its presentation attribute",
+    );
+  });
+
+  test("★ no palette state — hovering changes nothing", async () => {
+    const view = await mount(wedges(BASE));
+    const nodes = nodesOf(view, widget(view, "hdml-arc"));
+    await hover(aimAt(view, nodes[2]));
+    assert.isTrue(nodes[2].matches(":hover"));
+    assert.strictEqual(of(nodes[2], "fill"), "rgb(30, 30, 30)");
+  });
+});
+
+suite("hdvl/states — R1: control 5, the one nobody asked for", () => {
+  // ★★★ **Negative control 5, step 38.** Three findings, two of
+  // which are behaviours no other assertion in the repo reaches.
+
+  teardown(async () => {
+    await resetMouse();
+  });
+
+  const BASE =
+    "--hdml-palette: rgb(10, 10, 10) rgb(20, 20, 20) " +
+    "rgb(30, 30, 30) rgb(40, 40, 40);";
+
+  test("★★★ a LIVE palette change re-stamps", async () => {
+    // ★★★ **The find.** R1's mechanism is per FRAME: `applyPaint`
+    // stamps from the snapshot MEASURE took, so a declarative
+    // change to `--hdml-palette--hover` only reaches the DOM if a
+    // frame runs — and R24's sentinel is what runs one. The four
+    // channel state properties were added to the registry at item
+    // 9, and `SENTINEL_PROPERTIES` is built from the registry
+    // rather than by hand, so they are covered **by construction**
+    // — which is exactly the shape 017 R6 found FIFTEEN silently
+    // unobserved properties in.
+    //
+    // Nothing else asserts it: control 3 asserts a frame does NOT
+    // run per pointer move, and this is its opposite half — a
+    // frame MUST run per declarative change, or a live-editing
+    // page shows a stale hover colour with no error.
+    //
+    // The pointer never moves during the change, so the recolour
+    // cannot be coming from a re-hover.
+    const view = await mount(html`
+      <hdml-view
+        aria-label="rose"
+        style="width: 200px; height: 200px"
+      >
+        <hdml-polar-plane style="padding: 0">
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-continuous-scale channel="radius" min="0" max="1">
+              <hdml-ordinal-scale
+                channel="color"
+                values='["a","b","c","d"]'
+                style="${BASE}--hdml-palette--hover: rgb(210, 0, 0)
+                  rgb(0, 210, 0) rgb(0, 0, 210) rgb(210, 210, 0);"
+              >
+                <hdml-arc
+                  a0="[0, 0.25, 0.5, 0.75]"
+                  a1="[0.25, 0.5, 0.75, 1]"
+                  color='["a","b","c","d"]'
+                ></hdml-arc>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    const nodes = nodesOf(view, widget(view, "hdml-arc"));
+    await hover(aimAt(view, nodes[1]));
+    assert.strictEqual(of(nodes[1], "fill"), "rgb(0, 210, 0)");
+
+    const scale = <HTMLElement>(
+      view.querySelector("hdml-ordinal-scale")
+    );
+    const before = view.framesRun;
+    scale.style.setProperty(
+      "--hdml-palette--hover",
+      "rgb(1, 1, 1) rgb(2, 2, 2) rgb(3, 3, 3) rgb(4, 4, 4)",
+    );
+    await quiesce(view);
+    assert.isAbove(
+      view.framesRun,
+      before,
+      "the sentinel ran a frame",
+    );
+    assert.strictEqual(
+      of(nodes[1], "fill"),
+      "rgb(2, 2, 2)",
+      "the stamp followed the declaration, with no re-hover",
+    );
+  });
+
+  test("★★ hdml-pie is a sixth host", async () => {
+    // ★★ `layout-pie.ts` has no `channelStates` call of its own —
+    // `scene()` on both tags is one call to `mark-arc.ts`'s
+    // `sectorScene`, so ONE call site serves TWO hosts, exactly as
+    // `fillPaint` does. `PIE_ATTRS_LIST` publishes `color`, so a
+    // pie is channel-colourable, and `channelPropOf` has to agree
+    // with a `prop` passed from a file that never names `hdml-pie`
+    // — C298's two-ends hazard on the one tag where the two ends
+    // are not even the same element type.
+    const view = await mount(html`
+      <hdml-view aria-label="pie" style="width: 200px; height: 200px">
+        <hdml-polar-plane style="padding: 0">
+          <hdml-continuous-scale channel="angle" min="0" max="1">
+            <hdml-continuous-scale channel="radius" min="0" max="1">
+              <hdml-ordinal-scale
+                channel="color"
+                values='["a","b","c","d"]'
+                style="${BASE}--hdml-palette--hover: rgb(210, 0, 0)
+                  rgb(0, 210, 0) rgb(0, 0, 210) rgb(210, 210, 0);"
+              >
+                <hdml-pie
+                  angle="[1, 1, 1, 1]"
+                  color='["a","b","c","d"]'
+                ></hdml-pie>
+              </hdml-ordinal-scale>
+            </hdml-continuous-scale>
+          </hdml-continuous-scale>
+        </hdml-polar-plane>
+      </hdml-view>
+    `);
+    const nodes = nodesOf(view, widget(view, "hdml-pie"));
+    assert.lengthOf(nodes, 4);
+    assert.strictEqual(of(nodes[2], "fill"), "rgb(30, 30, 30)");
+    await hover(aimAt(view, nodes[2]));
+    assert.strictEqual(of(nodes[2], "fill"), "rgb(0, 0, 210)");
+    assert.strictEqual(of(nodes[0], "fill"), "rgb(10, 10, 10)");
+  });
+
+  test("★★ a legend swatch follows the palette", async () => {
+    // ★★ **D2's consequence, and it retires a documented
+    // exception.** `suppressedOf`'s docblock records the legend as
+    // the one widget for which nothing is suppressed — it binds
+    // `channel="color"`, not `color` — and argues that its
+    // `--hdml-fill-color--hover` reaching a swatch is *"a
+    // reasonable reading"* because *"one selector cannot tell
+    // those nodes apart"*.
+    //
+    // A per-node property plus a marker tells them apart. When BOTH
+    // are authored the swatch takes the palette (the channel rule
+    // carries one more attribute selector, so SPEC §9's *"channel
+    // -bound paint wins … and its state variants alike"* falls out
+    // of the cascade) and the two text runs take the literal. That
+    // is a behaviour CHANGE for a page authoring both, and nothing
+    // else in the suite looks at it.
+    const view = await mount(html`
+      <hdml-view aria-label="key" style="width: 400px; height: 200px">
+        <hdml-cartesian-plane style="padding: 0">
+          <hdml-continuous-scale channel="x" min="0" max="10">
+            <hdml-ordinal-scale
+              channel="color"
+              values='["a","b"]'
+              style="--hdml-palette: rgb(10, 10, 10) rgb(20, 20, 20);
+                --hdml-palette--hover: rgb(210, 0, 0) rgb(0, 210, 0);"
+            >
+              <hdml-legend
+                channel="color"
+                style="top: 0; left: 0; width: 140px; height: 120px;
+                  --hdml-fill-color--hover: rgb(9, 9, 9)"
+              ></hdml-legend>
+            </hdml-ordinal-scale>
+          </hdml-continuous-scale>
+        </hdml-cartesian-plane>
+      </hdml-view>
+    `);
+    const nodes = nodesOf(view, widget(view, "hdml-legend"));
+    assert.lengthOf(nodes, 4, "two entries, swatch + name each");
+    const swatch = nodes[0];
+    const name = nodes[1];
+    assert.strictEqual(name.tagName, "text");
+
+    await hover(aimAt(view, swatch));
+    assert.strictEqual(
+      of(swatch, "fill"),
+      "rgb(210, 0, 0)",
+      "the swatch takes the PALETTE, not the literal",
+    );
+
+    await hover(aimAt(view, name));
+    assert.strictEqual(
+      of(name, "fill"),
+      "rgb(9, 9, 9)",
+      "a name has no channel colour and takes the literal",
+    );
+  });
+});

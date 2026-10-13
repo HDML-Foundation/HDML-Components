@@ -16,7 +16,10 @@ import { createSvgRenderer } from "./renderer-svg";
 import type { StateInput } from "./states";
 import {
   HDVL_STATES,
+  STATE_MARK,
   STATE_PROPERTIES,
+  channelPropOf,
+  stateProperty,
   stateRules,
   suppressedOf,
 } from "./states";
@@ -61,6 +64,7 @@ function input(
   return {
     uid: "u1",
     suppress: new Set<string>(),
+    channelProp: null,
     props: new Map<string, string>([
       // The registered initials, as a real harvest carries them.
       [`${P}line-width`, "1.5px"],
@@ -309,6 +313,259 @@ suite("hdvl/states — the generated rule text", () => {
         stateRules([input({ [`${P}fill-color--hover`]: bad })]),
         "",
         bad,
+      );
+    }
+  });
+});
+
+suite("hdvl/states — R1's channel rule", () => {
+  // ★★ 019 R1, step 38. The SECOND of the two halves that meet at
+  // the DOM. This suite owns the generator half: the rule text, as
+  // a pure function of the snapshot, with no view, no renderer and
+  // no pointer anywhere in it. `renderer-svg.test.ts` owns the
+  // stamp, and `states-pointer.test.ts` owns the two halves
+  // meeting.
+
+  const PALETTE = `${P}palette--hover`;
+
+  test("a bound channel + a palette emits a 2nd rule", () => {
+    const text = stateRules([
+      input({ [PALETTE]: "red blue" }, { channelProp: "fill" }),
+    ]);
+    assert.strictEqual(
+      text,
+      `g[data-w="u1"] > *[${STATE_MARK}]:hover ` +
+        `{ fill: var(${stateProperty("hover")}) }`,
+    );
+  });
+
+  test("the marker is in the selector, not a bare child", () => {
+    // ★★ The whole of why a node with NO state colour is safe. A
+    // rule reaching `> *:hover` would resolve `var()` on an unset
+    // property, which is invalid at computed-value time — `unset`,
+    // and `fill` INHERITS, so an unmarked node would hover to its
+    // group's colour instead of keeping its presentation attribute.
+    const text = stateRules([
+      input({ [PALETTE]: "red blue" }, { channelProp: "fill" }),
+    ]);
+    assert.include(text, `*[${STATE_MARK}]:hover`);
+    assert.notInclude(text, "> *:hover");
+  });
+
+  test("a stroked host's channel rule declares stroke", () => {
+    const text = stateRules([
+      input({ [PALETTE]: "red blue" }, { channelProp: "stroke" }),
+    ]);
+    assert.include(text, "{ stroke: var(");
+    assert.notInclude(text, "{ fill: var(");
+  });
+
+  test("no palette state — a bound channel emits NOTHING", () => {
+    // The module's *"a widget with no state variant set contributes
+    // nothing"* promise, under the one new way to break it: a
+    // `color`-bound widget under a scale with no state palette must
+    // still produce the empty sheet.
+    assert.strictEqual(
+      stateRules([input({}, { channelProp: "fill" })]),
+      "",
+    );
+  });
+
+  test("no bound channel — a palette state emits NOTHING", () => {
+    assert.strictEqual(
+      stateRules([input({ [PALETTE]: "red blue" })]),
+      "",
+    );
+  });
+
+  test("an unauthored state emits no rule for that state", () => {
+    // ★ Open question 5. `hover` authored, `active` not: the
+    // `active` rule is OMITTED rather than emitted with a `var()`
+    // that could not resolve.
+    const text = stateRules([
+      input({ [PALETTE]: "red blue" }, { channelProp: "fill" }),
+    ]);
+    assert.include(text, ":hover");
+    assert.notInclude(text, ":active");
+  });
+
+  test("--hdml-color-interpolate--{state} drives it too", () => {
+    const text = stateRules([
+      input(
+        { [`${P}color-interpolate--active`]: "red, blue" },
+        { channelProp: "fill" },
+      ),
+    ]);
+    assert.include(text, `*[${STATE_MARK}]:active`);
+    assert.notInclude(text, ":hover");
+  });
+
+  test("both rules coexist, channel SECOND and more specific", () => {
+    // SPEC §9's *"channel-bound paint wins over --hdml-fill-color
+    // and its state variants alike"* falls out of the cascade: one
+    // extra attribute selector. A `color`-bound mark suppresses
+    // `fill` from the DIRECT list, so the width variant is what
+    // proves the first rule is still emitted.
+    const text = stateRules([
+      input(
+        { [PALETTE]: "red blue", [`${P}line-width--hover`]: "3px" },
+        { channelProp: "fill", suppress: new Set(["fill"]) },
+      ),
+    ]);
+    const lines = text.split("\n");
+    assert.lengthOf(lines, 2);
+    assert.include(lines[0], "> *:hover");
+    assert.include(lines[0], "stroke-width: 3px");
+    assert.notInclude(lines[0], "fill:");
+    assert.include(lines[1], `*[${STATE_MARK}]:hover`);
+  });
+
+  test("★ control 4 — stateRules needs no DOM at all", () => {
+    // ★★ **Negative control 4**, R1 trap 4 as a measurement. Every
+    // input above is a hand-built literal; this states it as the
+    // claim rather than relying on it. `channelProp` is a SCALAR —
+    // the resolved colours are per DATUM and live on the scene
+    // node, so putting them here would need a frame, a scale and a
+    // row, and this assertion could not be written.
+    const built: StateInput = {
+      uid: "pure",
+      suppress: new Set<string>(),
+      channelProp: "fill",
+      props: new Map([[PALETTE, "red blue"]]),
+    };
+    assert.strictEqual(typeof built.channelProp, "string");
+    assert.isTrue(
+      Object.values(built).every((v) => !(v instanceof Element)),
+      "no input member is a DOM node",
+    );
+    assert.include(stateRules([built]), "fill: var(");
+  });
+});
+
+suite("hdvl/states — channelPropOf", () => {
+  // ★ The sheet's half of C298's pair. `PaintStates.prop` is the
+  // writer's, computed at the five mark call sites; this is the
+  // reader's, computed from the tag. Neither can import the other,
+  // so this suite is what makes them agree.
+
+  async function mounted(
+    markup: ReturnType<typeof html>,
+  ): Promise<HdvlElement> {
+    const view = await fixture<HdmlViewElement>(markup);
+    await view.updateComplete;
+    return <HdvlElement>view.querySelector("[data-probe]");
+  }
+
+  test("an unbound mark has no channel property", async () => {
+    const el = await mounted(html`
+      <hdml-view aria-label="v">
+        <hdml-bar data-probe x='["a"]' y="[1]"></hdml-bar>
+      </hdml-view>
+    `);
+    assert.isNull(channelPropOf(el));
+  });
+
+  test("a filled mark binding color owns the FILL", async () => {
+    const el = await mounted(html`
+      <hdml-view aria-label="v">
+        <hdml-bar
+          data-probe
+          x='["a"]'
+          y="[1]"
+          color='["a"]'
+        ></hdml-bar>
+      </hdml-view>
+    `);
+    assert.strictEqual(channelPropOf(el), "fill");
+  });
+
+  test("hdml-line binding color owns the STROKE", async () => {
+    // ★★★ C298's case. Every offered shape at row 37 would have
+    // made row 38 guess, and this is the widget it guesses wrong
+    // on: `strokePaint` returns `fill: null` unconditionally.
+    const el = await mounted(html`
+      <hdml-view aria-label="v">
+        <hdml-line
+          data-probe
+          x='["a"]'
+          y="[1]"
+          color='["a"]'
+        ></hdml-line>
+      </hdml-view>
+    `);
+    assert.strictEqual(channelPropOf(el), "stroke");
+  });
+
+  test("hdml-legend binds `channel`, not `color`", async () => {
+    // ★ D2. The one widget that is not a mark: its binding is
+    // `channel="color"`, so the attribute read answers `null` for
+    // it and it needs its own clause. Its swatches are filled.
+    const el = await mounted(html`
+      <hdml-view aria-label="v">
+        <hdml-legend data-probe channel="color"></hdml-legend>
+      </hdml-view>
+    `);
+    assert.strictEqual(channelPropOf(el), "fill");
+  });
+
+  test("a legend on another channel owns nothing", async () => {
+    const el = await mounted(html`
+      <hdml-view aria-label="v">
+        <hdml-legend data-probe channel="size"></hdml-legend>
+      </hdml-view>
+    `);
+    assert.isNull(channelPropOf(el));
+  });
+
+  test("★ it agrees with suppressedOf on bound tags", async () => {
+    // ★★★ **Control 5's cross-check, and step 37 named it: the rule
+    // now exists TWICE from opposite ends and neither can import
+    // the other.** `suppressedOf` knows the same fact and throws it
+    // away — a stroked host binding `color` suppresses BOTH, so the
+    // set alone cannot say which the channel owns. This asserts the
+    // one direction that is still checkable: whatever
+    // `channelPropOf` names must be in the suppressed set.
+    // ⚠ `lit/static-html`'s `html` will not interpolate a string
+    // into tag position, so the five are written out.
+    const bound: [string, ReturnType<typeof html>][] = [
+      [
+        "bar",
+        html`<hdml-view aria-label="v">
+          <hdml-bar data-probe x='["a"]' y="[1]" color='["a"]' />
+        </hdml-view>`,
+      ],
+      [
+        "area",
+        html`<hdml-view aria-label="v">
+          <hdml-area data-probe x='["a"]' y="[1]" color='["a"]' />
+        </hdml-view>`,
+      ],
+      [
+        "point",
+        html`<hdml-view aria-label="v">
+          <hdml-point data-probe x='["a"]' y="[1]" color='["a"]' />
+        </hdml-view>`,
+      ],
+      [
+        "arc",
+        html`<hdml-view aria-label="v">
+          <hdml-arc data-probe a0="[0]" a1="[1]" color='["a"]' />
+        </hdml-view>`,
+      ],
+      [
+        "line",
+        html`<hdml-view aria-label="v">
+          <hdml-line data-probe x='["a"]' y="[1]" color='["a"]' />
+        </hdml-view>`,
+      ],
+    ];
+    for (const [tag, markup] of bound) {
+      const el = await mounted(markup);
+      const prop = channelPropOf(el);
+      assert.isNotNull(prop, tag);
+      assert.isTrue(
+        suppressedOf(el).has(<string>prop),
+        `${tag}: ${String(prop)} is suppressed`,
       );
     }
   });
@@ -581,6 +838,7 @@ suite("hdvl/states — the cascade assumption", () => {
         {
           uid: "a",
           suppress: new Set<string>(),
+          channelProp: null,
           props: new Map([[`${P}fill-color--hover`, "lime"]]),
         },
       ]).replace(":hover", ""),

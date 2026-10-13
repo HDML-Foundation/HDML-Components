@@ -3156,3 +3156,124 @@ corpus page count and the diagnostic code space; none reads the property registr
 `scripts/check-dist.mjs` derives its `REGISTERED` set off `properties.ts` and asserts only
 that it is non-empty. Two registry-count literals remain in the tree, both at 57:
 `properties.test.ts`'s `lengthOf(HDVL_PROPERTIES, 57)` and one comment in `ua.test.ts`.
+
+## A channel colour's state variants reach the DOM as a per-node property
+
+**019 R1, step 38, 2026-10-13.** The step that made R1 live. `Paint.states` existed from
+step 37 and nothing read it; this stamps it onto the node and emits the rule that reads it
+back. Five open questions were put to this step and all five are answered below; one of
+them had already been settled by the founder.
+
+**1 · The hard gate does not run on `09-polar-area` — founder decision, 2026-10-13.** The
+step plan's row 38 named *"a per-wedge colour change on `09-polar-area`"*, and that page
+authors **no channel state palette**: measured, one state declaration
+(`--hdml-line-width--hover: 2.5px`) and **zero** `palette--` / `color-interpolate--` hits
+across all of `html/hdvl/` and `src/hdvl/corpus/`. Row 40 is the step that adds one. Of
+three options the founder took **(a)**: the gate is a polar-plane `hdml-arc` fixture
+authored **inside `states-pointer.test.ts`**, which is that file's established pattern — all
+five of its pre-existing suites mount their own `html` and reach no corpus page at all. Row
+38 therefore keeps its zero-corpus-movement property and row 40 keeps the page edit, the
+SPEC §9 amendment and the quote sweep. Rejected: moving row 40's page edit here (it would
+put a SPEC amendment the founder must see inside a code-only step, move the corpus at row 38
+and destroy its own zero-movement claim, and make row 39's diagnostic fire on a live page
+before its code exists), and mounting the real page and injecting the palette from the test
+(it would be the suite's first corpus-page mutation).
+
+**2 · The property is `--hdvl-state-{state}`, unregistered, one per state.** Three
+constraints pulled against each other and the measurement settled it. The registry does not
+move at this row, so the property is **unregistered** — which is legal, inherits, and
+computes to a token sequence, all of which is wanted. A `--hdml-`-prefixed name would have
+been a 58th member of the one list whose entire meaning is *"what a page may say"*, and
+**V12 fires on exactly that**: measured by injecting `--hdml-state-hover: red` into
+`00-minimal.html`'s `<style>`, `check_dist` reds with *"writes `--hdml-state-hover`, which
+SPEC §9 does not register"*. V12 is silent about the real property because it scans page
+**source** and this one is stamped on a rendered SVG node — also measured, not reasoned.
+`--hdvl-` is not a second prefix: `platform.test.ts` already probes with three
+`--hdvl-probe-*` properties, so it is this repo's established namespace for
+runtime-internal properties. **One property per state** rather than one carrying the live
+state's colour, because a single property would require the renderer to know which state is
+active, and *"the runtime never chooses a value per node; it emits both rules and the
+browser chooses"* is the whole argument the mechanism rests on.
+
+**3 · Neither `suppressedOf` nor `declarationsOf` became conditional, and R1 trap 4's
+"one structural regression" did NOT happen.** The trap predicted that making `suppressedOf`
+answer *"does a state palette exist for this channel"* would cost it its purity. It does not
+have to answer that, because the channel declaration does not belong in `declarationsOf`'s
+list at all: it needs a **different selector**. Folding it in would put it under
+`> *:{state}` and recolour every node in the group, including the ones with no state colour
+— the defect the marker exists to prevent. So it is a sibling function emitting a **second
+rule**, `suppressedOf` keeps its body byte-for-byte, `declarationsOf`'s `continue` stays a
+`continue`, and every one of `states.test.ts`'s 27 hand-built-input assertions still runs
+with no DOM.
+
+**`StateInput` gained one scalar, `channelProp: "fill" | "stroke" | null`** — the boolean the
+row asked for, plus the one fact the reader cannot re-derive. This is **C298 one layer up**:
+`PaintStates.prop` is carried because `applyPaint(el, node)` sees only the node, and
+`channelProp` is carried because `StateInput` has no tag. `suppressedOf` knows the same fact
+and **throws it away** — a stroked host binding `color` suppresses `{fill, stroke}`, and
+nothing in that set says which of the two the channel owns. Everything else the generator
+needs — *which* states have a palette — is read from `input.props`, which `StateInput`
+already carried.
+
+**4 · D2 landed here, and the legend is the easiest case rather than the hardest.** The
+legend was `suppressedOf`'s one documented exception: it binds `channel="color"`, not
+`color`, so nothing is suppressed for it, and *"one selector cannot tell"* its scale-painted
+swatches from its two text runs. A per-node marker tells them apart per node, so the
+exception is **retired** rather than worked around — with both authored, the swatches take
+the palette (one more attribute selector) and the names take the literal. Step 37's
+assertion *"a legend node carries NO `states` key"* was **updated, not deleted**: it now
+asserts the split, plus the unauthored case (which is every corpus page, and therefore every
+golden) and the exhausted-base case. The legend needed **its own resolver** —
+`channelStates` reads a bound `color` slot at a source **row**, and §6.6's key has neither.
+
+**5 · An unauthored state emits no rule, and the property is stamped anyway.** `colors`
+carries only the authored states, so an `active` rule over a `hover`-only palette would be
+`fill: var(--…)` on an unset property. **That is invalid at computed-value time, not absent**
+— the declaration becomes `unset`, and `fill` and `stroke` both *inherit*. Both halves are
+closed: no rule is emitted for a state no palette declares, **and** `applyPaint` stamps
+every member of `HDVL_STATES`, filling an unauthored one with the node's own base paint, so
+a rule that *is* emitted can never resolve to nothing. The `?? "none"` at the end of that
+fallback is the same sentinel the two paint attributes already use, not an invented colour.
+
+**6 · The value of `unset` was MEASURED, by a negative control, and it is black.** Control 2
+widened the selector to `g[data-w] > *` and the whole-series assertion reds three ways — the
+third being *"expected `rgb(0, 0, 0)` to equal `rgb(40, 40, 40)`"* on all three engines. An
+unmarked node reached by the rule paints **black**. That is the defect the marker prevents,
+and it is why a `var()` fallback was not an option: the correct fallback is the node's own
+base paint, which differs per node and is exactly what a single rule cannot express.
+
+**7 · Removal is mandatory and only one kind of test can see it.** `paintNodes` reads
+`let el = entry.els[j]` and reuses the element whenever the node kind is unchanged, so an
+inline property that stops being wanted persists forever. Neither witness in the repo covers
+it: the properties are not scene fields, so **no golden moves**, and a test that rendered
+into a fresh element passes while the bug ships. Control 1 deleted the `removeProperty` calls
+and the one assertion reds with the stale value printed —
+`'--hdvl-state-hover: lime; --hdvl-state-active: rgb(1, 2, 3);'` surviving onto a scene that
+contains neither. The marker attribute doubles as the *was-stamped* flag, so the common case
+— every node of every unstyled page, every frame — costs one `hasAttribute` and no writes.
+
+**8 · Control 5 found no defect, and three behaviours nothing else in the repo reaches.**
+⓵ **A live `--hdml-palette--hover` change re-stamps every node, mid-hover.** R1's mechanism
+is per *frame*, so a declarative change only reaches the DOM if a frame runs, and R24's
+sentinel is what runs one. `SENTINEL_PROPERTIES` is built **from the registry** rather than
+by hand, so the four Class 2 variants are covered by construction — which is the exact shape
+017 R6 found **fifteen silently unobserved properties** in. Asserted with the pointer held
+still, so the recolour cannot come from a re-hover; it is control 3's opposite half (no frame
+per pointer move, a frame per declarative change). ⓶ **`hdml-pie` is a sixth channel-coloured
+host through a *shared* call site** — `PIE_ATTRS_LIST` publishes `color`, and
+`layout-pie.ts` has no resolver of its own because `scene()` on both tags is one call to
+`mark-arc.ts`'s `sectorScene`. So C298's two-ends hazard lands on a tag the file passing
+`prop` never names, and the two ends agree. ⓷ **The legend behaviour change in decision 4**,
+which no existing assertion looked at. A fourth probe is recorded as a property of the
+design rather than a test: an author writing `--hdvl-state-hover` themselves, or a palette
+value the `UNSAFE` filter rejects, makes the mechanism **inert** rather than wrong, because
+the marker and the rule are written by different halves and both are required.
+
+**9 · The intermittent gate is not attributable to this step, and C302 now has a second
+presentation.** Ten full runs on this tree: **six clean**, two `page.goto: Page crashed` on
+Webkit, one single Webkit test failure, one 120 s `testsFinishTimeout` in
+`states-pointer.test.js` on Firefox. Three of the four are harness-level rather than
+assertions, no test failed twice, and wall clock on identical input ranged **62 s to
+1042 s** — enough on its own to explain a per-file timeout. The pointer file in isolation is
+**19/19, three times, in 9–22 s**. This step grew it from 13 tests to 19, so it is the most
+exposed file in the suite; that is a reason to budget re-runs, not an attribution.

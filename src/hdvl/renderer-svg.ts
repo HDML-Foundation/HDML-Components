@@ -43,6 +43,7 @@ import type {
   Subpath,
 } from "./scene";
 import { measureText } from "./measure-text";
+import { HDVL_STATES, STATE_MARK, stateProperty } from "./states";
 
 const NS = "http://www.w3.org/2000/svg";
 
@@ -337,6 +338,41 @@ function tagOf(kind: SceneNode["k"]): string {
   }
 }
 
+/**
+ * The node's four paint attributes, plus ★ 019 R1's state colours.
+ *
+ * The four are **presentation attributes**, which any CSS rule
+ * beats — that is what lets `states.ts` state-vary them without the
+ * scene moving, and §6.1's resolved paint is what they carry.
+ *
+ * ── ★ R1: two custom properties and a marker, stamped AND removed ──
+ *
+ * A channel state colour is **per datum**, so no rule can carry it:
+ * eight bars under one selector need eight colours. It travels the
+ * other way instead — the node carries its own colours as inline
+ * custom properties and the generated rule reads them back with
+ * `var()`. `node.states.prop` says which paint property the channel
+ * owns and is **read, never inferred**: a channel-resolved `fill` is
+ * indistinguishable from a `--hdml-fill-color` one by the time it
+ * reaches here, and `hdml-line`'s channel colour is its *stroke*.
+ *
+ * **Every state gets a value, including an unauthored one** — the
+ * node's own base paint, so the rule's `var()` can never be invalid
+ * at computed-value time and a one-state palette needs no second
+ * code path.
+ *
+ * ⚠⚠ **Removal is not tidiness.** `paintNodes` reuses `entry.els[j]`
+ * whenever the kind is unchanged, so a node that stops carrying a
+ * state colour would keep stamping it forever — hovering to a
+ * colour the current scene does not contain. Nothing else can see
+ * it: the properties are not scene fields, so no golden moves, and
+ * a test that renders into a fresh element passes while the bug
+ * ships. Same shape, same reason, as `applyText`'s `transform`.
+ *
+ * {@link STATE_MARK} doubles as the "was stamped" flag, so the
+ * common case — every node of every unstyled page — costs one
+ * `hasAttribute` and no property writes.
+ */
 function applyPaint(el: SVGElement, node: SceneNode): void {
   el.setAttribute("fill", node.fill ?? "none");
   el.setAttribute("stroke", node.stroke ?? "none");
@@ -346,6 +382,34 @@ function applyPaint(el: SVGElement, node: SceneNode): void {
   } else {
     el.setAttribute("stroke-dasharray", node.dash.map(num).join(" "));
   }
+  applyStates(el, node);
+}
+
+function applyStates(el: SVGElement, node: SceneNode): void {
+  const states = node.states;
+  if (states === undefined) {
+    if (el.hasAttribute(STATE_MARK)) {
+      el.removeAttribute(STATE_MARK);
+      for (const state of HDVL_STATES) {
+        el.style.removeProperty(stateProperty(state));
+      }
+    }
+    return;
+  }
+  // `?? "none"` is the SAME sentinel the two attributes above use,
+  // not an invented colour: an absent base paint is `none` there
+  // too. It is unreachable while `channelStates` requires a non-null
+  // base, and it is written so a later widening cannot paint a mark
+  // INTO existence on hover.
+  const base =
+    (states.prop === "fill" ? node.fill : node.stroke) ?? "none";
+  for (const state of HDVL_STATES) {
+    el.style.setProperty(
+      stateProperty(state),
+      states.colors[state] ?? base,
+    );
+  }
+  el.setAttribute(STATE_MARK, "");
 }
 
 function applyShape(el: SVGElement, node: SceneNode): void {

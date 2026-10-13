@@ -6,6 +6,7 @@
 
 import { assert } from "@open-wc/testing";
 import {
+  PaintStates,
   Scene,
   SceneFont,
   SceneGroup,
@@ -14,6 +15,7 @@ import {
 } from "./scene";
 import { Renderer, renderers } from "./renderer";
 import { createSvgRenderer } from "./renderer-svg";
+import { STATE_MARK, stateProperty } from "./states";
 
 /**
  * R36 — the ten things a scene assertion cannot reach.
@@ -585,6 +587,206 @@ suite("hdvl/renderer-svg — the renderer contract", () => {
     );
     assert.strictEqual(gOf(root, "w1"), g);
     assert.strictEqual(g.children[0], first);
+  });
+});
+
+suite("hdvl/renderer-svg — R1's state colours", () => {
+  // ★★ 019 R1, step 38. The WRITER half of the two halves that meet
+  // at the DOM. `states.test.ts` owns the rule text and
+  // `states-pointer.test.ts` owns them meeting; this owns the stamp
+  // and — the one nothing else can see — the REMOVAL.
+
+  const HOVER = stateProperty("hover");
+  const ACTIVE = stateProperty("active");
+
+  const HOVER_ONLY: PaintStates = {
+    prop: "fill",
+    colors: { hover: "lime" },
+  };
+  const STROKE_HOVER: PaintStates = {
+    prop: "stroke",
+    colors: { hover: "lime" },
+  };
+
+  /** A painted rect, with or without R1's state colours. */
+  function painted(states?: PaintStates): SceneNode {
+    return {
+      ...NO_PAINT,
+      k: "rect",
+      i: 0,
+      x: 0,
+      y: 0,
+      w: 20,
+      h: 10,
+      fill: "rgb(1, 2, 3)",
+      stroke: "rgb(4, 5, 6)",
+      ...(states === undefined ? {} : { states }),
+    };
+  }
+
+  function nodeOf(root: ShadowRoot): SVGElement {
+    return <SVGElement>gOf(root, "w1").firstChild;
+  }
+
+  test("a state colour is stamped as an inline property", () => {
+    const { r, root } = mounted();
+    r.render(
+      scene([
+        group({
+          nodes: [
+            painted({
+              prop: "fill",
+              colors: { hover: "lime", active: "navy" },
+            }),
+          ],
+        }),
+      ]),
+    );
+    const el = nodeOf(root);
+    assert.strictEqual(el.style.getPropertyValue(HOVER), "lime");
+    assert.strictEqual(el.style.getPropertyValue(ACTIVE), "navy");
+    assert.isTrue(el.hasAttribute(STATE_MARK));
+    // The base paint is untouched — R1 adds to the node, it does
+    // not replace §6.1's resolved paint.
+    assert.strictEqual(el.getAttribute("fill"), "rgb(1, 2, 3)");
+  });
+
+  test("an unauthored state takes the node's own base paint", () => {
+    // ★ Open question 5's other half. The rule for an unauthored
+    // state is omitted, but the property is stamped anyway, so the
+    // `var()` inside a rule that IS emitted can never be invalid at
+    // computed-value time. The value is a visual no-op.
+    const { r, root } = mounted();
+    r.render(
+      scene([
+        group({
+          nodes: [painted(HOVER_ONLY)],
+        }),
+      ]),
+    );
+    const el = nodeOf(root);
+    assert.strictEqual(el.style.getPropertyValue(HOVER), "lime");
+    assert.strictEqual(
+      el.style.getPropertyValue(ACTIVE),
+      "rgb(1, 2, 3)",
+    );
+  });
+
+  test("prop is READ — a stroked node takes its stroke", () => {
+    // ★★★ C298. `applyPaint(el, node)` sees the node and nothing
+    // else, so a channel-resolved fill is indistinguishable from a
+    // `--hdml-fill-color` one; `hdml-line` is the widget an
+    // inferring implementation gets wrong.
+    const { r, root } = mounted();
+    r.render(
+      scene([
+        group({
+          nodes: [painted(STROKE_HOVER)],
+        }),
+      ]),
+    );
+    assert.strictEqual(
+      nodeOf(root).style.getPropertyValue(ACTIVE),
+      "rgb(4, 5, 6)",
+      "the unauthored state fell back to the STROKE",
+    );
+  });
+
+  test("a node with no state colour is never stamped", () => {
+    const { r, root } = mounted();
+    r.render(scene([group({ nodes: [painted()] })]));
+    const el = nodeOf(root);
+    assert.isFalse(el.hasAttribute(STATE_MARK));
+    assert.strictEqual(el.style.getPropertyValue(HOVER), "");
+  });
+
+  test("★★ control 1 — it is REMOVED on a REUSED element", () => {
+    // ★★★ **Negative control 1**, and trap 2 whole. `paintNodes`
+    // reads `let el = entry.els[j]` and reuses it whenever the kind
+    // is unchanged, so a node that stops carrying a state colour
+    // would keep stamping it forever — hovering to a colour the
+    // current scene does not contain. NEITHER witness can see it:
+    // the properties are not scene fields, so no golden moves, and
+    // a test that rendered into a fresh element would pass while
+    // the bug shipped.
+    const { r, root } = mounted();
+    r.render(
+      scene([
+        group({
+          nodes: [
+            painted({ prop: "fill", colors: { hover: "lime" } }),
+          ],
+        }),
+      ]),
+    );
+    const first = nodeOf(root);
+    assert.strictEqual(first.style.getPropertyValue(HOVER), "lime");
+
+    r.render(scene([group({ nodes: [painted()] })]));
+    const second = nodeOf(root);
+    // The premise of the control: the SAME element object.
+    assert.strictEqual(second, first, "paintNodes reused the node");
+    assert.isFalse(second.hasAttribute(STATE_MARK));
+    // GONE, not empty-valued: `getPropertyValue` cannot tell those
+    // apart, so the style attribute itself is read.
+    assert.notInclude(second.getAttribute("style") ?? "", HOVER);
+    assert.notInclude(second.getAttribute("style") ?? "", ACTIVE);
+  });
+
+  test("★ a changed KIND gets a fresh element and no stamp", () => {
+    // ★ Control 5 ⓔ. `hdml-point` switches node kind on
+    // `--hdml-tick-style`, and `paintNodes` REPLACES rather than
+    // patches — so the removal branch never runs. The new element
+    // must be clean anyway, which it is by construction; asserted
+    // because "by construction" is what trap 2 also looked like.
+    const { r, root } = mounted();
+    r.render(
+      scene([
+        group({
+          nodes: [painted(HOVER_ONLY)],
+        }),
+      ]),
+    );
+    r.render(
+      scene([
+        group({
+          nodes: [
+            {
+              ...NO_PAINT,
+              k: "ellipse",
+              i: 0,
+              cx: 10,
+              cy: 5,
+              rx: 4,
+              ry: 4,
+            },
+          ],
+        }),
+      ]),
+    );
+    const el = nodeOf(root);
+    assert.strictEqual(el.tagName, "ellipse");
+    assert.isFalse(el.hasAttribute(STATE_MARK));
+    assert.notInclude(el.getAttribute("style") ?? "", HOVER);
+  });
+
+  test("★ control 5 ⓒ — a FROZEN states map renders twice", () => {
+    // ★ C301. `scene.test.ts`'s `deepFreeze` is transitive since
+    // step 37, and `applyPaint` is the first renderer code expected
+    // to look a key up in `Paint.states`. A write there throws in
+    // strict mode, so this is the evidence it only reads.
+    const { r, root } = mounted();
+    const colors = Object.freeze({ hover: "lime" });
+    const node = painted({ prop: "fill", colors });
+    Object.freeze((<{ states: object }>(<unknown>node)).states);
+    Object.freeze(node);
+    const s = scene([group({ nodes: [node] })]);
+    r.render(s);
+    r.render(s);
+    assert.strictEqual(
+      nodeOf(root).style.getPropertyValue(HOVER),
+      "lime",
+    );
   });
 });
 

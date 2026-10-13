@@ -12084,6 +12084,34 @@
           "description": "The v1 state list (SPEC §9, amended 017 R7).\n\n**A list, not two hard-coded branches**, which is the flexibility\nthe founder asked for: `focus` and `selected` are deferred to v2\nnot for cost but because neither has a browser state to hang a\nrule on today — SVG shapes are not focusable and `selected` is not\na pseudo-class at all — so adding either is a row here plus its\nown machinery, never a rewrite of this module."
         },
         {
+          "kind": "variable",
+          "name": "STATE_MARK",
+          "type": {
+            "text": "string"
+          },
+          "default": "\"data-s\"",
+          "description": "★ 019 R1 — the attribute `renderer-svg.ts` stamps on a node that\n**carries a channel state colour**, and the selector half of the\ntwo halves that meet at the DOM.\n\n── Why a marker at all ──\n\nThe channel rule reads its colour out of a per-node custom\nproperty (stateProperty), and `var()` on a property that\nis not set is **invalid at computed-value time** — which is not\nthe same as absent. The declaration becomes `unset`, and `fill`\nand `stroke` are both *inherited* SVG properties, so an unmarked\nnode would hover to whatever its `<g>` inherits rather than\nkeeping the presentation attribute `applyPaint` wrote. A `var()`\nfallback cannot fix it: the right fallback is the node's **own**\nbase paint, which differs per node and is exactly what the rule\ncannot say.\n\nSo the selector carries `[data-s]` and the rule simply **does not\nmatch** a node with no state colour. A node that does carry one\nalways has a value for every member of HDVL_STATES — an\nunauthored state is stamped with the node's own base paint — so\ninside the rule the `var()` can never fail.\n\nIt also raises the channel rule's specificity above the\n`--hdml-fill-color--hover` rule's by one attribute selector,\nwhich is SPEC §9's *\"channel-bound paint wins … and its state\nvariants alike\"* falling out of the cascade rather than being\narranged."
+        },
+        {
+          "kind": "function",
+          "name": "stateProperty",
+          "return": {
+            "type": {
+              "text": ""
+            }
+          },
+          "parameters": [
+            {
+              "name": "state",
+              "type": {
+                "text": "string"
+              },
+              "description": "A member of {@link HDVL_STATES}.\n * "
+            }
+          ],
+          "description": "★ 019 R1 — the per-node custom property carrying one state's\nchannel colour.\n\n**One property per state, not one carrying \"the current state's\ncolour\".** A single property would need the renderer to know\nwhich state is live, and *\"the runtime never chooses a value per\nnode — it emits both rules and the browser chooses\"* is the whole\nof this module's argument. Two properties are stamped once per\nnode per frame and read by two rules the browser arbitrates.\n\n── `--hdvl-`, not `--hdml-`, and it is NOT registered ──\n\n`--hdml-*` is the **author's** vocabulary: fifty-seven registered\nproperties, and V13's `check-dist.mjs` holds page CSS to exactly\nthat set. This property is neither authored nor read by an\nauthor — it is a wire between two halves of the runtime — so\nregistering it would add a 58th entry to a list whose whole\nmeaning is *\"what a page may say\"*. `--hdvl-` is already this\nrepo's prefix for runtime-internal properties (`platform.test.ts`\nprobes with three of them), so this is an established namespace\nrather than a second one.\n\nUnregistered means it inherits and computes to a token sequence,\nboth of which are what is wanted: the value is a `<color>` the\nruntime wrote and the runtime reads back."
+        },
+        {
           "kind": "function",
           "name": "suppressedOf",
           "return": {
@@ -12101,6 +12129,25 @@
             }
           ],
           "description": "The presentation attributes a widget may **not** state-vary — the\none DOM read this module makes.\n\nBoth rules are argued at the head of this module. A stroked host\nloses `fill` outright; a widget binding `color` loses whichever\npaint that channel resolves into.\n\n**The channel predicate is the ATTRIBUTE, not the resolved\ncolour.** `channelColor` additionally needs a colour scale in\nscope, and a binding with no scale is **V1 `no-scale-in-scope`, an\nerror** — so the only documents this over-suppresses on are ones\nthat already report an error and paint nothing. Reading the\nattribute also keeps this free of the frame context, which is what\nlets stateRules stay a pure function of the snapshot.\n\n**`hdml-legend` is a deliberate exception.** It binds\n`channel=\"color\"`, not `color`, so nothing is suppressed for it —\nand its swatches *are* scale-painted while its two text runs are\nnot. One selector cannot tell those nodes apart, and a legend's\n`--hdml-fill-color--hover` reaching a swatch is a reasonable\nreading of the author's intent rather than a defect. Recorded here\nso it is a decision instead of an oversight."
+        },
+        {
+          "kind": "function",
+          "name": "channelPropOf",
+          "return": {
+            "type": {
+              "text": ""
+            }
+          },
+          "parameters": [
+            {
+              "name": "el",
+              "type": {
+                "text": "HdvlElement"
+              },
+              "description": "The widget."
+            }
+          ],
+          "description": "★ 019 R1 — the paint property a widget's `color` channel owns.\n\nThe **writer's** counterpart is `PaintStates.prop`, which\n`mark.ts` hands to the node because `applyPaint(el, node)` sees\nthe node and nothing else (C298). This is the **sheet's** answer\nto the same question, and it exists for the same reason one\nlayer up: StateInput carries no tag, so the generator\ncannot re-derive it either.\n\n⚠ **The two are computed from opposite ends and neither can\nimport the other** — `mark-line.ts` passes `\"stroke\"` at its call\nsite, this reads STROKE_PAINTED. `states.test.ts`\ncross-checks them tag-by-tag, which is the only thing making them\nagree.\n\n── `hdml-legend` is the one widget that is not a mark ──\n\nIt binds `channel=\"color\"`, not `color`, so the `color`-attribute\nread below answers `null` for it — and its swatches are the very\nnodes a channel palette paints (D2). Its swatches are **filled**,\nso the answer is `\"fill\"`, and the group's two text runs carry no\nstate colour and are therefore never matched by the rule this\ndrives. That is what retires `suppressedOf`'s documented *\"one\nselector cannot tell those nodes apart\"* exception: the marker\nattribute tells them apart per node."
         },
         {
           "kind": "variable",
@@ -12142,9 +12189,33 @@
         },
         {
           "kind": "js",
+          "name": "STATE_MARK",
+          "declaration": {
+            "name": "STATE_MARK",
+            "module": "src/hdvl/states.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "stateProperty",
+          "declaration": {
+            "name": "stateProperty",
+            "module": "src/hdvl/states.ts"
+          }
+        },
+        {
+          "kind": "js",
           "name": "suppressedOf",
           "declaration": {
             "name": "suppressedOf",
+            "module": "src/hdvl/states.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "channelPropOf",
+          "declaration": {
+            "name": "channelPropOf",
             "module": "src/hdvl/states.ts"
           }
         },

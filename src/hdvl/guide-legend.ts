@@ -18,7 +18,7 @@ import type { Scale } from "./scale";
 import { paintSuppressed } from "./subscribe";
 import { fillPaint } from "./mark";
 import { channelOf } from "./resolve";
-import { chainScaleOf } from "./scale";
+import { CHANNEL_STATES, chainScaleOf } from "./scale";
 import { textsOf } from "./guide-label";
 import { guideGroup, tickSpecOf } from "./guide-spec";
 import {
@@ -194,12 +194,54 @@ function swatch(
       };
 }
 
+/**
+ * ★ 019 R1 / D2 — a swatch's channel state colours.
+ *
+ * **The legend's own resolver, and it has to be.** `mark.ts`'s
+ * `channelStates` reads a bound `color` slot at a source ROW;
+ * §6.6's key has neither — *"it takes no `source`: it is the
+ * **scale's** key, not the marks'"* — so it is the same three
+ * rules applied to a domain value instead of a row, beside the
+ * `scale.paint` call this file already makes for the base.
+ *
+ * Both of `channelStates`' load-bearing rules are kept verbatim:
+ * **a `null` base means no state colour at all** (a short palette's
+ * uniform fallback must not jump on hover to the colour the base
+ * refused to give it), and the map is **never empty**.
+ *
+ * @param scale - The resolved colour scale.
+ * @param v - The domain value, or a ramp sample's midpoint.
+ * @param base - That value's base colour.
+ * @returns `{ states }`, or `{}`.
+ */
+function swatchStates(
+  scale: Scale,
+  v: number | string,
+  base: string | null,
+): Pick<Paint, "states"> {
+  if (base === null) {
+    return {};
+  }
+  const colors: Record<string, string> = {};
+  for (const state of CHANNEL_STATES) {
+    const color = scale.paintState(v, state);
+    if (color !== null) {
+      colors[state] = color;
+    }
+  }
+  return Object.keys(colors).length === 0
+    ? {}
+    : { states: { prop: "fill", colors } };
+}
+
 /** One entry, measured before anything is placed. */
 interface Entry {
   /** The domain value, rendered. */
   text: string;
   /** Its colour, or `null` when the palette is exhausted. */
   color: string | null;
+  /** ★ 019 R1 / D2. Its state colours, or `{}`. */
+  states: Pick<Paint, "states">;
   /** Swatch + gap + the name's width. */
   w: number;
   /** The line's height — never under the swatch's. */
@@ -256,9 +298,11 @@ function keyNodes(
     // verbatim, and `Scale.format` already is that sentence (R12).
     const text = scale.format(v);
     const metrics = ctx.measureText(text, m.font);
+    const color = scale.paint(v);
     return {
       text,
-      color: scale.paint(v),
+      color,
+      states: swatchStates(scale, v, color),
       w: flow.swatch + flow.gap + metrics.width,
       h: Math.max(flow.swatch, metrics.ascent + metrics.descent),
     };
@@ -311,12 +355,10 @@ function keyNodes(
     const swatchAt = flow.swatchEnd ? x + nameWidth + flow.gap : x;
     const nameAt = flow.swatchEnd ? x : x + flow.swatch + flow.gap;
     nodes.push(
-      swatch(
-        flow,
-        swatchAt + flow.swatch / 2,
-        y + entry.h / 2,
-        fillPaint(m, entry.color),
-      ),
+      swatch(flow, swatchAt + flow.swatch / 2, y + entry.h / 2, {
+        ...fillPaint(m, entry.color),
+        ...entry.states,
+      }),
       {
         k: "text",
         i: -1,
@@ -424,7 +466,12 @@ function rampNodes(
     // The sample's colour is its own MIDPOINT's, so the bar's two
     // ends are the domain's two ends painted half a sample in —
     // never a stop repeated at an edge it does not reach.
-    const paint = fillPaint(m, scale.paint((v0 + v1) / 2));
+    const mid = (v0 + v1) / 2;
+    const color = scale.paint(mid);
+    const paint = {
+      ...fillPaint(m, color),
+      ...swatchStates(scale, mid, color),
+    };
     nodes.push({
       k: "rect",
       i: -1,

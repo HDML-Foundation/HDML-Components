@@ -10,7 +10,7 @@ import { LitElement } from "lit";
 import "./index";
 import type { Channel } from "./resolve";
 import type { Scale } from "./scale";
-import type { SceneGroup, SceneNode } from "./scene";
+import type { PaintStates, SceneGroup, SceneNode } from "./scene";
 import { HdvlProbeElement, PROBE_TAG } from "../testing/probe";
 import {
   installSceneRecorder,
@@ -146,7 +146,16 @@ function centre(
 const KEY_BOX = "top: 0; left: 0; width: 140px; height: 120px;";
 
 /** An ordinal colour scale, and nothing bound to it. */
-function keyPage(attrs = "", style = "", palette = PALETTE) {
+function keyPage(
+  attrs = "",
+  style = "",
+  palette = PALETTE,
+  // ★ 019 R1 / D2. A channel state palette is authored on the
+  // SCALE, exactly as the base one is — `Scale.paintState` reads
+  // the scale's own snapshot — so the tests that need one need a
+  // way to reach it.
+  scaleStyle = "",
+) {
   // Step 13's T1: `lit/static-html` interpolates a raw string
   // nowhere, an attribute LIST least of all.
   const spec = unsafeStatic(attrs);
@@ -157,7 +166,7 @@ function keyPage(attrs = "", style = "", palette = PALETTE) {
           <hdml-ordinal-scale
             channel="color"
             values='["North","South","East"]'
-            style="--hdml-palette: ${palette}"
+            style="--hdml-palette: ${palette}; ${scaleStyle}"
           >
             <hdml-legend
               channel="color"
@@ -180,7 +189,7 @@ const STOPS = "--hdml-color-interpolate: #dbeafe #1c8cf4 #1e3a8a;";
  * assertion be a `strictEqual` on a colour string rather than a
  * comparison of two roundings.
  */
-function rampPage(attrs = "", style = "") {
+function rampPage(attrs = "", style = "", scaleStyle = "") {
   const spec = unsafeStatic(attrs);
   return html`
     <hdml-view aria-label="ramp" style="width: 400px; height: 200px">
@@ -191,7 +200,7 @@ function rampPage(attrs = "", style = "") {
               channel="color"
               min="0"
               max="64"
-              style="${STOPS}"
+              style="${STOPS} ${scaleStyle}"
             >
               <hdml-point
                 x="[1, 2]"
@@ -940,33 +949,116 @@ suite("hdvl/guide-legend — the text-metric seam", () => {
     assert.closeTo(marks[1][1] - marks[0][1], line + gap, 1e-2);
   });
 
-  test("★★ R1 — a legend node carries NO `states` key", async () => {
-    // ★★ **Negative control 4, step 37**, the legend half.
+  test("★★ D2 — swatches carry `states`, names do not", async () => {
+    // ★★ **UPDATED at step 38, which is the step row 37 named.**
     //
-    // `guide-legend.ts` resolves channel colour through **two call
-    // sites of its own** — `scale.paint(v)` per entry and
-    // `fillPaint(m, scale.paint(…))` for the ramp bar — and reaches
-    // `channelColor` nowhere. So the claim *"`channelColor` is the
-    // channel-colour resolver"* is already false, and the legend's
-    // swatches are exactly the nodes a reader would expect the
-    // field on. **D2 routes them to row 38**; row 37 leaves
-    // `guide-legend.ts` zero-diff on purpose, and this is the
-    // assertion that records that as a decision rather than an
-    // oversight — and that will have to be UPDATED when row 38
-    // makes the swatches follow.
-    for (const page of [
-      keyPage("", "--hdml-palette--hover: #aa0000 #00aa00 #0000aa"),
+    // Row 37 left `guide-legend.ts` zero-diff and asserted the
+    // absence as a decision; D2 routed the swatches here, and this
+    // is the same claim with the decision taken. What is asserted
+    // is now the SPLIT rather than the absence, because the split
+    // is what retired `suppressedOf`'s documented exception: a
+    // legend's group mixes scale-painted swatches with two text
+    // runs that *"one selector cannot tell apart"*, and a per-node
+    // property plus a marker tells them apart per node.
+    //
+    // `guide-legend.ts` reaches `channelColor` nowhere and
+    // `channelStates` nowhere either — §6.6's key has no bound
+    // slot and no source ROW — so this is its own resolver over a
+    // DOMAIN value, keeping both of `channelStates`' load-bearing
+    // rules.
+    //
+    // ⚠ No corpus page authors a channel state palette until row
+    // 40, so all 29 whole-`Scene` goldens stay byte-unchanged —
+    // and at this row that is a REAL gate rather than a structural
+    // one (C295): this file is no longer zero-diff, so a legend
+    // node gaining an unconditional `states` key would move
+    // thirteen of them.
+    const view = await mount(
+      keyPage(
+        "",
+        "",
+        PALETTE,
+        "--hdml-palette--hover: #aa0000 #00aa00 #0000aa",
+      ),
+    );
+    const nodes = nodesOf(view);
+    assert.lengthOf(nodes, 6, "three entries, swatch + name each");
+    nodes.forEach((node, i) => {
+      if (node.k === "text") {
+        assert.isFalse("states" in node, `name ${i}`);
+      } else {
+        assert.isTrue("states" in node, `swatch ${i}`);
+        const states = (<{ states: PaintStates }>node).states;
+        assert.strictEqual(states.prop, "fill");
+        assert.deepEqual(Object.keys(states.colors), ["hover"]);
+      }
+    });
+    // Per ENTRY, not per series: entry k's state colour is
+    // `paintState(domain[k])`, exactly as its base is `paint`'s.
+    const swatches = nodes.filter((n) => n.k !== "text");
+    assert.deepEqual(
+      swatches.map(
+        (n) => (<{ states: PaintStates }>n).states.colors.hover,
+      ),
+      // ⚠ The four channel state properties register `syntax: "*"`,
+      // so a palette computes to the token sequence VERBATIM — the
+      // author's hex, not a resolved `rgb()`. `kernel/color.ts`
+      // takes already-resolved strings and does no colour math, so
+      // the string the author wrote is the string that is stamped.
+      ["#aa0000", "#00aa00", "#0000aa"],
+    );
+  });
+
+  test("★ D2 — a ramp sample carries its own state", async () => {
+    const view = await mount(
       rampPage(
+        "",
         "",
         "--hdml-color-interpolate--hover: #ff0000 #0000ff",
       ),
-    ]) {
-      const view = await mount(page);
-      const nodes = nodesOf(view);
-      assert.isAbove(nodes.length, 1);
-      nodes.forEach((node, i) =>
-        assert.isFalse("states" in node, `legend node ${i}`),
-      );
-    }
+    );
+    const bars = nodesOf(view).filter((n) => n.k === "rect");
+    assert.isAbove(bars.length, 2);
+    const hovers = bars.map(
+      (n) => (<{ states?: PaintStates }>n).states?.colors.hover,
+    );
+    assert.isTrue(
+      hovers.every((c) => typeof c === "string"),
+      "every sample has a hover colour",
+    );
+    assert.isAbove(new Set(hovers).size, 2, "it varies");
+  });
+
+  test("★ D2 — no palette state means no `states`", async () => {
+    // The absence row 37 asserted, kept as the unauthored case —
+    // which is every corpus page, and therefore every golden.
+    const view = await mount(keyPage());
+    nodesOf(view).forEach((node, i) =>
+      assert.isFalse("states" in node, `legend node ${i}`),
+    );
+  });
+
+  test("★ D2 — an exhausted base gives no state colour", async () => {
+    // `channelStates`' rule 4, applied to a domain value: a short
+    // BASE palette returns `null` deliberately so the entry falls
+    // back visibly and uniformly, and a complete state palette must
+    // not make that fallback jump on hover to the colour the base
+    // refused to give it.
+    const view = await mount(
+      keyPage(
+        "",
+        "",
+        "#111111 #222222",
+        "--hdml-palette--hover: #aa0000 #00aa00 #0000aa",
+      ),
+    );
+    const swatches = nodesOf(view).filter((n) => n.k !== "text");
+    assert.lengthOf(swatches, 3);
+    assert.isTrue("states" in swatches[0]);
+    assert.isTrue("states" in swatches[1]);
+    assert.isFalse(
+      "states" in swatches[2],
+      "the exhausted entry gets none",
+    );
   });
 });

@@ -97,7 +97,9 @@
  */
 
 import type { HdvlElement } from "./base";
-import { HDVL_TAG_NAMES } from "./vocabulary";
+import { HDVL_TAG_NAMES, LEGEND_ATTRS_LIST } from "./vocabulary";
+import { channelOf } from "./resolve";
+import { CHANNEL_STATE_PROPERTIES } from "./scale";
 import { CHANNEL_SLOTS, dashOf } from "./mark";
 
 /**
@@ -111,6 +113,72 @@ import { CHANNEL_SLOTS, dashOf } from "./mark";
  * own machinery, never a rewrite of this module.
  */
 export const HDVL_STATES: readonly string[] = ["hover", "active"];
+
+/**
+ * ★ 019 R1 — the attribute `renderer-svg.ts` stamps on a node that
+ * **carries a channel state colour**, and the selector half of the
+ * two halves that meet at the DOM.
+ *
+ * ── Why a marker at all ──
+ *
+ * The channel rule reads its colour out of a per-node custom
+ * property ({@link stateProperty}), and `var()` on a property that
+ * is not set is **invalid at computed-value time** — which is not
+ * the same as absent. The declaration becomes `unset`, and `fill`
+ * and `stroke` are both *inherited* SVG properties, so an unmarked
+ * node would hover to whatever its `<g>` inherits rather than
+ * keeping the presentation attribute `applyPaint` wrote. A `var()`
+ * fallback cannot fix it: the right fallback is the node's **own**
+ * base paint, which differs per node and is exactly what the rule
+ * cannot say.
+ *
+ * So the selector carries `[data-s]` and the rule simply **does not
+ * match** a node with no state colour. A node that does carry one
+ * always has a value for every member of {@link HDVL_STATES} — an
+ * unauthored state is stamped with the node's own base paint — so
+ * inside the rule the `var()` can never fail.
+ *
+ * It also raises the channel rule's specificity above the
+ * `--hdml-fill-color--hover` rule's by one attribute selector,
+ * which is SPEC §9's *"channel-bound paint wins … and its state
+ * variants alike"* falling out of the cascade rather than being
+ * arranged.
+ */
+export const STATE_MARK = "data-s";
+
+/**
+ * ★ 019 R1 — the per-node custom property carrying one state's
+ * channel colour.
+ *
+ * **One property per state, not one carrying "the current state's
+ * colour".** A single property would need the renderer to know
+ * which state is live, and *"the runtime never chooses a value per
+ * node — it emits both rules and the browser chooses"* is the whole
+ * of this module's argument. Two properties are stamped once per
+ * node per frame and read by two rules the browser arbitrates.
+ *
+ * ── `--hdvl-`, not `--hdml-`, and it is NOT registered ──
+ *
+ * `--hdml-*` is the **author's** vocabulary: fifty-seven registered
+ * properties, and V13's `check-dist.mjs` holds page CSS to exactly
+ * that set. This property is neither authored nor read by an
+ * author — it is a wire between two halves of the runtime — so
+ * registering it would add a 58th entry to a list whose whole
+ * meaning is *"what a page may say"*. `--hdvl-` is already this
+ * repo's prefix for runtime-internal properties (`platform.test.ts`
+ * probes with three of them), so this is an established namespace
+ * rather than a second one.
+ *
+ * Unregistered means it inherits and computes to a token sequence,
+ * both of which are what is wanted: the value is a `<color>` the
+ * runtime wrote and the runtime reads back.
+ *
+ * @param state - A member of {@link HDVL_STATES}.
+ * @returns The property name.
+ */
+export function stateProperty(state: string): string {
+  return `--hdvl-state-${state}`;
+}
 
 /**
  * {@link strokePaint}'s four hosts — the widgets whose paint is a
@@ -139,7 +207,29 @@ export interface StateInput {
    * see {@link suppressedOf}. Empty for most widgets.
    */
   suppress: ReadonlySet<string>;
+  /**
+   * ★ 019 R1. The paint property this widget's `color` channel
+   * owns, or `null` when it binds no colour channel — see
+   * {@link channelPropOf}.
+   *
+   * **A scalar beside `suppress`, never the resolved colours.**
+   * That is what keeps {@link stateRules} a pure function of the
+   * snapshot: the colours are per *datum* and live on the scene
+   * node, so putting them here would need a frame, a scale and a
+   * row, and the generator would stop being assertable without a
+   * DOM.
+   *
+   * It is not a plain boolean, for the reason `PaintStates.prop`
+   * is not: the reader cannot re-derive it. `suppressedOf` knows
+   * the same fact and **throws it away** — a stroked host binding
+   * `color` suppresses `{fill, stroke}`, and nothing in that set
+   * says which of the two the channel owns.
+   */
+  channelProp: ChannelProp;
 }
+
+/** The paint property a `color` channel owns, or `null`. */
+export type ChannelProp = "fill" | "stroke" | null;
 
 /**
  * The presentation attributes a widget may **not** state-vary — the
@@ -179,6 +269,50 @@ export function suppressedOf(el: HdvlElement): ReadonlySet<string> {
     out.add(stroked ? "stroke" : "fill");
   }
   return out;
+}
+
+/**
+ * ★ 019 R1 — the paint property a widget's `color` channel owns.
+ *
+ * The **writer's** counterpart is `PaintStates.prop`, which
+ * `mark.ts` hands to the node because `applyPaint(el, node)` sees
+ * the node and nothing else (C298). This is the **sheet's** answer
+ * to the same question, and it exists for the same reason one
+ * layer up: {@link StateInput} carries no tag, so the generator
+ * cannot re-derive it either.
+ *
+ * ⚠ **The two are computed from opposite ends and neither can
+ * import the other** — `mark-line.ts` passes `"stroke"` at its call
+ * site, this reads {@link STROKE_PAINTED}. `states.test.ts`
+ * cross-checks them tag-by-tag, which is the only thing making them
+ * agree.
+ *
+ * ── `hdml-legend` is the one widget that is not a mark ──
+ *
+ * It binds `channel="color"`, not `color`, so the `color`-attribute
+ * read below answers `null` for it — and its swatches are the very
+ * nodes a channel palette paints (D2). Its swatches are **filled**,
+ * so the answer is `"fill"`, and the group's two text runs carry no
+ * state colour and are therefore never matched by the rule this
+ * drives. That is what retires `suppressedOf`'s documented *"one
+ * selector cannot tell those nodes apart"* exception: the marker
+ * attribute tells them apart per node.
+ *
+ * @param el - The widget.
+ * @returns The property, or `null` when no colour channel is bound.
+ */
+export function channelPropOf(el: HdvlElement): ChannelProp {
+  if (el.tag === HDVL_TAG_NAMES.LEGEND) {
+    const channel = channelOf(
+      el.getAttribute(LEGEND_ATTRS_LIST.CHANNEL),
+    );
+    return channel === "color" ? "fill" : null;
+  }
+  const raw = el.getAttribute(CHANNEL_SLOTS.color.simple);
+  if (raw === null || raw.trim() === "") {
+    return null;
+  }
+  return STROKE_PAINTED.has(el.tag) ? "stroke" : "fill";
 }
 
 /**
@@ -338,6 +472,60 @@ function declarationsOf(input: StateInput, state: string): string[] {
 }
 
 /**
+ * ★ 019 R1 — the channel rule's one declaration, or `null`.
+ *
+ * **The `continue` in {@link declarationsOf} stays a `continue`.**
+ * SPEC §9 still forbids a *literal* `--hdml-fill-color--hover` from
+ * reaching a channel-coloured mark, and that is what the
+ * suppression says; this emits a different declaration, into a
+ * different rule, under a different selector. Folding it into
+ * `declarationsOf`'s list would put it under `> *:{state}` and
+ * recolour every node in the group — including the ones with no
+ * state colour, which is the defect {@link STATE_MARK} exists to
+ * prevent.
+ *
+ * ⇒ **{@link suppressedOf} keeps its purity and its body**. R1
+ * trap 4's *"one structural regression"* was a prediction about a
+ * design in which this declaration joined the others; it does not,
+ * so there is no regression to accept.
+ *
+ * ── Why the per-state source is read from `props` ──
+ *
+ * A palette state is authored on the **scale**, not on the widget,
+ * and {@link StateInput} carries the widget's own snapshot. It
+ * reaches it anyway, and structurally: `chainScaleOf` resolves a
+ * widget's scale off `resolve.ts`'s chain, which is carried **down
+ * the document tree**, so the scale that paints a widget is always
+ * an *ancestor* of it — and all four
+ * {@link CHANNEL_STATE_PROPERTIES} variants register
+ * `inherits: true`. The widget's computed style therefore has the
+ * scale's value.
+ *
+ * Emitting only for the states a palette actually exists for is
+ * what keeps this module's *"a widget with no state variant set
+ * contributes nothing"* promise true: a `color`-bound widget under
+ * a scale with no state palette still produces the empty sheet.
+ *
+ * @param input - The widget's entry.
+ * @param state - The state.
+ * @returns The declaration, or `null`.
+ */
+function channelDeclarationOf(
+  input: StateInput,
+  state: string,
+): string | null {
+  if (input.channelProp === null) {
+    return null;
+  }
+  const authored = CHANNEL_STATE_PROPERTIES.some(
+    (base) => valueOf(input.props, base, state) !== null,
+  );
+  return authored
+    ? `${input.channelProp}: var(${stateProperty(state)})`
+    : null;
+}
+
+/**
  * The state sheet's whole text — the generator.
  *
  * **Pure**: a function of the snapshot and nothing else, so the rule
@@ -357,13 +545,22 @@ export function stateRules(inputs: readonly StateInput[]): string {
   for (const input of inputs) {
     for (const state of HDVL_STATES) {
       const declarations = declarationsOf(input, state);
-      if (declarations.length === 0) {
-        continue;
+      if (declarations.length > 0) {
+        rules.push(
+          `g[data-w="${input.uid}"] > *:${state} { ` +
+            `${declarations.join("; ")} }`,
+        );
       }
-      rules.push(
-        `g[data-w="${input.uid}"] > *:${state} { ` +
-          `${declarations.join("; ")} }`,
-      );
+      // ★ 019 R1's SECOND rule, and it is second in emission order
+      // on purpose: it is the more specific of the two, so a sheet
+      // read top to bottom reads in cascade order.
+      const channel = channelDeclarationOf(input, state);
+      if (channel !== null) {
+        rules.push(
+          `g[data-w="${input.uid}"] > *[${STATE_MARK}]:${state} ` +
+            `{ ${channel} }`,
+        );
+      }
     }
   }
   return rules.join("\n");

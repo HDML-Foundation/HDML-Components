@@ -33,7 +33,7 @@ import {
 import { FrameLoop, createFrameLoop, runFrame } from "./schedule";
 import type { Measured } from "./measure";
 import type { StateInput } from "./states";
-import { stateRules, suppressedOf } from "./states";
+import { channelPropOf, stateRules, suppressedOf } from "./states";
 import {
   EventQueue,
   HDML_RENDER,
@@ -582,6 +582,7 @@ export class HdmlViewElement extends HdvlElement {
         uid: el.uid,
         props: m.props,
         suppress: suppressedOf(el),
+        channelProp: channelPropOf(el),
       });
     }
     const text = stateRules(inputs);

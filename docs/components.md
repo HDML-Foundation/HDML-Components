@@ -1727,7 +1727,10 @@ the eight presentation-attribute properties × `{hover, active}`, and
 [`src/hdvl/states.ts`](../src/hdvl/states.ts) is the half that reads them.
 **Class 2** is 019 R1's two channel-colour sources × `{hover, active}`; a palette feeds `n`
 colours through one declaration, so no single rule can carry it and
-[`Scale.paintState`](../src/hdvl/scale.ts) reads it **per datum** instead. The two reader
+[`Scale.paintState`](../src/hdvl/scale.ts) reads it **per datum** instead — and since
+019 R1's step 38 that per-datum colour **does reach the DOM**, through the two halves
+described in [§ A channel colour's state variants](#a-channel-colours-state-variants-reach-the-dom-per-node)
+below. The two reader
 lists — `STATE_PROPERTIES` and `CHANNEL_STATE_PROPERTIES` — are asserted exhaustive against
 the registry *and disjoint*, so a registered variant with no reader fails the suite. **The runtime never chooses a value per node. It emits both rules and the
 browser chooses**, per node, natively:
@@ -1762,9 +1765,13 @@ Five properties of the mechanism are worth knowing, because each is a decision:
   paint that channel resolves into, which is SPEC §9's rule (*"channel-bound paint wins over
   `--hdml-fill-color` and its state variants alike"*) applied where the variants now land.
   `09-polar-area` was authored on exactly that: its hover cue is the **outline**, *"what the
-  channel does not own"*. `hdml-legend` is a stated exception — it binds `channel="color"`,
-  not `color`, and one selector cannot separate its scale-painted swatches from its text
-  runs.
+  channel does not own"*. ⚠ **Since 019 R1's step 38 the suppression is no longer the end of
+  the story** — the channel's own paint now state-varies through a *second*, more specific
+  rule, so what a *literal* `--hdml-fill-color--hover` may not say is said by the palette
+  instead. `hdml-legend` was a stated exception here — it binds `channel="color"`, not
+  `color`, and one selector could not separate its scale-painted swatches from its text
+  runs — and **step 38 retired it**: the swatches carry a per-node marker and the text runs
+  do not, so the two are now told apart per node rather than per selector.
 - **★ `stroke-dasharray` is DERIVED and is regenerated.** The dash pattern is not a property
   an author sets: `dashOf` computes it from `--hdml-line-style` **×** `--hdml-line-width`
   (`dashed` = `[w × 4, w × 3]`, `dotted` = `[w, w × 2]`). A state that changes *either* input
@@ -1772,6 +1779,73 @@ Five properties of the mechanism are worth knowing, because each is a decision:
   dash off, because the base node carries an attribute that has to be overridden. Emitting
   `stroke-width` alone on a dashed line would thicken it while keeping gaps computed for the
   old width — a wrong picture with no error, which no scene golden could ever show.
+
+#### A channel colour's state variants reach the DOM, per node
+
+Project 019 R1, implementation steps 37–38. Class 2 above is the problem the generated-rule
+mechanism cannot solve on its own: a palette supplies **`n` colours**, one per datum, and
+`fill: #1c8cf4 #f59e0b …` is not a paint value. Eight bars under one selector need eight
+colours, so there is no literal for the generator to emit.
+
+**The colour therefore travels the other way, and the two halves meet at the DOM.**
+
+1. **The node carries its own colours.** `mark.ts`'s `channelStates` resolves
+   `Scale.paintState(value, state)` per row into `Paint.states`, which is **absent unless a
+   state palette is authored** — a field that were always present would land on every node
+   of every group and re-baseline all 29 whole-`Scene` goldens. It carries the paint
+   **property** (`"fill"` or `"stroke"`) beside the colours, because `applyPaint(el, node)`
+   sees the node and nothing else: a channel-resolved `fill` is indistinguishable from a
+   `--hdml-fill-color` one by then, and `hdml-line`'s channel colour is its *stroke*.
+2. **The renderer stamps them as inline custom properties.** `applyPaint` writes
+   `--hdvl-state-hover` and `--hdvl-state-active` on the node, plus a `data-s` marker
+   attribute. ⚠⚠ **It also removes all three when a node stops carrying a state colour** —
+   `paintNodes` reuses `entry.els[j]` whenever the node kind is unchanged, so without the
+   removal a node would keep hovering to a colour the current scene does not contain. The
+   properties are not scene fields, so no golden can see it, and a test that rendered into a
+   fresh element would pass while the bug shipped.
+3. **The sheet reads them back.** `states.ts` emits a **second** rule per widget per state,
+   and `StateInput` gained exactly one scalar — `channelProp` — to drive it:
+
+```css
+g[data-w="{uid}"] > *:hover            { stroke-width: … }   /* class 1 */
+g[data-w="{uid}"] > *[data-s]:hover    { fill: var(--hdvl-state-hover) }
+```
+
+Five things about it are decisions:
+
+- **The marker is in the selector, and it is load-bearing.** `var()` on a property that is
+  not set is **invalid at computed-value time** — not absent — so the declaration becomes
+  `unset`, and `fill` and `stroke` both *inherit*. Measured: an unmarked node reached by the
+  rule paints **`rgb(0, 0, 0)`** on all three engines. A `var()` fallback cannot fix it,
+  because the right fallback is the node's *own* base paint, which differs per node and is
+  exactly what one rule cannot say. So the rule simply does not match.
+- **It is `--hdvl-`, not `--hdml-`, and it is not registered.** `--hdml-*` is the **author's**
+  vocabulary and V12 holds page CSS to exactly the 57 registered names; this property is a
+  wire between two halves of the runtime, authored and read by nobody. `--hdvl-` is already
+  this repo's prefix for runtime-internal properties, so the registry stays at **57**.
+- **One property per state, not one carrying "the current state's colour".** A single
+  property would need the renderer to know which state is live, which is precisely what
+  *"the runtime never chooses"* forbids.
+- **An unauthored state is stamped with the node's own base paint**, so the `var()` inside a
+  rule that *is* emitted can never fail — and no rule is emitted for a state no palette
+  declares, so `hover`-only is one rule rather than two.
+- **The channel rule wins over the literal, by one attribute selector.** SPEC §9's
+  *"channel-bound paint wins over `--hdml-fill-color` and its state variants alike"* falls
+  out of the cascade rather than being arranged. On an `hdml-legend` authoring both, the
+  swatches take the palette and the two text runs take the literal.
+
+The legend resolves its swatches' state colours through **its own** resolver
+(`guide-legend.ts`'s `swatchStates`) rather than `channelStates`: §6.6's key *"takes no
+`source`: it is the **scale's** key, not the marks'"*, so it has no bound slot and no source
+row, only a domain value. Both of `channelStates`' load-bearing rules are kept verbatim — a
+`null` base colour yields **no state colour at all**, so a short palette's uniform fallback
+cannot jump on hover to the colour the base refused to give it, and the map is never empty.
+
+⚠ **A channel state palette is authored on the SCALE**, exactly as the base palette is —
+`Scale.paintState` reads the scale's own snapshot. It reaches the widget's `StateInput`
+anyway, and structurally: `resolve.ts` carries the scale chain **down** the document tree,
+so the scale that paints a widget is always an *ancestor* of it, and all four Class 2
+variants register `inherits: true`.
 
 #### `focus` and `selected` are v2, and not for cost
 
